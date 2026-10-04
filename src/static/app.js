@@ -2569,7 +2569,7 @@ function bmRate(value) {
 
 function renderFunnelStage(stage, reportScore = null, { primary = false, filterLoss = null, countLabel = 'Failles potentielles' } = {}) {
   if (!stage?.available) {
-    return `<div class="bm-funnel-stage bm-unavailable">Indisponible<small>${escapeHtml(stage?.reason || 'Ancien run ou artefact absent')}</small></div>`;
+    return `<div class="bm-funnel-stage bm-unavailable">Indisponible<small>${escapeHtml(stage?.reason || 'Résultats de cette étape absents')}</small></div>`;
   }
   const control = reportScore?.is_zero_gt === true;
   const label = control ? 'Spécificité' : 'F1 final';
@@ -2706,6 +2706,19 @@ function renderBenchmarkContract(score) {
     ${score.metrics_compatibility_reason ? `<small>${escapeHtml(score.metrics_compatibility_reason)}</small>` : ''}</details>`;
 }
 
+function benchmarkFailureReason(row) {
+  const cause = {
+    provider_connection_error: 'connexion au modèle impossible',
+    provider_timeout: 'délai de réponse du modèle dépassé',
+    provider_authentication_error: 'authentification auprès du modèle refusée',
+    execution_error: 'erreur d’exécution',
+  }[row?.completion?.failure_cause];
+  if (!cause) return null;
+  const phase = row.completion.failure_phase;
+  const location = Number.isInteger(phase) && phase >= 1 && phase <= 6 ? ` en phase ${phase}` : '';
+  return `Échec${location} : ${cause}.`;
+}
+
 function renderBenchmarkStatus(row, score, sealed) {
   const status = sealed && score.status ? score.status : row.status;
   const reservations = sealed ? [] : _completionReservations({
@@ -2746,13 +2759,14 @@ function bmDollars(value) {
 }
 
 // Compact final-audit cell: F1 (or specificity for no-fault controls) + precision/recall.
-function renderAuditSummary(score) {
+function renderAuditSummary(score, row = null) {
   if (!score || score.evidence_contract_compatible === false) {
     return '<span class="bm-no-score">Non comparable</span>';
   }
   const stage = score.funnel?.stages?.confirmed;
   if (!stage?.available) {
-    return `<div class="bm-unavailable">Indisponible<small>${escapeHtml(stage?.reason || 'Ancien run ou artefact absent')}</small></div>`;
+    const failure = benchmarkFailureReason(row);
+    return `<div class="bm-unavailable">${failure ? 'Audit non produit' : 'Indisponible'}<small>${escapeHtml(failure || stage?.reason || 'Résultats de vérification absents')}</small></div>`;
   }
   const control = score.is_zero_gt === true;
   const label = control ? 'Spécificité' : 'F1 final';
@@ -2801,7 +2815,10 @@ function renderBenchmarkDetails(r, s, sealed) {
   const panelId = bmDetailsPanelId(r.id);
   const tabs = [['audit', 'Audit'], ['proofs', 'Preuves'], ['intrusion', 'Intrusion'], ['execution', 'Exécution et consommation']];
   const stages = [['candidates', 'Failles potentielles'], ['filtered', 'Failles retenues'], ['confirmed', 'Confirmations déclarées']];
-  const audit = `<h4>De l’hypothèse à la confirmation</h4><div class="bm-funnel-scroll"><table class="bm-funnel-table" aria-label="Entonnoir de détection"><thead><tr><th scope="col">Étape</th><th scope="col">Total</th><th scope="col">VP</th><th scope="col">FP</th><th scope="col">FN</th><th scope="col">Rappel</th></tr></thead><tbody>${stages.map(([key, label], index) => {
+  const failure = benchmarkFailureReason(r);
+  const audit = failure && !r.score
+    ? `<h4>Audit non produit</h4><p>${escapeHtml(failure)}</p><p>Le pipeline s’est arrêté avant de produire un audit évaluable. Les métriques sont indisponibles ; elles ne valent pas zéro.</p>${r.completion?.cleanup_status === 'completed' ? '<p>Nettoyage du scénario effectué.</p>' : ''}`
+    : `<h4>De l’hypothèse à la confirmation</h4><div class="bm-funnel-scroll"><table class="bm-funnel-table" aria-label="Entonnoir de détection"><thead><tr><th scope="col">Étape</th><th scope="col">Total</th><th scope="col">VP</th><th scope="col">FP</th><th scope="col">FN</th><th scope="col">Rappel</th></tr></thead><tbody>${stages.map(([key, label], index) => {
     const stage = funnel?.stages?.[key];
     return `<tr><th scope="row"><span class="bm-step">${index + 1}</span>${label}</th>${stage?.available
       ? ['predictions', 'true_positives', 'false_positives', 'false_negatives'].map(k => `<td>${bmNumber(stage[k])}</td>`).join('') + `<td>${bmRate(stage.recall)}</td>`
@@ -2873,7 +2890,7 @@ function renderBenchmarkTable() {
     let audit;
     if (sealed) audit = `<div class="bm-funnel-stage">Score agrégé signé : ${bmRate(s.metrics?.overall_score)}<small>Détails scellés</small></div>`;
     else if (r.score_error) audit = `<div class="bm-unavailable">Évaluation indisponible<small>${escapeHtml(r.score_error)}</small></div>`;
-    else audit = renderAuditSummary(s);
+    else audit = renderAuditSummary(s, r);
     const mainRow = `<tr${open ? ' class="bm-row-open"' : ''}>`
       + `<td><button type="button" class="bm-run-link" data-bm-run="${runId}">${escapeHtml(bmRunLabel(r.id))}</button>`
       + `<small class="bm-scenario">${escapeHtml(r.scenario)}${sealed ? ' · scellé' : ''}</small>`

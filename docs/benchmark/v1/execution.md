@@ -193,6 +193,10 @@ Un échec de phase reste visible dans le suivi API après nettoyage : le dossier
 du run est disponible dès sa création et l'événement terminal conserve le statut
 et le nettoyage calculés par le pipeline. Une exécution interrompue avant
 l'évaluation ne reçoit pas de score automatique ; ses artefacts restent consultables.
+Dans le tableau Benchmark, une exception connue est présentée avec sa phase et
+une cause bornée (connexion, délai, authentification ou erreur d'exécution).
+Un run sans audit évaluable affiche « Audit non produit », sans transformer
+les métriques absentes en zéros. Le détail rappelle le nettoyage s'il est confirmé.
 
 Références des codes de sortie : [manuel ssh-audit](https://github.com/jtesta/ssh-audit/blob/master/ssh-audit.1)
 et [client Mosquitto 2.0.21](https://github.com/eclipse-mosquitto/mosquitto/blob/v2.0.21/client/sub_client.c).

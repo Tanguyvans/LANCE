@@ -280,6 +280,8 @@ class TestRunEndpoints:
         run_dir.mkdir()
         (run_dir / "run_meta.json").write_text(json.dumps({
             "status": "failed", "benchmark_split": "eval-sealed" if sealed else "dev-public",
+            "run_error": {"phase": "graph_analysis", "exception_class": "APIConnectionError",
+                          "message": "private endpoint and credentials"},
         }))
         content = '{"schema_version":"model.obs1","event":"terminal"}\n'
         (run_dir / "provider_events.jsonl").write_text(content)
@@ -291,6 +293,15 @@ class TestRunEndpoints:
         else:
             assert get_run_file("diagnostic-run", "provider_events.jsonl")["content"] == content
         assert _run_status(run_dir) == "failed"
+        row = runs._benchmark_entry({"run_dir": run_dir, "scenario": "S1",
+                                     "sealed": sealed, "model": "qwen3.8:27b"}, compact=True)
+        if sealed:
+            assert "completion" not in row
+        else:
+            assert row["completion"]["failure_phase"] == 1
+            assert row["completion"]["failure_cause"] == "provider_connection_error"
+            assert row["score"] is None
+        assert "private endpoint" not in json.dumps(row)
 
     def test_provider_diagnostics_do_not_change_score_fingerprint(self, tmp_path):
         run_dir = tmp_path / "diagnostic-run"
