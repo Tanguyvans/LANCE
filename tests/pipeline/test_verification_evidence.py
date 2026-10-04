@@ -509,3 +509,28 @@ def test_transport_diagnostics_remain_authoritative_over_response_content(diagno
         }],
     )
     assert verdict["status"] == expected
+
+
+def test_http_path_list_retains_a_strict_primary_endpoint():
+    finding = _enrich_finding_structure({
+        "device_ip": "192.0.2.20", "service": "http", "port": 80,
+        "type": "directory_listing", "endpoint": "/backup/, /config/",
+    }, strict_schema=True)
+    assert finding["endpoint"] == "/backup/"
+    assert finding["endpoints"] == ["/backup/", "/config/"]
+
+    for url, accepted in [
+        ("http://192.0.2.20/backup/", True),
+        ("http://192.0.2.21/backup/", False),
+        ("http://192.0.2.20:8080/backup/", False),
+        ("http://192.0.2.20/config/", False),
+    ]:
+        result = _synthesize_exploit_result(finding, [{
+            "tool": "http_get", "args": {"url": url}, "evidence_ref": "proof",
+            "result": {"status_code": 200, "body": "<h1>Index of /backup/</h1>", "return_code": 0},
+        }])
+        assert (result["status"] == "EXPLOITED") is accepted
+
+    for endpoint in ("/reports/a,b", "/search?q=a,b", "/search?q=a, /config/"):
+        normalized = _enrich_finding_structure({"service": "http", "endpoint": endpoint})
+        assert normalized["endpoint"] == endpoint

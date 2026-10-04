@@ -240,3 +240,11 @@ consultables dans le détail. Ce statut ne réécrit pas les anciens runs inache
 
 Références des codes de sortie : [manuel ssh-audit](https://github.com/jtesta/ssh-audit/blob/master/ssh-audit.1)
 et [client Mosquitto 2.0.21](https://github.com/eclipse-mosquitto/mosquitto/blob/v2.0.21/client/sub_client.c).
+
+
+Quand un candidat HTTP place une liste de chemins séparés par une virgule et
+une espace dans `endpoint`, la projection conserve le premier comme chemin
+principal et les chemins dans `endpoints`. Les virgules internes aux chemins
+et les chaînes de requête restent inchangées. La preuve doit toujours correspondre
+à l’hôte, au port et au chemin principal ; une réponse sur un autre chemin
+ne confirme pas automatiquement toute la liste. Le candidat brut reste archivé.
