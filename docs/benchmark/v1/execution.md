@@ -62,6 +62,13 @@ réexécuter les outils. Elle est autorisée une fois par état de conversation,
 dans les budgets existants. Un rejet persistant reste une erreur ; les événements
 fournisseur permettent de distinguer cette reprise d’un retry réseau.
 
+Si une requête expire au terme du budget de temps partagé, la cause terminale
+est `deadline`, même lorsque la finalisation interdit tout retry. Le diagnostic
+de la requête conserve l'erreur SDK de type `timeout` ; cela ne prouve pas une
+coupure du fournisseur. Sans retry, un timeout survenant avant l'échéance
+reste une erreur fournisseur. Ce classement n'allonge aucun budget et ne transforme pas une
+analyse inachevée en succès.
+
 Un groupe explicite incompatible avec le scénario est refusé. `--split auto`
 suit le catalogue. `--phases` sert à des exécutions ciblées, pas à prétendre avoir
 validé le pipeline complet.
