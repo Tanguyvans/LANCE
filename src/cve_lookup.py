@@ -217,8 +217,10 @@ def query_requires_compatibility_filter(query: str) -> bool:
     """Whether a query contains enough product/version structure to verify."""
     if _CVE_ID_RE.fullmatch(query.strip()):
         return False
-    _, version, is_cpe = _query_product_version(query)
-    return is_cpe or version is not None
+    _, version, _ = _query_product_version(query)
+    # A CPE with an unspecified version is still only a product lookup.
+    # Its shape alone cannot establish that an observed version is affected.
+    return bool(version)
 
 
 def _version_tokens(value: str) -> list[tuple[int, int | str]]:

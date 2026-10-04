@@ -700,6 +700,7 @@ def build_context(run, config, stream_callback=None) -> AnalysisContext:
         max_duration_s=run.max_duration_s, run_started=getattr(run, "_run_started", None),
         emit=stream_callback, tokens_before=run.tracker.total_tokens(),
         cost_before=run.tracker.total_cost(),
+        turns_before=run.tracker.summary()["total_turns"],
     )
 
 
@@ -720,12 +721,13 @@ def run_execution(context: AnalysisContext) -> AnalysisExecutionResult:
 
 
 def _consumption(context: AnalysisContext) -> PhaseConsumption:
-    input_tokens, output_tokens = context.tracker.total_tokens()
+    usage = context.tracker.summary()
     return PhaseConsumption(
-        input_tokens=input_tokens - context.tokens_before[0],
-        output_tokens=output_tokens - context.tokens_before[1],
-        cost_usd=context.tracker.total_cost() - context.cost_before,
+        input_tokens=usage["total_input_tokens"] - context.tokens_before[0],
+        output_tokens=usage["total_output_tokens"] - context.tokens_before[1],
+        cost_usd=usage["total_cost_usd"] - context.cost_before,
         duration_s=time.monotonic() - context.started_monotonic,
+        turns=usage["total_turns"] - context.turns_before,
     )
 
 
@@ -791,11 +793,12 @@ def execute(context: AnalysisContext) -> PhaseResult:
             context.tracker.end_phase()
     result = aggregate_phase(context, execution)
     if context.emit:
-        # Keep the existing public event fields; detailed usage is in result.
+        # Include every worker, including rejected or interrupted analyses.
         context.emit({
             "type": "phase_done", "phase": 3, "name": config.name,
             "status": result.legacy_status, "deliverable": config.deliverable_file,
-            "cost_usd": 0, "turns": 0,
+            "cost_usd": result.consumption.cost_usd,
+            "turns": result.consumption.turns,
         })
     return result
 

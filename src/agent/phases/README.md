@@ -94,6 +94,18 @@ utilisées par l'API et le CLI. Les champs publics des événements sont conserv
 La politique `rules` n'appelle aucun modèle. Le dry-run renvoie `skipped` avant
 toute découverte active, scan, analyse ou agrégation.
 
+En profil full, les deux derniers tours de chaque analyse d'appareil imposent
+l'outil de sauvegarde. Un rejet de validation passe également en sauvegarde seule,
+avec au plus trois requêtes dans les limites existantes de tours, de délai et de
+coût. Le coût et les tours publiés à la fin de phase incluent tous les workers,
+y compris ceux dont le livrable a été refusé. Le modèle reçoit le rejet pour
+corriger son livrable ; une tentative encore invalide reste un échec et conserve
+les observations du scanner.
+
+La compatibilité CVE exige une version observée explicite, y compris pour une
+requête CPE. Un champ de version `*`, `-` ou vide reste indéterminé ; une version
+placée dans le champ de mise à jour ne suffit pas à confirmer une CVE.
+
 Les configurations internes personnalisées peuvent encore demander une
 agrégation seule (`has_device_agents=False`) ou un agrégateur maître LLM
 (`deterministic_aggregation=False`). Les méthodes `_run_phase3` et

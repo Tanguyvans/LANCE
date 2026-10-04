@@ -197,6 +197,25 @@ class TestCVECompatibility:
         assert classify_cve_compatibility("OpenSSH", []).status == "indeterminate"
         assert classify_cve_compatibility("OpenSSH 9.2", []).status == "indeterminate"
 
+    @pytest.mark.parametrize("query", [
+        "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
+        "cpe:2.3:a:f5:nginx:*:1.26.3:*:*:*:*:*:*",
+        "cpe:2.3:a:f5:nginx:-:*:*:*:*:*:*:*",
+    ])
+    def test_cpe_without_observed_version_cannot_confirm_old_cve(self, query):
+        # The second query was emitted in the 2026-10-04 S1 Qwen run.
+        matches = self.match(
+            "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
+            versionStartIncluding="0.1.0", versionEndExcluding="0.5.38",
+        )
+        assert classify_cve_compatibility(query, matches).status == "indeterminate"
+        assert classify_cve_compatibility(
+            "cpe:2.3:a:f5:nginx:1.26.3:*:*:*:*:*:*:*", matches,
+        ).status == "incompatible"
+        assert classify_cve_compatibility(
+            "cpe:2.3:a:f5:nginx:0.5.37:*:*:*:*:*:*:*", matches,
+        ).status == "compatible"
+
     def test_conditional_match_is_not_promoted_to_unconditional(self):
         matches = self.match(
             "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",

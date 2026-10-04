@@ -230,13 +230,15 @@ def test_consumption_excludes_prior_cost_and_tokens(tmp_path, monkeypatch):
     monkeypatch.setattr(tracking, "_resolve_pricing", lambda *args: (
         {"input": 1.0, "output": 2.0}, "local-test", False,
     ))
-    context = context_for(tmp_path)
+    events = []
+    context = context_for(tmp_path, emit=events.append)
     context.tracker.model = "test-model"
     context.tracker.start_phase("previous")
     context.tracker.record_turn(9000, 4000)
     context.tracker.end_phase()
     context = replace(context, tokens_before=context.tracker.total_tokens(),
-                      cost_before=context.tracker.total_cost())
+                      cost_before=context.tracker.total_cost(),
+                      turns_before=context.tracker.summary()["total_turns"])
     monkeypatch.setattr(analysis, "scan_phase", lambda _: ScanResult([{"id": "same"}], {}))
     monkeypatch.setattr(devices, "prepare_analysis", lambda _: object())
 
@@ -250,4 +252,7 @@ def test_consumption_excludes_prior_cost_and_tokens(tmp_path, monkeypatch):
     assert result.consumption.input_tokens == 1000
     assert result.consumption.output_tokens == 500
     assert result.consumption.cost_usd == pytest.approx(0.002)
+    assert result.consumption.turns == 1
+    assert events[-1]["cost_usd"] == pytest.approx(0.002)
+    assert events[-1]["turns"] == 1
     assert context.tracker._active == {}

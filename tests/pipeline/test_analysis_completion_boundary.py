@@ -80,6 +80,7 @@ def test_valid_save_receipt_and_byte_identical_promotion_counts_device_done(
     _, status, events = _run_case(mock_provider, output_dir, "valid")
 
     assert status["devices_analyzed"] == 1
+    assert mock_provider.chat_with_tools.call_args.kwargs["finalize_required_tool_on_stall"] is True
     assert status["devices_failed"] == []
     assert [event["type"] for event in events if event.get("type") == "device_done"] == ["device_done"]
 
