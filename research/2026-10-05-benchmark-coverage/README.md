@@ -155,5 +155,15 @@ négatifs, preuves secondaires ou fixtures et ne remplace pas les nouveaux runs.
 Le relecteur n'a effectué aucun contrôle réseau ni nouvelle consultation des
 sources externes. Source et PDF, empreintes, corrections et contrôles sont
 consignés dans `muse-baseline-report-2026-10-05/codex-review.json` et
-`delivery-validation.json`, sous la base d'artefacts. La campagne et son suivi
-restent actifs ; le rapport final dépend des validations réelles.
+`delivery-validation.json`, sous la base d'artefacts. La campagne reste active ; son suivi périodique est désormais désactivé
+(voir le journal des corrections ci-dessous). Le rapport final dépend des
+validations réelles.
+
+## Journal des corrections et suivi
+
+Le [journal argumenté des corrections](../2026-10-05-corrections-lance/README.md)
+regroupe les causes, décisions, tests et validations encore nécessaires. Le suivi
+périodique est désactivé à la demande de Tanguy le 5 octobre 2026. Les prochains
+runs doivent répondre à un défaut nommé dans les cas `failed`/`partial`, sans
+répétition d'une campagne identique. Le lot correctif déjà lancé et son archivage
+continuent ; le rapport historique conserve son gel à 11:32.
