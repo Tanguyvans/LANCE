@@ -59,3 +59,12 @@ def test_unrecognized_dns_transport_remains_incomplete():
         {"name": "dns", "port": 53, "protocol": "sctp"},
     ]}, {"nmap_scan": lambda **kwargs: pytest.fail("Do not replace an unknown transport")}, diagnostics=errors)
     assert errors == ["resolver: unsupported DNS transport sctp"]
+
+
+@pytest.mark.parametrize("descriptor", [{}, {"protocol": None}, {"protocol": ""}])
+def test_missing_dns_transport_is_not_guessed(descriptor):
+    errors = []
+    scan_device({"id": "resolver", "ip": "192.0.2.10", "services": [
+        {"name": "dns", "port": 53, **descriptor},
+    ]}, {"nmap_scan": lambda **kwargs: pytest.fail("No transport substitution")}, diagnostics=errors)
+    assert errors == ["resolver: unsupported DNS transport unspecified"]

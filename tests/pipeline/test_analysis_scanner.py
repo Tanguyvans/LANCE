@@ -433,7 +433,7 @@ class TestScannerEvidenceExtraction:
         assert len(findings) == 1
         assert findings[0]["type"] == "no_auth"
         assert findings[0]["severity"] == "HIGH"
-        assert findings[0]["exploitation_status"] == "confirmed"
+        assert findings[0]["exploitation_status"] == "suspected"
         assert "no_auth" in CANONICAL_TYPES
         assert "no_auth" not in NOISE_TYPES
 

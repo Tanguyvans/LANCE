@@ -246,11 +246,25 @@ certifient ni une véritable installation Node-RED ni l'exécution d'un flow.
 Le comportement reste à vérifier sur nato après déploiement ; les scores et
 références des runs historiques ne sont pas modifiés.
 
+### Hypothèses et preuves MQTT sur WebSocket
+
+Un HTTP 101 est une observation de négociation de transport. Il ne confirme
+pas l'acceptation MQTT, l'abonnement ou la réception de messages. Le scanner
+conserve cette observation comme hypothèse `suspected` sur l'IP, le port et
+le chemin exacts. Seul un résultat natif `mqtt_ws_listen` satisfaisant le
+contrôle de preuve existant (attestation de destination, CONNACK, SUBACK et
+PUBLISH complet sans authentification) confirme `no_auth`. Une réponse d'un
+autre hôte, port ou chemin ne peut pas être réutilisée. Les diagnostics de
+service réellement non couvert restent visibles ; cette correction ne crée
+aucun alias `tor-orport` vers MQTT et ne réécrit pas les anciens runs.
+Voir le [journal des corrections](../../../research/2026-10-05-corrections-lance/README.md).
+
 ### Couverture DNS du scanner
 
 Les services `domain` et `dns` disposent d'une sonde fraîche `nmap_scan`
 avec `dns-nsid`, sur le port et le transport déclarés ou observés. UDP
-reste limité au port demandé ; TCP ne se transforme pas en UDP. Cette sonde
+reste limité au port demandé ; TCP ne se transforme pas en UDP ; un transport absent ou inconnu reste
+une erreur de couverture. Cette sonde
 interroge les informations NSID, `id.server` et `version.bind`, conformément
 au [script Nmap](https://svn.nmap.org/nmap/scripts/dns-nsid.nse)
 (source consultée le 5 octobre 2026). Elle ne teste ni transfert de zone ni

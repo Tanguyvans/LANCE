@@ -513,10 +513,10 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
             continue
 
         if matrix_key == "dns":
-            protocol = str(svc.get("protocol") or "tcp").casefold()
+            protocol = str(svc.get("protocol") or "").casefold()
             if protocol not in {"tcp", "udp"}:
                 if diagnostics is not None:
-                    diagnostics.append(f"{device_id}: unsupported DNS transport {protocol}")
+                    diagnostics.append(f"{device_id}: unsupported DNS transport {protocol or 'unspecified'}")
                 continue
 
         for tool_name, kwargs_tmpl in SCAN_MATRIX[matrix_key]:
@@ -963,7 +963,32 @@ def _extract_mqtt_sys(entries: list[dict], device: dict, svc_name: str) -> list[
 
 
 def _extract_mqtt_websocket(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """Confirm a WebSocket handshake when possible; otherwise retain exposure."""
+    """HTTP Upgrade is a hypothesis; only bound native MQTT messages confirm access."""
+    from src.agent.evidence.mqtt_ws import mqtt_ws_actual_request, trusted_mqtt_ws_messages
+
+    for entry in entries:
+        if entry.get("tool") != "mqtt_ws_listen":
+            continue
+        kwargs = entry.get("kwargs", {})
+        request = mqtt_ws_actual_request(kwargs)
+        if request is None or request[0] != device.get("ip"):
+            continue
+        ip, port, path, topic = request
+        result = _parse_result(entry)
+        messages = trusted_mqtt_ws_messages(result, kwargs, ip, port, path, topic)
+        if messages:
+            finding = _make_finding(
+                device, "no_auth", "HIGH", "mqtt-ws", port,
+                f"Anonymous MQTT-over-WebSocket subscription received messages at {path}",
+                f"Native MQTT CONNACK/SUBACK accepted; {len(messages)} complete message(s) "
+                f"received for topic filter {topic}",
+                status="confirmed", endpoint=path,
+                technique="Verify the anonymous MQTT-over-WebSocket subscription at the exact endpoint",
+                tools=["mqtt_ws_listen"],
+            )
+            finding["mqtt_topic"] = topic
+            return [finding]
+
     role = device.get("role", "")
     if "mqtt" not in role and "mqtt" not in svc_name:
         return []
@@ -971,34 +996,44 @@ def _extract_mqtt_websocket(entries: list[dict], device: dict, svc_name: str) ->
         if entry.get("tool") != "http_request":
             continue
         kwargs = entry.get("kwargs", {})
-        if ":9001" not in str(kwargs.get("url", "")):
+        try:
+            parsed = urlsplit(str(kwargs.get("url", "")))
+            if parsed.hostname != device.get("ip") or parsed.port != 9001:
+                continue
+        except ValueError:
             continue
         result = _parse_result(entry)
-        if result.get("status_code") == 101:
+        if (
+            kwargs.get("follow_redirects", False) is not False
+            or result.get("redirect_chain")
+            or ("final_url" in result and result["final_url"] != kwargs.get("url"))
+        ):
+            continue
+        if result.get("status_code") == 101 and not tool_execution_failed("http_request", result):
             return [_make_finding(
                 device, "no_auth", "HIGH", "mqtt-ws", 9001,
-                "MQTT WebSocket listener accepts an unauthenticated HTTP upgrade",
-                "HTTP 101 Switching Protocols returned for a WebSocket upgrade on port 9001",
-                status="confirmed",
-                technique="Connect to the MQTT broker over the accepted unauthenticated WebSocket",
-                tools=["http_request"],
+                "HTTP Upgrade observed; anonymous MQTT application access remains unverified",
+                "HTTP 101 returned on the observed endpoint; no MQTT CONNACK, SUBACK or message proof",
+                status="suspected", endpoint=parsed.path or "/",
+                technique="Verify MQTT CONNECT, SUBSCRIBE and received PUBLISH on the exact WebSocket endpoint",
+                tools=["mqtt_ws_listen"],
             )]
     for entry in entries:
-        if entry["tool"] != "nmap_scan":
+        if entry.get("tool") != "nmap_scan":
             continue
         kwargs = entry.get("kwargs", {})
-        if "9001" not in kwargs.get("ports", ""):
+        if kwargs.get("target") != device.get("ip"):
             continue
         result = _parse_result(entry)
-        stdout = result.get("stdout", "")
-        if "9001/tcp" in stdout and "open" in stdout:
+        stdout = str(result.get("stdout") or "")
+        if not tool_execution_failed("nmap_scan", result) and re.search(r"(?m)^9001/tcp\s+open\s", stdout):
             return [_make_finding(
                 device, "network_exposure", "LOW", "mqtt-ws", 9001,
-                "MQTT WebSocket listener exposed on the network",
+                "Possible MQTT WebSocket listener exposed on the network; protocol unverified",
                 f"nmap port 9001: {stdout.strip()[:200]}",
                 status="suspected",
-                technique="Verify with an HTTP WebSocket upgrade request before claiming no_auth",
-                tools=["http_request"],
+                technique="Verify the application protocol before claiming anonymous MQTT access",
+                tools=["mqtt_ws_listen"],
             )]
     return []
 
