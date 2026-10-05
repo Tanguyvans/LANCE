@@ -157,7 +157,7 @@ def test_actual_expected_population_matches_role_and_security_profile(role, key,
     assert render(preparation[f"_{key}_expected"], values) == (2 if filtered else 3)
 
 
-@pytest.mark.parametrize("key", ["mqtt", "db", "ssh", "web", "redis", "modbus"])
+@pytest.mark.parametrize("key", ["mqtt", "db", "ssh", "web", "redis", "modbus", "privesc"])
 @pytest.mark.parametrize("results,expected,valid", [
     ([{"rc": 0, "stdout": "active\nOK"}], 1, True),
     ([{"rc": 0, "stdout": "OK\nFAIL"}], 1, False),

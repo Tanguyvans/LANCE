@@ -222,6 +222,19 @@ injection du laboratoire. Après un essai S1, contrôler préparation, phases, p
 statut et nettoyage avant d’étendre la campagne. Pour les limites de concurrence
 et les tests d’isolation : [livrables par run](../../architecture/run-artifacts.md).
 
+
+La préparation S3/S7 compile `iot_diag.c` en un binaire SUID détenu par root,
+qui lit un fichier local sans lancer de shell. La vérification préalable exige,
+comme utilisateur `admin`, une lecture réussie de `/etc/shadow` par ce binaire
+alors que la lecture directe est interdite, un script de maintenance writable
+et son entrée cron root. Une absence, un retour non nul ou un `FAIL` bloque le
+run ; la sortie sensible du fichier reste masquée. Le bit SUID d'un script
+Bash ne suffit pas sur Linux ([execve(2), man-pages 6.19](https://man7.org/linux/man-pages/man2/execve.2.html)).
+Les conditions réelles (montage, droits, compilation) restent à vérifier sur
+nato après déploiement. Ce contrôle couvre cette injection précise ; il ne
+certifie pas toutes les propriétés de vérité terrain et ne réécrit aucun
+résultat historique. Les références S3/S7 conservent leurs critères initiaux.
+
 ### Interprétation des erreurs d'outils
 
 Le statut du scanner et le compteur global `total_tool_errors` distinguent

@@ -74,6 +74,39 @@
       changed_when: false
       failed_when: false
 
+    # ── S3/S7 : real privileged file read, not mode bits alone ──
+    - name: "[ssh_server] Vérifier lecture SUID comme admin et cron writable"
+      ansible.builtin.command:
+        argv:
+          - pct
+          - exec
+          - "{{ base_vmid | int + item.vmid_offset }}"
+          - --
+          - bash
+          - -c
+          - |
+            set -o pipefail
+            if [ "$(stat -c %u /usr/local/bin/iot-diag)" = 0 ] &&
+               [ -u /usr/local/bin/iot-diag ] &&
+               grep -qxF "*/5 * * * * root /opt/iot/maintenance.sh" /etc/crontab &&
+               runuser -u admin -- bash -c '
+                 set -o pipefail
+                 test ! -r /etc/shadow &&
+                 /usr/local/bin/iot-diag /etc/shadow | grep "^root:" >/dev/null &&
+                 test -w /opt/iot/maintenance.sh
+               '; then
+              echo OK
+            else
+              echo FAIL
+            fi
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
+      when:
+        - item.role == 'ssh_server'
+        - source_scenario_id in ['3', '7']
+      register: privesc_behavior_check
+      changed_when: false
+      failed_when: false
+
     # ── Web : directory listing ──
     - name: "[web_server] Vérifier port 80 ouvert"
       ansible.builtin.shell: >
@@ -1042,6 +1075,10 @@
              | selectattr('role', 'equalto', 'db_server_v2')
              | selectattr('security_profile', 'defined')
              | selectattr('security_profile', 'equalto', 'vulnerable') | list | length }}
+        _privesc_expected: >-
+          {{ (benchmark_scenarios[scenario_id].services
+              | selectattr('role', 'equalto', 'ssh_server') | list | length)
+             if source_scenario_id in ['3', '7'] else 0 }}
         _modbus_expected: >-
           {{ benchmark_scenarios[scenario_id].services
              | selectattr('role', 'equalto', 'modbus_server') | list | length }}
@@ -1071,6 +1108,10 @@
         _redis_results: >-
           {{ (redis_ping_check.results | default([]) | rejectattr('skipped', 'defined') | list)
              + (redis_ping_check.results | default([]) | selectattr('skipped', 'defined')
+                | rejectattr('skipped', 'sameas', true) | list) }}
+        _privesc_results: >-
+          {{ (privesc_behavior_check.results | default([]) | rejectattr('skipped', 'defined') | list)
+             + (privesc_behavior_check.results | default([]) | selectattr('skipped', 'defined')
                 | rejectattr('skipped', 'sameas', true) | list) }}
         _modbus_results: >-
           {{ (modbus_svc_check.results | default([]) | rejectattr('skipped', 'defined') | list)
@@ -1124,6 +1165,12 @@
               (_redis_results | selectattr('rc', 'equalto', 0) | list | length == _redis_expected | int) and
               (_redis_results | selectattr('stdout', 'search', '(?m)^OK$') | list | length == _redis_expected | int) and
               (_redis_results | rejectattr('stdout', 'search', '(?m)^FAIL$') | list | length == _redis_expected | int)) }}
+        _check_privesc_ok: >-
+          {{ (_privesc_expected | int == 0) or
+             (_privesc_results | length == _privesc_expected | int and
+              (_privesc_results | selectattr('rc', 'equalto', 0) | list | length == _privesc_expected | int) and
+              (_privesc_results | selectattr('stdout', 'search', '(?m)^OK$') | list | length == _privesc_expected | int) and
+              (_privesc_results | rejectattr('stdout', 'search', '(?m)^FAIL$') | list | length == _privesc_expected | int)) }}
         _check_modbus_ok: >-
           {{ (_modbus_expected | int == 0) or
              (_modbus_results | length == _modbus_expected | int and
@@ -1157,6 +1204,7 @@
         _verify_all_ok: >-
           {{ (_check_router_ok | bool) and (_check_mqtt_ok | bool) and
              (_check_db_ok | bool) and (_check_ssh_ok | bool) and
+             (_check_privesc_ok | bool) and
              (_check_web_ok | bool) and (_check_redis_ok | bool) and
              (_check_modbus_ok | bool) and (_check_s14_ok | bool) and
              (_check_simulators_ok | bool) and (_check_s15_ok | bool) and
@@ -1174,6 +1222,7 @@
           MQTT anon:     {{ 'OK' if _check_mqtt_ok | bool else 'FAIL' }}
           DB root:       {{ 'OK' if _check_db_ok | bool else 'FAIL' }}
           SSH creds:     {{ 'OK' if _check_ssh_ok | bool else 'FAIL' }}
+          S3/S7 SUID/cron: {{ 'OK' if _check_privesc_ok | bool else 'FAIL' }}
           Web listing:   {{ 'OK' if _check_web_ok | bool else 'FAIL' }}
           Web HTTP/nginx version: {{ 'OK' if _check_web_ok | bool else 'FAIL (HTTP 200 + Server: nginx/<numeric-version> required)' }}
           Redis no-auth: {{ 'OK' if _check_redis_ok | bool else 'FAIL' }}

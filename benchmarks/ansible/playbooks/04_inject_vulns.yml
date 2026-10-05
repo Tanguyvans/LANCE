@@ -996,25 +996,37 @@
         - source_scenario_id == '4'
       changed_when: true
 
-    # ── Privilege escalation : SUID binary + cron writable — S3 (jetson), S7 (edge-compute) ──
+    # ── Privilege escalation : SUID binary + cron writable — S3/S7 ──
+    - name: "[ssh_server] Copier la source du vrai binaire SUID de laboratoire"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/iot_diag.c"
+        dest: /tmp/nato_iot_diag.c
+        mode: "0644"
+      when: source_scenario_id in ['3', '7']
+
     - name: "[ssh_server] Injecter SUID binary + cron writable"
       ansible.builtin.shell: |
+        set -e
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/nato_iot_diag.c /tmp/nato_iot_diag.c
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash -c '
-          # SUID binary vulnérable
-          cat > /usr/local/bin/iot-diag << DIAGEOF
-        #!/bin/bash
-        # IoT diagnostic tool — runs as root
-        cat \$1
-        DIAGEOF
+          set -e
+          # Linux ignores SUID on scripts; compile the declared local file reader.
+          if ! command -v cc >/dev/null 2>&1; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gcc libc6-dev
+          fi
+          cc -std=c11 -O2 -Wall -Wextra -Werror /tmp/nato_iot_diag.c -o /usr/local/bin/iot-diag
+          chown root:root /usr/local/bin/iot-diag
           chmod 4755 /usr/local/bin/iot-diag
+          rm -f /tmp/nato_iot_diag.c
 
           # Cron job world-writable
           mkdir -p /opt/iot
           echo "#!/bin/bash" > /opt/iot/maintenance.sh
           echo "logrotate /etc/logrotate.conf" >> /opt/iot/maintenance.sh
           chmod 777 /opt/iot/maintenance.sh
-          echo "*/5 * * * * root /opt/iot/maintenance.sh" >> /etc/crontab
-          echo "[OK] SUID + cron writable injectés"'
+          grep -qxF "*/5 * * * * root /opt/iot/maintenance.sh" /etc/crontab ||
+            echo "*/5 * * * * root /opt/iot/maintenance.sh" >> /etc/crontab
+          echo "[OK] SUID binary + cron writable injectés"'
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'ssh_server'
