@@ -79,7 +79,7 @@ un chemin ou motif non vide et plus précis que la racine. Les noms publiés
 ne prouvent ni l'existence des ressources, ni leur contenu, ni leur accès.
 Une version dans l'en-tête ne remplace pas cette preuve de chemins.
 Cette correction vient de la revue des runs S4/S6 de la
-[campagne Qwen UMONS](../../../research/2026-09-29-benchmark-coverage/README.md).
+[campagne Qwen UMONS](../../../research/2026-10-05-benchmark-coverage/README.md).
 Les scores historiques restent archivés sous leur contrat d'origine ; les
 nouveaux contrats ne les rendent pas directement comparables aux nouveaux runs.
 

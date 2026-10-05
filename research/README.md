@@ -12,6 +12,7 @@ présente les comportements implémentés, les contrats retenus et les procédur
 | 2026-09-29 | [Couverture du benchmark](2026-09-29-benchmark-coverage/README.md) | Que couvrent le corpus, les exécutions et les preuves admises ? | Diagnostic reproduit ; campagne réelle Qwen UMONS S1–S12 en cours depuis le 4 octobre 2026 |
 | 2026-09-29 | [Scalabilité du contexte](2026-09-29-context-scalability/README.md) | Comment conserver les preuves utiles dans le contexte des six phases ? | Nouvelle revue du pipeline ; plan historique du rapport conservé comme archive |
 | 2026-09-29 (classement) | [Spécialisation IoMT](2026-09-29-iomt/README.md) | Comment adapter et évaluer LANCE sur des réseaux médicaux simulés ? | Proposition de sujet de TFE ; début inconnu |
+| 2026-10-05 | [Validation Qwen UMONS S1–S12](2026-10-05-benchmark-coverage/README.md) | Quels résultats et défauts les runs réels démontrent-ils ? | Rapport intermédiaire des premiers runs ; validations correctives en cours |
 
 ## Lire les rapports
 
@@ -21,7 +22,7 @@ benchmark, contexte et apport LLM, puis propose les comparaisons à réaliser.
 Les deux rapports spécialisés développent les constats et les protocoles :
 
 - [Couverture et validité de l'évaluation — PDF](2026-09-29-benchmark-coverage/report.pdf) · [LaTeX](2026-09-29-benchmark-coverage/report.tex).
-- [Campagne Qwen UMONS S1–S12 — rapport intermédiaire PDF](2026-09-29-benchmark-coverage/validation-qwen-umons.pdf) · [LaTeX](2026-09-29-benchmark-coverage/validation-qwen-umons.tex). Révision : **2026-10-05 11:48 (Europe/Brussels, UTC+02:00)** ; gel à 11:32 : deux diagnostics S1 séparés, S1 commun et rapports S2–S11, échec S12 sans score ; 14 archives, 1 582 empreintes. Premier lot terminé, validations des 14 corrections lancées sur S12 puis S1–S11 après CI et déploiement vérifiés. Rédaction Muse, corrections et contrôle Codex ; campagne en développement.
+- [Campagne Qwen UMONS S1–S12 — rapport intermédiaire PDF](2026-10-05-benchmark-coverage/validation-qwen-umons.pdf) · [LaTeX](2026-10-05-benchmark-coverage/validation-qwen-umons.tex). Révision : **2026-10-05 11:48 (Europe/Brussels, UTC+02:00)** ; gel à 11:32 : deux diagnostics S1 séparés, S1 commun et rapports S2–S11, échec S12 sans score ; 14 archives, 1 582 empreintes. Premier lot terminé, validations des 14 corrections lancées sur S12 puis S1–S11 après CI et déploiement vérifiés. Rédaction Muse, corrections et contrôle Codex ; campagne en développement.
 - [Conservation des preuves et contexte — PDF](2026-09-29-context-scalability/report.pdf) · [LaTeX](2026-09-29-context-scalability/report.tex).
 
 Dernière révision des trois rapports : **2026-09-30 21:55
