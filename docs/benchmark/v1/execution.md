@@ -235,6 +235,17 @@ nato après déploiement. Ce contrôle couvre cette injection précise ; il ne
 certifie pas toutes les propriétés de vérité terrain et ne réécrit aucun
 résultat historique. Les références S3/S7 conservent leurs critères initiaux.
 
+La préparation des rôles `nodered_server` vérifie la syntaxe Python du
+simulateur avant son démarrage, encode la page d'administration en UTF-8 et
+attend de façon bornée que le service réponde sur `/admin`. Une absence de
+réponse valide échoue à l'injection. La vérification globale exige ensuite,
+pour chaque rôle attendu, un port 1880 ouvert et une réponse HTTP réussie
+contenant l'identification Node-RED ; un contrôle absent ou négatif bloque le
+run. Ces contrôles portent sur la disponibilité du simulateur HTTP. Ils ne
+certifient ni une véritable installation Node-RED ni l'exécution d'un flow.
+Le comportement reste à vérifier sur nato après déploiement ; les scores et
+références des runs historiques ne sont pas modifiés.
+
 ### Interprétation des erreurs d'outils
 
 Le statut du scanner et le compteur global `total_tool_errors` distinguent

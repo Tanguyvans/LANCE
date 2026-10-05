@@ -16,8 +16,9 @@ REGISTERS = {
     "ssh_creds_check": "ssh", "web_listing_check": "web",
     "web_version_check": "web_version", "redis_ping_check": "redis",
     "modbus_svc_check": "modbus",
+    "nodered_port_check": "nodered", "nodered_admin_check": "nodered_admin",
 }
-ROLES = ["mqtt_broker", "db_server", "ssh_server", "web_server", "db_server_v2", "modbus_server"]
+ROLES = ["mqtt_broker", "db_server", "ssh_server", "web_server", "db_server_v2", "modbus_server", "nodered_server"]
 
 
 def test_preflight_fact_tasks_with_real_ansible(tmp_path):
@@ -76,7 +77,7 @@ def test_preflight_fact_tasks_with_real_ansible(tmp_path):
             {"ansible.builtin.assert": {"that": [
                 "_verify_all_ok == expected_verdict",
                 *[f"_check_{key}_ok == expected_verdict" for key in REGISTERS.values()
-                  if key != "web_version"],
+                  if key not in {"web_version", "nodered_admin"}],
                 *[f"_{key}_results == expected_rows" for key in REGISTERS.values()],
             ]}},
         ]})

@@ -1488,7 +1488,7 @@
                "active": True, "wires": []},
           ]
 
-          ADMIN_HTML = b"""<!DOCTYPE html><html><head>
+          ADMIN_HTML = """<!DOCTYPE html><html><head>
           <title>Node-RED</title>
           <meta charset="utf-8">
           </head><body>
@@ -1496,7 +1496,7 @@
           <p>Flow Editor — no authentication required</p>
           <div id="main-container"><div id="editor"></div></div>
           <script>// Node-RED editor stub</script>
-          </body></html>"""
+          </body></html>""".encode("utf-8")
 
           class NodeREDHandler(BaseHTTPRequestHandler):
               def log_message(self, fmt, *args):
@@ -1545,9 +1545,22 @@
           printf '[Unit]\nDescription=Node-RED IoT mock (benchmark - no auth)\nAfter=network.target\n[Service]\nExecStart=/usr/bin/python3 /opt/nodered_mock.py\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/nodered.service
           systemctl daemon-reload
           systemctl enable nodered
-          systemctl start nodered
-          sleep 1
-          systemctl is-active nodered && echo "[OK] Node-RED mock actif sur port 1880" || { journalctl -u nodered -n 10 --no-pager; echo "[WARN] Node-RED inactif"; }
+          python3 -m py_compile /opt/nodered_mock.py
+          systemctl restart nodered
+          ready=false
+          for attempt in $(seq 1 10); do
+            if systemctl is-active --quiet nodered && curl --max-time 2 -fsS http://127.0.0.1:1880/admin | grep -qi 'Node-RED'; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            journalctl -u nodered -n 10 --no-pager
+            echo "[FAIL] Node-RED mock indisponible"
+            exit 1
+          fi
+          echo "[OK] Node-RED mock actif sur port 1880"
 
     - name: "[nodered_server] Push + exécuter dans chaque CT concerné"
       ansible.builtin.shell: |
