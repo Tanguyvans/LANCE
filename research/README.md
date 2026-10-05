@@ -13,7 +13,7 @@ présente les comportements implémentés, les contrats retenus et les procédur
 | 2026-09-29 | [Scalabilité du contexte](2026-09-29-context-scalability/README.md) | Comment conserver les preuves utiles dans le contexte des six phases ? | Nouvelle revue du pipeline ; plan historique du rapport conservé comme archive |
 | 2026-09-29 (classement) | [Spécialisation IoMT](2026-09-29-iomt/README.md) | Comment adapter et évaluer LANCE sur des réseaux médicaux simulés ? | Proposition de sujet de TFE ; début inconnu |
 | 2026-10-05 | [Validation Qwen UMONS S1–S12](2026-10-05-benchmark-coverage/README.md) | Quels résultats et défauts les runs réels démontrent-ils ? | Rapport intermédiaire des premiers runs ; validations correctives en cours |
-| 2026-10-05 | [Corrections LANCE et validation ciblée](2026-10-05-corrections-lance/README.md) | Quels défauts motivent chaque correction, et que prouvent les validations ? | 14 corrections déployées, C15/C16 locales ; bilan argumenté, validations réelles en cours ; suivi planifié désactivé |
+| 2026-10-05 | [Corrections LANCE et validation ciblée](2026-10-05-corrections-lance/README.md) | Quels défauts motivent chaque correction, et que prouvent les validations ? | 14 corrections déployées, C15–C20 locales ; S2 complet, S1 partiel, S12 en échec ; bilan argumenté, validations réelles en cours ; suivi planifié désactivé |
 
 ## Lire les rapports
 
@@ -24,7 +24,7 @@ Les deux rapports spécialisés développent les constats et les protocoles :
 
 - [Couverture et validité de l'évaluation — PDF](2026-09-29-benchmark-coverage/report.pdf) · [LaTeX](2026-09-29-benchmark-coverage/report.tex).
 - [Campagne Qwen UMONS S1–S12 — rapport intermédiaire PDF](2026-10-05-benchmark-coverage/validation-qwen-umons.pdf) · [LaTeX](2026-10-05-benchmark-coverage/validation-qwen-umons.tex). Révision : **2026-10-05 11:48 (Europe/Brussels, UTC+02:00)** ; gel à 11:32 : deux diagnostics S1 séparés, S1 commun et rapports S2–S11, échec S12 sans score ; 14 archives, 1 582 empreintes. Premier lot terminé, validations des 14 corrections lancées sur S12 puis S1–S11 après CI et déploiement vérifiés. Rédaction Muse, corrections et contrôle Codex ; campagne en développement.
-- [Journal argumenté des corrections S1–S12 — PDF](2026-10-05-corrections-lance/report.pdf) · [LaTeX](2026-10-05-corrections-lance/report.tex). Chaque correction expose son déclencheur, sa justification, ses vérifications et les limites de validation ; priorité aux échecs et résultats partiels, sans campagne identique répétée. Révision : **2026-10-05 13:10 (Europe/Brussels, UTC+02:00)**.
+- [Journal argumenté des corrections S1–S12 — PDF](2026-10-05-corrections-lance/report.pdf) · [LaTeX](2026-10-05-corrections-lance/report.tex). Chaque correction expose son déclencheur, sa justification, ses vérifications et les limites de validation ; priorité aux échecs et résultats partiels, sans campagne identique répétée. Révision : **2026-10-05 14:42 (Europe/Brussels, UTC+02:00)**.
 - [Conservation des preuves et contexte — PDF](2026-09-29-context-scalability/report.pdf) · [LaTeX](2026-09-29-context-scalability/report.tex).
 
 Dernière révision des trois rapports : **2026-09-30 21:55
