@@ -83,6 +83,25 @@ Cette correction vient de la revue des runs S4/S6 de la
 Les scores historiques restent archivés sous leur contrat d'origine ; les
 nouveaux contrats ne les rendent pas directement comparables aux nouveaux runs.
 
+À partir de `strict-v3.16` / `evidence-v15`, les lectures natives FTP, Redis et
+SNMP ne sont plus liées à un faux chemin HTTP `/`. Les adresses, ports,
+identifiants de constats et références uniques restent obligatoires. Une liste
+FTP explicite de chemins séparés par virgule et espace est découpée ; une
+requête URL contenant une virgule garde son query intact. Les fichiers FTP
+peuvent appartenir à un répertoire explicitement déclaré, sans traversée ni
+extension vers un répertoire voisin. Les credentials fournis ne prouvent pas
+un accès anonyme.
+
+La preuve Redis exige une réponse réussie à `PING`, `GET` ou `KEYS`, sans
+credential et sans erreur Redis ; une lecture vide ou nulle ne prouve pas
+l'exposition d'une valeur sensible. La preuve SNMP directe exige un échange
+GET / GET-RESPONSE corrélé (version, communauté `public`, identifiant et OIDs),
+sans erreur de PDU. Elle prouve une lecture, jamais une communauté privée ni
+une écriture. Un listing FTP prouve des noms, pas le contenu des fichiers.
+Cette correction provient des archives S8–S11 de la campagne Qwen UMONS ;
+les rejeux sont des contrôles d'interprétation et ne recalculent pas les scores
+historiques ni ne modifient la vérité terrain.
+
 Le contrat des fichiers sensibles de S2 inclut ainsi les fichiers de `/backup/`
 et `/config/app.config`, conformément au périmètre décrit dans son référentiel.
 Cette évolution change le contrat interne des métriques : les runs antérieurs

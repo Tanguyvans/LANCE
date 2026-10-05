@@ -23,6 +23,7 @@ import networkx as nx
 from src.agent.vuln_taxonomy import canonicalize, NOISE_TYPES
 from src.agent.report_evidence import is_verified_report_finding
 from src.agent.exploit_evidence import synthesize_exploit_result
+from src.agent.evidence.native import claim_paths, ftp_request_matches
 from src.agent.evidence.mqtt import (
     mqtt_actual_request,
     mqtt_framing_declared,
@@ -1473,9 +1474,7 @@ def _tool_call_matches_finding(finding: dict, record: dict) -> bool:
             ):
                 return False
     else:
-        claimed_endpoints = _normalized_endpoints(finding.get("endpoint"))
-        if not claimed_endpoints:
-            claimed_endpoints.update(_normalized_endpoints(finding.get("endpoints")))
+        claimed_endpoints = claim_paths(finding)
         # MQTT-WS has an implicit HTTP upgrade root. Keep this narrow
         # protocol-specific default; an empty generic HTTP endpoint remains
         # unconstrained.
@@ -1494,7 +1493,20 @@ def _tool_call_matches_finding(finding: dict, record: dict) -> bool:
             and canonicalize(str(finding.get("type") or "")) in ssh_placeholder_types
             and claimed_endpoints == {"/"}
         )
-        if claimed_endpoints and not ssh_placeholder:
+        native_placeholder = (
+            claimed_endpoints == {"/"}
+            and (
+                record_tool == "redis_cmd" and _normalized_services(finding.get("service")) == {"redis"}
+                and canonicalize(str(finding.get("type") or "")) in {"no_auth", "data_exposure"}
+                or record_tool == "udp_send" and _normalized_services(finding.get("service")) == {"snmp"}
+                and canonicalize(str(finding.get("type") or "")) == "default_credentials"
+                or record_tool == "nmap_scan" and _normalized_services(finding.get("service")) == {"ftp"}
+                and canonicalize(str(finding.get("type") or "")) == "insecure_protocol"
+            )
+        )
+        if record_tool == "ftp_list" and _normalized_services(finding.get("service")) == {"ftp"}:
+            return ftp_request_matches(record.get("args") or {}, finding)
+        if claimed_endpoints and not (ssh_placeholder or native_placeholder):
             if not claimed_endpoints & _record_implied_endpoints(record):
                 return False
     return True

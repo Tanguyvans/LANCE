@@ -244,9 +244,10 @@ def test_phase4_compact_selects_bounded_snmp_coap_and_ftp_probes():
         {"type": "default_credentials", "service": "snmp", "port": 161},
         [{
             "tool": "udp_send", "args": snmp["args_hint"],
+            # A truncated BER prefix is protocol contact, not a public GET proof.
             "result": json.dumps({"received_bytes": 32, "received_hex": "3020", "return_code": 0}),
         }], compact=True,
-    )["status"] == "EXPLOITED"
+    )["status"] == "FAILED"
 
     coap = _phase4_verification_plan({
         "type": "no_auth", "service": "coap",
