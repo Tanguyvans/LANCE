@@ -9,7 +9,7 @@ présente les comportements implémentés, les contrats retenus et les procédur
 | Date du dossier | Étude | Question | Statut |
 | --- | --- | --- | --- |
 | 2026-09-27 | [Agent / automatisation](2026-09-27-agent-vs-automation/README.md) | Quel apport mesurable du LLM face à une automatisation à règles ? | Protocole proposé ; outils D1/A1 documentés ; résultats expérimentaux à établir |
-| 2026-09-29 | [Couverture du benchmark](2026-09-29-benchmark-coverage/README.md) | Que couvrent le corpus, les exécutions et les preuves admises ? | Diagnostic et contre-exemples locaux reproduits ; corrections proposées |
+| 2026-09-29 | [Couverture du benchmark](2026-09-29-benchmark-coverage/README.md) | Que couvrent le corpus, les exécutions et les preuves admises ? | Diagnostic reproduit ; campagne réelle Qwen UMONS S1–S12 en cours depuis le 4 octobre 2026 |
 | 2026-09-29 | [Scalabilité du contexte](2026-09-29-context-scalability/README.md) | Comment conserver les preuves utiles dans le contexte des six phases ? | Nouvelle revue du pipeline ; plan historique du rapport conservé comme archive |
 | 2026-09-29 (classement) | [Spécialisation IoMT](2026-09-29-iomt/README.md) | Comment adapter et évaluer LANCE sur des réseaux médicaux simulés ? | Proposition de sujet de TFE ; début inconnu |
 
@@ -21,6 +21,7 @@ benchmark, contexte et apport LLM, puis propose les comparaisons à réaliser.
 Les deux rapports spécialisés développent les constats et les protocoles :
 
 - [Couverture et validité de l'évaluation — PDF](2026-09-29-benchmark-coverage/report.pdf) · [LaTeX](2026-09-29-benchmark-coverage/report.tex).
+- [Campagne Qwen UMONS S1–S12 — rapport intermédiaire PDF](2026-09-29-benchmark-coverage/validation-qwen-umons.pdf) · [LaTeX](2026-09-29-benchmark-coverage/validation-qwen-umons.tex). Révision : **2026-10-05 11:48 (Europe/Brussels, UTC+02:00)** ; gel à 11:32 : deux diagnostics S1 séparés, S1 commun et rapports S2–S11, échec S12 sans score ; 14 archives, 1 582 empreintes. Premier lot terminé, validations des 14 corrections lancées sur S12 puis S1–S11 après CI et déploiement vérifiés. Rédaction Muse, corrections et contrôle Codex ; campagne en développement.
 - [Conservation des preuves et contexte — PDF](2026-09-29-context-scalability/report.pdf) · [LaTeX](2026-09-29-context-scalability/report.tex).
 
 Dernière révision des trois rapports : **2026-09-30 21:55
