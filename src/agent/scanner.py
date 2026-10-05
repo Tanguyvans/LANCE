@@ -6,6 +6,9 @@ and extracts obvious findings via regex/pattern matching.
 """
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import json
 import logging
 import re
@@ -464,12 +467,75 @@ def _closed_optional_mqtt_ws_probe(device: dict, results: dict[str, list[dict]])
     return None
 
 
+def _mqtt_ws_followup_request(entry: dict, ip: str) -> dict | None:
+    """Probe an MQTT hypothesis only after a fresh, bound WebSocket handshake."""
+    from src.agent.evidence.mqtt_ws import mqtt_ws_actual_request
+
+    if (entry.get("tool") != "http_request" or entry.get("evidence_phase") != 3
+            or entry.get("authoritative") is not True):
+        return None
+    kwargs = entry.get("kwargs", {})
+    result = _parse_result(entry)
+    if (tool_execution_failed("http_request", result)
+            or type(result.get("status_code")) is not int or result["status_code"] != 101
+            or kwargs.get("follow_redirects") is not False
+            or result.get("redirect_chain")
+            or result.get("final_url") != kwargs.get("url")):
+        return None
+    try:
+        url = urlsplit(kwargs.get("url", ""))
+        if (url.scheme != "http" or url.hostname != ip or url.username is not None
+                or url.password is not None or url.query or url.fragment):
+            return None
+        request = {"ip": ip, "port": url.port, "path": url.path or "/",
+                   "topic": "#", "count": 1, "timeout": 5}
+        if mqtt_ws_actual_request(request) is None:
+            return None
+    except (TypeError, ValueError):
+        return None
+
+    def headers(value: object) -> dict[str, str] | None:
+        if not isinstance(value, dict):
+            return None
+        normalized = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not isinstance(item, str):
+                return None
+            name = key.casefold()
+            if name in normalized:
+                return None
+            normalized[name] = item
+        return normalized
+
+    sent, received = headers(kwargs.get("headers")), headers(result.get("headers"))
+    if sent is None or received is None:
+        return None
+    key = sent.get("sec-websocket-key", "")
+    try:
+        if len(base64.b64decode(key, validate=True)) != 16:
+            return None
+        expected = base64.b64encode(hashlib.sha1(
+            (key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")
+        ).digest()).decode("ascii")
+    except (ValueError, UnicodeError, binascii.Error):
+        return None
+    if (sent.get("sec-websocket-version") != "13"
+            or sent.get("upgrade", "").casefold() != "websocket"
+            or "upgrade" not in {v.strip().casefold() for v in sent.get("connection", "").split(",")}
+            or received.get("upgrade", "").casefold() != "websocket"
+            or "upgrade" not in {v.strip().casefold() for v in received.get("connection", "").split(",")}
+            or received.get("sec-websocket-accept") != expected):
+        return None
+    return request
+
+
 def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[str] | None = None) -> dict[str, list[dict]]:
     """Run all applicable tools for a device. Returns {service: [{tool, kwargs, result}]}."""
     ip = device.get("ip", "")
     device_id = device.get("id", "unknown")
     results: dict[str, list[dict]] = {}
     seen_calls: set[str] = set()  # avoid duplicate calls
+    unmapped_services: list[dict] = []
 
     def _call(tool_name: str, kwargs: dict, svc_key: str):
         call_key = f"{tool_name}|{json.dumps(kwargs, sort_keys=True)}"
@@ -508,8 +574,7 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
         port = svc.get("port", 0)
         matrix_key = SERVICE_ALIASES.get(svc_name)
         if not matrix_key or matrix_key not in SCAN_MATRIX:
-            if diagnostics is not None:
-                diagnostics.append(f"{device_id}: no scanner rule for service {svc_name}")
+            unmapped_services.append(svc)
             continue
 
         if matrix_key == "dns":
@@ -541,6 +606,40 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
     for tool_name, kwargs_tmpl in ROLE_EXTRA_SCANS.get(role, []):
         kwargs = _resolve_kwargs(kwargs_tmpl, ip, 80)
         _call(tool_name, kwargs, f"role_{role}")
+
+    # An unknown Nmap label is not an alias. Test the MQTT hypothesis on the
+    # exact freshly observed WebSocket endpoint before resolving its coverage.
+    for svc_key, entries in list(results.items()):
+        if SERVICE_ALIASES.get(svc_key) != "mqtt":
+            continue
+        for entry in list(entries):
+            request = _mqtt_ws_followup_request(entry, ip)
+            if request is not None:
+                _call("mqtt_ws_listen", request, svc_key)
+
+    from src.agent.evidence.mqtt_ws import mqtt_ws_actual_request, trusted_mqtt_ws_messages
+    for svc in unmapped_services:
+        resolved = False
+        if str(svc.get("protocol") or "").casefold() == "tcp" and type(svc.get("port")) is int:
+            for entries in results.values():
+                for entry in entries:
+                    if entry.get("tool") != "mqtt_ws_listen":
+                        continue
+                    args = entry.get("kwargs", {})
+                    actual = mqtt_ws_actual_request(args)
+                    if (actual is None or actual[0] != ip or actual[1] != svc["port"]
+                            or not trusted_mqtt_ws_messages(
+                                _parse_result(entry), args, ip, svc["port"], actual[2], actual[3])):
+                        continue
+                    resolution = {"reported_name": svc.get("name", ""), "port": svc["port"],
+                                  "protocol": "tcp", "identified_service": "mqtt-ws",
+                                  "basis": "bound_native_mqtt_ws_exchange"}
+                    rows = entry.setdefault("resolved_services", [])
+                    if resolution not in rows:
+                        rows.append(resolution)
+                    resolved = True
+        if not resolved and diagnostics is not None:
+            diagnostics.append(f"{device_id}: no scanner rule for service {str(svc.get('name', '')).lower()}")
 
     # Follow only suspicious file links already disclosed by same-host directory
     # listings. This remains bounded and avoids benchmark-specific filenames.

@@ -257,6 +257,17 @@ PUBLISH complet sans authentification) confirme `no_auth`. Une réponse d'un
 autre hôte, port ou chemin ne peut pas être réutilisée. Les diagnostics de
 service réellement non couvert restent visibles ; cette correction ne crée
 aucun alias `tor-orport` vers MQTT et ne réécrit pas les anciens runs.
+Sur les endpoints de la matrice MQTT, le scanner peut ensuite exécuter une
+souscription native bornée (`count=1`, `timeout=5`) si sa négociation HTTP fraîche
+est complète : destination et chemin exacts sans redirection, en-têtes Upgrade
+et Connection, version 13 et Sec-WebSocket-Accept apparié à la clé envoyée selon
+[RFC 6455](https://www.rfc-editor.org/rfc/rfc6455#section-4.2.2).
+Le nom de service incertain rapporté par Nmap n'est résolu que si une preuve
+applicative native complète est enregistrée sur ce même port TCP. Le reçu garde
+`resolved_services`, le nom original et le motif de résolution. Un refus, un
+outil absent, une panne ou un résultat sans message complet reste diagnostiqué ;
+HTTP seul ne certifie jamais MQTT. Cela ajoute une sonde effective, dont la durée
+et la charge restent à vérifier sur NATO ; les budgets du profil ne changent pas.
 Voir le [journal des corrections](../../../research/2026-10-05-corrections-lance/README.md).
 
 ### Couverture DNS du scanner
