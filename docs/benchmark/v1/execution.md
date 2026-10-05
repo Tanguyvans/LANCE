@@ -253,9 +253,14 @@ l'échec d'exécution du résultat d'un audit. Les codes 2/3 de `ssh-audit`, ave
 une sortie d'audit, signalent des avertissements/faiblesses ; ils ne rendent pas
 la phase partielle à eux seuls. Le code 27 de `mqtt_listen`, accompagné de
 l'interprétation de fin d'écoute du wrapper, signifie que la fenêtre d'écoute
-est terminée. Les interruptions du processus, refus d'authentification et
-erreurs de connexion restent comptés comme erreurs. Une écoute sans message
-reste non concluante : cette distinction ne confirme aucune vulnérabilité.
+est terminée. Un refus MQTT natif avec code entier 5, interprétation
+`connection_refused_auth_required`, stdout vide et message explicite du broker
+« Connection Refused: not authorised » est un test d'accès négatif achevé.
+Il ne confirme ni accès anonyme ni vulnérabilité. Une sortie contradictoire,
+un code non reconnu, une interruption ou une erreur de connexion restent
+comptés comme erreurs. Une écoute sans message reste non concluante.
+L'argumentation et les limites sont suivies dans la
+[recherche sur les corrections LANCE](../../../research/2026-10-05-corrections-lance/README.md).
 Les résultats et codes d'origine sont conservés dans le journal des outils.
 Pour le listener WebSocket MQTT optionnel sur 9001, le scanner conserve d'abord
 la sonde de port. Si elle réussit et observe explicitement un port fermé qui
