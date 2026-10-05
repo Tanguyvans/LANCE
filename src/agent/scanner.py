@@ -27,6 +27,12 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
+    "dns": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "{port}",
+            "scripts": "dns-nsid", "skip_discovery": True,
+        }),
+    ],
     "ssh": [
         ("ssh_audit", {"host": "{ip}"}),
         ("nmap_scan", {
@@ -506,8 +512,17 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
                 diagnostics.append(f"{device_id}: no scanner rule for service {svc_name}")
             continue
 
+        if matrix_key == "dns":
+            protocol = str(svc.get("protocol") or "tcp").casefold()
+            if protocol not in {"tcp", "udp"}:
+                if diagnostics is not None:
+                    diagnostics.append(f"{device_id}: unsupported DNS transport {protocol}")
+                continue
+
         for tool_name, kwargs_tmpl in SCAN_MATRIX[matrix_key]:
             kwargs = _resolve_kwargs(kwargs_tmpl, ip, port)
+            if matrix_key == "dns" and protocol == "udp":
+                kwargs["udp_scan"] = True
             if matrix_key == "mqtt" and tool_name == "http_request":
                 closed = _closed_optional_mqtt_ws_probe(device, results)
                 if closed is not None:

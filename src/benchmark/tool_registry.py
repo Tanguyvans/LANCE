@@ -79,6 +79,11 @@ ROLE_SERVICES: dict[str, tuple[dict[str, Any], ...]] = {
 
 
 SERVICE_TOOLS: dict[str, dict[str, tuple[str, ...]]] = {
+    "dns": {
+        "recon": ("nmap_scan",),
+        "verification": ("nmap_scan",),
+        "intrusion": (),
+    },
     "ssh": {
         "recon": ("ssh_audit", "nmap_scan"),
         "verification": ("ssh_login", "try_credential", "ssh_audit", "nmap_scan"),
@@ -153,6 +158,8 @@ SERVICE_TOOLS: dict[str, dict[str, tuple[str, ...]]] = {
 
 
 SERVICE_ALIASES: dict[str, str] = {
+    "domain": "dns",
+    "dns": "dns",
     "ssh": "ssh",
     "http": "http",
     "https": "https",

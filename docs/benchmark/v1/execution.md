@@ -246,6 +246,19 @@ certifient ni une véritable installation Node-RED ni l'exécution d'un flow.
 Le comportement reste à vérifier sur nato après déploiement ; les scores et
 références des runs historiques ne sont pas modifiés.
 
+### Couverture DNS du scanner
+
+Les services `domain` et `dns` disposent d'une sonde fraîche `nmap_scan`
+avec `dns-nsid`, sur le port et le transport déclarés ou observés. UDP
+reste limité au port demandé ; TCP ne se transforme pas en UDP. Cette sonde
+interroge les informations NSID, `id.server` et `version.bind`, conformément
+au [script Nmap](https://svn.nmap.org/nmap/scripts/dns-nsid.nse)
+(source consultée le 5 octobre 2026). Elle ne teste ni transfert de zone ni
+récursion et n'ajoute aucune vulnérabilité automatiquement. L'absence de
+réponse NSID ne prouve pas l'absence d'un service DNS ni sa sécurité ; une
+indisponibilité d'outil ou erreur d'exécution conserve le statut partiel.
+Voir le [journal des corrections](../../../research/2026-10-05-corrections-lance/README.md).
+
 ### Interprétation des erreurs d'outils
 
 Le statut du scanner et le compteur global `total_tool_errors` distinguent
