@@ -405,9 +405,9 @@ class TestPhase5Context:
 
     @pytest.mark.parametrize(
         ("profile", "expected_strict", "expected_force", "expected_ready_force"),
-        [("compact", True, True, True), ("full", False, False, False)],
+        [("compact", True, True, True), ("full", True, True, False)],
     )
-    def test_local_moe_recon_requires_successful_save_only_for_compact(
+    def test_recon_requires_save_but_only_compact_forces_completion_when_ready(
         self, mock_provider, output_dir, profile, expected_strict, expected_force,
         expected_ready_force
     ):

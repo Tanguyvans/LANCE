@@ -118,6 +118,12 @@ n'utilise plus la boucle générique pour son agrégation déterministe.
 En profil complet (et hors adaptation locale compacte), `02_recon.md` est
 construit par `recon/rendering.py` depuis les observations du journal d’outils.
 Le modèle choisit toujours les sondes ; il ne recopie plus leur inventaire.
+Une réponse textuelle ou tronquée sans sauvegarde acceptée demande une
+continuation avec appel d'outil dans tous les profils. Les outils d'exploration
+restent disponibles et une sauvegarde prématurée reçoit les exigences de
+couverture manquantes. Trois réponses consécutives sans outil arrêtent cette
+reprise ; les limites de tours, de coût et l'arrêt utilisateur restent en vigueur.
+Cette continuation ne garantit pas que le modèle terminera les sondes.
 Une note de fin suffit à demander la sauvegarde. Si le dialogue se termine sans
 sauvegarde, le contrôleur tente une seule sauvegarde locale, sans nouveau scan
 ni appel au modèle, via les mêmes contrôles de couverture et de validation.

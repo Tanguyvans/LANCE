@@ -461,8 +461,12 @@ class AgentRunner:
                     else "save_deliverable"
                 ),
                 terminate_on_unavailable_tools=None,
-                strict_required_tool=local_intrusion_memo or compact_local_recon,
-                force_tool_on_stall=local_intrusion_memo or compact_local_recon,
+                # Recon's coverage contract applies to every profile. A text
+                # or truncated turn must not exit after one save reminder while
+                # required scans are missing. Keep action tools available and
+                # retain the provider's three-stall and phase turn limits.
+                strict_required_tool=local_intrusion_memo or config.name == "recon",
+                force_tool_on_stall=local_intrusion_memo or config.name == "recon",
                 force_completion_on_recon_ready=compact_local_recon,
                 reopen_intrusion_tools_on_contract_error=local_intrusion_memo,
                 recover_required_tool_on_stall=local_intrusion_memo,
