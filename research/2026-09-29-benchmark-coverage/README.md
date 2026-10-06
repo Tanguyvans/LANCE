@@ -6,7 +6,9 @@ Périmètre : catalogue public, contrats, évaluateur et préparation expérimen
 
 **Statut : exploration avec contre-exemples logiciels reproduits ; corrections
 et expériences proposées.** Début et revue des constats : 29 septembre 2026.
-Aucune mesure de couverture réelle en laboratoire n'a été réalisée ici.
+Le rapport de lecture initial ne contient pas de mesure de couverture réelle
+en laboratoire. La campagne complémentaire du 4 octobre 2026 est en cours sur
+nato/pve-nato et ses résultats sont distingués ci-dessous.
 
 **Dernière révision du rapport : 2026-09-30 21:55
 (Europe/Brussels, UTC+02:00).** Ajout de l'heure de révision ; les constats et
@@ -49,3 +51,10 @@ Références actuelles : [scénarios](../../docs/benchmark/v1/scenarios.md),
 [évaluation](../../docs/benchmark/v1/evaluation.md),
 [catalogue des attaques](../../docs/benchmark/catalogue-attaques.md).
 Les propositions de cette étude ne changent pas ces contrats.
+
+## Campagne Qwen UMONS
+
+Le rapport complémentaire S1–S12 et son suivi sont désormais dans le
+[dossier daté du 5 octobre 2026](../2026-10-05-benchmark-coverage/README.md) :
+[PDF](../2026-10-05-benchmark-coverage/validation-qwen-umons.pdf) et
+[source LaTeX](../2026-10-05-benchmark-coverage/validation-qwen-umons.tex).

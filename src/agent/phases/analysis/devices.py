@@ -336,6 +336,9 @@ def analyze_full_device(
         ),
         required_tool="save_deliverable",
         terminate_after_tool="save_deliverable",
+        # Reserve the final turns for a required save and its validation repair.
+        # This uses the existing turn, deadline and cost bounds.
+        finalize_required_tool_on_stall=context.profile.name == "full",
         stop_event=context.stop_event,
         deadline=device_deadline,
         completion_metadata=full_completion,

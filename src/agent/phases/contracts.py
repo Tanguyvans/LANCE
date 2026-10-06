@@ -16,6 +16,7 @@ class PhaseConsumption:
     output_tokens: int = 0
     cost_usd: float = 0.0
     duration_s: float = 0.0
+    turns: int = 0
 
 
 @dataclass(frozen=True)

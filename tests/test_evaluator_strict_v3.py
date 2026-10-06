@@ -230,7 +230,7 @@ def test_exact_structure_gets_full_match_credit_but_detection_only_proof_credit(
 
 def test_missing_structure_gets_partial_credit(tmp_path):
     finding = _finding(service="", port=None, protocol="", endpoint="")
-    run, gt = _write(tmp_path, [finding])
+    run, gt = _write(tmp_path, [finding], [_gt(endpoints=[])])
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.detection_f1 == 1.0
     assert result.credited_f1 == 0.75
@@ -686,3 +686,43 @@ def test_unevaluable_negative_control_is_reported_without_penalty(tmp_path):
     assert result.negative_controls_total == 0
     assert result.negative_controls_unevaluable == 1
     assert result.negative_control_penalty_factor == 1.0
+
+
+@pytest.mark.parametrize("endpoint,endpoints,matched", [
+    ("", [], False), (None, [], False), ("/", [], False),
+    ("/robots.txt", [], True), ("", ["/robots.txt"], True),
+])
+def test_endpoint_bound_disclosure_cannot_receive_generic_banner_credit(endpoint, endpoints, matched):
+    gt = _gt(category="info_disclosure", accepted_types=["info_disclosure"], endpoints=["/robots.txt"])
+    finding = _finding(type="info_disclosure", endpoint=endpoint, endpoints=endpoints,
+                       evidence="Server: nginx/1.26.3")
+    assert (match_vuln(gt, [finding])[0] is not None) is matched
+
+
+@pytest.mark.parametrize("secondary_body,owner,phase,credit", [
+    (None, "F1", 4, 0), ("unrelated page", "F1", 4, 0),
+    ("password=backup-secret", "F1", 4, 1),
+    ("password=backup-secret", "F2", 4, 0),
+    ("password=backup-secret", "F1", 3, 0),
+])
+def test_secondary_endpoint_credit_requires_its_own_sensitive_content_proof(tmp_path, secondary_body, owner, phase, credit):
+    finding = _finding(endpoint="/.env", endpoints=["/.env", "/backup.sql"])
+    run, gt = _write(tmp_path, [finding])
+    records = [{"evidence_ref": "tc-env", "vuln_id": "F1", "tool": "http_get",
+                "args": {"url": "http://192.0.2.10/.env"},
+                "result": {"return_code": 0, "status_code": 200, "body": "password=env-secret"}}]
+    if secondary_body is not None:
+        records.append({"evidence_ref": "tc-backup", "vuln_id": owner, "phase": phase, "tool": "http_get",
+                        "args": {"url": "http://192.0.2.10/backup.sql"},
+                        "result": {"return_code": 0, "status_code": 200, "body": secondary_body}})
+    (run / "tool_calls.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records))
+    (run / "04_exploitation.json").write_text(json.dumps({"tests": [{
+        "vuln_id": "F1", "device_ip": "192.0.2.10", "vuln_type": "data_exposure",
+        "service": "http", "port": 80, "protocol": "tcp", "endpoint": "/.env",
+        "endpoints": ["/.env", "/backup.sql"], "status": "CONFIRMED", "evidence_level": 3,
+        "tool_used": "http_get", "evidence_refs": [r["evidence_ref"] for r in records],
+    }]}))
+    result = evaluate(run, gt)
+    final = result.funnel["stages"]["confirmed"]
+    assert final["predictions"] == 1
+    assert final["true_positives"] == credit

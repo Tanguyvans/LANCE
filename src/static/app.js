@@ -1648,26 +1648,39 @@ async function teardownScenario() {
 
 let _sseRetryDelay = 1000;
 let _sseRetryTimer = null;
+let _sseLastEventId = null;
+let _sseGeneration = 0;
 
-function startSSE() {
+function startSSE(resume = false) {
   if (eventSource) eventSource.close();
   if (_sseRetryTimer) { clearTimeout(_sseRetryTimer); _sseRetryTimer = null; }
+  if (!resume) _sseLastEventId = null;
+  const generation = ++_sseGeneration;
+  const cursor = _sseLastEventId ? `?after=${encodeURIComponent(_sseLastEventId)}` : '';
+  const source = new EventSource(`/api/pipeline/stream${cursor}`);
+  eventSource = source;
 
-  eventSource = new EventSource('/api/pipeline/stream');
-
-  eventSource.onmessage = (e) => {
+  source.onmessage = (e) => {
+    if (generation !== _sseGeneration) return;
+    if (e.lastEventId && e.lastEventId === _sseLastEventId) return;
     _sseRetryDelay = 1000; // reset backoff on successful message
-    try { handleEvent(JSON.parse(e.data)); }
+    try {
+      handleEvent(JSON.parse(e.data));
+      if (e.lastEventId) _sseLastEventId = e.lastEventId;
+    }
     catch(err) { console.warn('SSE parse error', err); }
   };
 
-  eventSource.onerror = async () => {
-    eventSource.close();
+  source.onerror = async () => {
+    if (generation !== _sseGeneration) return;
+    source.close();
     eventSource = null;
     const status = await fetchJSON('/api/pipeline/status');
-    if (status?.running || status?.teardown_running) {
+    if (generation !== _sseGeneration) return;
+    const unseenEvents = status?.event_cursor && status.event_cursor !== _sseLastEventId;
+    if (!status || status.running || status.teardown_running || unseenEvents) {
       addLog({type:'error', message:`Connexion SSE perdue — reconnexion dans ${_sseRetryDelay / 1000}s`});
-      _sseRetryTimer = setTimeout(() => { startSSE(); }, _sseRetryDelay);
+      _sseRetryTimer = setTimeout(() => { startSSE(true); }, _sseRetryDelay);
       _sseRetryDelay = Math.min(_sseRetryDelay * 2, 16000); // 1s → 2s → 4s → 8s → 16s max
       return;
     }
@@ -1723,6 +1736,12 @@ function handleEvent(ev) {
   else if (t === 'pipeline_done') {
     // Ignore pipeline_done events that are part of a batch run (they come from sub-pipelines)
     if (ev.batch_scenario_id !== undefined) return;
+    // Exceptions can end a phase without phase_done; no activity remains
+    // running once the pipeline has reported its terminal outcome.
+    document.querySelectorAll('.phase-pill.running').forEach(pill => {
+      setPhasePill(pill.dataset.phase, ev.status === 'completed' ? 'done' : (ev.status || 'interrupted'));
+    });
+    document.getElementById('sub-agent-bar').hidden = true;
     setCost(ev.total_cost_usd || 0);
     document.getElementById('btn-start').disabled = false;
     const stopBtn = document.getElementById('btn-stop');
@@ -2550,7 +2569,7 @@ function bmRate(value) {
 
 function renderFunnelStage(stage, reportScore = null, { primary = false, filterLoss = null, countLabel = 'Failles potentielles' } = {}) {
   if (!stage?.available) {
-    return `<div class="bm-funnel-stage bm-unavailable">Indisponible<small>${escapeHtml(stage?.reason || 'Ancien run ou artefact absent')}</small></div>`;
+    return `<div class="bm-funnel-stage bm-unavailable">Indisponible<small>${escapeHtml(stage?.reason || 'Résultats de cette étape absents')}</small></div>`;
   }
   const control = reportScore?.is_zero_gt === true;
   const label = control ? 'Spécificité' : 'F1 final';
@@ -2687,8 +2706,22 @@ function renderBenchmarkContract(score) {
     ${score.metrics_compatibility_reason ? `<small>${escapeHtml(score.metrics_compatibility_reason)}</small>` : ''}</details>`;
 }
 
+function benchmarkFailureReason(row) {
+  const cause = {
+    provider_connection_error: 'connexion au modèle impossible',
+    provider_timeout: 'délai de réponse du modèle dépassé',
+    provider_authentication_error: 'authentification auprès du modèle refusée',
+    execution_error: 'erreur d’exécution',
+  }[row?.completion?.failure_cause];
+  if (!cause) return null;
+  const phase = row.completion.failure_phase;
+  const location = Number.isInteger(phase) && phase >= 1 && phase <= 6 ? ` en phase ${phase}` : '';
+  return `Échec${location} : ${cause}.`;
+}
+
 function renderBenchmarkStatus(row, score, sealed) {
   const status = sealed && score.status ? score.status : row.status;
+  if (status === 'running') return '<span class="run-badge running">En cours</span>';
   const reservations = sealed ? [] : _completionReservations({
     ...row.completion, metrics: score,
     evaluation_status: row.score_error ? 'failed' : 'completed',
@@ -2727,13 +2760,17 @@ function bmDollars(value) {
 }
 
 // Compact final-audit cell: F1 (or specificity for no-fault controls) + precision/recall.
-function renderAuditSummary(score) {
+function renderAuditSummary(score, row = null) {
+  if (row?.status === 'running') {
+    return '<div class="bm-unavailable">Audit en cours<small>Résultats définitifs après la fin du run</small></div>';
+  }
   if (!score || score.evidence_contract_compatible === false) {
     return '<span class="bm-no-score">Non comparable</span>';
   }
   const stage = score.funnel?.stages?.confirmed;
   if (!stage?.available) {
-    return `<div class="bm-unavailable">Indisponible<small>${escapeHtml(stage?.reason || 'Ancien run ou artefact absent')}</small></div>`;
+    const failure = benchmarkFailureReason(row);
+    return `<div class="bm-unavailable">${failure ? 'Audit non produit' : 'Indisponible'}<small>${escapeHtml(failure || stage?.reason || 'Résultats de vérification absents')}</small></div>`;
   }
   const control = score.is_zero_gt === true;
   const label = control ? 'Spécificité' : 'F1 final';
@@ -2782,7 +2819,10 @@ function renderBenchmarkDetails(r, s, sealed) {
   const panelId = bmDetailsPanelId(r.id);
   const tabs = [['audit', 'Audit'], ['proofs', 'Preuves'], ['intrusion', 'Intrusion'], ['execution', 'Exécution et consommation']];
   const stages = [['candidates', 'Failles potentielles'], ['filtered', 'Failles retenues'], ['confirmed', 'Confirmations déclarées']];
-  const audit = `<h4>De l’hypothèse à la confirmation</h4><div class="bm-funnel-scroll"><table class="bm-funnel-table" aria-label="Entonnoir de détection"><thead><tr><th scope="col">Étape</th><th scope="col">Total</th><th scope="col">VP</th><th scope="col">FP</th><th scope="col">FN</th><th scope="col">Rappel</th></tr></thead><tbody>${stages.map(([key, label], index) => {
+  const failure = benchmarkFailureReason(r);
+  const audit = failure && !r.score
+    ? `<h4>Audit non produit</h4><p>${escapeHtml(failure)}</p><p>Le pipeline s’est arrêté avant de produire un audit évaluable. Les métriques sont indisponibles ; elles ne valent pas zéro.</p>${r.completion?.cleanup_status === 'completed' ? '<p>Nettoyage du scénario effectué.</p>' : ''}`
+    : `<h4>De l’hypothèse à la confirmation</h4><div class="bm-funnel-scroll"><table class="bm-funnel-table" aria-label="Entonnoir de détection"><thead><tr><th scope="col">Étape</th><th scope="col">Total</th><th scope="col">VP</th><th scope="col">FP</th><th scope="col">FN</th><th scope="col">Rappel</th></tr></thead><tbody>${stages.map(([key, label], index) => {
     const stage = funnel?.stages?.[key];
     return `<tr><th scope="row"><span class="bm-step">${index + 1}</span>${label}</th>${stage?.available
       ? ['predictions', 'true_positives', 'false_positives', 'false_negatives'].map(k => `<td>${bmNumber(stage[k])}</td>`).join('') + `<td>${bmRate(stage.recall)}</td>`
@@ -2797,6 +2837,7 @@ function renderBenchmarkDetails(r, s, sealed) {
     execution: `<div class="bm-consumption"><div><small>Coût${s.cost_is_estimate === true ? ' estimé' : ''}</small><strong>${bmDollars(r.cost ?? s.total_cost_usd)}</strong></div><div><small>Tokens</small><strong>${bmNumber(s.total_tokens)}</strong></div><div><small>Efficacité</small><span>${bmDollars(efficiency?.cost_per_valid_confirmation)} / VP final<br>${bmNumber(efficiency?.turns_per_valid_confirmation, 1)} tours / VP final</span></div></div>${renderFunnelDiagnostics(null, s, 'execution')}${renderBenchmarkContract(s)}`
   };
   return `<div class="bm-panel-head"><div><h3>${escapeHtml(r.scenario || 'Run')} <span> / ${escapeHtml(bmRunLabel(r.id))}</span></h3><small>${escapeHtml(r.model || '—')} · ${escapeHtml(r.execution_profile === 'full' ? 'Profil complet' : r.execution_profile || 'Profil non renseigné')}${r.commit ? ' · Commit ' + escapeHtml(r.commit) : ''}</small></div><div>${renderBenchmarkStatus(r, s, false)}</div></div>
+  ${r.status === 'running' ? '<p class="bm-note" role="status">Exécution en cours. Les données affichées sont intermédiaires.</p>' : ''}
   <div class="bm-tabs" role="tablist" aria-label="Détails du run">${tabs.map(([key,label]) => `<button type="button" role="tab" id="${panelId}-tab-${key}" data-bm-tab="${key}" aria-selected="${_bmActiveTab === key}" tabindex="${_bmActiveTab === key ? 0 : -1}" aria-controls="${panelId}-${key}">${label}</button>`).join('')}</div>
   ${tabs.map(([key]) => `<div role="tabpanel" class="bm-tab-content" id="${panelId}-${key}" aria-labelledby="${panelId}-tab-${key}" tabindex="0"${_bmActiveTab === key ? '' : ' hidden'}>${content[key]}</div>`).join('')}`;
 }
@@ -2850,11 +2891,11 @@ function renderBenchmarkTable() {
     const cost = sealed ? s.metrics?.cost_usd : (r.cost ?? s.total_cost_usd);
     const runId = escapeHtml(r.id);
     const open = _bmOpenRunId != null && String(_bmOpenRunId) === String(r.id);
-    const stage = !sealed && !r.score_error && bmContractCompatible(s) && s.funnel?.stages?.confirmed?.available ? s.funnel.stages.confirmed : null;
+    const stage = !sealed && r.status !== 'running' && !r.score_error && bmContractCompatible(s) && s.funnel?.stages?.confirmed?.available ? s.funnel.stages.confirmed : null;
     let audit;
     if (sealed) audit = `<div class="bm-funnel-stage">Score agrégé signé : ${bmRate(s.metrics?.overall_score)}<small>Détails scellés</small></div>`;
     else if (r.score_error) audit = `<div class="bm-unavailable">Évaluation indisponible<small>${escapeHtml(r.score_error)}</small></div>`;
-    else audit = renderAuditSummary(s);
+    else audit = renderAuditSummary(s, r);
     const mainRow = `<tr${open ? ' class="bm-row-open"' : ''}>`
       + `<td><button type="button" class="bm-run-link" data-bm-run="${runId}">${escapeHtml(bmRunLabel(r.id))}</button>`
       + `<small class="bm-scenario">${escapeHtml(r.scenario)}${sealed ? ' · scellé' : ''}</small>`
@@ -3284,18 +3325,6 @@ async function pollStatus() {
     updateDeviceProgress();
   }
 
-  // — Replay real log events (most informative: skip text_chunk noise) —
-  const replayTypes = new Set([
-    'pipeline_start', 'phase_start', 'phase_done', 'lab_waiting', 'lab_acquired',
-    'device_start', 'device_done', 'reflector_start', 'reflector_done',
-    'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
-    'inject_start', 'inject_done', 'verify_start', 'verify_done',
-    'teardown_start', 'teardown_done', 'deliverable_attempt', 'error', 'info', 'warn',
-  ]);
-  for (const ev of (status.recent_events || [])) {
-    if (replayTypes.has(ev.type)) addLog(ev);
-  }
-
   // — Sync scenario dropdown & topology —
   if (status.scenario_id) {
     if (isSealedScenarioId(status.scenario_id)) {
@@ -3307,7 +3336,7 @@ async function pollStatus() {
     }
   }
 
-  // — Reconnect to SSE stream —
+  // SSE replays retained events itself, then follows the live operation.
   startSSE();
 }
 

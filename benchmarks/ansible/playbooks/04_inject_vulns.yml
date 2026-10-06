@@ -996,25 +996,37 @@
         - source_scenario_id == '4'
       changed_when: true
 
-    # ── Privilege escalation : SUID binary + cron writable — S3 (jetson), S7 (edge-compute) ──
+    # ── Privilege escalation : SUID binary + cron writable — S3/S7 ──
+    - name: "[ssh_server] Copier la source du vrai binaire SUID de laboratoire"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/iot_diag.c"
+        dest: /tmp/nato_iot_diag.c
+        mode: "0644"
+      when: source_scenario_id in ['3', '7']
+
     - name: "[ssh_server] Injecter SUID binary + cron writable"
       ansible.builtin.shell: |
+        set -e
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/nato_iot_diag.c /tmp/nato_iot_diag.c
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash -c '
-          # SUID binary vulnérable
-          cat > /usr/local/bin/iot-diag << DIAGEOF
-        #!/bin/bash
-        # IoT diagnostic tool — runs as root
-        cat \$1
-        DIAGEOF
+          set -e
+          # Linux ignores SUID on scripts; compile the declared local file reader.
+          if ! command -v cc >/dev/null 2>&1; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gcc libc6-dev
+          fi
+          cc -std=c11 -O2 -Wall -Wextra -Werror /tmp/nato_iot_diag.c -o /usr/local/bin/iot-diag
+          chown root:root /usr/local/bin/iot-diag
           chmod 4755 /usr/local/bin/iot-diag
+          rm -f /tmp/nato_iot_diag.c
 
           # Cron job world-writable
           mkdir -p /opt/iot
           echo "#!/bin/bash" > /opt/iot/maintenance.sh
           echo "logrotate /etc/logrotate.conf" >> /opt/iot/maintenance.sh
           chmod 777 /opt/iot/maintenance.sh
-          echo "*/5 * * * * root /opt/iot/maintenance.sh" >> /etc/crontab
-          echo "[OK] SUID + cron writable injectés"'
+          grep -qxF "*/5 * * * * root /opt/iot/maintenance.sh" /etc/crontab ||
+            echo "*/5 * * * * root /opt/iot/maintenance.sh" >> /etc/crontab
+          echo "[OK] SUID binary + cron writable injectés"'
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'ssh_server'
@@ -1476,7 +1488,7 @@
                "active": True, "wires": []},
           ]
 
-          ADMIN_HTML = b"""<!DOCTYPE html><html><head>
+          ADMIN_HTML = """<!DOCTYPE html><html><head>
           <title>Node-RED</title>
           <meta charset="utf-8">
           </head><body>
@@ -1484,7 +1496,7 @@
           <p>Flow Editor — no authentication required</p>
           <div id="main-container"><div id="editor"></div></div>
           <script>// Node-RED editor stub</script>
-          </body></html>"""
+          </body></html>""".encode("utf-8")
 
           class NodeREDHandler(BaseHTTPRequestHandler):
               def log_message(self, fmt, *args):
@@ -1533,9 +1545,22 @@
           printf '[Unit]\nDescription=Node-RED IoT mock (benchmark - no auth)\nAfter=network.target\n[Service]\nExecStart=/usr/bin/python3 /opt/nodered_mock.py\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/nodered.service
           systemctl daemon-reload
           systemctl enable nodered
-          systemctl start nodered
-          sleep 1
-          systemctl is-active nodered && echo "[OK] Node-RED mock actif sur port 1880" || { journalctl -u nodered -n 10 --no-pager; echo "[WARN] Node-RED inactif"; }
+          python3 -m py_compile /opt/nodered_mock.py
+          systemctl restart nodered
+          ready=false
+          for attempt in $(seq 1 10); do
+            if systemctl is-active --quiet nodered && curl --max-time 2 -fsS http://127.0.0.1:1880/admin | grep -qi 'Node-RED'; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            journalctl -u nodered -n 10 --no-pager
+            echo "[FAIL] Node-RED mock indisponible"
+            exit 1
+          fi
+          echo "[OK] Node-RED mock actif sur port 1880"
 
     - name: "[nodered_server] Push + exécuter dans chaque CT concerné"
       ansible.builtin.shell: |

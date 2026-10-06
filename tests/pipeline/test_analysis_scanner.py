@@ -604,3 +604,37 @@ def test_test_fixture_answers_do_not_drive_the_scanner_or_prompts():
             finding["type"] == vuln_type
             for finding in scanner_mod.extract_findings({"http": [control]}, device)
         )
+
+
+def test_optional_mqtt_websocket_probe_respects_fresh_port_observation():
+    from src.agent import scanner as scanner_mod
+
+    # A closed, undeclared optional listener does not need an HTTP handshake.
+    # Unknown/filtered ports and explicitly declared listeners still get one.
+    for port_line, return_code, declared, expected_calls in [
+        ("9001/tcp closed tor-orport", 0, False, 0),
+        ("9001/tcp open tor-orport", 0, False, 1),
+        ("9001/tcp filtered tor-orport", 0, False, 1),
+        ("", 0, False, 1),
+        ("9001/tcp closed tor-orport", 1, False, 1),
+        ("9001/tcp closed tor-orport", 0, True, 1),
+    ]:
+        calls = []
+        device = {"id": "broker", "ip": "192.0.2.12", "services": [{"name": "mqtt", "port": 1883}]}
+        if declared:
+            device["services"].append({"name": "mqtt", "port": 9001})
+        def http_request(**kwargs):
+            calls.append(kwargs)
+            return json.dumps({"error": "Connection refused"})
+        results = scanner_mod.scan_device(device, {
+            "mqtt_listen": lambda **kwargs: json.dumps({"stdout": "", "return_code": 0}),
+            "nmap_scan": lambda **kwargs: json.dumps({"stdout": port_line, "return_code": return_code}),
+            "http_request": http_request,
+        })
+        assert len(calls) == expected_calls
+        observations = [entry for values in results.values() for entry in values]
+        assert sum(entry["tool"] == "http_request" for entry in observations) == expected_calls
+        port_probe = next(entry for entry in observations if entry["tool"] == "nmap_scan")
+        assert json.loads(port_probe["result"])["stdout"] == port_line
+        assert bool(port_probe.get("skipped_followups")) is (expected_calls == 0)
+        assert all(finding["type"] != "no_auth" for finding in scanner_mod.extract_findings(results, device))

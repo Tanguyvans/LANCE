@@ -407,6 +407,7 @@ class AgentRunner:
 
         # If this phase has exploit sub-agents, run them and skip the LLM aggregator
         if config.has_exploit_agents:
+            usage_before = self.tracker.summary()
             self._run_exploit_agents(config, stream_callback)
             # Check for newly discovered hosts and run a mini analysis cycle if found
             new_hosts = self._collect_new_hosts()
@@ -426,14 +427,15 @@ class AgentRunner:
                 log.error("Phase %d exploit aggregation FAILED: %s", config.phase, msg)
                 print(f"  Deliverable FAILED validation: {msg}")
             if stream_callback:
+                usage_after = self.tracker.summary()
                 stream_callback({
                     "type": "phase_done",
                     "phase": config.phase,
                     "name": config.name,
                     "status": status,
                     "deliverable": config.deliverable_file,
-                    "cost_usd": 0,
-                    "turns": 0,
+                    "cost_usd": usage_after["total_cost_usd"] - usage_before["total_cost_usd"],
+                    "turns": usage_after["total_turns"] - usage_before["total_turns"],
                 })
             return status
 
@@ -459,8 +461,12 @@ class AgentRunner:
                     else "save_deliverable"
                 ),
                 terminate_on_unavailable_tools=None,
-                strict_required_tool=local_intrusion_memo or compact_local_recon,
-                force_tool_on_stall=local_intrusion_memo or compact_local_recon,
+                # Recon's coverage contract applies to every profile. A text
+                # or truncated turn must not exit after one save reminder while
+                # required scans are missing. Keep action tools available and
+                # retain the provider's three-stall and phase turn limits.
+                strict_required_tool=local_intrusion_memo or config.name == "recon",
+                force_tool_on_stall=local_intrusion_memo or config.name == "recon",
                 force_completion_on_recon_ready=compact_local_recon,
                 reopen_intrusion_tools_on_contract_error=local_intrusion_memo,
                 recover_required_tool_on_stall=local_intrusion_memo,
@@ -643,6 +649,16 @@ class AgentRunner:
         """
         tools = []
         seen_names: set[str] = set()
+        # Match the shared executor's unconditional refusals before presenting
+        # tools to the model. Keep the execution boundary as defense in depth.
+        forbidden = {"python_exec"}
+        if self.sealed:
+            forbidden.update(runtime.SEALED_FORBIDDEN_TOOLS)
+        if (
+            getattr(self, "benchmark_split", "unassigned") not in (None, "unassigned")
+            or getattr(self, "experiment_scope", None)
+        ):
+            forbidden.add("search_history")
 
         for ref in config.tools:
             if ref == "recon" and self.dry_run:
@@ -651,7 +667,7 @@ class AgentRunner:
             # Try group resolution first
             if ref in runtime.TOOL_GROUPS:
                 for tool in runtime.TOOL_GROUPS[ref]:
-                    if self.sealed and tool["name"] in runtime.SEALED_FORBIDDEN_TOOLS:
+                    if tool["name"] in forbidden:
                         continue
                     if tool["name"] not in seen_names:
                         tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name, config=config))
@@ -661,7 +677,7 @@ class AgentRunner:
             # Fall back to individual tool name lookup
             for group in runtime.TOOL_GROUPS.values():
                 for tool in group:
-                    if self.sealed and tool["name"] in runtime.SEALED_FORBIDDEN_TOOLS:
+                    if tool["name"] in forbidden:
                         continue
                     if tool["name"] == ref and ref not in seen_names:
                         tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name, config=config))

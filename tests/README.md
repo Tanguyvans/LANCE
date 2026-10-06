@@ -78,3 +78,16 @@ sur le laboratoire réel.
 explicite, les preuves chargées avant la projection, la provenance MQTT et les
 identifiants repris d'un membre du groupe. Les tests existants d'agrégation,
 de sémantique, de planification et de reprise restent applicables aux adaptateurs.
+
+`pipeline/test_pki_identity_evidence.py` vérifie les empreintes PKI communes à
+deux appareils distincts, les doublons de requêtes et de topologie, les alias,
+les réponses HTTP en erreur ou attribuées à une autre destination, ainsi que
+les entrées malformées voisines de preuves valides. Les fichiers de scan sont
+synthétiques ; aucune requête réseau n'est exécutée.
+
+`test_pipeline_stream.py` vérifie le suivi d'un même run par deux lecteurs,
+les reconnexions par curseur, la fin d'un run pendant une coupure, le nettoyage
+manuel, l'expiration de l'historique et l'indépendance des opérations. Il exerce
+la route SSE via le client HTTP de test et le code JavaScript du dashboard avec
+Node.js, sans modèle ni laboratoire. Le contrat du suivi partagé est décrit
+dans le [guide des instances](../docs/guides/development-instances.md#plusieurs-lecteurs-dun-même-run).

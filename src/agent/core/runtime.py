@@ -1,6 +1,7 @@
 """Infrastructure dependencies and tool catalog for the run engine; phase policies live with their phase."""
 from __future__ import annotations
 
+import ipaddress
 import logging
 import subprocess
 from pathlib import Path
@@ -75,6 +76,28 @@ from src.agent.vuln_taxonomy import canonicalize, exploit_category, is_noise
 log = logging.getLogger(__name__)
 
 OUTPUT_DIR = Path("output/agent")
+
+
+def local_interface_ips() -> set[str]:
+    """Read this runner's interface addresses without probing the network."""
+    try:
+        result = subprocess.run(
+            ["hostname", "-I"], capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("Unable to identify runner interface addresses: %s", exc)
+        return set()
+    if result.returncode != 0:
+        log.warning("Unable to identify runner interface addresses (exit %s)", result.returncode)
+        return set()
+    addresses = set()
+    for value in result.stdout.split():
+        try:
+            addresses.add(str(ipaddress.ip_address(value)))
+        except ValueError:
+            continue
+    return addresses
+
 
 def _resolve_model_provider(model: str) -> str:
     """Resolve phase overrides explicitly; never guess a provider from a name."""

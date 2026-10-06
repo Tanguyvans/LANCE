@@ -93,7 +93,18 @@ def _enrich_finding_structure(
         )
         if endpoints:
             finding["endpoints"] = endpoints
-            if not str(finding.get("endpoint", "")).strip():
+            primary = str(finding.get("endpoint", "")).strip()
+            # The singular field must identify one URL. Models sometimes
+            # put a comma-and-space separated list of paths there. Preserve
+            # its first path as primary and every path in the plural field;
+            # do not split valid commas inside a path or query string.
+            listed_paths = re.split(r",\s+(?=/)", primary)
+            if len(listed_paths) > 1 and all(
+                path.startswith("/") and not re.search(r"[\s?#]", path)
+                for path in listed_paths
+            ):
+                finding["endpoint"] = listed_paths[0]
+            elif not primary:
                 finding["endpoint"] = endpoints[0]
     if not str(finding.get("endpoint", "")).strip():
         text = f"{finding.get('details', '')} {finding.get('evidence', '')}"

@@ -341,11 +341,15 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
 
     if service == "mysql":
         p = port or 3306
-        cmd = ["mysql", f"-h{ip}", f"-P{p}", f"-u{user}",
-               f"-p{password}", "--connect-timeout=5",
-               "-e", "SELECT user,host FROM mysql.user LIMIT 5;", "2>/dev/null"]
+        # A bare -p prompts instead of testing an empty password. Keep the
+        # explicit credential on TCP and do not inherit client option files.
+        password_arg = f"--password={password}" if password else "--skip-password"
+        cmd = ["mysql", "--no-defaults", "--protocol=TCP", f"-h{ip}", f"-P{p}",
+               f"-u{user}", password_arg, "--connect-timeout=5", "-N",
+               "-e", "SELECT CURRENT_USER();"]
         result = _run(cmd, timeout=12)
-        success = result["return_code"] == 0 and "ERROR" not in result["stderr"]
+        success = (result["return_code"] == 0 and "ERROR" not in result["stderr"]
+                   and bool(result["stdout"].strip()))
         return json.dumps({"success": success, "authenticated": success, "service": "mysql", "port": p,
                            "stdout": result["stdout"][:300], "stderr": result["stderr"][:100]})
 

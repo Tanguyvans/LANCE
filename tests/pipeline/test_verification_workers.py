@@ -263,3 +263,84 @@ class TestInformationPreservingArchitecture:
         assert aggregate["summary"]["confirmed"] == 1
         assert aggregate["summary"]["errors"] == 0
         assert aggregate["tests"][0]["evidence_refs"]
+
+
+def test_phase_completion_includes_worker_usage_but_excludes_previous_phases(
+    mock_provider, output_dir, monkeypatch,
+):
+    monkeypatch.setattr("src.agent.cost_tracker._resolve_pricing", lambda *args: (
+        {"input": 1.0, "output": 2.0}, "local-test", False,
+    ))
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    monkeypatch.setattr(pipeline, "_resolve_tools", lambda config: [])
+    monkeypatch.setattr("src.agent.core.runtime.load_prompt", lambda *args: "prompt")
+    monkeypatch.setattr(pipeline, "_collect_new_hosts", lambda: [])
+    monkeypatch.setattr(pipeline, "_validator", lambda name: lambda path: (True, "valid"))
+    pipeline.tracker.start_phase("previous")
+    pipeline.tracker.record_turn(9000, 4000)
+    pipeline.tracker.end_phase()
+
+    def workers(*args):
+        for name in ("completed_worker", "failed_worker"):
+            pipeline.tracker.start_phase(name)
+            pipeline.tracker.record_turn(1000, 500)
+            pipeline.tracker.end_phase()
+        pipeline._phase4_execution_status = "executed_with_worker_errors"
+
+    monkeypatch.setattr(pipeline, "_run_exploit_agents", workers)
+    events = []
+    status = pipeline._run_agent(AGENTS["exploitation"], events.append)
+    done = [event for event in events if event["type"] == "phase_done"]
+    assert status == "executed_with_worker_errors"
+    assert len(done) == 1
+    assert done[0]["cost_usd"] == pytest.approx(0.004)
+    assert done[0]["turns"] == 2
+
+
+def test_followup_candidates_are_counted_without_claiming_they_were_scheduled(mock_provider, output_dir):
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    pipeline._phase4_schedule = {
+        "candidate_count": 1, "scheduled_count": 1, "scheduled_vuln_ids": ["V1"],
+        "skipped_count": 0, "skipped_candidates": [],
+    }
+    findings = [{"id": identifier, "device_id": "test-device", "device_ip": "192.0.2.1",
+                 "type": "weak_cipher", "service": "ssh", "port": 22}
+                for identifier in ["V1", "LATE"]]
+    (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": findings}))
+    pipeline._aggregate_exploit_results()
+    result = json.loads((pipeline.run_dir / "04_exploitation.json").read_text())
+    assert result["summary"]["candidate_count"] == 2
+    assert result["summary"]["skipped_count"] == 1
+    assert result["summary"]["total_tested"] == 0
+    assert result["scheduling"] == pipeline._phase4_schedule
+    assert result["scheduling"]["scheduled_vuln_ids"] == ["V1"]
+    assert result["tests"][1]["status"] == "SKIPPED"
+    assert result["tests"][1]["evidence_refs"] == []
+
+
+@pytest.mark.parametrize("surface_as_mapping", [False, True])
+def test_discovery_followup_excludes_existing_hosts_but_keeps_new_hosts(
+    mock_provider, output_dir, monkeypatch, surface_as_mapping,
+):
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    nodes = [{"id": "invalid-address", "ip": "not-an-address"},
+             {"id": "known-device", "ip": "192.0.2.10"},
+             {"id": "known-ipv6", "ip": "2001:db8::1"}]
+    surface = {"nodes": nodes} if surface_as_mapping else nodes
+    monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: json.dumps(surface))
+    monkeypatch.setattr("src.agent.core.runtime.subprocess.run", lambda *args, **kwargs:
+                        MagicMock(returncode=0, stdout="192.0.2.200 2001:db8::200 invalid-address"))
+    path = pipeline.run_dir / "04_exploits" / "observations.json"
+    path.parent.mkdir(exist_ok=True)
+    new_host = {"ip": "192.0.2.11", "open_ports": [1883], "discovered_via": "observed endpoint"}
+    contents = json.dumps({"new_hosts_discovered": [
+        {"ip": "192.0.2.10", "open_ports": [1883]},
+        {"ip": "2001:0db8:0:0:0:0:0:1", "open_ports": [22]},
+        {"ip": "192.0.2.200", "discovered_via": "client address echoed by MySQL"},
+        {"ip": "2001:0db8:0:0:0:0:0:200", "open_ports": [22]},
+        new_host, dict(new_host), {"ip": "not-an-address"},
+    ]})
+    path.write_text(contents)
+
+    assert pipeline._collect_new_hosts() == [new_host]
+    assert path.read_text() == contents

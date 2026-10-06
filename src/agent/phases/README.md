@@ -94,6 +94,18 @@ utilisées par l'API et le CLI. Les champs publics des événements sont conserv
 La politique `rules` n'appelle aucun modèle. Le dry-run renvoie `skipped` avant
 toute découverte active, scan, analyse ou agrégation.
 
+En profil full, les deux derniers tours de chaque analyse d'appareil imposent
+l'outil de sauvegarde. Un rejet de validation passe également en sauvegarde seule,
+avec au plus trois requêtes dans les limites existantes de tours, de délai et de
+coût. Le coût et les tours publiés à la fin de phase incluent tous les workers,
+y compris ceux dont le livrable a été refusé. Le modèle reçoit le rejet pour
+corriger son livrable ; une tentative encore invalide reste un échec et conserve
+les observations du scanner.
+
+La compatibilité CVE exige une version observée explicite, y compris pour une
+requête CPE. Un champ de version `*`, `-` ou vide reste indéterminé ; une version
+placée dans le champ de mise à jour ne suffit pas à confirmer une CVE.
+
 Les configurations internes personnalisées peuvent encore demander une
 agrégation seule (`has_device_agents=False`) ou un agrégateur maître LLM
 (`deterministic_aggregation=False`). Les méthodes `_run_phase3` et
@@ -106,9 +118,21 @@ n'utilise plus la boucle générique pour son agrégation déterministe.
 En profil complet (et hors adaptation locale compacte), `02_recon.md` est
 construit par `recon/rendering.py` depuis les observations du journal d’outils.
 Le modèle choisit toujours les sondes ; il ne recopie plus leur inventaire.
+Une réponse textuelle ou tronquée sans sauvegarde acceptée demande une
+continuation avec appel d'outil dans tous les profils. Les outils d'exploration
+restent disponibles et une sauvegarde prématurée reçoit les exigences de
+couverture manquantes. Trois réponses consécutives sans outil arrêtent cette
+reprise ; les limites de tours, de coût et l'arrêt utilisateur restent en vigueur.
+Cette continuation ne garantit pas que le modèle terminera les sondes.
 Une note de fin suffit à demander la sauvegarde. Si le dialogue se termine sans
 sauvegarde, le contrôleur tente une seule sauvegarde locale, sans nouveau scan
 ni appel au modèle, via les mêmes contrôles de couverture et de validation.
+
+Lors de la fusion avec les services déclarés, une version non vide observée sur
+le même port, protocole et service complète ou remplace la version de l'inventaire.
+Une observation sans version n'efface pas celle déjà collectée. Les analyses
+suivantes retrouvent cette information via le graphe ; les observations originales
+restent dans `02_recon_evidence.json`.
 
 La finalisation exige le contrat de reconnaissance satisfait et des observations
 exploitables. Un journal invalide ou absent ne donne pas un succès. Un arrêt
@@ -119,6 +143,13 @@ Un inventaire généré n’est pas une certification de couverture exhaustive.
 L’adaptation locale compacte conserve sa restitution et ses contrôles existants.
 
 ## Clôture d’intrusion et délais fournisseur
+
+Le garde de destination commun refuse les actions réseau hors des CIDR du
+scénario. Un nom de programme suivi de `/` dans un chemin, comme le répertoire
+`.ssh/`, ne constitue pas à lui seul une action réseau. Les exécutables comme
+`/usr/bin/ssh` et les actions ajoutées ensuite à la commande restent contrôlés.
+Cette reconnaissance lexicale ne certifie pas le comportement d'un binaire
+personnalisé ni les droits obtenus par son exécution.
 
 En profil complet, `save_deliverable` en phase 5 reçoit un petit marqueur de fin
 (`{"finish":true}`), pas une copie de toute la campagne. Le contrôleur produit
@@ -179,11 +210,14 @@ contexte global de graphe. Les étapes de normalisation et de projection modifie
 les copies de travail et le registre de décisions reçus, sans modifier les
 fichiers d'entrée ni les valeurs originales conservées dans `raw_finding`.
 
-Limite PKI préexistante : la promotion d'une clé clonée compte les observations
-de fingerprint, sans dédupliquer les identifiants d'appareil. Deux observations
-identiques d'un seul `pki_device` peuvent donc produire une déclaration confirmée
-de clé partagée. Le découpage conserve ce comportement ; sa correction exige un
-test distinguant observations répétées et appareils distincts.
+La promotion PKI exige une même empreinte SHA-256 sur au moins deux appareils
+ayant des identifiants et des adresses IP distincts. Les requêtes répétées, lignes
+de topologie dupliquées et alias d'une même IP ne comptent qu'une fois. Chaque
+observation doit provenir d'une réponse HTTP 2xx de `/identity/fingerprint` sur
+l'IP de l'appareil ; erreurs, redirections, réponses attribuées à une autre origine
+et valeurs malformées sont ignorées sans perdre les observations valides voisines.
+Ce contrôle porte sur les empreintes déclarées par les services du laboratoire ;
+il ne démontre pas la possession de la clé privée correspondante.
 
 ## Limites conservées explicitement
 

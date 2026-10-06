@@ -55,7 +55,7 @@ def _evaluation(run_dir):
     return result
 
 
-def _api_events(tmp_path, monkeypatch, result, status="completed"):
+def _api_events(tmp_path, monkeypatch, result, status="completed", *, connection_error=False):
     from src.agent import pipeline as agent_pipeline
     from src.agent import provider as agent_provider
     from src.benchmark import evaluator
@@ -93,6 +93,15 @@ def _api_events(tmp_path, monkeypatch, result, status="completed"):
 
         def run(self, stream_callback, **kwargs):
             results = {"intrusion": status, "report": "completed"}
+            if connection_error:
+                stream_callback({"type": "phase_start", "phase": 1, "name": "graph_analysis"})
+                self.terminal_event = {
+                    "type": "pipeline_done", "status": "failed",
+                    "results": {"graph_analysis": "failed:exception"},
+                    "run_dir": str(run_dir), "cleanup_status": "completed",
+                    "usage_status": "completed", "total_cost_usd": 0,
+                }
+                raise ConnectionError("Connection error.")
             stream_callback({
                 "type": "pipeline_done", "status": status,
                 "results": results, "run_dir": str(run_dir),
@@ -104,7 +113,7 @@ def _api_events(tmp_path, monkeypatch, result, status="completed"):
     monkeypatch.setattr(route, "_state", {
         "queue": events, "loop": Loop(), "stop_event": threading.Event(),
         "recent_events": [], "running": True, "stopping": False,
-        "cost": 0.0, "run_dir": None,
+        "cost": 0.0, "run_dir": None, "phase": 0,
     })
     monkeypatch.setattr(agent_pipeline, "Pipeline", Pipeline)
     monkeypatch.setattr(agent_provider, "LLMProvider", Provider)
@@ -139,6 +148,7 @@ const document = {
     return elements.get(id);
   },
   createElement: () => new Element(),
+  querySelectorAll: () => [],
   addEventListener() {},
 };
 const context = vm.createContext({
@@ -180,6 +190,21 @@ def test_api_to_dashboard_uses_final_audit_and_separate_verified_intrusion(tmp_p
     assert "réussi" not in terminal
     # Rendering is not allowed to rewrite saved legacy fields or the funnel.
     assert json.dumps(_evaluation_metrics(result), sort_keys=True) == before
+
+
+def test_connection_failure_keeps_terminal_event_and_run_link(tmp_path, monkeypatch):
+    events = _api_events(tmp_path, monkeypatch, _evaluation(tmp_path / "run"), connection_error=True)
+    terminal = next(event for event in events if event["type"] == "pipeline_done")
+    assert terminal["status"] == "failed"
+    assert terminal["cleanup_status"] == "completed"
+    assert terminal["evaluation_status"] == "skipped"
+    assert route.get_status()["run_dir"] == str(tmp_path / "run")
+    assert route.get_status()["phase_name"] == "graph_analysis"
+    assert not route.get_status()["running"]
+    assert [event["type"] for event in route.get_status()["recent_events"]][-2:] == ["error", "pipeline_done"]
+    lines = _render_events([event for event in events if event["type"] in {"error", "pipeline_done"}])
+    assert "échec" in lines[-1]["text"]
+    assert "log-failed" in lines[-1]["className"]
 
 
 @pytest.mark.parametrize("status,word", [

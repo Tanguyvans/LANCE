@@ -405,9 +405,9 @@ class TestPhase5Context:
 
     @pytest.mark.parametrize(
         ("profile", "expected_strict", "expected_force", "expected_ready_force"),
-        [("compact", True, True, True), ("full", False, False, False)],
+        [("compact", True, True, True), ("full", True, True, False)],
     )
-    def test_local_moe_recon_requires_successful_save_only_for_compact(
+    def test_recon_requires_save_but_only_compact_forces_completion_when_ready(
         self, mock_provider, output_dir, profile, expected_strict, expected_force,
         expected_ready_force
     ):
@@ -511,6 +511,8 @@ class TestInformationPreservingArchitecture:
                 {
                     "ip": "192.0.2.11",
                     "services": [
+                        {"port": 1883, "protocol": "tcp", "service": "mosquitto", "version": "version 2.0.21"},
+                        {"port": 1883, "protocol": "tcp", "service": "mqtt", "version": ""},
                         {"port": 8080, "protocol": "tcp", "service": "http-proxy"},
                     ],
                 },
@@ -531,6 +533,8 @@ class TestInformationPreservingArchitecture:
         assert result["unresolved_nodes"] == ["s22-unobserved"]
         by_id = {node["id"]: node for node in nodes}
         assert [service["name"] for service in by_id["s22-custom-a"]["services"]] == ["mqtt", "http"]
+        assert by_id["s22-custom-a"]["services"][0]["version"] == "version 2.0.21"
+        assert json.loads(graph_tools.get_device_info("s22-custom-a"))["services"][0]["version"] == "version 2.0.21"
         assert [service["name"] for service in by_id["s22-router"]["services"]] == [
             "http", "https",
         ]
@@ -797,3 +801,29 @@ class TestInformationPreservingArchitecture:
         assert result["error_kind"] == "invalid_recon_evidence"
         assert "missing or invalid" in result["error"]
         save.assert_not_called()
+
+
+def test_nmap_mbap_alias_preserves_one_modbus_scan(mock_provider, output_dir, monkeypatch):
+    from src.agent import scanner
+    from src.agent.tools import graph_tools
+
+    node = {"id": "plc", "ip": "192.0.2.15", "role": "modbus_server",
+            "services": [{"name": "modbus", "port": 502, "protocol": "tcp"}]}
+    monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        "nodes": [node], "node_index": {"plc": node},
+    })
+    pipeline = Pipeline(provider=mock_provider, scenario_id=4)
+    pipeline._reconcile_phase2_attack_surface({"devices": [{
+        "ip": node["ip"], "services": [{"service": "mbap?", "port": 502, "protocol": "tcp"}],
+    }]})
+    assert len(node["services"]) == 1
+    calls = []
+    def nmap_scan(**kwargs):
+        calls.append(kwargs)
+        return json.dumps({"stdout": "502/tcp open mbap", "stderr": "", "return_code": 0})
+    diagnostics = []
+    scanner.scan_device(node, {"nmap_scan": nmap_scan}, diagnostics=diagnostics)
+    assert diagnostics == []
+    assert len(calls) == 1
+    assert calls[0]["target"] == node["ip"]
+    assert calls[0]["scripts"] == "modbus-discover"

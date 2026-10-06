@@ -92,3 +92,42 @@ def test_application_retry_recomputes_remaining_timeout(provider, monkeypatch):
         assert timeouts == [20, 12]
     finally:
         instance.client.close()
+
+
+@pytest.mark.parametrize("exhausted", [False, True])
+def test_sdk_timeout_distinguishes_request_failure_from_device_deadline(monkeypatch, exhausted):
+    clock = {"now": time.monotonic()}
+    deadline = clock["now"] + 240
+    requests, events = [], []
+
+    def handle(request):
+        requests.append(request)
+        clock["now"] = deadline + 0.01 if exhausted else deadline - 30
+        raise httpx.ReadTimeout("offline timeout", request=request)
+
+    def callback(event):
+        events.append(event)
+
+    callback._provider_diagnostics = True
+    monkeypatch.setattr(provider_transport, "time", SimpleNamespace(
+        monotonic=lambda: clock["now"],
+        sleep=lambda _: pytest.fail("A finalization request must not retry"),
+    ))
+    instance, sdk = make_provider("ollama-umons", httpx.MockTransport(handle))
+    try:
+        error_type = TimeoutError if exhausted else sdk.APITimeoutError
+        with pytest.raises(error_type) as caught:
+            instance.chat_with_tools("Evidence", "Save", [], max_turns=1,
+                                     deadline=deadline, stream_callback=callback)
+        if exhausted:
+            assert isinstance(caught.value.__cause__, sdk.APITimeoutError)
+        assert len(requests) == 1
+        responses = [e for e in events if e.get("event") == "response"]
+        assert len(responses) == 1
+        assert responses[0]["response_type"] == "providererror"
+        assert responses[0]["error_kind"] == "timeout"
+        terminal = [e for e in events if e.get("event") == "terminal"]
+        assert len(terminal) == 1
+        assert terminal[0]["cause"] == ("deadline" if exhausted else "providererror")
+    finally:
+        instance.client.close()

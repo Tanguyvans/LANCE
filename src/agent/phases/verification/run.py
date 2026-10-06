@@ -536,7 +536,7 @@ class VerificationPhase:
         self._aggregate_exploit_results()
 
     def _collect_new_hosts(self) -> list[dict]:
-        """Collect hosts discovered during Phase 4 exploitation that were not in the original scan.
+        """Collect Phase 4 host references absent from the known public surface.
 
         Reads new_hosts_discovered from all Phase 4 exploit output files.
         Returns deduplicated list of {"ip": str, "open_ports": [...], "discovered_via": str}.
@@ -544,14 +544,36 @@ class VerificationPhase:
         """
         import ipaddress as _ip
 
+        # A reference to an existing device is a relationship, not a new
+        # host. Re-scanning it under discovered-* can replace canonical
+        # findings after their verification IDs have already been scheduled.
+        # Both public scenario and discovery surfaces can be list-shaped.
+        # A service may echo the audit client's address (for example MySQL
+        # USER()). It must not turn the runner into a newly discovered target.
+        seen_ips: set[str] = runtime.local_interface_ips()
+        try:
+            surface = json.loads(runtime.get_attack_surface())
+            nodes = surface.get("nodes", []) if isinstance(surface, dict) else surface
+            for node in nodes if isinstance(nodes, list) else []:
+                if isinstance(node, dict) and node.get("ip"):
+                    try:
+                        seen_ips.add(str(_ip.ip_address(str(node["ip"]).strip())))
+                    except ValueError:
+                        continue
+        except (TypeError, ValueError, KeyError) as exc:
+            log.warning("Unable to read known hosts for discovery followup: %s", exc)
+
         new_hosts: list[dict] = []
-        seen_ips: set[str] = set()
         for f in self.run_dir.glob("04_exploits/**/*.json"):
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 for h in data.get("new_hosts_discovered", []):
                     ip = h.get("ip", "").strip()
-                    if ip and ip not in seen_ips:
+                    try:
+                        ip = str(_ip.ip_address(ip))
+                    except ValueError:
+                        continue
+                    if ip not in seen_ips:
                         seen_ips.add(ip)
                         new_hosts.append(h)
             except Exception:
@@ -664,12 +686,11 @@ class VerificationPhase:
                 {
                     "summary": {
                         "total_tested": sum(verification_state(test) != "not_tested" for test in tests),
-                        "candidate_count": getattr(
-                            self, "_phase4_schedule", {}
-                        ).get("candidate_count", len(tests)),
-                        "skipped_count": getattr(
-                            self, "_phase4_schedule", {}
-                        ).get("skipped_count", 0),
+                        # Discovery followup can add canonical findings after
+                        # scheduling. Summarize the current projection while
+                        # retaining the original schedule as execution history.
+                        "candidate_count": len(tests),
+                        "skipped_count": sum(test["status"] == "SKIPPED" for test in tests),
                         "execution_state": (
                             getattr(self, "_phase4_execution_status", None)
                             or "executed"

@@ -87,7 +87,29 @@ Les liens conservent le protocole et l’hôte du navigateur et changent uniquem
 le port : ils correspondent à l’accès direct actuel via Tailscale. Un déploiement
 derrière des chemins de reverse proxy nécessiterait une configuration des liens.
 Les trois branches doivent contenir cette fonctionnalité ; une ancienne version
-sans `/api/activity/local` apparaît indisponible jusqu’à sa mise à jour.
+sans `/api/activity/local` apparaît indisponible jusqu'à sa mise à jour.
+
+### Plusieurs lecteurs d'un même run
+
+Plusieurs personnes ou onglets peuvent suivre simultanément le dashboard d'une
+même instance. Chaque connexion SSE reçoit tous les nouveaux événements, avec
+son propre curseur : consulter un run ne retire plus les événements des autres
+lecteurs. Les lancements simples, les batchs et les nettoyages manuels possèdent
+chacun leur historique de suivi.
+
+L'instance conserve les 1 000 derniers événements en mémoire. À l'ouverture,
+le navigateur reçoit cet historique puis les événements en direct ; après une
+coupure, il reprend après le dernier identifiant reçu. Cela inclut la fin d'un
+run survenue pendant la coupure. Une coupure dépassant la fenêtre conservée
+déclenche un avertissement ; les journaux sauvegardés restent la référence pour
+l'historique complet. Un redémarrage du serveur perd cet historique en mémoire.
+
+`GET /api/pipeline/stream` accepte le curseur via `after` ou `Last-Event-ID`.
+`GET /api/pipeline/status` expose `event_cursor`, l'identifiant du dernier
+événement publié. Le curseur identifie aussi l'opération : celui d'un ancien run
+ne peut pas faire sauter les premiers événements du suivant. Cette diffusion
+ne change pas la restriction à une seule exécution par instance ni la réservation
+commune du laboratoire.
 
 ## Première activation
 

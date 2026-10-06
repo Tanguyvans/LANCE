@@ -27,6 +27,7 @@ def render(expression, values):
     environment = NativeEnvironment(undefined=StrictUndefined)
     # Ansible's 'search' test is a Python regexp search. Execute the actual
     # production expressions, not a reimplementation of their accounting.
+    environment.filters["bool"] = bool
     environment.tests["search"] = lambda value, pattern: re.search(pattern, str(value)) is not None
     return environment.from_string(expression).render(values)
 
@@ -157,7 +158,7 @@ def test_actual_expected_population_matches_role_and_security_profile(role, key,
     assert render(preparation[f"_{key}_expected"], values) == (2 if filtered else 3)
 
 
-@pytest.mark.parametrize("key", ["mqtt", "db", "ssh", "web", "redis", "modbus"])
+@pytest.mark.parametrize("key", ["mqtt", "db", "ssh", "web", "redis", "modbus", "privesc", "nodered"])
 @pytest.mark.parametrize("results,expected,valid", [
     ([{"rc": 0, "stdout": "active\nOK"}], 1, True),
     ([{"rc": 0, "stdout": "OK\nFAIL"}], 1, False),
@@ -170,5 +171,35 @@ def test_each_production_role_expression_requires_all_positive_results(key, resu
     consolidation = next(t["ansible.builtin.set_fact"] for t in tasks(VERIFY)
         if t.get("name") == "Évaluer les résultats — consolider les checks OK/FAIL")
     values = {f"_{key}_expected": expected, f"_{key}_results": results,
-        "_web_version_results": results}
+        "_web_version_results": results, "_nodered_admin_results": results}
     assert render(consolidation[f"_check_{key}_ok"], values) is valid
+
+
+def test_nodered_mock_source_compiles_and_encodes_html_as_utf8():
+    import ast
+    script = next(t["ansible.builtin.copy"]["content"] for t in tasks(INJECT)
+        if "Écrire le script" in t.get("name", "") and "Node-RED" in t["name"])
+    source = script.split("<< 'PYEOF'\n", 1)[1].split("\nPYEOF", 1)[0]
+    module = ast.parse(source)
+    assignment = next(n for n in module.body if isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "ADMIN_HTML" for t in n.targets))
+    # Evaluate only the literal encoding, without importing or starting the server.
+    assert isinstance(assignment.value, ast.Call)
+    assert assignment.value.func.attr == "encode"
+    assert assignment.value.args[0].value == "utf-8"
+    assert "Node-RED" in assignment.value.func.value.value
+
+
+def test_nodered_missing_admin_check_blocks_global_preflight():
+    production = tasks(VERIFY)
+    consolidation = next(t["ansible.builtin.set_fact"] for t in production
+        if t.get("name") == "Évaluer les résultats — consolider les checks OK/FAIL")
+    expr = consolidation["_check_nodered_ok"]
+    assert render(expr, {"_nodered_expected": 1,
+        "_nodered_results": [{"rc": 0, "stdout": "OK"}],
+        "_nodered_admin_results": []}) is False
+    global_expr = next(t["ansible.builtin.set_fact"]["_verify_all_ok"] for t in production
+        if t.get("name") == "Calculer le statut global de vérification")
+    values = {name: True for name in re.findall(r"_check_\w+_ok", global_expr)}
+    values["_check_nodered_ok"] = False
+    assert render(global_expr, values) is False

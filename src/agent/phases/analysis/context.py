@@ -62,6 +62,7 @@ class AnalysisContext:
     started_monotonic: float = field(default_factory=time.monotonic)
     tokens_before: tuple[int, int] = (0, 0)
     cost_before: float = 0.0
+    turns_before: int = 0
 
 
 @dataclass(frozen=True)

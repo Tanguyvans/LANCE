@@ -513,6 +513,13 @@ def _run_status(run_dir: Path) -> str:
     metadata falls back to conservative artifact diagnostics: reports alone
     never prove a successful run.
     """
+    from src.api.routes.pipeline import active_run_directory
+
+    # During execution, terminal metadata has not been written yet. Only the
+    # live worker can establish this state; old unfinished runs stay incomplete.
+    if active_run_directory() == str(run_dir):
+        return "running"
+
     lifecycle_statuses = {
         "completed", "done", "failed", "stopped", "partial",
         "budget_exceeded", "running", "blocked", "skipped", "incomplete",
@@ -615,6 +622,21 @@ def _benchmark_entry(candidate: dict[str, Any], *, compact: bool) -> dict[str, A
             for key in ("phase6_status", "phase6_cause", "cleanup_status", "usage_status")
             if isinstance(metadata.get(key), str)
         }
+        error = metadata.get("run_error")
+        if isinstance(error, dict) and entry["status"] in {"failed", "partial"}:
+            # Bounded public diagnosis: never expose exception messages,
+            # tracebacks, endpoint credentials or sealed phase information.
+            phase = {
+                "graph_analysis": 1, "recon": 2, "vuln_analysis": 3,
+                "exploitation": 4, "intrusion": 5, "report": 6,
+            }.get(str(error.get("phase")))
+            if phase is not None:
+                entry["completion"]["failure_phase"] = phase
+            entry["completion"]["failure_cause"] = {
+                "APIConnectionError": "provider_connection_error",
+                "APITimeoutError": "provider_timeout",
+                "AuthenticationError": "provider_authentication_error",
+            }.get(str(error.get("exception_class")), "execution_error")
         results = metadata.get("results")
         intrusion = results.get("intrusion") if isinstance(results, dict) else None
         # Export a bounded diagnostic code, never provider/model error text.

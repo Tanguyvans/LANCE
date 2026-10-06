@@ -242,6 +242,7 @@ class Pipeline(
         self._scenario_owned = False
         self._active_phase = None
         self._run_results: dict[str, str] = {}
+        self.terminal_event: dict | None = None
         primary_error = None
         self._run_error_diagnostic = None
         lifecycle_error = None
@@ -411,6 +412,24 @@ class Pipeline(
             except (Exception, KeyboardInterrupt, SystemExit) as exc:
                 capture_lifecycle_error("run_persistence", exc)
 
+            # Keep the authoritative outcome available to API callers even
+            # when the original execution exception is re-raised after cleanup.
+            total_cost = None
+            try:
+                raw_total_cost = self.tracker.total_cost()
+                total_cost = round(raw_total_cost, 4) if raw_total_cost is not None else None
+            except Exception:
+                log.exception("Could not calculate final usage cost")
+            self.terminal_event = {
+                "type": "pipeline_done",
+                "results": dict(self._run_results) if primary_error is not None else results,
+                "status": status, "cleanup_status": cleanup,
+                "total_cost_usd": total_cost,
+                "usage_status": usage_status,
+                "metadata_status": metadata_status,
+                "run_dir": str(self.run_dir),
+            }
+
             # If a lifecycle-only interruption happened after a successful
             # execution, report the terminal state then re-raise it. An
             # execution exception already in flight always wins.
@@ -418,20 +437,7 @@ class Pipeline(
                 raise lifecycle_error.with_traceback(lifecycle_error.__traceback__)
 
         if stream_callback:
-            total_cost = None
-            try:
-                raw_total_cost = self.tracker.total_cost()
-                total_cost = round(raw_total_cost, 4) if raw_total_cost is not None else None
-            except Exception:
-                log.exception("Could not calculate final usage cost")
-            stream_callback({
-                "type": "pipeline_done", "results": results,
-                "status": status, "cleanup_status": cleanup,
-                "total_cost_usd": total_cost,
-                "usage_status": usage_status,
-                "metadata_status": metadata_status,
-                "run_dir": str(self.run_dir),
-            })
+            stream_callback(dict(self.terminal_event))
         return results
 
     def _persist_run(self, status: str) -> None:

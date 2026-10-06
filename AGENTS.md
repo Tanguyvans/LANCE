@@ -65,12 +65,13 @@ Valider les changements avec les tests pertinents ; la suite complète se lance 
 `python -m pytest -q tests model_training/tests`. Vérifier aussi `git diff --check`
 et, pour l'interface, le rendu dans un navigateur. Indiquer ce qui a été vérifié
 et les limites restantes. Les runs de laboratoire, déploiements, commits et pushes
-nécessitent une demande explicite.
+nécessaires à la tâche demandée peuvent être effectués sans nouvelle confirmation,
+dans le périmètre défini ci-dessous.
 
 ## Cible d'exécution et de déploiement
 
 - Le benchmark et les déploiements LANCE ciblent **nato / pve-nato**, via le
-  runner GitHub Actions **nato-master**. Un push autorisé sur `main` utilise ce
+  runner GitHub Actions **nato-master**. Un push sur `main` utilise ce
   circuit de validation et de déploiement.
 - Le **homelab personnel** (nœud `pve`, distinct de `pve-nato`) est hors périmètre :
   aucun transfert de fichiers, synchronisation, déploiement, changement de

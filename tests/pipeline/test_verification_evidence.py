@@ -1,5 +1,6 @@
 """Phase 4: observable proof and exploit verdicts."""
 import json
+import pytest
 from pathlib import Path
 from src.agent.pipeline import Pipeline
 from src.agent.exploit_evidence import (
@@ -476,3 +477,81 @@ class TestExploitEvidenceGuard:
 
         assert verdict["status"] == "CONFIRMED"
         assert verdict["data_extracted"]
+
+
+def test_http_response_timeout_words_are_not_transport_failures():
+    # Observed on LuCI in the 2026-10-04 S1 Qwen run; response arrived in 12 ms.
+    record = {"tool": "curl_headers", "args": {"url": "http://192.0.2.20/"},
+              "result": json.dumps({"return_code": 0, "stderr": "", "stdout": (
+                  "HTTP/1.1 403 Forbidden\nKeep-Alive: timeout=20\n\n"
+                  "<script>apply_timeout = 5</script>"
+              )})}
+    verdict = _synthesize_exploit_result(
+        {"type": "insecure_protocol", "service": "http", "port": 80}, [record],
+    )
+    assert verdict["status"] == "FAILED"
+    assert "forbidden" in verdict["evidence"]
+    assert "timed out" not in verdict["evidence"]
+
+
+@pytest.mark.parametrize("diagnostics,expected", [
+    ({"return_code": 0, "stderr": ""}, "EXPLOITED"),
+    ({"return_code": 28, "stderr": ""}, "ERROR"),
+    ({"return_code": -1, "stderr": "Command timed out after 10s"}, "ERROR"),
+    ({"return_code": 0, "timed_out": True}, "ERROR"),
+    ({"return_code": 7, "stderr": "Connection refused"}, "ERROR"),
+])
+def test_transport_diagnostics_remain_authoritative_over_response_content(diagnostics, expected):
+    verdict = _synthesize_exploit_result(
+        {"type": "data_exposure", "service": "http", "port": 80}, [{
+            "tool": "http_get", "args": {"url": "http://192.0.2.20/"},
+            "result": json.dumps({"stdout": "password=example\ntimeout=20\nlast_error=connection refused", **diagnostics}),
+        }],
+    )
+    assert verdict["status"] == expected
+
+
+def test_http_path_list_retains_a_strict_primary_endpoint():
+    finding = _enrich_finding_structure({
+        "device_ip": "192.0.2.20", "service": "http", "port": 80,
+        "type": "directory_listing", "endpoint": "/backup/, /config/",
+    }, strict_schema=True)
+    assert finding["endpoint"] == "/backup/"
+    assert finding["endpoints"] == ["/backup/", "/config/"]
+
+    for url, accepted in [
+        ("http://192.0.2.20/backup/", True),
+        ("http://192.0.2.21/backup/", False),
+        ("http://192.0.2.20:8080/backup/", False),
+        ("http://192.0.2.20/config/", False),
+    ]:
+        result = _synthesize_exploit_result(finding, [{
+            "tool": "http_get", "args": {"url": url}, "evidence_ref": "proof",
+            "result": {"status_code": 200, "body": "<h1>Index of /backup/</h1>", "return_code": 0},
+        }])
+        assert (result["status"] == "EXPLOITED") is accepted
+
+    for endpoint in ("/reports/a,b", "/search?q=a,b", "/search?q=a, /config/"):
+        normalized = _enrich_finding_structure({"service": "http", "endpoint": endpoint})
+        assert normalized["endpoint"] == endpoint
+
+
+@pytest.mark.parametrize("body,status", [
+    ("User-agent: *\nDisallow: /admin/\nDisallow: /backup/", "EXPLOITED"),
+    ("User-agent: *\nDisallow:", "FAILED"),
+    ("User-agent: *\nDisallow: /", "FAILED"),
+    ("Server: nginx/1.26.3", "FAILED"),
+    ("User-agent: *\n# Disallow: /admin/", "FAILED"),
+    ("User-agent: *\nDisallow:\n/admin/", "FAILED"),
+])
+def test_robots_paths_require_directives_on_the_declared_resource(body, status):
+    result = _synthesize_exploit_result(
+        {"type": "info_disclosure", "service": "http", "port": 80,
+         "device_ip": "192.0.2.20", "endpoint": "/robots.txt"},
+        [{"tool": "curl_headers", "args": {"url": "http://192.0.2.20/robots.txt"},
+          "result": {"stdout": "HTTP/1.1 200 OK\nServer: nginx/1.26.3\n\n" + body,
+                     "return_code": 0}}],
+    )
+    assert result["status"] == status
+    if status == "EXPLOITED":
+        assert "not established" in result["evidence"]

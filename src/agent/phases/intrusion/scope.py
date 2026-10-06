@@ -2,6 +2,7 @@
 from __future__ import annotations
 import ipaddress
 import re
+import shlex
 from urllib.parse import urlsplit
 
 
@@ -9,10 +10,13 @@ from urllib.parse import urlsplit
 _INTRUSION_DIRECT_TARGET_FIELDS = frozenset({"ip", "host", "broker", "target", "url"})
 
 
+# A slash after a command name identifies a directory component (e.g.
+# .ssh/authorized_keys), not that executable. Absolute executable paths such
+# as /usr/bin/ssh still match; later network commands remain checked.
 _INTRUSION_NETWORK_COMMAND_RE = re.compile(
     r"\b(?:ping6?|nmap|nc|ncat|netcat|ssh|scp|sftp|curl|wget|telnet|ftp|"
     r"mosquitto_(?:sub|pub)|mysql|redis-cli|snmp(?:get|walk)?|smbclient|"
-    r"rpcclient|traceroute|tracepath|dig|host|python(?:3)?|perl|ruby|node)\b",
+    r"rpcclient|traceroute|tracepath|dig|host|python(?:3)?|perl|ruby|node)\b(?!/)",
     re.IGNORECASE,
 )
 
@@ -65,6 +69,37 @@ def _intrusion_scope_candidates(value: object) -> list[tuple[str, ipaddress._Bas
             continue
         candidates.append((token, network))
     return candidates
+
+
+
+def _static_local_inspection(command: str) -> bool:
+    """Recognize a small static read-only pipeline, never a shell program.
+
+    Tool names used as grep patterns or which arguments are data. Keep the
+    existing conservative check for substitutions, interpreters, control flow,
+    arbitrary redirects, malformed quoting, or any other command.
+    """
+    if re.search(r"[`\n\r]|\$(?:[({]|[A-Za-z0-9_@*?!#-])", command):
+        return False
+    command = command.replace("2>/dev/null", " ")
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="|&;()<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return False
+    expect_command = True
+    for token in tokens:
+        if token == "|" and not expect_command:
+            expect_command = True
+        elif token and set(token) <= set("|&;()<>"):
+            return False
+        elif expect_command:
+            if token not in {"ls", "grep", "head", "tail", "which"}:
+                return False
+            expect_command = False
+    return bool(tokens) and not expect_command
 
 
 def _intrusion_scope_violation(
@@ -167,7 +202,8 @@ def _intrusion_scope_violation(
         # derive a destination from a route, hostname, or shell variable. The
         # harness cannot authorize that destination, so fail closed. Local
         # inspection commands (ip route, ip neigh, cat, id, etc.) remain free.
-        if _INTRUSION_NETWORK_COMMAND_RE.search(command) and not candidates:
+        if (_INTRUSION_NETWORK_COMMAND_RE.search(command) and not candidates
+                and not _static_local_inspection(command)):
             return refusal(
                 "intrusion_command_destination_unverifiable",
                 field,

@@ -620,3 +620,61 @@ def test_batch_process_metrics_are_propagated_and_weighted_by_attempts():
     assert aggregate["format_fallback_rate"] == 0.1
     assert aggregate["tool_error_rate"] == 0.1
     assert aggregate["total_cost_usd"] == 0.2
+
+
+def test_api_batch_tracks_current_run_and_cost_after_partial_failure(tmp_path, monkeypatch):
+    """Reload state must follow each worker, including costs before an exception."""
+    from src.api.routes import pipeline as route
+    from unittest.mock import patch
+
+    first = Mock(run_dir=tmp_path / 'first')
+    second = Mock(run_dir=tmp_path / 'second')
+    first.tracker.total_cost.return_value = 0.4
+    second.tracker.total_cost.return_value = 0.2
+
+    def first_run(*, stream_callback, stop_event):
+        assert route.active_run_directory() == str(first.run_dir)
+        stream_callback({'type': 'deploy_start'})
+        assert route.get_status()['deploy_status'] == 'deploying'
+        stream_callback({'type': 'deploy_done', 'success': True})
+        stream_callback({'type': 'phase_start', 'phase': 3, 'name': 'vuln_analysis'})
+        stream_callback({'type': 'device_start', 'device_id': 's1-web'})
+        stream_callback({'type': 'device_done', 'device_id': 's1-web'})
+        stream_callback({'type': 'phase_done', 'phase': 3, 'name': 'vuln_analysis', 'cost_usd': 0.3})
+        state = route.get_status()
+        assert state['phase_name'] == 'vuln_analysis'
+        assert state['current_devices'] == state['devices_done'] == ['s1-web']
+        assert state['phases_done'][0]['name'] == 'vuln_analysis'
+        assert state['deploy_status'] == 'deployed'
+        stream_callback({'type': 'pipeline_done', 'run_dir': str(first.run_dir), 'total_cost_usd': 0.4})
+        return {'report': 'completed'}
+
+    def second_run(*, stream_callback, stop_event):
+        assert route.active_run_directory() == str(second.run_dir)
+        state = route.get_status()
+        assert state['phase_name'] == ''
+        assert state['phases_done'] == state['current_devices'] == state['devices_done'] == []
+        assert state['deploy_status'] is None
+        assert state['cost'] == 0.4
+        stream_callback({'type': 'phase_start', 'phase': 1, 'name': 'graph_analysis'})
+        stream_callback({'type': 'phase_done', 'phase': 1, 'cost_usd': 0.1})
+        raise RuntimeError('Provider failed after consuming another 0.1')
+
+    first.run.side_effect = first_run
+    second.run.side_effect = second_run
+    monkeypatch.setattr('src.agent.pipeline.Pipeline', Mock(side_effect=[first, second]))
+    monkeypatch.setattr('src.agent.provider.LLMProvider', Mock(return_value=SimpleNamespace(model='test')))
+    monkeypatch.setattr('dotenv.load_dotenv', lambda *_: None)
+    monkeypatch.setattr('src.benchmark.evaluator.evaluate', Mock(side_effect=ValueError('No evaluation fixture')))
+    monkeypatch.setattr('src.agent.batch._phase5_summary', lambda *_: {'status': 'completed'})
+    monkeypatch.setattr(route, 'batch_run_status', lambda *_args, **_kwargs: 'completed')
+    with patch.dict(route._state, {'recent_events': [], 'queue': None, 'loop': None,
+                                  'stop_event': None, 'running': True, 'cost': 0.0}):
+        route._batch_thread(route.BatchRequest(batch_ids=['1', '2'], model='test', provider='local'))
+        state = route.get_status()
+        assert state['cost'] == 0.6
+        assert state['running'] is False
+        assert route.active_run_directory() is None
+        done = next(e for e in state['recent_events'] if e['type'] == 'batch_done')
+        assert done['results'][1]['status'] == 'failed'
+        assert done['results'][1]['cost_usd'] == 0.2

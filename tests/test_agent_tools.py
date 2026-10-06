@@ -725,3 +725,20 @@ def test_openai_tool_execution_preserves_thread_local_context():
 
     assert result == "done"
     assert seen_results == ['{"vuln_id": "VULN-CTX"}']
+
+
+@pytest.mark.parametrize("password", ["", "two words'quoted"])
+def test_mysql_credential_probe_never_prompts_or_requires_system_table_access(password):
+    from src.agent.tools.recon_tools import try_credential
+    with patch("src.agent.tools.recon_tools._run") as execute:
+        execute.return_value = {"stdout": "root@%\n", "stderr": "", "return_code": 0}
+        result = json.loads(try_credential("192.0.2.14", "mysql", "root", password, port=3307))
+        command = execute.call_args.args[0]
+        assert command[:3] == ["mysql", "--no-defaults", "--protocol=TCP"]
+        assert ("--password=" + password if password else "--skip-password") in command
+        assert "-p" not in command and "2>/dev/null" not in command
+        assert "-P3307" in command
+        assert command[-1] == "SELECT CURRENT_USER();"
+        assert result["authenticated"] is True
+        execute.return_value = {"stdout": "", "stderr": "Access denied", "return_code": 1}
+        assert json.loads(try_credential("192.0.2.14", "mysql", "root", password))["authenticated"] is False

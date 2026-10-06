@@ -274,12 +274,33 @@ class TestSealedSummaryTrustBoundary:
 
 
 class TestRunEndpoints:
+    def test_live_worker_marks_only_its_run_running_without_rewriting_metadata(self, tmp_path, monkeypatch):
+        from src.api.routes import pipeline
+
+        run_dir = tmp_path / "active-run"
+        run_dir.mkdir()
+        (run_dir / "scenario_meta.json").write_text('{"scenario_id":"1"}')
+        unfinished = tmp_path / "old-unfinished-run"
+        unfinished.mkdir()
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        monkeypatch.setattr(pipeline, "_state", {"running": True, "run_dir": str(run_dir)})
+        assert get_run("active-run")["status"] == "running"
+        assert get_benchmark()[0]["status"] == "running"
+        assert {row["id"]: row["status"] for row in list_runs()} == {
+            "active-run": "running", "old-unfinished-run": "incomplete",
+        }
+        pipeline._state["running"] = False
+        assert get_run("active-run")["status"] == "incomplete"
+        assert not (run_dir / "run_meta.json").exists()
+
     @pytest.mark.parametrize("sealed", [False, True])
     def test_provider_diagnostics_follow_existing_run_visibility(self, tmp_path, monkeypatch, sealed):
         run_dir = tmp_path / "diagnostic-run"
         run_dir.mkdir()
         (run_dir / "run_meta.json").write_text(json.dumps({
             "status": "failed", "benchmark_split": "eval-sealed" if sealed else "dev-public",
+            "run_error": {"phase": "graph_analysis", "exception_class": "APIConnectionError",
+                          "message": "private endpoint and credentials"},
         }))
         content = '{"schema_version":"model.obs1","event":"terminal"}\n'
         (run_dir / "provider_events.jsonl").write_text(content)
@@ -291,6 +312,15 @@ class TestRunEndpoints:
         else:
             assert get_run_file("diagnostic-run", "provider_events.jsonl")["content"] == content
         assert _run_status(run_dir) == "failed"
+        row = runs._benchmark_entry({"run_dir": run_dir, "scenario": "S1",
+                                     "sealed": sealed, "model": "qwen3.8:27b"}, compact=True)
+        if sealed:
+            assert "completion" not in row
+        else:
+            assert row["completion"]["failure_phase"] == 1
+            assert row["completion"]["failure_cause"] == "provider_connection_error"
+            assert row["score"] is None
+        assert "private endpoint" not in json.dumps(row)
 
     def test_provider_diagnostics_do_not_change_score_fingerprint(self, tmp_path):
         run_dir = tmp_path / "diagnostic-run"
