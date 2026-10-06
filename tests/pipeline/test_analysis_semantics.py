@@ -6,6 +6,7 @@ from src.agent.exploit_evidence import (
 from src.agent.phases.analysis.evidence import (
     _enrich_finding_structure,
     _sanitize_suggested_tools,
+    bound_scan_evidence,
 )
 from src.agent.finding_policy import (
     finding_semantic_issue as _finding_semantic_issue,
@@ -57,6 +58,25 @@ def test_full_phase3_missing_port_key_is_normalized_to_null_and_passes_queue(tmp
     (tmp_path / "queue.json").write_text(json.dumps({"vulnerabilities": [finding]}))
     ok, msg = validate_json_vuln_queue("queue.json", output_dir=tmp_path)
     assert ok, msg
+
+
+def test_bound_scan_evidence_cuts_raw_output_but_keeps_findings():
+    long_result = json.dumps({"stdout": "x" * 5000, "return_code": 0})
+    scan_data = {
+        "scan_results": {
+            "ssh": [{"tool": "ssh_audit", "kwargs": {}, "result": long_result}],
+            "http": [{"tool": "curl_headers", "kwargs": {},
+                      "result": json.dumps({"stdout": "ok", "return_code": 0})}],
+        },
+        "findings": [{"type": "weak_cipher", "service": "ssh", "port": 22}],
+    }
+    bounded = bound_scan_evidence(scan_data)
+    cut = bounded["scan_results"]["ssh"][0]["result"]
+    assert len(cut) < len(long_result)
+    assert f"evidence truncated: {len(long_result)} chars total" in cut
+    assert bounded["scan_results"]["ssh"][0]["_evidence_truncated"] is True
+    assert set(bounded["scan_results"]) == {"ssh", "http"}
+    assert bounded["findings"] == scan_data["findings"]
 
 
 def test_s15_generic_api_fixture_remains_a_testable_model_candidate():

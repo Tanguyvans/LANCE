@@ -10,6 +10,7 @@ from src.agent.core.memo import _looks_unusable_model_memo
 from src.agent.core.executor import EvidenceWriteError
 from src.agent.cost_tracker import BudgetExceeded
 from src.agent.phases.analysis import block_recovery
+from src.agent.phases.analysis.evidence import bound_scan_evidence
 from src.agent.phases.analysis.prompts import ROLE_SPECIFIC_RULES
 from src.agent.phases.analysis.context import (
     AnalysisContext, ScanResult, DeviceResult, DeviceAnalysisResult,
@@ -111,10 +112,15 @@ def build_device_prompt(context: AnalysisContext, scan: ScanResult, device: dict
     deliverable_file = f"03_device_{device_id}.json"
 
     # Compact models receive a bounded projection with an artifact
-    # reference. Full models receive the complete scanner evidence.
+    # reference. Full models receive the complete scanner evidence, with
+    # only verbose raw output bounded so heavy devices (e.g. routers)
+    # fit the per-device time budget. Deterministic findings travel
+    # separately in full and are never cut here.
     scan_for_prompt = project_scan(
         context.profile, scan_data, device_id
     )
+    if not context.profile.routed_tools:
+        scan_for_prompt = bound_scan_evidence(scan_for_prompt)
 
     variables = {**context.variables}
     if device.get("public_context"):
