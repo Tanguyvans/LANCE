@@ -41,6 +41,24 @@ def test_full_phase3_normalizes_application_protocol_to_transport():
     assert finding["protocol"] == "tcp"
 
 
+def test_full_phase3_missing_port_key_is_normalized_to_null_and_passes_queue(tmp_path):
+    from src.agent.validators import validate_json_vuln_queue
+
+    finding = {
+        "id": "VULN-001",
+        "service": "ssh",
+        "protocol": "tcp",
+        "endpoint": "",
+        "product": "Dropbear",
+        "version": "2020.81",
+    }
+    _enrich_finding_structure(finding, strict_schema=True)
+    assert finding["port"] is None
+    (tmp_path / "queue.json").write_text(json.dumps({"vulnerabilities": [finding]}))
+    ok, msg = validate_json_vuln_queue("queue.json", output_dir=tmp_path)
+    assert ok, msg
+
+
 def test_s15_generic_api_fixture_remains_a_testable_model_candidate():
     finding = {
         "type": "data_exposure",

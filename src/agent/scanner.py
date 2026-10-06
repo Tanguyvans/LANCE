@@ -17,6 +17,7 @@ from urllib.parse import urljoin, urlsplit
 from src.benchmark.tool_registry import SERVICE_ALIASES
 from src.agent.cost_tracker import BudgetExceeded
 from src.agent.core.executor import EvidenceWriteError
+from src.agent.tools.outcomes import tool_execution_failed
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +67,9 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
     ],
     "telnet": [
         ("nmap_scan", {"target": "{ip}", "ports": "23", "skip_discovery": True}),
+    ],
+    "dns": [
+        ("nmap_scan", {"target": "{ip}", "ports": "53", "skip_discovery": True}),
     ],
     "mysql": [
         ("nmap_scan", {
@@ -755,8 +759,7 @@ def _extract_http_data_exposure(entries: list[dict], device: dict, svc_name: str
     ]
 
     findings = []
-    exposed_urls = []
-    evidence_parts = []
+    exposures: dict[tuple[str, str, int], tuple[list[str], list[str]]] = {}
 
     # Paths to SKIP (admin login pages are not data exposure — it's auth surface)
     SKIP_PATHS = ("/cgi-bin/luci", "/admin", "/login")
@@ -770,6 +773,18 @@ def _extract_http_data_exposure(entries: list[dict], device: dict, svc_name: str
         if rc != 0 or not stdout:
             continue
         url = entry.get("kwargs", {}).get("url", "")
+        try:
+            origin = urlsplit(url)
+            scheme = origin.scheme.casefold()
+            if scheme not in {"http", "https"} or not origin.hostname:
+                continue
+            if device.get("ip") and origin.hostname != device["ip"]:
+                continue
+            port = origin.port if origin.port is not None else (443 if scheme == "https" else 80)
+            if not 0 < port <= 65535:
+                continue
+        except (TypeError, ValueError):
+            continue
 
         # Skip 404s and admin login pages
         if "404 Not Found" in stdout:
@@ -791,13 +806,16 @@ def _extract_http_data_exposure(entries: list[dict], device: dict, svc_name: str
                 break
 
         if matches:
+            exposed_urls, evidence_parts = exposures.setdefault(
+                (origin.hostname, scheme, port), ([], []),
+            )
             exposed_urls.append(url)
             for m in matches[:3]:
                 start = max(0, m.start() - 20)
                 end = min(len(stdout), m.end() + 30)
                 evidence_parts.append(f"{url}: ...{stdout[start:end].strip()}...")
 
-    if exposed_urls:
+    for (_host, scheme, port), (exposed_urls, evidence_parts) in exposures.items():
         # Static backup/config files served via HTTP → HIGH (download required, not live API)
         # Live API endpoints exposing credentials → CRITICAL (direct access)
         is_static_file = any(
@@ -806,7 +824,7 @@ def _extract_http_data_exposure(entries: list[dict], device: dict, svc_name: str
         )
         severity = "HIGH" if is_static_file else "CRITICAL"
         findings.append(_make_finding(
-            device, "data_exposure", severity, svc_name, 80,
+            device, "data_exposure", severity, scheme, port,
             f"Sensitive data exposed via HTTP at: {', '.join(exposed_urls)}",
             "\n".join(evidence_parts[:3])[:400],
             status="confirmed",
@@ -2108,6 +2126,8 @@ def extract_findings(
         ):
             # S17 has two distinct contracts on the same /install route.
             key = (f["type"], f.get("port"), f.get("endpoint", ""), f.get("details", ""))
+        elif f["type"] == "data_exposure":
+            key = (f["type"], f.get("service"), f.get("port"))
         else:
             key = (f["type"], f.get("port"), f.get("endpoint", "") if f["type"] == "broken_access_control" else "")
         if key in seen:
@@ -2214,14 +2234,7 @@ def run_scanner(
                 "findings_count": len(findings),
             })
 
-        for entries in scan_results.values():
-            for entry in entries:
-                try:
-                    result = json.loads(entry["result"])
-                except (ValueError, TypeError):
-                    continue
-                if isinstance(result, dict) and (result.get("error") or result.get("return_code", 0) not in (0, None)):
-                    errors.append(f"{device_id}: {entry.get('tool') or 'unsupported service'} returned an error")
+        errors.extend(_fold_repeated_tool_errors(device_id, scan_results))
         return device_id, {"scan_results": scan_results, "findings": findings,
                            **({"error": "; ".join(errors)} if errors else {})}
 
@@ -2269,6 +2282,27 @@ def run_scanner(
     total_findings = sum(len(d["findings"]) for d in results.values())
     print(f"\n  Scanning complete: {total_findings} total findings extracted")
     return results
+
+
+def _fold_repeated_tool_errors(device_id: str, scan_results: dict) -> list[str]:
+    """Collect one error per failed tool call, folding exact repeats.
+
+    Identical failures (e.g. repeated mqtt_listen attempts on one broker)
+    describe one symptom: they are folded with a repeat count so the
+    status does not read as several distinct events.
+    """
+    tool_errors: list[str] = []
+    for entries in scan_results.values():
+        for entry in entries:
+            if tool_execution_failed(entry.get("tool", ""), entry["result"]):
+                tool_errors.append(
+                    f"{device_id}: {entry.get('tool') or 'unsupported service'} returned an error"
+                )
+    folded: list[str] = []
+    for message in dict.fromkeys(tool_errors):
+        repeats = tool_errors.count(message)
+        folded.append(message if repeats == 1 else f"{message} (×{repeats})")
+    return folded
 
 
 def _compute_summary(findings: list[dict]) -> dict:

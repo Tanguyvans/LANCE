@@ -18,6 +18,7 @@ from src.agent.phases.graph.recovery import (
     ledger_lines,
     recovery_config,
     recovery_section_headings,
+    scaled_recovery_tokens,
 )
 from src.agent.pipeline import Pipeline
 from src.agent.registry import AGENTS
@@ -215,6 +216,20 @@ def test_recovery_caps_and_truncation_predicate():
     assert is_truncation({"finish_reason": "stop"}) is False
     assert is_truncation({}) is False
     assert is_truncation(None) is False
+
+
+def test_recovery_tokens_scale_with_topology_but_stay_bounded(monkeypatch):
+    monkeypatch.delenv("LANCE_PHASE1_RECOVERY_MAX_TOKENS", raising=False)
+    small = scaled_recovery_tokens(2, 2048)
+    assert small > 2048
+    s12_scale = scaled_recovery_tokens(35, 2048)
+    assert s12_scale > small
+    assert scaled_recovery_tokens(10_000, 2048) == 8192
+
+
+def test_explicit_recovery_token_knob_wins_untouched(monkeypatch):
+    monkeypatch.setenv("LANCE_PHASE1_RECOVERY_MAX_TOKENS", "1024")
+    assert scaled_recovery_tokens(35, 1024) == 1024
 
 
 def test_recovery_headings_match_template():

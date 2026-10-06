@@ -9,6 +9,7 @@ dist/
 wandb/
 build/
 .env
+.venv/
 .venv-test/
 output/
 data/

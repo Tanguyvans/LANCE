@@ -69,6 +69,11 @@ def _enrich_finding_structure(
                 finding[field] = ""
         if finding.get("endpoint") is None:
             finding["endpoint"] = ""
+        if "port" not in finding:
+            # The strict queue validator requires the key to be present
+            # (null is accepted and means "no observed port"). One model
+            # finding omitting it failed the whole Phase 3 aggregation.
+            finding["port"] = None
 
     service = str(finding.get("service", "")).strip().casefold()
     if service and not str(finding.get("protocol", "")).strip():

@@ -149,6 +149,11 @@ SERVICE_TOOLS: dict[str, dict[str, tuple[str, ...]]] = {
         "verification": ("telnet_connect", "try_credential", "nmap_scan"),
         "intrusion": ("telnet_connect", "try_credential"),
     },
+    "dns": {
+        "recon": ("nmap_scan",),
+        "verification": ("nmap_scan",),
+        "intrusion": (),
+    },
 }
 
 
@@ -169,6 +174,12 @@ SERVICE_ALIASES: dict[str, str] = {
     "websocket": "mqtt-ws",
     "ws": "mqtt-ws",
     "port-9001": "mqtt",
+    # nmap labels MQTT-over-WebSocket port 9001 as tor-orport; the scanner
+    # already probes 9001 in its mqtt matrix, so route it there instead of
+    # emitting "no scanner rule".
+    "tor-orport": "mqtt",
+    # nmap service name for DNS (routers expose port 53).
+    "domain": "dns",
     "telnet": "telnet",
     "mysql": "mysql",
     "mysql?": "mysql",

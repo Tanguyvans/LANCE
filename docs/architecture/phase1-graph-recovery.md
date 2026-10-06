@@ -63,7 +63,14 @@ for run status while remaining distinguishable in `phase_done`.
 | --- | --- | --- |
 | `LANCE_PHASE1_RECOVERY_MAX_ATTEMPTS` | 2 | Total save-only chats |
 | `LANCE_PHASE1_RECOVERY_MAX_TURNS` | 4 | Turn cap per attempt (below the full 20) |
-| `LANCE_PHASE1_RECOVERY_MAX_TOKENS` | 2048 | Output cap per attempt (below the full 4096) |
+| `LANCE_PHASE1_RECOVERY_MAX_TOKENS` | 2048 | Base output cap per attempt (below the full 4096); an explicit value wins untouched |
+
+Unless the operator sets `LANCE_PHASE1_RECOVERY_MAX_TOKENS`, the base
+grows by 64 tokens per declared device, capped at 8192
+(`scaled_recovery_tokens` in `src/agent/phases/graph/recovery.py`).
+S12 (34 declared services) truncated twice at the flat 2048 cap; small
+topologies stay near the historical value while large ones get bounded
+headroom instead of a guaranteed second truncation.
 
 These bound this harness's requests. The remote provider's actual output
 cap is unknown from here and is never asserted; repeated truncation

@@ -306,6 +306,53 @@ def test_run_scanner_keeps_phase2_snapshot_out_of_phase3_artifact(tmp_path):
     assert result["plc"]["findings"] == []
 
 
+def test_nmap_service_labels_tor_orport_and_domain_have_scanner_rules():
+    from src.agent import scanner as scanner_mod
+
+    calls = []
+
+    def ok_tool(**kwargs):
+        calls.append(kwargs)
+        return json.dumps({"stdout": "ok", "return_code": 0})
+
+    tools_map = {
+        "mqtt_listen": ok_tool,
+        "nmap_scan": ok_tool,
+        "http_request": ok_tool,
+    }
+    device = {
+        "id": "router", "ip": "192.0.2.1", "role": "test-role",
+        "services": [
+            {"name": "domain", "port": 53},
+            {"name": "tor-orport", "port": 9001},
+        ],
+    }
+    diagnostics = []
+    scanner_mod.scan_device(device, tools_map, diagnostics=diagnostics)
+    assert diagnostics == []
+    assert {call.get("ports") for call in calls} >= {"53", "9001"}
+
+
+def test_repeated_tool_failures_fold_into_one_counted_error():
+    from src.agent import scanner as scanner_mod
+
+    failed = json.dumps({"stdout": "", "stderr": "boom", "return_code": 1})
+    scan_results = {
+        "mqtt": [
+            {"tool": "mqtt_listen", "kwargs": {}, "result": failed},
+            {"tool": "mqtt_listen", "kwargs": {}, "result": failed},
+        ],
+        "http": [
+            {"tool": "curl_headers", "kwargs": {},
+             "result": json.dumps({"stdout": "ok", "return_code": 0})},
+        ],
+    }
+    assert scanner_mod._fold_repeated_tool_errors("s8-mqtt", scan_results) == [
+        "s8-mqtt: mqtt_listen returned an error (×2)"
+    ]
+    assert scanner_mod._fold_repeated_tool_errors("ok-dev", {"http": scan_results["http"]}) == []
+
+
 class TestScannerEvidenceExtraction:
     def test_make_finding_infers_service_from_empty_standard_port(self):
         from src.agent import scanner as scanner_mod
