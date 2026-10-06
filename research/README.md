@@ -12,8 +12,8 @@ présente les comportements implémentés, les contrats retenus et les procédur
 | 2026-09-29 | [Couverture du benchmark](2026-09-29-benchmark-coverage/README.md) | Que couvrent le corpus, les exécutions et les preuves admises ? | Diagnostic reproduit ; campagne réelle Qwen UMONS S1–S12 en cours depuis le 4 octobre 2026 |
 | 2026-09-29 | [Scalabilité du contexte](2026-09-29-context-scalability/README.md) | Comment conserver les preuves utiles dans le contexte des six phases ? | Nouvelle revue du pipeline ; plan historique du rapport conservé comme archive |
 | 2026-09-29 (classement) | [Spécialisation IoMT](2026-09-29-iomt/README.md) | Comment adapter et évaluer LANCE sur des réseaux médicaux simulés ? | Proposition de sujet de TFE ; début inconnu |
-| 2026-10-05 | [Validation Qwen UMONS S1–S12](2026-10-05-benchmark-coverage/README.md) | Quels résultats et défauts les runs réels démontrent-ils ? | Rapport intermédiaire des premiers runs ; validations correctives en cours |
-| 2026-10-05 | [Corrections LANCE et validation ciblée](2026-10-05-corrections-lance/README.md) | Quels défauts motivent chaque correction, et que prouvent les validations ? | 14 corrections déployées, C15–C20 locales ; S2 complet, S1 partiel, S12 en échec ; bilan argumenté, validations réelles en cours ; suivi planifié désactivé |
+| 2026-10-05 | [Validation Qwen UMONS S1–S12](2026-10-05-benchmark-coverage/README.md) | Quels résultats et défauts les runs réels démontrent-ils ? | [Run1](2026-10-05-corrections-lance/run-01.tex), gel 2026-10-05 11:32 ; scores historiques préservés, corrections ultérieures séparées |
+| 2026-10-05 | [Diagnostic du pipeline, Run1 et Run2](2026-10-05-corrections-lance/README.md) | Que montrent les runs sélectionnés sur les erreurs de pipeline, puis séparément le lot initial et la campagne corrective ? | Diagnostic révisé 2026-10-06 10:34 ; QA source/PDF le 6 octobre 2026 à 10:41 par Codex et un relecteur indépendant ([validation](2026-10-05-corrections-lance/validation.md)). Inventaire : 2 done, 8 partial, 2 failed ; objectif S1–S12 non atteint. |
 
 ## Lire les rapports
 
@@ -24,7 +24,9 @@ Les deux rapports spécialisés développent les constats et les protocoles :
 
 - [Couverture et validité de l'évaluation — PDF](2026-09-29-benchmark-coverage/report.pdf) · [LaTeX](2026-09-29-benchmark-coverage/report.tex).
 - [Campagne Qwen UMONS S1–S12 — rapport intermédiaire PDF](2026-10-05-benchmark-coverage/validation-qwen-umons.pdf) · [LaTeX](2026-10-05-benchmark-coverage/validation-qwen-umons.tex). Révision : **2026-10-05 11:48 (Europe/Brussels, UTC+02:00)** ; gel à 11:32 : deux diagnostics S1 séparés, S1 commun et rapports S2–S11, échec S12 sans score ; 14 archives, 1 582 empreintes. Premier lot terminé, validations des 14 corrections lancées sur S12 puis S1–S11 après CI et déploiement vérifiés. Rédaction Muse, corrections et contrôle Codex ; campagne en développement.
-- [Journal argumenté des corrections S1–S12 — PDF](2026-10-05-corrections-lance/report.pdf) · [LaTeX](2026-10-05-corrections-lance/report.tex). Chaque correction expose son déclencheur, sa justification, ses vérifications et les limites de validation ; priorité aux échecs et résultats partiels, sans campagne identique répétée. Révision : **2026-10-05 14:42 (Europe/Brussels, UTC+02:00)**.
+- [Diagnostic du pipeline — PDF](2026-10-05-corrections-lance/diagnostic-pipeline.pdf) · [LaTeX](2026-10-05-corrections-lance/diagnostic-pipeline.tex), révisé 2026-10-06 10:34. Trois pages inspectées par Codex et un relecteur indépendant le 6 octobre 2026 à 10:41 ; [validation documentaire](2026-10-05-corrections-lance/validation.md). L'objectif S1–S12 demeure non atteint.
+- [Run1 — PDF](2026-10-05-corrections-lance/run-01.pdf) · [LaTeX](2026-10-05-corrections-lance/run-01.tex), révision 2026-10-05 23:38 ; résultats et scores historiques préservés.
+- [Run2 — PDF](2026-10-05-corrections-lance/run-02.pdf) · [LaTeX](2026-10-05-corrections-lance/run-02.tex), révision 2026-10-06 00:49 ; même campagne corrective, objectif S1–S12 non atteint.
 - [Conservation des preuves et contexte — PDF](2026-09-29-context-scalability/report.pdf) · [LaTeX](2026-09-29-context-scalability/report.tex).
 
 Dernière révision des trois rapports : **2026-09-30 21:55
