@@ -48,3 +48,7 @@ voir `src/agent/results.py`), `git_commit` le code déployé.
 3. `LANCE_PHASE3_DEVICE_TIMEOUT_S=420` requis pour la campagne
    (override systemd sur `nato-fastapi`, vérifié via
    `systemctl show nato-fastapi -p Environment`).
+4. Budgets phase 6 (report) : base `LANCE_LOCAL_MOE_REPORT_PHASE_TIMEOUT`
+   (600 s) + `LANCE_REPORT_TIMEOUT_PER_SECTION_S` (10 s/carte), délai
+   par carte `LANCE_REPORT_SECTION_TIMEOUT` (45 s). Le total effectif
+   est tracé dans `phase6_timeout_s` du `run_meta.json`.

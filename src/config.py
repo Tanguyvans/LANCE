@@ -14,6 +14,11 @@ LOCAL_MOE_REPORT_PHASE_TIMEOUT = float(
     os.environ.get("LANCE_LOCAL_MOE_REPORT_PHASE_TIMEOUT", "600")
 )
 REPORT_SECTION_TIMEOUT = float(os.environ.get("LANCE_REPORT_SECTION_TIMEOUT", "45"))
+# Extra phase-6 budget per report card, so the global deadline scales with the
+# scenario instead of capping large ones. Measured ~8 s/card on S12 (local
+# 27b model); 10 s keeps headroom while REPORT_SECTION_TIMEOUT (45 s) stays
+# the per-call circuit breaker.
+REPORT_TIMEOUT_PER_SECTION_S = float(os.environ.get("LANCE_REPORT_TIMEOUT_PER_SECTION_S", "10"))
 
 # ── Network subnets ──────────────────────────────────────────────────────────
 

@@ -43,6 +43,7 @@ from src.config import (
     DEVICE_DEFAULT_PORTS,
     LOCAL_MOE_REPORT_PHASE_TIMEOUT,
     REPORT_SECTION_TIMEOUT,
+    REPORT_TIMEOUT_PER_SECTION_S,
     PHYSICAL_SUBNET,
 )
 from src.agent.prompt_manager import load_prompt

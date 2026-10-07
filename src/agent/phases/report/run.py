@@ -15,6 +15,19 @@ from src.agent.phases.report.validation import _local_report_memo_contradicts_co
 log = logging.getLogger(__name__)
 
 
+def report_phase_timeout_s(section_count: int) -> float:
+    """Scale the phase-6 writing deadline with the number of sections.
+
+    A fixed global budget cannot fit scenarios whose card count grows with
+    the findings (S12: 145 cards vs a 600 s budget). The base budget stays
+    operator-overridable; each card adds a bounded increment while
+    REPORT_SECTION_TIMEOUT remains the per-call circuit breaker.
+    """
+    base = max(0.01, float(runtime.LOCAL_MOE_REPORT_PHASE_TIMEOUT))
+    per_section = max(0.0, float(runtime.REPORT_TIMEOUT_PER_SECTION_S))
+    return max(0.01, base + per_section * max(0, int(section_count)))
+
+
 class ReportPhase:
 
     def _generate_phase6_context(self) -> None:
@@ -56,6 +69,10 @@ class ReportPhase:
             sections.write_object(self.run_dir, sections.MANIFEST, manifest)
             cards, summary = sections.build_cards(self.run_dir, getattr(self, "_run_results", {}))
             manifest["expected_sections"] = len(cards) + 1
+            # Extend the deadline once the workload is known; sections are
+            # written sequentially, one bounded LLM call each.
+            phase_timeout = report_phase_timeout_s(len(cards) + 1)
+            deadline = time.monotonic() + phase_timeout
             for index in range(len(cards) + 1):
                 if index == len(cards):
                     card = {"key": "summary", "kind": "summary", "title": "Synthèse exécutive",
@@ -209,7 +226,9 @@ class ReportPhase:
                 "phase6_sections": sections.MANIFEST, "phase6_section_count": len(manifest["sections"]),
                 "phase6_sections_usable": sum(e["status"] == "usable" for e in manifest["sections"]),
                 "phase6_finish_reason": manifest["sections"][-1].get("finish_reason") if manifest["sections"] else None,
-                "phase6_timeout_s": phase_timeout, "phase6_report_validation": validation_message,
+                "phase6_timeout_s": phase_timeout,
+                "phase6_timeout_per_section_s": float(runtime.REPORT_TIMEOUT_PER_SECTION_S),
+                "phase6_report_validation": validation_message,
             })
             if stream_callback:
                 stream_callback({"type": "phase_done", "phase": config.phase, "name": config.name,
