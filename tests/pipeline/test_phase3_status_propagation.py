@@ -113,10 +113,10 @@ def test_scanner_error_without_devices_is_not_completed(output_dir, mock_provide
     assert pipeline._phase3_execution_status == "executed_with_worker_errors"
 
 
-def test_scanner_errors_with_all_devices_analyzed_stay_completed():
+def test_scanner_errors_with_all_devices_analyzed_do_not_degrade_run():
     # S12 run 2026-10-07_122920: one mqtt_listen probe failed (x2) yet all
-    # 35 devices were analyzed. A recovered scanner transient must not
-    # degrade the phase once every device has its analysis.
+    # 35 devices were analyzed. The artifact keeps the device-errors label
+    # as information, but the run verdict stays completed.
     execution = AnalysisExecutionResult(
         scan=ScanResult(
             devices=[{"id": "s12-mqtt2"}],
@@ -128,11 +128,11 @@ def test_scanner_errors_with_all_devices_analyzed_stay_completed():
             worker_count=1,
         ),
     )
-    assert execution.status is not PhaseStatus.WORKER_ERRORS
-    assert execution.status.value == "completed"
+    assert execution.status is PhaseStatus.WORKER_ERRORS
+    assert execution.run_verdict is PhaseStatus.COMPLETED
 
 
-def test_scanner_errors_with_failed_device_stay_worker_errors():
+def test_scanner_errors_with_failed_device_degrade_run():
     execution = AnalysisExecutionResult(
         scan=ScanResult(
             devices=[{"id": "d1"}],
@@ -145,3 +145,4 @@ def test_scanner_errors_with_failed_device_stay_worker_errors():
         ),
     )
     assert execution.status is PhaseStatus.WORKER_ERRORS
+    assert execution.run_verdict is PhaseStatus.WORKER_ERRORS

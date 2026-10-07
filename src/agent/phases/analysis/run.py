@@ -662,7 +662,7 @@ class AnalysisPhase:
         self._phase3_execution_status = None
         execution = run_execution(build_context(self, config, stream_callback))
         self._phase3_execution_status = (
-            execution.status.value if execution.status is PhaseStatus.WORKER_ERRORS else None
+            execution.run_verdict.value if execution.run_verdict is PhaseStatus.WORKER_ERRORS else None
         )
         return execution
 
@@ -759,7 +759,7 @@ def aggregate_phase(
     finally:
         if context.decision_policy == "rules":
             context.tracker.end_phase()
-    status = execution.status if valid else PhaseStatus.FAILED
+    status = execution.run_verdict if valid else PhaseStatus.FAILED
     if not valid:
         errors.append(message)
         log.error("Phase 3 deterministic aggregation FAILED: %s", message)
@@ -809,6 +809,8 @@ def run(run, config, stream_callback=None) -> PhaseResult | str:
         return run._run_agent(config, stream_callback)
     run._phase3_execution_status = None
     result = execute(build_context(run, config, stream_callback))
+    # execute() already applied run_verdict in aggregate_phase: only work
+    # left undone degrades here.
     run._phase3_execution_status = (
         result.status.value if result.status is PhaseStatus.WORKER_ERRORS else None
     )

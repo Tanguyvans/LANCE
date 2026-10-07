@@ -94,16 +94,28 @@ class AnalysisExecutionResult:
 
     @property
     def status(self) -> PhaseStatus:
+        # Display status for the artifact and the evaluator: any recorded
+        # scanner or device error is preserved as information.
         if self.scan.skipped:
             return PhaseStatus.SKIPPED
-        if self.scan.surface_error or any(
+        if self.scan.scanner_errors or self.scan.surface_error or any(
             device.error is not None for device in self.analysis.devices
         ):
             return PhaseStatus.WORKER_ERRORS
-        # A scanner probe may fail and still leave every device analyzed
-        # (redundant observations, retry). Scanner errors stay recorded as
-        # information, but only a device left without analysis degrades the
-        # phase — including no device at all behind scanner errors.
+        return PhaseStatus.COMPLETED
+
+    @property
+    def run_verdict(self) -> PhaseStatus:
+        # Run verdict: a scanner probe may fail and still leave every
+        # device analyzed (redundant observations, retry). Only work left
+        # undone degrades the run — a surface error, a device error, or
+        # scanner errors behind zero analyzed devices.
+        if self.status is not PhaseStatus.WORKER_ERRORS:
+            return self.status
+        if self.scan.surface_error is not None:
+            return PhaseStatus.WORKER_ERRORS
+        if any(device.error is not None for device in self.analysis.devices):
+            return PhaseStatus.WORKER_ERRORS
         analyzed = sum(device.error is None for device in self.analysis.devices)
         if self.scan.scanner_errors and analyzed == 0:
             return PhaseStatus.WORKER_ERRORS
