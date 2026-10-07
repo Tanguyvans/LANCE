@@ -56,6 +56,7 @@ La [recherche sur le contexte](../research/2026-09-29-context-scalability/README
 
 - [Authentification et fournisseurs d'exécution](guides/provider-auth.md).
 - [LLM UMONS : connexion, choix des modèles et dépannage](guides/umons-llm.md).
+- [Accès labo nato-master via Tailscale depuis la machine dev](guides/lab-access-tailscale.md).
 - [Session administrateur de 8 heures](guides/admin-session.md).
 - [Scénarios manuels hors catalogue](guides/manual-scenarios.md).
 - [Branches et instances de développement sur nato](guides/development-instances.md).
