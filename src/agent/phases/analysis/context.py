@@ -96,9 +96,16 @@ class AnalysisExecutionResult:
     def status(self) -> PhaseStatus:
         if self.scan.skipped:
             return PhaseStatus.SKIPPED
-        if self.scan.scanner_errors or self.scan.surface_error or any(
+        if self.scan.surface_error or any(
             device.error is not None for device in self.analysis.devices
         ):
+            return PhaseStatus.WORKER_ERRORS
+        # A scanner probe may fail and still leave every device analyzed
+        # (redundant observations, retry). Scanner errors stay recorded as
+        # information, but only a device left without analysis degrades the
+        # phase — including no device at all behind scanner errors.
+        analyzed = sum(device.error is None for device in self.analysis.devices)
+        if self.scan.scanner_errors and analyzed == 0:
             return PhaseStatus.WORKER_ERRORS
         return PhaseStatus.COMPLETED
 

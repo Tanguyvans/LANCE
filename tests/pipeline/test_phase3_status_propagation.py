@@ -6,8 +6,14 @@ from src.agent.core import runtime
 from src.agent.pipeline import Pipeline
 from src.agent.registry import AgentConfig
 from src.agent.results import run_status
+from src.agent.phases.contracts import PhaseStatus
 from src.agent.phases.analysis import run as analysis
-from src.agent.phases.analysis.context import ScanResult, DeviceAnalysisResult, DeviceResult
+from src.agent.phases.analysis.context import (
+    AnalysisExecutionResult,
+    DeviceAnalysisResult,
+    DeviceResult,
+    ScanResult,
+)
 
 
 CONFIG = AgentConfig(
@@ -105,3 +111,37 @@ def test_scanner_error_without_devices_is_not_completed(output_dir, mock_provide
         pipeline._run_phase3(CONFIG)
 
     assert pipeline._phase3_execution_status == "executed_with_worker_errors"
+
+
+def test_scanner_errors_with_all_devices_analyzed_stay_completed():
+    # S12 run 2026-10-07_122920: one mqtt_listen probe failed (x2) yet all
+    # 35 devices were analyzed. A recovered scanner transient must not
+    # degrade the phase once every device has its analysis.
+    execution = AnalysisExecutionResult(
+        scan=ScanResult(
+            devices=[{"id": "s12-mqtt2"}],
+            observations={},
+            scanner_errors=("s12-mqtt2: mqtt_listen returned an error (×2)",),
+        ),
+        analysis=DeviceAnalysisResult(
+            devices=(DeviceResult(device_id="s12-mqtt2"),),
+            worker_count=1,
+        ),
+    )
+    assert execution.status is not PhaseStatus.WORKER_ERRORS
+    assert execution.status.value == "completed"
+
+
+def test_scanner_errors_with_failed_device_stay_worker_errors():
+    execution = AnalysisExecutionResult(
+        scan=ScanResult(
+            devices=[{"id": "d1"}],
+            observations={},
+            scanner_errors=("d1: probe failed",),
+        ),
+        analysis=DeviceAnalysisResult(
+            devices=(DeviceResult(device_id="d1", error="worker failed"),),
+            worker_count=1,
+        ),
+    )
+    assert execution.status is PhaseStatus.WORKER_ERRORS
