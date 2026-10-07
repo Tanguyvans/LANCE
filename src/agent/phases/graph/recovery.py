@@ -384,6 +384,12 @@ class GraphRecoveryPhase:
 
             def gated_save(*args, _original=original_save, _cell=cell, **kwargs):
                 if is_truncation(_cell["gate"]):
+                    gate = _cell.get("gate")
+                    if isinstance(gate, dict):
+                        # Latch the truncation: later turns share the same
+                        # metadata dict, and a trailing stop must not erase
+                        # the fact that a truncated save was proposed.
+                        gate["truncated_save_rejected"] = True
                     return json.dumps({
                         "ok": False,
                         "error_kind": "truncated_response",
@@ -478,7 +484,10 @@ class GraphRecoveryPhase:
         diagnosis stands untouched. ``BudgetExceeded`` is never converted:
         it propagates so the run records budget exhaustion.
         """
-        if not is_truncation(completion):
+        truncated_seen = is_truncation(completion) or bool(
+            isinstance(completion, dict) and completion.get("truncated_save_rejected")
+        )
+        if not truncated_seen:
             return False, (
                 "not_applicable: phase 1 did not end with finish_reason=length"
             )
