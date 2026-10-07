@@ -267,6 +267,20 @@ class AgentRunner:
         max_turns, max_tokens = self.execution_profile.limits_for_phase(
             config.phase, config.max_turns, config.max_tokens
         )
+        # Recon splits into a sweep agent plus per-batch coverage agents
+        # (each with a fresh, batch-scoped context) when the coverage plan
+        # spans more than one batch. Compact, blind, sealed, rules,
+        # dry-run and single-batch modes keep the single-agent path. This
+        # runs before the deliverable transaction so configs wrap raw tools.
+        if config.name == "recon":
+            from src.agent.phases.recon.subagents import (
+                run_recon_subagents,
+                subagents_eligible,
+            )
+            if subagents_eligible(self, config):
+                subagent_status = run_recon_subagents(self, config, tools, stream_callback)
+                if subagent_status is not None:
+                    return subagent_status
         local_intrusion_memo = (
             config.name == "intrusion" and self._uses_compact_local_moe()
         )

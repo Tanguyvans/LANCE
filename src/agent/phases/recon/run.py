@@ -12,6 +12,31 @@ from src.agent.core import runtime
 log = logging.getLogger(__name__)
 
 
+def expand_port_spec(spec: str) -> set[int]:
+    """Expand common nmap comma/range syntax into a coverage set."""
+    result: set[int] = set()
+    for token in str(spec).replace(" ", ",").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        token = re.sub(r"^[TtUu]:", "", token)
+        if token == "-":
+            result.update(range(1, 65536))
+            continue
+        try:
+            if "-" in token:
+                start, end = (int(part) for part in token.split("-", 1))
+                if 1 <= start <= end <= 65535:
+                    result.update(range(start, end + 1))
+            else:
+                port = int(token)
+                if 1 <= port <= 65535:
+                    result.add(port)
+        except ValueError:
+            continue
+    return result
+
+
 class ReconPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
@@ -434,7 +459,10 @@ class ReconPhase:
         )
         return "\n".join(lines)
 
-    def _apply_recon_tool_contract(self, tools: list[dict]) -> list[dict]:
+    def _apply_recon_tool_contract(
+        self, tools: list[dict], nodes: list | None = None,
+        require_baseline: bool = True,
+    ) -> list[dict]:
         """Enforce Recon invariants without prescribing the model's strategy.
 
         All models receive the same non-mutating reconnaissance surface and may
@@ -442,6 +470,12 @@ class ReconPhase:
         and use specialized probes.  The contract enforces only universal
         invariants: network scope, a discovery/read baseline, minimum per-device
         port coverage, and a non-empty validated deliverable at completion.
+
+        ``nodes`` scopes the coverage ledger to a batch (sub-agent recon);
+        ``None`` keeps the full topology ledger (single-agent recon).
+        ``require_baseline`` is False for coverage batches: the discovery
+        trio is a run-level requirement satisfied once by the sweep agent
+        and rechecked globally at merge time.
         """
         supporting_names = {
             tool["name"]
@@ -453,7 +487,8 @@ class ReconPhase:
 
         from src.agent.tools.graph_tools import _scenario_topology as topology
 
-        nodes = (topology or {}).get("nodes", [])
+        if nodes is None:
+            nodes = (topology or {}).get("nodes", [])
         plan = self._recon_scan_plan(nodes)
         expected_scans: dict[str, dict] = {
             item["target"]: item for item in plan
@@ -491,28 +526,7 @@ class ReconPhase:
             return None
 
         def _ports(spec: str) -> set[int]:
-            """Expand common nmap comma/range syntax into a coverage set."""
-            result: set[int] = set()
-            for token in str(spec).replace(" ", ",").split(","):
-                token = token.strip()
-                if not token:
-                    continue
-                token = re.sub(r"^[TtUu]:", "", token)
-                if token == "-":
-                    result.update(range(1, 65536))
-                    continue
-                try:
-                    if "-" in token:
-                        start, end = (int(part) for part in token.split("-", 1))
-                        if 1 <= start <= end <= 65535:
-                            result.update(range(start, end + 1))
-                    else:
-                        port = int(token)
-                        if 1 <= port <= 65535:
-                            result.add(port)
-                except ValueError:
-                    continue
-            return result
+            return expand_port_spec(spec)
 
         def _succeeded(result: str) -> bool:
             if str(result).startswith("Error"):
@@ -532,7 +546,7 @@ class ReconPhase:
 
         def _discover_targets(result: str) -> None:
             """In blind mode, discovery results become the mandatory scan ledger."""
-            if plan:
+            if plan or getattr(self, "target_network", None) is None:
                 return
             discovered: set[str] = set()
             try:
@@ -560,17 +574,17 @@ class ReconPhase:
 
         def _missing_requirements() -> list[dict]:
             missing: list[dict] = []
-            if "arp_scan" not in completed_calls:
+            if require_baseline and "arp_scan" not in completed_calls:
                 missing.append({"requirement": "local_discovery", "tool": "arp_scan"})
             for subnet in target_subnets:
                 marker = f"nmap_discovery:{subnet}"
-                if marker not in completed_calls:
+                if require_baseline and marker not in completed_calls:
                     missing.append({
                         "requirement": "subnet_discovery",
                         "target": subnet,
                         "tool": "nmap_discovery",
                     })
-            if "read_phase1" not in completed_calls:
+            if require_baseline and "read_phase1" not in completed_calls:
                 missing.append({
                     "requirement": "phase1_context",
                     "filename": "01_graph_analysis.md",
