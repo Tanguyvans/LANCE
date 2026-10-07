@@ -9,7 +9,10 @@ import threading
 
 from src.agent.core.executor import EvidenceWriteError, check_execution_limits
 from src.agent.cost_tracker import BudgetExceeded
-from src.agent.phases.verification.contract import _phase4_verification_plan
+from src.agent.phases.verification.contract import (
+    _phase4_verification_plan,
+    unconfirmed_with_diagnostics,
+)
 from src.agent.phases.verification.evidence import _exploit_relpath, _tool_records_for_vuln
 from src.agent.exploit_evidence import synthesize_exploit_result
 
@@ -168,12 +171,12 @@ def verify(run, config, stream_callback=None):
         run.tracker.start_phase(f"rules_verify_{identifier}")
         try:
             _verify_candidate(run, vuln, tools)
-            if identifier in run._phase4_execution_errors:
+            result = synthesize_exploit_result(vuln, _tool_records_for_vuln(run.run_dir, identifier), compact=False)
+            if unconfirmed_with_diagnostics(run, identifier, result):
                 run._phase4_execution_status = "executed_with_worker_errors"
         finally:
             run._exploit_tool_context.vulnerability = None
             run.tracker.end_phase()
-        result = synthesize_exploit_result(vuln, _tool_records_for_vuln(run.run_dir, identifier), compact=False)
         path = run.run_dir / _exploit_relpath(vuln.get("device_id", "unknown"), vuln.get("type", ""), identifier)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(result, indent=2), encoding="utf-8")
