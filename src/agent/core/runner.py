@@ -294,6 +294,12 @@ class AgentRunner:
             )
             tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
+        # Full-profile intrusion refuses a terminal finish while no action
+        # was attempted although entry points exist. Compact keeps its own
+        # completion machinery; the gate wraps the transacted save so a
+        # refused finish is never archived as an attempt.
+        if config.name == "intrusion" and not self._uses_compact_local_moe():
+            tools = self._apply_intrusion_noop_gate(tools, config.deliverable_file)
         # Full-profile Phase 1 keeps its autonomous report composition, but a
         # provider output truncation (finish_reason=length) with no validated
         # save is recoverable from the recorded graph observations. Compact

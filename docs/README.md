@@ -47,6 +47,7 @@ ne modifient pas le contrat de référence ci-dessus.
 - [Rédaction du rapport par sections](architecture/report-writing.md).
 - [Reprise de la phase 1 après troncature](architecture/phase1-graph-recovery.md).
 - [Reprise de la phase 3 par blocs](architecture/phase3-block-recovery.md).
+- [Gate anti-no-op de la phase 5 en profil full](architecture/phase5-noop-gate.md).
 - [Tests automatisés](../tests/README.md).
 
 La [recherche sur le contexte](../research/2026-09-29-context-scalability/README.md)
