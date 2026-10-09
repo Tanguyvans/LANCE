@@ -13,8 +13,13 @@ contract and the same validators, but bounds every model context:
   the shared tool ledger, rendered with the existing renderer, and
   validated with the existing recon validator.
 
-A failed batch degrades to ``executed_with_worker_errors`` when the
-merged evidence still validates, instead of failing the whole phase.
+A batch agent that scans its targets but fails to save a validated
+receipt does not degrade the phase: the receipt is re-derived
+deterministically from the shared ledger (flagged
+``synthesized_from_ledger``) since Stage C already trusts that ledger
+as the source of truth.  A failed batch degrades to
+``executed_with_worker_errors`` only when its coverage is really
+missing, instead of failing the whole phase.
 """
 from __future__ import annotations
 
@@ -255,6 +260,65 @@ def _batch_receipt_ok(run_dir, filename: str) -> bool:
     return True
 
 
+def _synthesize_batch_receipt(
+    run_dir, deliverable: str, index: int,
+    batch_rows: list[dict], target_subnets: list[str],
+) -> bool:
+    """Re-derive a missing batch receipt from the shared tool ledger.
+
+    Returns True when a flagged receipt was written.  The batch-scoped
+    check only requires this batch's own port coverage (the discovery
+    trio belongs to the sweep stage); anything really missing keeps its
+    worker error so the phase still degrades honestly.
+    """
+    from pathlib import Path
+
+    try:
+        progress = merge_recon_progress(
+            batch_rows, _read_ledger_entries(run_dir), target_subnets)
+    except Exception:
+        log.debug("Batch %02d ledger receipt unavailable", index, exc_info=True)
+        return False
+    batch_targets = {
+        str(row.get("target")) for row in batch_rows if row.get("target")
+    }
+    outstanding = [
+        item for item in progress.get("missing_requirements", [])
+        if item.get("requirement") == "minimum_port_coverage"
+        and str(item.get("target")) in batch_targets
+    ]
+    if outstanding:
+        return False
+    by_target = {
+        str(row.get("target")): row for row in progress.get("targets", [])
+    }
+    receipt = {
+        "batch": f"{index:02d}",
+        "status": "coverage recorded",
+        "synthesized_from_ledger": True,
+        "devices": [
+            {
+                "target": target,
+                "device_id": by_target.get(target, {}).get("device_id", target),
+                "covered_ports": by_target.get(target, {}).get("covered_ports", []),
+                "failed_ports": by_target.get(target, {}).get("failed_ports", []),
+            }
+            for target in sorted(batch_targets)
+        ],
+        "note": (
+            "Batch agent produced no validated receipt; coverage derived "
+            "deterministically from the shared tool ledger."
+        ),
+    }
+    try:
+        Path(run_dir, deliverable).write_text(
+            json.dumps(receipt, indent=2), encoding="utf-8")
+    except OSError:
+        log.debug("Batch %02d ledger receipt write failed", index, exc_info=True)
+        return False
+    return True
+
+
 def run_recon_subagents(pipeline, config, tools: list[dict], stream_callback=None) -> str | None:
     """Sweep, per-batch coverage agents, then deterministic merge.
 
@@ -395,10 +459,23 @@ def run_recon_subagents(pipeline, config, tools: list[dict], stream_callback=Non
                 raise
             except Exception as exc:
                 log.exception("Recon batch %d failed; merging available evidence", index)
-                errors.append(f"recon_batch_{index:02d}: {exc}")
+                if _synthesize_batch_receipt(
+                        pipeline.run_dir, deliverable, index,
+                        batch_rows, target_subnets):
+                    log.info("Recon batch %02d receipt synthesized from ledger",
+                             index)
+                else:
+                    errors.append(f"recon_batch_{index:02d}: {exc}")
                 continue
             if not ok:
-                errors.append(f"recon_batch_{index:02d}: no validated batch receipt")
+                if _synthesize_batch_receipt(
+                        pipeline.run_dir, deliverable, index,
+                        batch_rows, target_subnets):
+                    log.info("Recon batch %02d receipt synthesized from ledger",
+                             index)
+                else:
+                    errors.append(
+                        f"recon_batch_{index:02d}: no validated batch receipt")
 
         # Stage C: deterministic merge from the shared ledger.
         projection = pipeline._build_recon_evidence_projection()

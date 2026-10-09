@@ -6,6 +6,7 @@ import pytest
 
 from src.agent.phases.recon.run import ReconPhase, expand_port_spec
 from src.agent.phases.recon.subagents import (
+    _synthesize_batch_receipt,
     merge_recon_progress,
     split_recon_batches,
     subagents_eligible,
@@ -229,3 +230,36 @@ def test_merged_progress_renders_and_validates(tmp_path):
         render_recon(projection, progress), encoding="utf-8")
     ok, msg = validate_recon_markdown("02_recon.md", output_dir=tmp_path)
     assert ok, msg
+
+
+def _write_ledger(tmp_path, entries):
+    (tmp_path / "tool_calls.jsonl").write_text(
+        "\n".join(json.dumps(entry) for entry in entries), encoding="utf-8")
+
+
+def test_batch_receipt_synthesized_from_ledger_when_covered(tmp_path):
+    rows = [_plan_row("192.0.2.1"), _plan_row("192.0.2.2", ports="1883")]
+    _write_ledger(tmp_path, [
+        _ledger_success("nmap_scan", {"target": "192.0.2.1", "ports": "22,80"},
+                        "22/tcp open ssh"),
+        _ledger_success("nmap_scan", {"target": "192.0.2.2", "ports": "1883"},
+                        "1883/tcp open mqtt"),
+    ])
+    assert _synthesize_batch_receipt(
+        tmp_path, "02_recon_batch_01.json", 1, rows, ["192.0.2.0/24"]) is True
+    receipt = json.loads((tmp_path / "02_recon_batch_01.json").read_text())
+    assert receipt["synthesized_from_ledger"] is True
+    assert receipt["batch"] == "01"
+    assert {device["target"] for device in receipt["devices"]} == {
+        "192.0.2.1", "192.0.2.2"}
+
+
+def test_batch_receipt_keeps_worker_error_when_coverage_missing(tmp_path):
+    rows = [_plan_row("192.0.2.1"), _plan_row("192.0.2.9", ports="23")]
+    _write_ledger(tmp_path, [
+        _ledger_success("nmap_scan", {"target": "192.0.2.1", "ports": "22,80"},
+                        "22/tcp open ssh"),
+    ])
+    assert _synthesize_batch_receipt(
+        tmp_path, "02_recon_batch_02.json", 2, rows, ["192.0.2.0/24"]) is False
+    assert not (tmp_path / "02_recon_batch_02.json").exists()
