@@ -48,7 +48,7 @@ def test_baselines_reject_ambiguous_or_broad_scope(tmp_path, bad):
 
 def test_public_scope_validator_and_script_catalog():
     assert str(validate_target_network("192.168.100.0/24")) == "192.168.100.0/24"
-    assert SCRIPT_IDS == {"discovery-v1"}
+    assert SCRIPT_IDS == {"discovery-v1", "smoke-v1"}
 
 
 @pytest.mark.parametrize("kwargs", [
@@ -96,6 +96,50 @@ def test_scripted_run_archives_observation_and_terminal_event(tmp_path, monkeypa
                for event in events)
     assert events[-2]["type"] == "runner_done" and events[-2]["status"] == "completed"
     assert events[-1]["type"] == "pipeline_done"
+
+
+def test_smoke_script_completes_without_network_model_or_lab(tmp_path, monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Offline smoke test must not use tools or the laboratory")
+
+    monkeypatch.setattr("src.agent.run_modes.reserve_lab", forbidden)
+    monkeypatch.setattr("src.agent.run_modes._tool_catalog", forbidden)
+    runner = make_runner("scripted", script_id="smoke-v1", output_dir=tmp_path)
+    events = []
+    assert runner.run(stream_callback=events.append) == {"scripted": "completed"}
+    meta = json.loads((runner.run_dir / "run_meta.json").read_text())
+    assert meta["script_id"] == "smoke-v1"
+    assert meta["target_network"] is None
+    assert meta["status"] == "completed"
+    assert meta["total_tool_calls"] == 0
+    assert meta["max_tool_calls"] == 0
+    assert not (runner.run_dir / "tool_calls.jsonl").exists()
+    assert "This is not an audit result" in (runner.run_dir / "run_summary.md").read_text()
+    assert (runner.run_dir / "cost_summary.json").exists()
+    assert [event["type"] for event in events] == [
+        "runner_started", "script_step", "runner_done", "pipeline_done",
+    ]
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"target_network": "192.168.100.0/24"}, {"max_tool_calls": 1},
+    {"max_cost_usd": 1.0}, {"provider": object()},
+])
+def test_smoke_script_rejects_network_and_unused_budgets(tmp_path, kwargs):
+    with pytest.raises(ValueError):
+        make_runner("scripted", script_id="smoke-v1", output_dir=tmp_path, **kwargs)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_cli_smoke_without_cidr_creates_offline_run(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(runtime, "OUTPUT_DIR", tmp_path)
+    assert main(["scripted", "--script-id", "smoke-v1"]) == 0
+    run_dir = next(tmp_path.iterdir())
+    assert str(run_dir) in capsys.readouterr().out
+    assert json.loads((run_dir / "run_meta.json").read_text())["status"] == "completed"
+    with pytest.raises(SystemExit) as exc:
+        main(["scripted", "--script-id", "smoke-v1", "--target-network", "192.0.2.0/24"])
+    assert exc.value.code == 2
 
 
 def test_vanilla_uses_one_provider_loop_and_rejects_outside_targets(tmp_path, monkeypatch):

@@ -30,7 +30,7 @@ from src.agent.tools.runtime import run_cooperatively, tool_stop_context
 from src.benchmark.lab_lock import LabWaitCancelled, LabWaitDeadlineExceeded, reserve_lab
 
 
-SCRIPT_IDS = frozenset({"discovery-v1"})
+SCRIPT_IDS = frozenset({"discovery-v1", "smoke-v1"})
 _SIMPLE_TOOL_NAMES = frozenset({"nmap_discovery", "nmap_scan"})
 _PORTS = re.compile(r"[0-9,-]+\Z")
 log = logging.getLogger(__name__)
@@ -207,14 +207,14 @@ def _tool_catalog(run: "SimpleRunner") -> list[dict]:
 class SimpleRunner:
     """One independent run with the same evidence boundary as the harness."""
 
-    def __init__(self, *, kind: str, provider, network: ipaddress.IPv4Network,
+    def __init__(self, *, kind: str, provider, network: ipaddress.IPv4Network | None,
                  script_id: str | None, max_cost_usd: float | None,
                  max_tool_calls: int, max_duration_s: float,
                  output_dir: Path | None):
         self.runner_kind = kind
         self.provider = provider
         self.network = network
-        self.target_network = str(network)
+        self.target_network = str(network) if network is not None else None
         self.script_id = script_id
         self.benchmark_split = "unassigned"
         self.experiment_scope = "baseline"
@@ -228,7 +228,7 @@ class SimpleRunner:
         self._stop_event = None
         self._execution_limit_reason = None
         self._evidence_integrity_failed = False
-        self.context = {"target_subnet": str(network)}
+        self.context = {"target_subnet": str(network)} if network is not None else {}
         self.tracker = CostTracker(model=getattr(provider, "model", ""),
                                    provider=getattr(provider, "provider", ""),
                                    max_cost_usd=max_cost_usd)
@@ -273,8 +273,12 @@ class SimpleRunner:
         if stream_callback:
             stream_callback({"type": "runner_started", "runner_kind": self.runner_kind,
                              "target_network": self.target_network,
+                             "script_id": self.script_id,
                              "run_dir": str(self.run_dir)})
         try:
+            if self.script_id == "smoke-v1":
+                # A UI/API/CLI smoke test must not contend for or touch the lab.
+                return self._run_reserved(stream_callback=stream_callback, stop_event=stop_event)
             with reserve_lab(stop_event=stop_event, callback=stream_callback,
                              deadline=self._deadline):
                 return self._run_reserved(stream_callback=stream_callback, stop_event=stop_event)
@@ -303,9 +307,21 @@ class SimpleRunner:
         try:
             if stop_event is not None and stop_event.is_set():
                 raise RunStopped("Run stopped")
-            tools = _tool_catalog(self)
+            tools = [] if self.script_id == "smoke-v1" else _tool_catalog(self)
             by_name = {tool["name"]: tool for tool in tools}
-            if self.runner_kind == "scripted":
+            if self.script_id == "smoke-v1":
+                self.tracker.start_phase(self.runner_kind)
+                try:
+                    if stream_callback:
+                        stream_callback({"type": "script_step", "script_id": self.script_id,
+                                         "step": "checked", "message": "Mode hors ligne validé ; aucun scan lancé."})
+                    detail = ("Procedure: smoke-v1.\n\n"
+                              "Offline launch, event stream and artifact smoke test. "
+                              "No network probe, model call or laboratory reservation was made. "
+                              "This is not an audit result.")
+                finally:
+                    self.tracker.end_phase()
+            elif self.runner_kind == "scripted":
                 if "nmap_discovery" not in by_name:
                     raise RuntimeError("nmap_discovery is unavailable")
                 self.tracker.start_phase(self.runner_kind)
@@ -363,7 +379,7 @@ class SimpleRunner:
                 raise RunStopped("Run stopped")
             if self._execution_limit_reason:
                 raise BudgetExceeded(self._execution_limit_reason)
-            if self._usable_observations == 0:
+            if self.script_id != "smoke-v1" and self._usable_observations == 0:
                 raise RuntimeError("No usable in-scope Nmap observations were recorded")
             if time.monotonic() - self._run_started >= self.max_duration_s:
                 raise BudgetExceeded("Elapsed-time budget exhausted")
@@ -403,7 +419,7 @@ class SimpleRunner:
         (self.run_dir / "cost_summary.json").write_text(self.tracker.to_json(), encoding="utf-8")
         (self.run_dir / "run_summary.md").write_text(
             f"# {self.runner_kind.title()} run\n\n"
-            f"Status: {status}\n\nTarget: {self.target_network}\n\n"
+            f"Status: {status}\n\nTarget: {self.target_network or 'none (offline test)'}\n\n"
             f"{detail}\n", encoding="utf-8")
         self._write_meta(status, finished_at=datetime.now().astimezone().isoformat(),
                          total_cost_usd=self.tracker.total_cost(),
@@ -489,13 +505,20 @@ def make_runner(
         raise ValueError("Simple runners do not deploy scenarios or accept harness settings")
     if execution_profile != "auto":
         raise ValueError("Execution profiles apply only to the LANCE harness")
-    network = validate_target_network(target_network)
+    if kind == "scripted" and script_id == "smoke-v1":
+        if target_network is not None:
+            raise ValueError("smoke-v1 is offline and does not accept target_network")
+        if max_tool_calls is not None or max_cost_usd is not None:
+            raise ValueError("smoke-v1 does not use tools or a model budget")
+        network = None
+    else:
+        network = validate_target_network(target_network)
     if kind == "scripted":
         if script_id not in SCRIPT_IDS:
             raise ValueError(f"script_id must be one of: {', '.join(sorted(SCRIPT_IDS))}")
         if provider is not None:
             raise ValueError("Scripted runs do not use a model provider")
-        default_calls, default_duration = 1, 120.0
+        default_calls, default_duration = (0 if script_id == "smoke-v1" else 1), 120.0
     else:
         if provider is None or not callable(getattr(provider, "chat_with_tools", None)):
             raise ValueError("Vanilla runs require a model provider")
@@ -504,7 +527,7 @@ def make_runner(
         default_calls, default_duration = 30, 600.0
     calls = default_calls if max_tool_calls is None else max_tool_calls
     duration = default_duration if max_duration_s is None else max_duration_s
-    if type(calls) is not int or not 1 <= calls <= 100:
+    if script_id != "smoke-v1" and (type(calls) is not int or not 1 <= calls <= 100):
         raise ValueError("max_tool_calls must be between 1 and 100")
     if (not isinstance(duration, (int, float)) or isinstance(duration, bool)
             or not math.isfinite(duration) or not 0 < duration <= 3600):
@@ -523,7 +546,7 @@ def main(argv=None) -> int:
     """Standalone CLI for baseline runs; it never provisions a scenario."""
     parser = argparse.ArgumentParser(description="Run a bounded LANCE baseline")
     parser.add_argument("kind", choices=["vanilla", "scripted"])
-    parser.add_argument("--target-network", required=True, help="Explicit authorized IPv4 CIDR")
+    parser.add_argument("--target-network", help="Explicit authorized IPv4 CIDR (not used by smoke-v1)")
     parser.add_argument("--script-id", choices=sorted(SCRIPT_IDS))
     parser.add_argument("--provider", default=os.environ.get("AGENT_PROVIDER"))
     parser.add_argument("--model", default=os.environ.get("AGENT_MODEL"))
@@ -532,11 +555,15 @@ def main(argv=None) -> int:
     parser.add_argument("--max-duration-s", type=float)
     args = parser.parse_args(argv)
     try:
-        validate_target_network(args.target_network)
         if args.kind == "scripted" and args.script_id not in SCRIPT_IDS:
             raise ValueError(f"script_id must be one of: {', '.join(sorted(SCRIPT_IDS))}")
         if args.kind == "vanilla" and args.script_id is not None:
             raise ValueError("script_id applies only to scripted runs")
+        if args.kind == "scripted" and args.script_id == "smoke-v1":
+            if args.target_network is not None:
+                raise ValueError("smoke-v1 is offline and does not accept target_network")
+        else:
+            validate_target_network(args.target_network)
     except ValueError as exc:
         parser.error(str(exc))
     provider = None

@@ -19,6 +19,29 @@ function runnerKind(value) {
   return Object.hasOwn(RUNNER_LABELS, value) ? value : 'lance';
 }
 
+function isOfflineScript() {
+  return activeExecutionKind === 'scripted' && document.getElementById('sel-script').value === 'smoke-v1';
+}
+
+function updateScriptSelection() {
+  const script = document.getElementById('sel-script').value;
+  const offline = activeExecutionKind === 'scripted' && script === 'smoke-v1';
+  document.getElementById('target-network-config').hidden = offline;
+  document.getElementById('inp-target-network').required = !offline;
+  document.getElementById('tool-call-limit').hidden = offline;
+  document.getElementById('simple-stage-hint').textContent = offline
+    ? 'Les étapes de la démo apparaissent dans le journal. Son résumé est disponible dans l’historique après le run.'
+    : "Les appels d'outils apparaissent dans le journal. Le résumé et les fichiers sont disponibles dans l'historique après le run.";
+  document.getElementById('script-description').textContent = script === 'smoke-v1'
+    ? 'Teste le lancement, les événements et l’historique. Aucun réseau, modèle ou laboratoire utilisé.'
+    : script === 'discovery-v1' ? 'Découverte fixe des hôtes du réseau indiqué (scan réel).' : '';
+  if (activeExecutionKind === 'scripted') {
+    const target = document.getElementById('inp-target-network').value.trim();
+    document.getElementById('simple-stage-target').textContent = offline
+      ? 'Démo hors ligne · aucun scan' : target || 'Indiquez un réseau autorisé pour lancer une exécution.';
+  }
+}
+
 function setRunnerActivity(title, activity, target = '') {
   document.getElementById('runner-activity-text').textContent = activity;
   document.getElementById('simple-stage-title').textContent = title;
@@ -50,6 +73,7 @@ function setRunnerView(kind) {
   document.getElementById('lance-config').hidden = simple;
   document.getElementById('simple-run-config').hidden = !simple;
   document.getElementById('script-config').hidden = kind !== 'scripted';
+  updateScriptSelection();
   document.getElementById('model-config').hidden = kind === 'scripted';
   document.querySelector('.multi-model-toggle').hidden = kind !== 'lance';
   document.getElementById('multi-model-config').hidden = kind !== 'lance' || !document.getElementById('cb-multi-model').checked;
@@ -60,7 +84,8 @@ function setRunnerView(kind) {
   document.getElementById('btn-batch-start').hidden = !batch;
   if (simple) {
     const target = document.getElementById('inp-target-network').value.trim();
-    setRunnerActivity('Prêt à démarrer', 'En attente', target || 'Indiquez un réseau autorisé pour lancer une exécution.');
+    setRunnerActivity('Prêt à démarrer', 'En attente', isOfflineScript()
+      ? 'Démo hors ligne · aucun scan' : target || 'Indiquez un réseau autorisé pour lancer une exécution.');
   }
 }
 
@@ -716,13 +741,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
   document.getElementById('inp-target-network').addEventListener('input', () => {
-    if (activeExecutionKind === 'lance') return;
+    if (activeExecutionKind === 'lance' || isOfflineScript()) return;
     const target = document.getElementById('inp-target-network').value.trim();
     document.getElementById('simple-stage-target').textContent = target || 'Indiquez un réseau autorisé pour lancer une exécution.';
   });
   document.getElementById('sel-script').addEventListener('change', () => {
-    document.getElementById('script-description').textContent = document.getElementById('sel-script').value === 'discovery-v1'
-      ? 'Découverte fixe des hôtes du réseau indiqué.' : '';
+    updateScriptSelection();
   });
   setRunnerView('lance');
 
@@ -1423,21 +1447,24 @@ function lockRunnerChoice(locked) {
 }
 
 async function startSimpleRun(kind) {
+  const script = kind === 'scripted' ? document.getElementById('sel-script').value : null;
+  if (kind === 'scripted' && !script) {
+    addLog({type: 'error', message: 'Choisissez une procédure avant de lancer le script.'});
+    document.getElementById('sel-script').focus();
+    return;
+  }
+  const offline = kind === 'scripted' && script === 'smoke-v1';
   const target = document.getElementById('inp-target-network').value.trim();
-  if (!target || !target.includes('/')) {
+  if (!offline && (!target || !target.includes('/'))) {
     addLog({type: 'error', message: 'Indiquez un réseau autorisé au format CIDR, par exemple 192.0.2.0/24.'});
     document.getElementById('inp-target-network').focus();
     return;
   }
 
-  const body = {runner_kind: kind, target_network: target};
+  const body = {runner_kind: kind};
+  if (!offline) body.target_network = target;
   if (kind === 'scripted') {
-    body.script_id = document.getElementById('sel-script').value;
-    if (!body.script_id) {
-      addLog({type: 'error', message: 'Choisissez une procédure avant de lancer le script.'});
-      document.getElementById('sel-script').focus();
-      return;
-    }
+    body.script_id = script;
   } else {
     const modelSel = document.getElementById('sel-model');
     const selectedOpt = modelSel.options[modelSel.selectedIndex];
@@ -1451,6 +1478,7 @@ async function startSimpleRun(kind) {
   }
 
   for (const [id, key] of [['inp-max-tool-calls', 'max_tool_calls'], ['inp-max-duration', 'max_duration_s']]) {
+    if (offline && key === 'max_tool_calls') continue;
     const input = document.getElementById(id);
     if (!input.value.trim()) continue;
     if (!input.checkValidity() || !Number.isSafeInteger(Number(input.value))) {
@@ -1472,7 +1500,7 @@ async function startSimpleRun(kind) {
   clearLog();
   setRunnerView(kind);
   setCost(0);
-  setRunnerActivity('Exécution en cours', 'Démarrage…', target);
+  setRunnerActivity('Exécution en cours', 'Démarrage…', offline ? 'Démo hors ligne · aucun scan' : target);
   document.getElementById('runner-activity').classList.add('running');
   document.getElementById('runner-activity').classList.remove('failed');
   document.getElementById('btn-start').disabled = true;
@@ -1793,7 +1821,8 @@ function handleEvent(ev) {
   if (t === 'runner_started') {
     const kind = runnerKind(ev.runner_kind || activeExecutionKind);
     setRunnerView(kind);
-    setRunnerActivity('Exécution en cours', 'Démarrage…', ev.target_network || document.getElementById('inp-target-network').value.trim());
+    setRunnerActivity('Exécution en cours', 'Démarrage…', ev.script_id === 'smoke-v1'
+      ? 'Démo hors ligne · aucun scan' : ev.target_network || document.getElementById('inp-target-network').value.trim());
     document.getElementById('runner-activity').classList.add('running');
   }
 
@@ -2146,7 +2175,8 @@ function _renderRunItem(r) {
   const sealed = isSealedRun(r);
   const kind = runnerKind(r.runner_kind);
   const simple = kind !== 'lance';
-  const scnLabel = simple ? (r.target_network || 'Réseau direct') : sealed ? `${r.scenario || 'Évaluation'} · scellé` : (r.scenario || 'Lab physique');
+  const scnLabel = simple ? (r.script_id === 'smoke-v1' ? 'Démo hors ligne' : r.target_network || 'Réseau direct')
+    : sealed ? `${r.scenario || 'Évaluation'} · scellé` : (r.scenario || 'Lab physique');
   const scn = `<span class="run-badge ${r.scenario ? 'done' : ''}">${escapeHtml(scnLabel)}</span>`;
   const kindBadge = simple ? `<span class="run-badge runner-kind-badge">${escapeHtml(RUNNER_LABELS[kind])}</span>` : '';
   const cost = !sealed && r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
@@ -3246,6 +3276,7 @@ function addLog(ev) {
   let failed = t === 'error';
 
   if (t === 'runner_started') text = `${RUNNER_LABELS[runnerKind(ev.runner_kind)]} démarré${ev.target_network ? ` — ${ev.target_network}` : ''}`;
+  else if (t === 'script_step') text = ev.message || 'Étape du script terminée';
   else if (t === 'runner_done') text = `${RUNNER_LABELS[runnerKind(ev.runner_kind || activeExecutionKind)]} terminé — ${ev.status || 'statut indisponible'}`;
   else if (t === 'phase_start')   text = `▶ Phase ${ev.phase} — ${PHASE_NAMES[ev.phase] || ''}`;
   else if (t === 'phase_done') text = `✓ Phase ${ev.phase} done (${ev.status}) — $${(ev.cost_usd||0).toFixed(4)}`;

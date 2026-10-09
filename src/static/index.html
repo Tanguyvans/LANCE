@@ -75,21 +75,24 @@
       </fieldset>
 
       <div id="simple-run-config" hidden>
-        <label for="inp-target-network">Réseau autorisé</label>
-        <input id="inp-target-network" type="text" placeholder="ex : 192.0.2.0/24" autocomplete="off" spellcheck="false" required>
-        <p class="field-hint">Cible du run. Aucun scénario de laboratoire n'est déployé.</p>
+        <div id="target-network-config">
+          <label for="inp-target-network">Réseau autorisé</label>
+          <input id="inp-target-network" type="text" placeholder="ex : 192.0.2.0/24" autocomplete="off" spellcheck="false" required>
+          <p class="field-hint">Cible du run. Aucun scénario de laboratoire n'est déployé.</p>
+        </div>
 
         <div id="script-config" hidden>
           <label for="sel-script">Procédure</label>
           <select id="sel-script">
             <option value="">Choisir une procédure…</option>
+            <option value="smoke-v1">Démo hors ligne · sans scan</option>
             <option value="discovery-v1">Découverte des hôtes</option>
           </select>
           <p id="script-description" class="field-hint" aria-live="polite"></p>
         </div>
 
         <div class="simple-limits">
-          <div><label for="inp-max-tool-calls">Appels d'outils max.</label><input id="inp-max-tool-calls" type="number" min="1" step="1" placeholder="Défaut serveur"></div>
+          <div id="tool-call-limit"><label for="inp-max-tool-calls">Appels d'outils max.</label><input id="inp-max-tool-calls" type="number" min="1" step="1" placeholder="Défaut serveur"></div>
           <div><label for="inp-max-duration">Durée max. (s)</label><input id="inp-max-duration" type="number" min="1" step="1" placeholder="Défaut serveur"></div>
         </div>
       </div>
@@ -300,7 +303,7 @@
       <div class="stage-readout">
         <span>Activité</span><strong id="simple-stage-activity">En attente</strong>
       </div>
-      <p class="stage-hint">Les appels d'outils apparaissent dans le journal. Le résumé et les fichiers sont disponibles dans l'historique après le run.</p>
+      <p id="simple-stage-hint" class="stage-hint">Les appels d'outils apparaissent dans le journal. Le résumé et les fichiers sont disponibles dans l'historique après le run.</p>
     </div>
     <div id="cy"></div>
     <div id="cy-loading" aria-live="polite" style="display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;pointer-events:none">Chargement de la topologie…</div>

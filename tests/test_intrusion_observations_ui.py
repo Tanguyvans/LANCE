@@ -52,7 +52,7 @@ const document={documentElement:new Element(),body:new Element(),
 const context=vm.createContext({document,console,
   getComputedStyle:()=>({getPropertyValue:()=>''}),
   mockCy:{nodes:()=>nodes,remove:()=>{},add:()=>{edges++;}},
-  input:JSON.parse(fs.readFileSync(0,'utf8')),urls:[],
+  input:JSON.parse(fs.readFileSync(0,'utf8')),urls:[],payloads:[],
 });
 vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),context);
 vm.runInContext('cy=mockCy; fetchJSON=async url=>{urls.push(url);return input.response;};',context);
@@ -62,6 +62,11 @@ vm.runInContext('cy=mockCy; fetchJSON=async url=>{urls.push(url);return input.re
     urls:context.urls,logs:document.getElementById('log').children.map(l=>l.children[0].textContent),
     launchKind:vm.runInContext('activeExecutionKind',context),
     targetInput:document.getElementById('inp-target-network').value,
+    targetHidden:document.getElementById('target-network-config').hidden,
+    targetRequired:document.getElementById('inp-target-network').required,
+    toolLimitHidden:document.getElementById('tool-call-limit').hidden,
+    scriptDescription:document.getElementById('script-description').textContent,
+    payloads:context.payloads,
     cost:document.getElementById('cost-val').textContent}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
 """
@@ -191,6 +196,34 @@ def test_viewing_script_history_does_not_change_next_launch_mode_or_target():
               "target_network": "192.0.2.0/24"})
     assert result["launchKind"] == "vanilla"
     assert result["targetInput"] == "198.51.100.0/24"
+
+
+def test_offline_script_selection_hides_network_and_tool_limit():
+    result = render("""
+      activeExecutionKind='scripted';
+      document.getElementById('sel-script').value='smoke-v1';
+      document.getElementById('inp-target-network').value='';
+      updateScriptSelection();
+    """)
+    assert result["targetHidden"] is True
+    assert result["targetRequired"] is False
+    assert result["toolLimitHidden"] is True
+    assert "Aucun réseau" in result["scriptDescription"]
+
+
+def test_offline_script_launch_does_not_submit_stale_hidden_target():
+    result = render("""
+      document.getElementById('sel-script').value='smoke-v1';
+      document.getElementById('inp-target-network').value='192.0.2.0/24';
+      document.getElementById('inp-max-tool-calls').value='';
+      document.getElementById('inp-max-duration').value='';
+      adminFetch=async(url, options)=>{urls.push(url);payloads.push(JSON.parse(options.body));return {ok:true};};
+      clearLog=()=>{};setRunnerView=()=>{};setCost=()=>{};
+      setRunnerActivity=()=>{};startSSE=()=>{};
+      await startSimpleRun('scripted');
+    """)
+    assert result["urls"] == ["/api/pipeline/start"]
+    assert result["payloads"] == [{"runner_kind": "scripted", "script_id": "smoke-v1"}]
 
 
 def test_simple_runner_terminal_event_replaces_previous_cost():

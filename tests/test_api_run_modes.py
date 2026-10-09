@@ -56,6 +56,9 @@ def test_finish_sends_done_to_the_finished_runs_queue_after_new_start_interleave
     {"runner_kind": "scripted", "target_network": "192.168.1.0/24", "script_id": "discovery-v1", "max_tool_calls": 101},
     {"runner_kind": "scripted", "target_network": "192.168.1.0/24", "script_id": "discovery-v1", "max_duration_s": 3601},
     {"runner_kind": "scripted", "target_network": "192.168.1.0/24", "script_id": "discovery-v1", "max_cost_usd": float("nan")},
+    {"runner_kind": "scripted", "script_id": "smoke-v1", "target_network": "192.0.2.0/24"},
+    {"runner_kind": "scripted", "script_id": "smoke-v1", "max_tool_calls": 1},
+    {"runner_kind": "scripted", "script_id": "smoke-v1", "max_cost_usd": 1.0},
     {"runner_kind": "vanilla", "target_network": "127.0.0.0/24"},
     {"runner_kind": "lance", "provider": "local", "model": "test", "max_tool_calls": 1},
 ])
@@ -91,6 +94,13 @@ def test_start_accepts_script_without_provider_and_exposes_runner_kind(monkeypat
     finally:
         route._state.clear()
         route._state.update(snapshot)
+
+
+def test_start_accepts_offline_smoke_without_target_or_provider():
+    request = route.StartRequest(runner_kind="scripted", script_id="smoke-v1")
+    assert request.target_network is None
+    assert request.provider is None
+    assert request.model is None
 
 
 def test_deploy_only_does_not_require_provider_or_model(monkeypatch):

@@ -128,13 +128,20 @@ class StartRequest(BaseModel):
                 raise ValueError("Action/time budgets are only available for vanilla and scripted runners")
             return self
 
-        if not self.target_network or "/" not in self.target_network:
-            raise ValueError("Vanilla and scripted runners require an explicit target_network CIDR")
-        try:
-            from src.agent.run_modes import validate_target_network
-            validate_target_network(self.target_network)
-        except ValueError as exc:
-            raise ValueError(str(exc)) from exc
+        offline_smoke = self.runner_kind == "scripted" and self.script_id == "smoke-v1"
+        if offline_smoke:
+            if self.target_network is not None:
+                raise ValueError("smoke-v1 is offline and does not accept target_network")
+            if self.max_tool_calls is not None or self.max_cost_usd is not None:
+                raise ValueError("smoke-v1 does not use tools or a model budget")
+        else:
+            if not self.target_network or "/" not in self.target_network:
+                raise ValueError("Vanilla and discovery-v1 require an explicit target_network CIDR")
+            try:
+                from src.agent.run_modes import validate_target_network
+                validate_target_network(self.target_network)
+            except ValueError as exc:
+                raise ValueError(str(exc)) from exc
         if any((
             self.scenario_id is not None,
             self.phases is not None,
