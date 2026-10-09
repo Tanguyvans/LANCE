@@ -17,6 +17,8 @@ from src.agent.report_evidence import verification_state
 
 CONTEXT_MAX_BYTES = 24_000
 NOTE_MAX_CHARS = 4_000
+OBSERVATION_EXCERPT_CHARS = 1_600
+OBSERVATION_MAX_REFS = 6
 MANIFEST = "06_report_sections.json"
 
 
@@ -130,10 +132,17 @@ def build_cards(run_dir: Path, phase_results: dict | None = None) -> tuple[list[
         analysis_counts["devices_failed"] = len(analysis_counts["devices_failed"])
 
     def observations(test):
-        result = []
+        """Attribute ledger excerpts, bounded so card prompts stay O(1).
+
+        Returns (items, omitted): at most OBSERVATION_MAX_REFS excerpts
+        are embedded; further attributable references are counted as
+        omitted. Digests still cover every reference and the full ledger
+        stays the source, so nothing is lost.
+        """
+        result, omitted = [], 0
         refs = test.get("evidence_refs")
         if not isinstance(refs, list) or not trace.intact:
-            return result
+            return result, omitted
         for ref in refs:
             records = trace.records.get(str(ref).strip(), [])
             if len(records) != 1:
@@ -142,11 +151,15 @@ def build_cards(run_dir: Path, phase_results: dict | None = None) -> tuple[list[
             if (not test.get("vuln_id") or record.get("vuln_id") != test["vuln_id"]
                     or not test.get("device_ip") or test["device_ip"] not in observed_targets(record)):
                 continue
+            if len(result) >= OBSERVATION_MAX_REFS:
+                omitted += 1
+                continue
             raw = encoded(record.get("result"))
             result.append({"evidence_ref": ref, "tool": record.get("tool"),
-                           "result_excerpt": raw[:1600], "excerpt_truncated": len(raw) > 1600,
+                           "result_excerpt": raw[:OBSERVATION_EXCERPT_CHARS],
+                           "excerpt_truncated": len(raw) > OBSERVATION_EXCERPT_CHARS,
                            "full_source": "tool_calls.jsonl", "record_digest": digest(record)})
-        return result
+        return result, omitted
     identifiers = Counter(str(v.get("id") or "") for v in findings if isinstance(v, dict))
     matched = set()
     cards = []
@@ -159,19 +172,25 @@ def build_cards(run_dir: Path, phase_results: dict | None = None) -> tuple[list[
         ambiguous = not identifier or identifiers[identifier] != 1 or len(linked) > 1
         state = "ambiguous" if ambiguous else verification_state(linked[0][1] if linked else {})
         states[state] += 1
+        linked_tests = []
+        for i, t in linked:
+            attributed, omitted = observations(t)
+            linked_tests.append({
+                "source": f"04_exploitation.json#/tests/{i}", "record": t,
+                "reference_diagnostic": trace.describe(t),
+                "attributed_observations": attributed,
+                "omitted_observations": omitted,
+                "evidence_records_digest": digest([
+                    trace.records.get(str(ref).strip(), []) for ref in
+                    (t["evidence_refs"] if isinstance(t.get("evidence_refs"), list) else [])
+                ])})
         cards.append({
             "key": f"finding-{index + 1:04d}", "kind": "finding",
             "title": f"Hypothèse {identifier or '(identifiant manquant)'}",
             "facts": {
                 "source": f"03_vuln_analysis.json#/vulnerabilities/{index}",
                 "hypothesis": finding, "recorded_verification_state": state,
-                "tests": [{"source": f"04_exploitation.json#/tests/{i}", "record": t,
-                           "reference_diagnostic": trace.describe(t),
-                           "attributed_observations": observations(t),
-                           "evidence_records_digest": digest([
-                               trace.records.get(str(ref).strip(), []) for ref in
-                               (t["evidence_refs"] if isinstance(t.get("evidence_refs"), list) else [])
-                           ])} for i, t in linked],
+                "tests": linked_tests,
                 "evidence_source": "tool_calls.jsonl",
                 "interpretation": "Recorded Phase 4 state, not independent benchmark proof acceptance. Failed attempts do not refute a hypothesis.",
             },

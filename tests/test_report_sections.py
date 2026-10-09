@@ -303,6 +303,27 @@ def test_only_attributed_ledger_excerpts_enter_the_card(report_run, changes, exp
     assert "property/proof acceptance is not evaluated" in linked["reference_diagnostic"]
 
 
+def test_many_evidence_refs_are_capped_with_omitted_count(report_run):
+    from tests.test_report_traceability import record
+    p = report_run("full", "ok")
+    refs = [f"tc-{n}" for n in range(10)]
+    path = p.run_dir / "04_exploitation.json"
+    data = json.loads(path.read_text())
+    data["tests"][0]["evidence_refs"] = refs
+    path.write_text(json.dumps(data))
+    ledger = p.run_dir / "tool_calls.jsonl"
+    ledger.write_text("".join(
+        json.dumps(record(evidence_ref=ref,
+                          result={"return_code": 0, "stdout": "x" * 3000})) + "\n"
+        for ref in refs))
+    cards, _ = sections.build_cards(p.run_dir)
+    linked = cards[0]["facts"]["tests"][0]
+    assert len(linked["attributed_observations"]) == sections.OBSERVATION_MAX_REFS
+    assert linked["omitted_observations"] == len(refs) - sections.OBSERVATION_MAX_REFS
+    assert all(item["excerpt_truncated"] for item in linked["attributed_observations"])
+    assert len(sections.section_prompt(cards[0]).encode()) <= sections.CONTEXT_MAX_BYTES
+
+
 def test_changed_evidence_invalidates_only_its_card(report_run):
     from tests.test_report_traceability import record
     p = report_run("full", "ok")
