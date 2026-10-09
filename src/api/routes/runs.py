@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import io
 import json
 import logging
@@ -366,6 +367,38 @@ def _extract_execution_profile(run_dir: Path) -> str | None:
     return None
 
 
+def _extract_runner_kind(run_dir: Path) -> str:
+    """Expose the recorded execution kind, defaulting legacy runs to LANCE."""
+    try:
+        metadata = _read_run_meta(run_dir) or {}
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        metadata = {}
+    kind = metadata.get("runner_kind")
+    return kind if kind in {"lance", "vanilla", "scripted"} else "lance"
+
+
+def _extract_runner_details(run_dir: Path) -> dict[str, str]:
+    """Return bounded public labels for simple runs, never arbitrary metadata."""
+    try:
+        metadata = _read_run_meta(run_dir) or {}
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    if metadata.get("runner_kind") not in {"vanilla", "scripted"}:
+        return {}
+    details: dict[str, str] = {}
+    target = metadata.get("target_network")
+    if isinstance(target, str) and len(target) <= 64:
+        try:
+            details["target_network"] = str(ipaddress.ip_network(target, strict=True))
+        except ValueError:
+            pass
+    script_id = metadata.get("script_id")
+    if metadata.get("runner_kind") == "scripted" and isinstance(script_id, str):
+        if re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", script_id):
+            details["script_id"] = script_id
+    return details
+
+
 def _benchmark_cache_dir() -> Path:
     """Keep trusted derived scores outside individual agent-controlled runs."""
     return OUTPUT_DIR / ".benchmark-score-cache"
@@ -565,6 +598,8 @@ def list_runs():
             "status": _run_status(d),
             "commit": _extract_commit(d),
             "execution_profile": _extract_execution_profile(d),
+            "runner_kind": _extract_runner_kind(d),
+            **_extract_runner_details(d),
             "sealed": sealed,
         })
     return runs
@@ -572,6 +607,8 @@ def list_runs():
 
 def _benchmark_candidate(run_dir: Path) -> dict[str, Any] | None:
     if not _is_safe_run_dir(run_dir):
+        return None
+    if _extract_runner_kind(run_dir) != "lance":
         return None
     try:
         metadata = _read_scenario_meta(run_dir)
@@ -601,6 +638,7 @@ def _benchmark_entry(candidate: dict[str, Any], *, compact: bool) -> dict[str, A
         "score_error": None,
         "commit": _extract_commit(run_dir),
         "execution_profile": _extract_execution_profile(run_dir),
+        "runner_kind": _extract_runner_kind(run_dir),
         "sealed": sealed,
     }
     if not sealed:
@@ -726,6 +764,8 @@ def get_run(run_id: str):
         "scenario": _detect_scenario(run_dir),
         "status": _run_status(run_dir),
         "commit": _extract_commit(run_dir),
+        "runner_kind": _extract_runner_kind(run_dir),
+        **_extract_runner_details(run_dir),
         "sealed": sealed,
     }
 
@@ -734,6 +774,8 @@ def get_run(run_id: str):
 def score_run(run_id: str):
     """Score a run against its scenario ground truth using the benchmark evaluator."""
     run_dir = _resolve_run_dir(run_id)
+    if _extract_runner_kind(run_dir) != "lance":
+        raise HTTPException(status_code=404, detail="Simple runs have no benchmark score")
 
     try:
         meta = _read_scenario_meta(run_dir)
@@ -836,6 +878,8 @@ class LLMJudgeRequest(BaseModel):
 @router.post("/{run_id}/evaluate/llm")
 def evaluate_run_llm(run_id: str, request: LLMJudgeRequest):
     run_dir = _resolve_run_dir(run_id)
+    if _extract_runner_kind(run_dir) != "lance":
+        raise HTTPException(status_code=404, detail="Simple runs cannot be benchmark-evaluated")
     if _is_sealed_run(run_dir):
         raise HTTPException(status_code=403, detail="Sealed runs cannot be re-evaluated")
     if not request.model.strip():

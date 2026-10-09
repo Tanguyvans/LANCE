@@ -1,7 +1,10 @@
 # Un pipeline, organisé par phase
 
-`src.agent.pipeline.Pipeline` reste le point d'entrée de l'API, du CLI et des
-benchmarks. Il initialise le run, résout le profil de chaque modèle, vérifie
+`src.agent.pipeline.Pipeline` reste le moteur des audits LANCE en six phases,
+utilisé par l'API, le CLI historique et les benchmarks. Le sélecteur de
+[modes d'exécution](../../../docs/architecture/run-modes.md) ajoute des runners
+simples distincts ; il ne change pas l'organisation des phases décrite ici.
+Le pipeline initialise le run, résout le profil de chaque modèle, vérifie
 les prérequis et garantit la finalisation. `registry.run_phase` appelle un seul
 `run(context, config, stream_callback)` par phase, pour les deux profils. Sa table
 référence directement les six modules : aucun chemin d'import n'est construit
@@ -114,7 +117,7 @@ validateurs utilisent désormais un dossier explicite par run ; d'autres outils
 conservent des états globaux, notamment le contexte de graphe et la politique CVE.
 Ce ne sont pas six moteurs autonomes, ni une garantie de runs complets concurrents.
 
-L'API, le CLI et les workers passent par `Pipeline`. Le worker fournit son dossier
+Les chemins LANCE de l'API, du CLI et des workers passent par `Pipeline`. Le worker fournit son dossier
 parent via `Pipeline(output_dir=...)`, sans modifier une variable globale.
 Voir le [contrat d'isolation des livrables](../../../docs/architecture/run-artifacts.md) pour
 les responsabilités, les exemples et les limites. Les helpers internes doivent être importés

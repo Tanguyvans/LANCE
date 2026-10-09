@@ -4,11 +4,14 @@ import multiprocessing
 import os
 from pathlib import Path
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
 
-from src.benchmark.lab_lock import LabWaitCancelled, reserve_lab, serialized_lab
+from src.benchmark.lab_lock import (
+    LabWaitCancelled, LabWaitDeadlineExceeded, reserve_lab, serialized_lab,
+)
 
 
 def _hold(path, ready, release):
@@ -94,3 +97,19 @@ def test_invalid_lock_path_fails_closed(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         with reserve_lab():
             pytest.fail("Must not execute without the configured lock")
+
+
+def test_expired_optional_deadline_never_enters_lab(monkeypatch):
+    monkeypatch.delenv("LANCE_LAB_LOCK", raising=False)
+    with pytest.raises(LabWaitDeadlineExceeded):
+        with reserve_lab(deadline=time.monotonic() - 1):
+            pytest.fail("Expired run must not begin work")
+
+
+def test_stop_takes_priority_over_expired_deadline(monkeypatch):
+    monkeypatch.delenv("LANCE_LAB_LOCK", raising=False)
+    stop = threading.Event()
+    stop.set()
+    with pytest.raises(LabWaitCancelled):
+        with reserve_lab(stop_event=stop, deadline=time.monotonic() - 1):
+            pytest.fail("Stopped run must not begin work")

@@ -3,6 +3,9 @@
 LANCE is a six-phase LLM agent pipeline for authorized IoT security testing.
 It evaluates vulnerability detection, supporting evidence, intrusion paths and
 resource consumption separately.
+The app can also start a bounded single-agent reconnaissance run or a versioned
+manual discovery procedure. These are separate execution modes, not benchmark
+scores; see the [execution-mode contract](docs/architecture/run-modes.md).
 
 The accompanying **IoTChainBench** contains 29 public scenarios with
 per-vulnerability ground truth: S1–S19 for development and S20–S29 reserved for
@@ -84,5 +87,6 @@ evaluation scenarios.
 - [Research report: benchmark coverage, context and LLM contribution (PDF)](research/2026-09-27-agent-vs-automation/report.pdf) · [editable LaTeX](research/2026-09-27-agent-vs-automation/report.tex)
 - [Benchmark, scenarios and evaluation](docs/benchmark/v1/README.md)
 - [Pipeline structure](src/agent/phases/README.md)
+- [Execution modes and app boundary](docs/architecture/run-modes.md)
 - [Run artifacts](docs/architecture/run-artifacts.md)
 - [Model training](model_training/README.md)

@@ -221,7 +221,7 @@ body {
 
 label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
 
-select, input[type=text], input[type=number] {
+select, input[type=text], input[type=search], input[type=number] {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -246,6 +246,50 @@ input[type=number] { -moz-appearance: textfield; }
   color: var(--text); font-size: 12px; cursor: pointer;
 }
 #packs-section { margin-top: 4px; }
+
+.runner-choices { border: 0; margin: 1px 0 14px; min-width: 0; }
+.runner-choices legend { color: var(--muted); font-size: 11px; margin-bottom: 7px; }
+.runner-choice {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 9px; margin-bottom: 5px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); cursor: pointer;
+}
+.runner-choice:has(input:checked) { border-color: var(--accent); background: var(--accent-bg); }
+.runner-choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.runner-choice input { margin-top: 2px; accent-color: var(--accent); }
+.runner-choice span { display: grid; gap: 2px; }
+.runner-choice strong { color: var(--text); font-size: 12px; font-weight: 600; }
+.runner-choice small { color: var(--muted); font-size: 10px; line-height: 1.35; }
+.field-hint { color: var(--muted); font-size: 10px; line-height: 1.45; margin: -5px 0 10px; }
+.simple-limits { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.simple-limits input { margin-bottom: 6px; }
+
+.runner-activity { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; color: var(--muted); font-size: 11px; }
+.runner-activity-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--accent); }
+.runner-activity.running .runner-activity-dot { background: var(--green); box-shadow: var(--glow-green); }
+.runner-activity.failed .runner-activity-dot { background: var(--red); }
+#runner-activity-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.simple-run-stage {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: clamp(24px, 6vw, 72px);
+  color: var(--text);
+  background: linear-gradient(135deg, var(--bg), var(--surface));
+}
+.simple-run-stage > * { max-width: 560px; width: 100%; }
+.simple-run-view #graph-toolbar,
+.simple-run-view #cy,
+.simple-run-view #cy-loading,
+.simple-run-view #graph-legend { display: none !important; }
+.stage-kicker { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.simple-run-stage h2 { font-size: clamp(24px, 3vw, 38px); line-height: 1.08; margin: 13px 0 10px; letter-spacing: -.035em; }
+.simple-run-stage > p { color: var(--muted); line-height: 1.5; }
+.stage-readout { display: flex; justify-content: space-between; gap: 16px; padding: 14px 0; margin-top: 28px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 12px; }
+.stage-readout > span { color: var(--muted); }
+.stage-readout strong { color: var(--text); text-align: right; font-weight: 600; }
+.simple-run-stage .stage-hint { margin-top: 16px; font-size: 11px; }
 
 /* Pack groups */
 .pack-group { margin-bottom: 6px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
@@ -424,6 +468,7 @@ button:disabled { opacity: .35; cursor: default; }
 }
 .run-item:hover { background: var(--white-hover); border-left-color: var(--border); }
 .run-item.active { background: var(--accent-bg); border-left-color: var(--accent); }
+.runner-kind-badge { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
 
 .run-item-header {
   display: flex;
@@ -1503,6 +1548,7 @@ button:disabled { opacity: .35; cursor: default; }
   :root { --sidebar-w: 240px; }
 
   #detail { display: none; }
+  body.show-run-details #detail { display: flex; width: min(320px, 42vw); }
 
   #phase-bar { overflow-x: auto; flex-wrap: nowrap; }
   .phase-pill { white-space: nowrap; flex-shrink: 0; }
@@ -1540,6 +1586,7 @@ button:disabled { opacity: .35; cursor: default; }
   }
 
   #sidebar {
+    display: flex;
     width: 100%;
     max-height: 52vh;
     min-height: 200px;
@@ -1580,7 +1627,8 @@ button:disabled { opacity: .35; cursor: default; }
 
   #cost-badge { display: none; }
 
-  #log-wrap { flex-shrink: 0; height: var(--log-h); }
+  #log-wrap { display: flex; flex-shrink: 0; height: var(--log-h); }
+  body.show-run-details #detail { width: 100%; min-height: 350px; border-left: 0; border-top: 1px solid var(--border); }
 
   #modal { width: 95vw; max-height: 90vh; }
 

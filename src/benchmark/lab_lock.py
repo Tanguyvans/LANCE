@@ -19,11 +19,20 @@ class LabWaitCancelled(RuntimeError):
     """The user stopped a request before it acquired the laboratory."""
 
 
+class LabWaitDeadlineExceeded(RuntimeError):
+    """The caller's deadline elapsed before laboratory work could begin."""
+
+
 _held = threading.local()
 
 
 @contextmanager
-def reserve_lab(*, stop_event=None, callback=None):
+def reserve_lab(*, stop_event=None, callback=None, deadline: float | None = None):
+    if deadline is not None:
+        if stop_event is not None and stop_event.is_set():
+            raise LabWaitCancelled("Arrêt pendant l’attente du laboratoire")
+        if time.monotonic() >= deadline:
+            raise LabWaitDeadlineExceeded("Laboratory wait deadline exceeded")
     configured = os.environ.get("LANCE_LAB_LOCK")
     if not configured or getattr(_held, "active", False):
         yield
@@ -35,6 +44,8 @@ def reserve_lab(*, stop_event=None, callback=None):
         while True:
             if stop_event is not None and stop_event.is_set():
                 raise LabWaitCancelled("Arrêt pendant l’attente du laboratoire")
+            if deadline is not None and time.monotonic() >= deadline:
+                raise LabWaitDeadlineExceeded("Laboratory wait deadline exceeded")
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
@@ -42,12 +53,18 @@ def reserve_lab(*, stop_event=None, callback=None):
                 if not waiting and callback:
                     callback({"type": "lab_waiting", "message": "En attente du laboratoire partagé"})
                 waiting = True
+                remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+                interval = 0.2 if remaining is None else min(0.2, remaining)
                 if stop_event is not None:
-                    stop_event.wait(0.2)
+                    stop_event.wait(interval)
                 else:
-                    time.sleep(0.2)
+                    time.sleep(interval)
         _held.active = True
         try:
+            if deadline is not None and stop_event is not None and stop_event.is_set():
+                raise LabWaitCancelled("Arrêt pendant l’attente du laboratoire")
+            if deadline is not None and time.monotonic() >= deadline:
+                raise LabWaitDeadlineExceeded("Laboratory wait deadline exceeded")
             if callback:
                 callback({"type": "lab_acquired"})
             yield

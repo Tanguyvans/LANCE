@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import subprocess
 import sys
 import threading
 from dataclasses import asdict
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 from typing import Any, Literal
 
@@ -20,6 +22,7 @@ from src.benchmark.scenario_exports import default_export_store, resolve_ground_
 from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
 from src.agent.batch_outcomes import batch_run_status
 from src.benchmark.lab_lock import reserve_lab
+from src.api.run_coordinator import RunCoordinator
 
 router = APIRouter()
 
@@ -42,6 +45,7 @@ _state: dict[str, Any] = {
     "stop_event": None,   # threading.Event | None
     # Run metadata
     "scenario_id": None,
+    "runner_kind": "lance",
     "model": None,
     "execution_profile": None,
     "execution_profile_policy": None,
@@ -54,18 +58,11 @@ _state: dict[str, Any] = {
     "recent_events": [],      # last 200 events, replayed on page reload
 }
 _state_lock = threading.Lock()
-
-_MAX_RECENT_EVENTS = 200
+_coordinator = RunCoordinator(_state_lock)
 
 
 def _lab_event(event: dict, *, publish: bool = False) -> None:
-    if event.get("type") in {"lab_waiting", "lab_acquired"}:
-        _state["lab_waiting"] = event["type"] == "lab_waiting"
-        _state["phase_name"] = "En attente du laboratoire" if _state["lab_waiting"] else ""
-        if publish:
-            loop, q = _state.get("loop"), _state.get("queue")
-            if loop and q:
-                loop.call_soon_threadsafe(q.put_nowait, event)
+    _coordinator.lab_event(_state, event, publish=publish)
 
 
 class ModelSelection(BaseModel):
@@ -78,13 +75,25 @@ class ModelSelection(BaseModel):
         return validate_provider_choice(value)
 
 
-class StartRequest(ModelSelection):
+class StartRequest(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def reject_cli_only_experiment(cls, value):
-        if isinstance(value, dict) and set(value) & {"decision_policy", "experiment_scope", "audit_inventory", "max_tool_calls", "max_duration_s"}:
-            raise ValueError("Inventory policy experiments and their action/time limits are CLI-only")
+        if isinstance(value, dict) and set(value) & {"decision_policy", "experiment_scope", "audit_inventory"}:
+            raise ValueError("Inventory policy experiments are CLI-only")
         return value
+
+    runner_kind: Literal["lance", "vanilla", "scripted"] = "lance"
+    model: str | None = None
+    provider: str | None = None
+    script_id: str | None = None
+    max_tool_calls: int | None = Field(default=None, ge=1)
+    max_duration_s: float | None = Field(default=None, gt=0)
+
+    @field_validator("provider")
+    @classmethod
+    def supported_provider(cls, value: str | None) -> str | None:
+        return validate_provider_choice(value) if value else None
 
     scenario_id: str | None = None
     phases: list[int] | None = None
@@ -103,6 +112,59 @@ class StartRequest(ModelSelection):
     selected_packs: list[str] | None = None
     excluded_vulns: list[str] | None = None  # vuln IDs to exclude from GT
     execution_profile: Literal["auto", "compact", "full"] = "auto"
+
+    @model_validator(mode="after")
+    def validate_runner_contract(self):
+        if self.runner_kind == "vanilla" and not (self.model and self.provider):
+            raise ValueError("This runner requires an explicit provider and model")
+        if self.runner_kind == "lance":
+            if not self.deploy_only and not (self.model and self.provider):
+                raise ValueError("This runner requires an explicit provider and model")
+            if self.deploy_only and bool(self.model) != bool(self.provider):
+                raise ValueError("Deployment requires either both provider and model or neither")
+            if self.script_id is not None:
+                raise ValueError("script_id is only valid for the scripted runner")
+            if self.max_tool_calls is not None or self.max_duration_s is not None:
+                raise ValueError("Action/time budgets are only available for vanilla and scripted runners")
+            return self
+
+        if not self.target_network or "/" not in self.target_network:
+            raise ValueError("Vanilla and scripted runners require an explicit target_network CIDR")
+        try:
+            from src.agent.run_modes import validate_target_network
+            validate_target_network(self.target_network)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+        if any((
+            self.scenario_id is not None,
+            self.phases is not None,
+            self.deploy_only,
+            self.blind,
+            self.architecture is not None,
+            self.posture is not None,
+            self.selected_packs is not None,
+            self.excluded_vulns is not None,
+            self.phase_models is not None,
+            self.auto_teardown is False,
+        )):
+            raise ValueError("Vanilla and scripted runners do not accept scenario or deployment settings")
+        if self.runner_kind == "vanilla" and self.script_id is not None:
+            raise ValueError("script_id is only valid for the scripted runner")
+        if self.runner_kind == "scripted" and (self.provider is not None or self.model is not None):
+            raise ValueError("The scripted runner does not use a provider or model")
+        if self.execution_profile != "auto":
+            raise ValueError("Execution profiles apply only to the LANCE runner")
+        if self.max_tool_calls is not None and self.max_tool_calls > 100:
+            raise ValueError("max_tool_calls must be between 1 and 100")
+        if self.max_duration_s is not None and self.max_duration_s > 3600:
+            raise ValueError("max_duration_s must be between 0 and 3600")
+        if self.max_cost_usd is not None and (not math.isfinite(self.max_cost_usd) or self.max_cost_usd <= 0):
+            raise ValueError("max_cost_usd must be positive")
+        if self.runner_kind == "scripted":
+            from src.agent.run_modes import SCRIPT_IDS
+            if self.script_id not in SCRIPT_IDS:
+                raise ValueError(f"script_id must be one of: {', '.join(sorted(SCRIPT_IDS))}")
+        return self
 
 
 def _write_private_json(path: Path, payload: dict[str, Any]) -> None:
@@ -197,7 +259,7 @@ def _pipeline_thread(req: StartRequest):
         load_dotenv(ROOT / ".env")
 
         from src.agent.provider import LLMProvider
-        from src.agent.pipeline import Pipeline
+        from src.agent.run_modes import make_runner
 
         # If phase_models is provided, we'll instantiate providers dynamically in Pipeline
         # but we need a default one for the init and cost tracking setup
@@ -205,7 +267,13 @@ def _pipeline_thread(req: StartRequest):
         if req.phase_models and req.phases and req.phases[0] in req.phase_models:
             default_model = req.phase_models[req.phases[0]]
 
-        provider = LLMProvider(provider=req.provider, model=default_model)
+        if req.deploy_only and not (req.provider and req.model):
+            # Pipeline accepts a provider object during construction, while
+            # deploy-only never calls it.  Keep deployment independent of model
+            # configuration without opening a provider connection.
+            provider = SimpleNamespace(provider="", model="")
+        else:
+            provider = LLMProvider(provider=req.provider, model=default_model)
 
         # Build custom config if in custom mode
         custom_config = None
@@ -217,7 +285,8 @@ def _pipeline_thread(req: StartRequest):
                 "excluded_vulns": req.excluded_vulns or [],
             }
 
-        pipeline = Pipeline(
+        pipeline = make_runner(
+            "lance",
             provider=provider,
             phases=req.phases or None,
             scenario_id=req.scenario_id,
@@ -245,49 +314,7 @@ def _pipeline_thread(req: StartRequest):
                 _state["run_dir"] = event.get("run_dir")
                 _state["cost"] = event.get("total_cost_usd", _state["cost"])
                 return
-            loop = _state["loop"]
-            q = _state["queue"]
-            if loop and q:
-                loop.call_soon_threadsafe(q.put_nowait, event)
-            # Buffer event for page-reload replay (skip internal/noise events)
-            _skip = {"__done__", "ping", "text_chunk"}
-            if event.get("type") not in _skip:
-                _state["recent_events"].append(event)
-                if len(_state["recent_events"]) > _MAX_RECENT_EVENTS:
-                    _state["recent_events"] = _state["recent_events"][-_MAX_RECENT_EVENTS:]
-            # Update shared state from events
-            t = event.get("type")
-            if t == "phase_start":
-                _state["phase"] = event.get("phase", _state["phase"])
-                _state["phase_name"] = event.get("agent", "")
-                _state["current_devices"] = []
-                _state["devices_done"] = []
-            elif t == "phase_done":
-                cost = event.get("cost_usd", 0.0)
-                _state["cost"] += cost
-                _state["phases_done"].append({
-                    "phase": event.get("phase"),
-                    "name": event.get("agent", ""),
-                    "cost": cost,
-                    "duration_s": event.get("duration_s", 0),
-                })
-            elif t == "device_start":
-                dev = event.get("device_id", "")
-                if dev and dev not in _state["current_devices"]:
-                    _state["current_devices"].append(dev)
-            elif t == "device_done":
-                dev = event.get("device_id", "")
-                if dev and dev not in _state["devices_done"]:
-                    _state["devices_done"].append(dev)
-            elif t == "deploy_start":
-                _state["deploy_status"] = "deploying"
-            elif t == "deploy_done":
-                _state["deploy_status"] = "deployed" if event.get("success") else "failed"
-            elif t in {"inject_done", "verify_done"} and not event.get("success"):
-                _state["deploy_status"] = "failed"
-            elif t == "pipeline_done":
-                _state["run_dir"] = event.get("run_dir")
-                _state["cost"] = event.get("total_cost_usd", _state["cost"])
+            _coordinator.publish(_state, event)
 
         if req.deploy_only:
             pipeline.run_deploy_only(stream_callback=callback, stop_event=_state["stop_event"])
@@ -313,20 +340,54 @@ def _pipeline_thread(req: StartRequest):
             callback(pending_pipeline_done)
 
     except Exception as exc:
-        q = _state["queue"]
-        loop = _state["loop"]
-        if loop and q:
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "message": str(exc)})
+        _coordinator.publish(_state, {"type": "error", "message": str(exc)})
     finally:
-        with _state_lock:
-            _state["running"] = False
-            _state["lab_waiting"] = False
-            _state["stopping"] = False
-        # Signal stream end
-        q = _state["queue"]
-        loop = _state["loop"]
-        if loop and q:
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "__done__"})
+        _coordinator.finish(_state)
+
+
+def _simple_runner_thread(req: StartRequest):
+    """Run a bounded non-benchmark runner through the common execution contract."""
+    seen_terminal = False
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / ".env")
+        from src.agent.provider import LLMProvider
+        from src.agent.run_modes import make_runner
+
+        provider = LLMProvider(provider=req.provider, model=req.model) if req.runner_kind == "vanilla" else None
+        runner = make_runner(
+            req.runner_kind,
+            provider=provider,
+            target_network=req.target_network,
+            max_cost_usd=req.max_cost_usd,
+            max_tool_calls=req.max_tool_calls,
+            max_duration_s=req.max_duration_s,
+            script_id=req.script_id,
+            execution_profile=req.execution_profile,
+        )
+        def callback(event: dict):
+            nonlocal seen_terminal
+            _lab_event(event)
+            if event.get("type") in {"pipeline_done", "runner_done"}:
+                seen_terminal = True
+            _coordinator.publish(_state, event)
+
+        result = runner.run(stream_callback=callback, stop_event=_state["stop_event"])
+        if not seen_terminal:
+            tracker = getattr(runner, "tracker", None)
+            callback({
+                "type": "runner_done",
+                "runner_kind": req.runner_kind,
+                "status": result.get("status", "completed") if isinstance(result, dict) else "completed",
+                "result": result,
+                "run_dir": str(runner.run_dir),
+                "total_cost_usd": round(tracker.total_cost(), 4) if tracker else 0.0,
+            })
+    except Exception as exc:
+        if not seen_terminal:
+            _coordinator.publish(_state, {"type": "error", "message": str(exc)})
+    finally:
+        _coordinator.finish(_state)
 
 
 @router.post("/start")
@@ -346,77 +407,48 @@ async def start_pipeline(req: StartRequest):
             ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-    from datetime import datetime
-    from src.agent.execution_profiles import resolve_execution_profile_for_model
-    profile_resolution = resolve_execution_profile_for_model(
-        req.execution_profile, req.model
-    )
-    with _state_lock:
-        if _state["running"]:
-            raise HTTPException(status_code=409, detail="Pipeline already running or stopping")
-        if _state["teardown_running"]:
-            raise HTTPException(status_code=409, detail="Scenario teardown is still running")
-        _state["running"] = True
-        _state["stopping"] = False
-    _state["phase"] = 0
-    _state["phase_name"] = ""
-    _state["cost"] = 0.0
-    _state["run_dir"] = None
-    _state["queue"] = asyncio.Queue()
-    _state["loop"] = asyncio.get_event_loop()
-    _state["stop_event"] = threading.Event()
-    _state["scenario_id"] = req.scenario_id
-    _state["model"] = req.model
-    _state["execution_profile"] = profile_resolution.profile.name
-    _state["execution_profile_policy"] = req.execution_profile
-    _state["started_at"] = datetime.now().isoformat()
-    _state["phases_done"] = []
-    _state["current_devices"] = []
-    _state["devices_done"] = []
-    _state["deploy_status"] = None
-    _state["recent_events"] = []
+    profile_name = None
+    profile_policy = None
+    if req.runner_kind == "lance":
+        from src.agent.execution_profiles import resolve_execution_profile_for_model
+        resolution = resolve_execution_profile_for_model(req.execution_profile, req.model)
+        profile_name = resolution.profile.name
+        profile_policy = req.execution_profile
+    try:
+        _coordinator.begin(
+            _state,
+            loop=asyncio.get_running_loop(),
+            runner_kind=req.runner_kind,
+            scenario_id=req.scenario_id,
+            model=req.model,
+            execution_profile=profile_name,
+            execution_profile_policy=profile_policy,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    thread = threading.Thread(target=_pipeline_thread, args=(req,), daemon=True)
-    thread.start()
+    target = _pipeline_thread if req.runner_kind == "lance" else _simple_runner_thread
+    thread = threading.Thread(target=target, args=(req,), daemon=True)
+    try:
+        thread.start()
+    except Exception:
+        _coordinator.finish(_state)
+        raise
     return {"status": "started"}
 
 
 @router.post("/stop")
 async def stop_pipeline():
     """Request graceful stop of the running pipeline (stops between phases)."""
-    if not _state["running"]:
+    if not _coordinator.request_stop(_state):
         raise HTTPException(status_code=400, detail="No pipeline running")
-    with _state_lock:
-        ev = _state.get("stop_event")
-        if ev:
-            ev.set()
-        _state["stopping"] = True
     return {"status": "stopping"}
 
 
 @router.get("/status")
 def get_status():
     """Return full pipeline state — used by frontend on load to sync UI."""
-    return {
-        "running": _state["running"],
-        "lab_waiting": _state.get("lab_waiting", False),
-        "stopping": _state.get("stopping", False),
-        "teardown_running": _state.get("teardown_running", False),
-        "phase": _state["phase"],
-        "phase_name": _state.get("phase_name", ""),
-        "cost": round(_state["cost"], 4),
-        "scenario_id": _state.get("scenario_id"),
-        "model": _state.get("model"),
-        "execution_profile": _state.get("execution_profile"),
-        "execution_profile_policy": _state.get("execution_profile_policy"),
-        "started_at": _state.get("started_at"),
-        "deploy_status": _state.get("deploy_status"),
-        "phases_done": _state.get("phases_done", []),
-        "current_devices": _state.get("current_devices", []),
-        "devices_done": _state.get("devices_done", []),
-        "run_dir": _state["run_dir"],
-        "recent_events": _state.get("recent_events", []),
-    }
+    return _coordinator.status(_state)
 
 
 class BatchRequest(ModelSelection):
@@ -446,20 +478,12 @@ def _batch_thread(req: BatchRequest):
         batch_ids = _parse_scenario_ids(selector)
 
         from src.agent.provider import LLMProvider
-        from src.agent.pipeline import Pipeline
+        from src.agent.run_modes import make_runner
         from src.benchmark.evaluator import evaluate
 
         def _push(event: dict):
             _lab_event(event)
-            loop = _state["loop"]
-            q = _state["queue"]
-            if loop and q:
-                loop.call_soon_threadsafe(q.put_nowait, event)
-            t = event.get("type")
-            if t not in {"__done__", "ping", "text_chunk"}:
-                _state["recent_events"].append(event)
-                if len(_state["recent_events"]) > _MAX_RECENT_EVENTS:
-                    _state["recent_events"] = _state["recent_events"][-_MAX_RECENT_EVENTS:]
+            _coordinator.publish(_state, event, track_progress=False)
 
         results = []
         evaluation_results = []
@@ -511,7 +535,8 @@ def _batch_thread(req: BatchRequest):
             pipeline = None
             try:
                 provider = LLMProvider(provider=req.provider, model=req.model)
-                pipeline = Pipeline(
+                pipeline = make_runner(
+                    "lance",
                     provider=provider,
                     phases=req.phases or None,
                     scenario_id=int(sid) if sid.isdigit() else sid,
@@ -621,19 +646,9 @@ def _batch_thread(req: BatchRequest):
         })
 
     except Exception as exc:
-        q = _state["queue"]
-        loop = _state["loop"]
-        if loop and q:
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "message": str(exc)})
+        _coordinator.publish(_state, {"type": "error", "message": str(exc)})
     finally:
-        with _state_lock:
-            _state["running"] = False
-            _state["lab_waiting"] = False
-            _state["stopping"] = False
-        q = _state["queue"]
-        loop = _state["loop"]
-        if loop and q:
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "__done__"})
+        _coordinator.finish(_state)
 
 
 @router.post("/batch")
@@ -649,38 +664,29 @@ async def start_batch(req: BatchRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     req.batch_ids = selected_ids
 
-    from datetime import datetime
     from src.agent.execution_profiles import resolve_execution_profile_for_model
     profile_resolution = resolve_execution_profile_for_model(
         req.execution_profile, req.model
     )
-    with _state_lock:
-        if _state["running"]:
-            raise HTTPException(status_code=409, detail="Pipeline already running or stopping")
-        if _state["teardown_running"]:
-            raise HTTPException(status_code=409, detail="Scenario teardown is still running")
-        _state["running"] = True
-        _state["stopping"] = False
-    _state["phase"] = 0
-    _state["phase_name"] = ""
-    _state["cost"] = 0.0
-    _state["run_dir"] = None
-    _state["queue"] = asyncio.Queue()
-    _state["loop"] = asyncio.get_event_loop()
-    _state["stop_event"] = threading.Event()
-    _state["scenario_id"] = None
-    _state["model"] = req.model
-    _state["execution_profile"] = profile_resolution.profile.name
-    _state["execution_profile_policy"] = req.execution_profile
-    _state["started_at"] = datetime.now().isoformat()
-    _state["phases_done"] = []
-    _state["current_devices"] = []
-    _state["devices_done"] = []
-    _state["deploy_status"] = None
-    _state["recent_events"] = []
+    try:
+        _coordinator.begin(
+            _state,
+            loop=asyncio.get_running_loop(),
+            runner_kind="lance",
+            scenario_id=None,
+            model=req.model,
+            execution_profile=profile_resolution.profile.name,
+            execution_profile_policy=req.execution_profile,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     thread = threading.Thread(target=_batch_thread, args=(req,), daemon=True)
-    thread.start()
+    try:
+        thread.start()
+    except Exception:
+        _coordinator.finish(_state)
+        raise
     return {"status": "batch_started", "total": len(req.batch_ids)}
 
 
@@ -702,22 +708,12 @@ async def teardown_scenario(req: TeardownRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    with _state_lock:
-        if _state["running"]:
-            raise HTTPException(
-                status_code=409,
-                detail="Pipeline is running or stopping — wait for it to finish before teardown",
-            )
-        if _state["teardown_running"]:
-            raise HTTPException(status_code=409, detail="Scenario teardown is already running")
-        _state["teardown_running"] = True
-        _state["teardown_scenario_id"] = req.scenario_id
-
-    # A completed pipeline may have left its __done__ marker in the old queue
-    # after the browser consumed pipeline_done and closed SSE. Always isolate a
-    # manual teardown in a fresh queue so its teardown_done event cannot be lost.
-    _state["queue"] = asyncio.Queue()
-    _state["loop"] = asyncio.get_running_loop()
+    try:
+        _coordinator.begin_teardown(
+            _state, scenario_id=req.scenario_id, loop=asyncio.get_running_loop()
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     def _run_locked():
         deployment = GeneratedScenarioDeployment.from_lease(req.scenario_id)
@@ -752,32 +748,25 @@ async def teardown_scenario(req: TeardownRequest):
 
         if success and deployment is not None:
             deployment.release()
-        loop = _state.get("loop")
-        q = _state.get("queue")
-        if loop and q:
-            loop.call_soon_threadsafe(q.put_nowait, {
-                "type": "teardown_done",
-                "scenario_id": req.scenario_id,
-                "success": success,
-                "manual": True,
-                "output": output,
-            })
+        _coordinator.enqueue(_state, {
+            "type": "teardown_done",
+            "scenario_id": req.scenario_id,
+            "success": success,
+            "manual": True,
+            "output": output,
+        })
 
     def _run():
         try:
             with reserve_lab(callback=lambda event: _lab_event(event, publish=True)):
                 _run_locked()
         except Exception as exc:
-            loop, q = _state.get("loop"), _state.get("queue")
-            if loop and q:
-                loop.call_soon_threadsafe(q.put_nowait, {
-                    "type": "teardown_done", "scenario_id": req.scenario_id,
-                    "success": False, "manual": True, "output": str(exc),
-                })
+            _coordinator.enqueue(_state, {
+                "type": "teardown_done", "scenario_id": req.scenario_id,
+                "success": False, "manual": True, "output": str(exc),
+            })
         finally:
-            with _state_lock:
-                _state["teardown_running"] = False
-                _state["lab_waiting"] = False
+            _coordinator.finish_teardown(_state)
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()

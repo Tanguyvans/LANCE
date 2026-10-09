@@ -126,7 +126,10 @@ def _render_events(events):
 const vm = require('node:vm');
 const fs = require('node:fs');
 class Element {
-  constructor() { this.children = []; this.style = {}; this.textContent = ''; }
+  constructor() {
+    this.children = []; this.style = {}; this.textContent = '';
+    this.classList = {add(){}, remove(){}, toggle(){}};
+  }
   appendChild(child) { this.children.push(child); }
   removeChild(child) { this.children.splice(this.children.indexOf(child), 1); }
   setAttribute() {}
@@ -134,11 +137,13 @@ class Element {
 const elements = new Map();
 const document = {
   documentElement: new Element(),
+  body: new Element(),
   getElementById(id) {
     if (!elements.has(id)) elements.set(id, new Element());
     return elements.get(id);
   },
   createElement: () => new Element(),
+  querySelectorAll: () => [],
   addEventListener() {},
 };
 const context = vm.createContext({

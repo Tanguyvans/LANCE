@@ -26,6 +26,10 @@
     <button class="phase-pill" data-phase="5" aria-label="Phase 5 Intrusion">5 · Intrusion</button>
     <button class="phase-pill" data-phase="6" aria-label="Phase 6 Report">6 · Report</button>
   </div>
+  <div id="runner-activity" class="runner-activity" role="status" aria-live="polite" hidden>
+    <span class="runner-activity-dot" aria-hidden="true"></span>
+    <span id="runner-activity-text">Exécution prête</span>
+  </div>
   <button id="btn-manage-models" class="view-btn" title="Gérer les modèles et providers (DB)">⚙️ Modèles</button>
   <div id="cost-badge">Cost: <span id="cost-val">$0.0000</span></div>
 </div>
@@ -54,7 +58,44 @@
     <div class="sidebar-section" id="launch-section">
       <h3>New Run</h3>
 
-      <label for="sel-model">Model global</label>
+      <fieldset class="runner-choices" aria-label="Type d'exécution">
+        <legend>Exécution</legend>
+        <label class="runner-choice">
+          <input type="radio" name="runner-kind" value="lance" checked>
+          <span><strong>Pipeline LANCE</strong><small>Phases, preuves et rapport</small></span>
+        </label>
+        <label class="runner-choice">
+          <input type="radio" name="runner-kind" value="vanilla">
+          <span><strong>Agent simple</strong><small>Une boucle modèle et outils</small></span>
+        </label>
+        <label class="runner-choice">
+          <input type="radio" name="runner-kind" value="scripted">
+          <span><strong>Script</strong><small>Procédure déterministe</small></span>
+        </label>
+      </fieldset>
+
+      <div id="simple-run-config" hidden>
+        <label for="inp-target-network">Réseau autorisé</label>
+        <input id="inp-target-network" type="text" placeholder="ex : 192.0.2.0/24" autocomplete="off" spellcheck="false" required>
+        <p class="field-hint">Cible du run. Aucun scénario de laboratoire n'est déployé.</p>
+
+        <div id="script-config" hidden>
+          <label for="sel-script">Procédure</label>
+          <select id="sel-script">
+            <option value="">Choisir une procédure…</option>
+            <option value="discovery-v1">Découverte des hôtes</option>
+          </select>
+          <p id="script-description" class="field-hint" aria-live="polite"></p>
+        </div>
+
+        <div class="simple-limits">
+          <div><label for="inp-max-tool-calls">Appels d'outils max.</label><input id="inp-max-tool-calls" type="number" min="1" step="1" placeholder="Défaut serveur"></div>
+          <div><label for="inp-max-duration">Durée max. (s)</label><input id="inp-max-duration" type="number" min="1" step="1" placeholder="Défaut serveur"></div>
+        </div>
+      </div>
+
+      <div id="model-config">
+      <label for="sel-model">Modèle</label>
       <div class="model-picker-tools">
         <input id="model-search" type="search" placeholder="Filtrer les modèles…" autocomplete="off" aria-label="Filtrer les modèles">
         <button id="btn-refresh-models" type="button" title="Actualiser les modèles configurés" aria-label="Actualiser les modèles">↻</button>
@@ -90,7 +131,9 @@
           </select>
         </div>
       </div>
+      </div>
 
+      <div id="lance-config">
       <label>Profil d'exécution</label>
       <div class="mode-toggle" id="execution-profile-toggle">
         <label><input type="radio" name="execution-profile" value="auto" checked> Auto</label>
@@ -171,6 +214,7 @@
 
       <label for="inp-budget">Budget max (USD, optionnel)</label>
       <input type="number" id="inp-budget" min="0" step="0.01" placeholder="ex : 0.50">
+      </div>
 
       <button id="btn-start">Lancer le pentest</button>
       <button id="btn-batch-start" hidden>Lancer le batch</button>
@@ -248,6 +292,15 @@
           <line x1="8" y1="5.5" x2="8" y2="7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </button>
+    </div>
+    <div id="simple-run-stage" class="simple-run-stage" hidden aria-live="polite">
+      <span class="stage-kicker" id="simple-stage-kind">Agent simple</span>
+      <h2 id="simple-stage-title">Prêt à démarrer</h2>
+      <p id="simple-stage-target">Indiquez un réseau autorisé pour lancer une exécution.</p>
+      <div class="stage-readout">
+        <span>Activité</span><strong id="simple-stage-activity">En attente</strong>
+      </div>
+      <p class="stage-hint">Les appels d'outils apparaissent dans le journal. Le résumé et les fichiers sont disponibles dans l'historique après le run.</p>
     </div>
     <div id="cy"></div>
     <div id="cy-loading" aria-live="polite" style="display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;pointer-events:none">Chargement de la topologie…</div>

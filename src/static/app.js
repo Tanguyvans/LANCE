@@ -7,11 +7,62 @@ let eventSource = null;  // SSE connection
 let activeRunId = null;  // run being viewed in detail panel
 let activeRunFiles = []; // deliverables available for the selected historical run
 let activeRunIsSealed = false;
+let activeExecutionKind = 'lance';
 let nodeVulns = {};      // { nodeId: [{id,type,severity,service,details,cve_ids}] }
 let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
 let colorMode = 'type';  // 'type' | 'security' — current graph coloring mode
 
 const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Intrusion',6:'Report'};
+const RUNNER_LABELS = {lance: 'Pipeline LANCE', vanilla: 'Agent simple', scripted: 'Script'};
+
+function runnerKind(value) {
+  return Object.hasOwn(RUNNER_LABELS, value) ? value : 'lance';
+}
+
+function setRunnerActivity(title, activity, target = '') {
+  document.getElementById('runner-activity-text').textContent = activity;
+  document.getElementById('simple-stage-title').textContent = title;
+  document.getElementById('simple-stage-activity').textContent = activity;
+  if (target) document.getElementById('simple-stage-target').textContent = target;
+}
+
+function setRunnerCanvas(kind) {
+  kind = runnerKind(kind);
+  const simple = kind !== 'lance';
+  document.getElementById('phase-bar').hidden = simple;
+  document.getElementById('runner-activity').hidden = !simple;
+  document.getElementById('simple-run-stage').hidden = !simple;
+  document.getElementById('graph-wrap').classList.toggle('simple-run-view', simple);
+  document.getElementById('detail-placeholder').innerHTML = simple
+    ? 'Choisissez un run<br>pour voir ses fichiers'
+    : 'Cliquez sur un nœud<br>pour voir ses détails';
+  document.getElementById('cost-badge').hidden = kind === 'scripted';
+  if (simple) resetDeviceProgress();
+  document.getElementById('simple-stage-kind').textContent = RUNNER_LABELS[kind];
+}
+
+function setRunnerView(kind) {
+  kind = runnerKind(kind);
+  activeExecutionKind = kind;
+  const simple = kind !== 'lance';
+  const choice = document.querySelector(`input[name="runner-kind"][value="${kind}"]`);
+  if (choice) choice.checked = true;
+  document.getElementById('lance-config').hidden = simple;
+  document.getElementById('simple-run-config').hidden = !simple;
+  document.getElementById('script-config').hidden = kind !== 'scripted';
+  document.getElementById('model-config').hidden = kind === 'scripted';
+  document.querySelector('.multi-model-toggle').hidden = kind !== 'lance';
+  document.getElementById('multi-model-config').hidden = kind !== 'lance' || !document.getElementById('cb-multi-model').checked;
+  setRunnerCanvas(kind);
+  document.getElementById('btn-start').textContent = kind === 'lance' ? 'Lancer le pentest' : kind === 'vanilla' ? "Lancer l'agent" : 'Lancer le script';
+  const batch = !simple && document.querySelector('input[name="run-mode"]:checked')?.value === 'batch';
+  document.getElementById('btn-start').hidden = batch;
+  document.getElementById('btn-batch-start').hidden = !batch;
+  if (simple) {
+    const target = document.getElementById('inp-target-network').value.trim();
+    setRunnerActivity('Prêt à démarrer', 'En attente', target || 'Indiquez un réseau autorisé pour lancer une exécution.');
+  }
+}
 
 function _cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -658,6 +709,23 @@ function getCustomConfig() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  document.querySelectorAll('input[name="runner-kind"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      setRunnerView(radio.value);
+      setCost(0);
+    });
+  });
+  document.getElementById('inp-target-network').addEventListener('input', () => {
+    if (activeExecutionKind === 'lance') return;
+    const target = document.getElementById('inp-target-network').value.trim();
+    document.getElementById('simple-stage-target').textContent = target || 'Indiquez un réseau autorisé pour lancer une exécution.';
+  });
+  document.getElementById('sel-script').addEventListener('change', () => {
+    document.getElementById('script-description').textContent = document.getElementById('sel-script').value === 'discovery-v1'
+      ? 'Découverte fixe des hôtes du réseau indiqué.' : '';
+  });
+  setRunnerView('lance');
+
   // Mode toggle
   document.querySelectorAll('input[name="run-mode"]').forEach(radio => {
     radio.addEventListener('change', () => {
@@ -665,8 +733,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('preset-mode').hidden  = val !== 'preset';
       document.getElementById('batch-mode').hidden   = val !== 'batch';
       document.getElementById('custom-mode').hidden  = val !== 'custom';
-      document.getElementById('btn-start').hidden       = val === 'batch';
-      document.getElementById('btn-batch-start').hidden = val !== 'batch';
+      document.getElementById('btn-start').hidden       = val === 'batch' && activeExecutionKind === 'lance';
+      document.getElementById('btn-batch-start').hidden = val !== 'batch' || activeExecutionKind !== 'lance';
     });
   });
 
@@ -1332,6 +1400,7 @@ function showNodeDetail(data) {
 }
 
 function hideDetail() {
+  document.body.classList.remove('show-run-details');
   document.getElementById('detail-placeholder').hidden = false;
   document.getElementById('detail-content').hidden = true;
 }
@@ -1349,7 +1418,72 @@ function expandSelectedPhases(phases) {
   return [...selected].sort((a, b) => a - b);
 }
 
+function lockRunnerChoice(locked) {
+  document.querySelectorAll('input[name="runner-kind"]').forEach(input => { input.disabled = locked; });
+}
+
+async function startSimpleRun(kind) {
+  const target = document.getElementById('inp-target-network').value.trim();
+  if (!target || !target.includes('/')) {
+    addLog({type: 'error', message: 'Indiquez un réseau autorisé au format CIDR, par exemple 192.0.2.0/24.'});
+    document.getElementById('inp-target-network').focus();
+    return;
+  }
+
+  const body = {runner_kind: kind, target_network: target};
+  if (kind === 'scripted') {
+    body.script_id = document.getElementById('sel-script').value;
+    if (!body.script_id) {
+      addLog({type: 'error', message: 'Choisissez une procédure avant de lancer le script.'});
+      document.getElementById('sel-script').focus();
+      return;
+    }
+  } else {
+    const modelSel = document.getElementById('sel-model');
+    const selectedOpt = modelSel.options[modelSel.selectedIndex];
+    if (!modelSel.value || !selectedOpt || selectedOpt.disabled || !selectedOpt.dataset.provider) {
+      addLog({type: 'error', message: "Sélectionnez un modèle disponible avant de lancer l'agent."});
+      modelSel.focus();
+      return;
+    }
+    body.model = modelSel.value;
+    body.provider = selectedOpt.dataset.provider;
+  }
+
+  for (const [id, key] of [['inp-max-tool-calls', 'max_tool_calls'], ['inp-max-duration', 'max_duration_s']]) {
+    const input = document.getElementById(id);
+    if (!input.value.trim()) continue;
+    if (!input.checkValidity() || !Number.isSafeInteger(Number(input.value))) {
+      addLog({type: 'error', message: `La limite « ${input.previousElementSibling.textContent} » doit être un entier positif.`});
+      input.focus();
+      return;
+    }
+    body[key] = Number(input.value);
+  }
+
+  const res = await adminFetch('/api/pipeline/start', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({detail: res.statusText}));
+    addLog({type: 'error', message: _formatErrDetail(err.detail) || 'Erreur de démarrage'});
+    return;
+  }
+  clearLog();
+  setRunnerView(kind);
+  setCost(0);
+  setRunnerActivity('Exécution en cours', 'Démarrage…', target);
+  document.getElementById('runner-activity').classList.add('running');
+  document.getElementById('runner-activity').classList.remove('failed');
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').style.display = 'block';
+  lockRunnerChoice(true);
+  startSSE();
+}
+
 async function startRun() {
+  const kind = runnerKind(document.querySelector('input[name="runner-kind"]:checked')?.value);
+  if (kind !== 'lance') return startSimpleRun(kind);
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
   const selectedOpt = modelSel.options[modelSel.selectedIndex];
@@ -1413,6 +1547,7 @@ async function startRun() {
   const executionProfile = document.querySelector("input[name=execution-profile]:checked")?.value || "auto";
 
   const body = {
+    runner_kind: 'lance',
     model,
     provider,
     scenario_id: scenario,
@@ -1447,8 +1582,10 @@ async function startRun() {
     return;
   }
 
+  setRunnerCanvas('lance');
   document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').style.display = 'block';
+  lockRunnerChoice(true);
   resetDeviceProgress();
 
   startSSE();
@@ -1637,6 +1774,7 @@ function startSSE() {
     }
     document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-batch-start').disabled = false;
+    lockRunnerChoice(false);
     const stopBtn = document.getElementById('btn-stop');
     stopBtn.style.display = 'none';
     stopBtn.disabled = false;
@@ -1648,8 +1786,34 @@ function startSSE() {
 function handleEvent(ev) {
   const t = ev.type;
   addLog(ev);
+  if (activeExecutionKind !== 'lance' && (t === 'tool_call' || t === 'tool_result')) {
+    setRunnerActivity('Exécution en cours', `${t === 'tool_call' ? 'Outil en cours' : 'Outil terminé'} : ${ev.name || 'outil'}`);
+  }
 
-  if (t === 'phase_start') {
+  if (t === 'runner_started') {
+    const kind = runnerKind(ev.runner_kind || activeExecutionKind);
+    setRunnerView(kind);
+    setRunnerActivity('Exécution en cours', 'Démarrage…', ev.target_network || document.getElementById('inp-target-network').value.trim());
+    document.getElementById('runner-activity').classList.add('running');
+  }
+
+  else if (t === 'runner_done') {
+    const completed = ev.status === 'completed';
+    setCost(ev.total_cost_usd || 0);
+    setRunnerActivity(completed ? 'Exécution terminée' : 'Exécution interrompue', completed ? 'Résumé disponible dans l’historique' : `Statut : ${ev.status || 'indisponible'}`);
+    document.getElementById('runner-activity').classList.toggle('failed', !completed);
+    document.getElementById('runner-activity').classList.remove('running');
+    document.getElementById('btn-start').disabled = false;
+    lockRunnerChoice(false);
+    const stopBtn = document.getElementById('btn-stop');
+    stopBtn.style.display = 'none';
+    stopBtn.disabled = false;
+    stopBtn.textContent = 'Arrêter';
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    loadRuns();
+  }
+
+  else if (t === 'phase_start') {
     setPhasePill(ev.phase, 'running');
     if (ev.phase === 3) resetDeviceProgress();
   }
@@ -1689,11 +1853,18 @@ function handleEvent(ev) {
     if (ev.batch_scenario_id !== undefined) return;
     setCost(ev.total_cost_usd || 0);
     document.getElementById('btn-start').disabled = false;
+    lockRunnerChoice(false);
     const stopBtn = document.getElementById('btn-stop');
     stopBtn.style.display = 'none';
     stopBtn.disabled = false;
     stopBtn.textContent = 'Arrêter';
     if (eventSource) { eventSource.close(); eventSource = null; }
+    if (activeExecutionKind !== 'lance' && document.getElementById('simple-stage-title').textContent === 'Exécution en cours') {
+      const completed = ev.status === 'completed';
+      setRunnerActivity(completed ? 'Exécution terminée' : 'Exécution interrompue', completed ? 'Résumé disponible dans l’historique' : `Statut : ${ev.status || 'indisponible'}`);
+      document.getElementById('runner-activity').classList.toggle('failed', !completed);
+      document.getElementById('runner-activity').classList.remove('running');
+    }
     loadRuns();
   }
 
@@ -1745,6 +1916,7 @@ function handleEvent(ev) {
     setCost(ev.total_cost_usd);
     document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-batch-start').disabled = false;
+    lockRunnerChoice(false);
     const stopBtn = document.getElementById('btn-stop');
     stopBtn.style.display = 'none';
     stopBtn.disabled = false;
@@ -1771,7 +1943,7 @@ function handleEvent(ev) {
     }
   }
 
-  else if (t === 'tool_result' && ev.name === 'nmap_scan') {
+  else if (activeExecutionKind === 'lance' && t === 'tool_result' && ev.name === 'nmap_scan') {
     const parsed = parseNmapResult(ev.result || '');
     let newNodesAdded = false;
     Object.entries(parsed).forEach(([ip, info]) => {
@@ -1972,14 +2144,17 @@ function closeCompare(e) {
 function _renderRunItem(r) {
   const ts  = r.id.replace('_', ' ').replace(/_/g, ':');
   const sealed = isSealedRun(r);
-  const scnLabel = sealed ? `${r.scenario || 'Évaluation'} · scellé` : (r.scenario || 'Lab physique');
+  const kind = runnerKind(r.runner_kind);
+  const simple = kind !== 'lance';
+  const scnLabel = simple ? (r.target_network || 'Réseau direct') : sealed ? `${r.scenario || 'Évaluation'} · scellé` : (r.scenario || 'Lab physique');
   const scn = `<span class="run-badge ${r.scenario ? 'done' : ''}">${escapeHtml(scnLabel)}</span>`;
+  const kindBadge = simple ? `<span class="run-badge runner-kind-badge">${escapeHtml(RUNNER_LABELS[kind])}</span>` : '';
   const cost = !sealed && r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
   const eid = escapeHtml(r.id);
-  const inCmp = _compareSet.has(r.id);
+  const inCmp = !simple && _compareSet.has(r.id);
   const actions = sealed
     ? '<span style="color:var(--muted);font-size:10px">agrégats uniquement</span>'
-    : `<button class="run-compare ${inCmp ? 'active' : ''}" onclick="event.stopPropagation(); toggleCompare('${eid}')" title="Ajouter à la comparaison">+ cmp</button>
+    : `${simple ? '' : `<button class="run-compare ${inCmp ? 'active' : ''}" onclick="event.stopPropagation(); toggleCompare('${eid}')" title="Ajouter à la comparaison">+ cmp</button>`}
        <button class="run-download" onclick="event.stopPropagation(); downloadRun('${eid}')">zip</button>`;
   return `
     <div class="run-item ${r.id === activeRunId ? 'active' : ''} ${inCmp ? 'compare-active' : ''}" data-id="${eid}"
@@ -1991,7 +2166,7 @@ function _renderRunItem(r) {
         <span class="run-badge ${escapeHtml(r.status)}">${escapeHtml(r.status)}</span>
       </div>
       <div class="run-meta">
-        ${scn} ${cost}
+        ${kindBadge} ${scn} ${cost}
         ${actions}
       </div>
     </div>
@@ -2046,7 +2221,7 @@ async function loadRuns() {
   }
   _allRuns = runs;
   for (const run of runs) {
-    if (isSealedRun(run)) _compareSet.delete(run.id);
+    if (isSealedRun(run) || runnerKind(run.runner_kind) !== 'lance') _compareSet.delete(run.id);
   }
   _updateCompareButton();
   _runsShown = RUNS_PER_PAGE;
@@ -2064,18 +2239,29 @@ async function viewRun(runId) {
   const run = await fetchJSON(`/api/runs/${runId}`);
   if (!run) return;
   activeRunFiles = Array.isArray(run.files) ? run.files : [];
+  const kind = runnerKind(run.runner_kind);
+  const simple = kind !== 'lance';
+  if (!document.getElementById('btn-start').disabled) {
+    // Browsing history must not rewrite the next launch mode or its target.
+    setRunnerCanvas(kind);
+    if (simple) setRunnerActivity('Run enregistré', `Statut : ${run.status || 'indisponible'}`, run.target_network || 'Réseau direct');
+  }
 
   const sealed = isSealedRun(run);
   activeRunIsSealed = sealed;
   const eRunId = escapeHtml(runId);
   const scenarioId = run.scenario ? run.scenario.replace(/^S/i, '') : null;
-  const hasScore = run.scenario && run.files.includes('03_vuln_analysis.json');
-  const reportFile = run.files.includes('06_report.md') ? '06_report.md'
+  const hasScore = !simple && run.scenario && run.files.includes('03_vuln_analysis.json');
+  const reportFile = simple ? (run.files.includes('run_summary.md') ? 'run_summary.md' : null)
+                   : run.files.includes('06_report.md') ? '06_report.md'
                    : run.files.includes('05_report.md') ? '05_report.md' : null;
 
   // Sealed runs must never request their topology or raw artifacts. Public
   // runs keep the normal interactive graph.
-  if (sealed) {
+  if (simple) {
+    nodeVulns = {};
+    nodeHosts = {};
+  } else if (sealed) {
     showSealedTopologyPlaceholder();
     document.getElementById('sel-scenario').value = '';
   } else {
@@ -2088,6 +2274,7 @@ async function viewRun(runId) {
 
   // Show run view in detail panel immediately after topology
   document.getElementById('detail-placeholder').hidden = true;
+  document.body.classList.add('show-run-details');
   document.getElementById('detail-content').hidden = false;
   document.getElementById('detail-node-view').hidden = true;
   document.getElementById('detail-run-view').hidden = false;
@@ -2096,7 +2283,7 @@ async function viewRun(runId) {
 
   // Fetch score + report in parallel (both can be slow)
   const [score, reportData] = await Promise.all([
-    (sealed || hasScore) ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
+    (!simple && (sealed || hasScore)) ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
     (!sealed && reportFile) ? fetchJSON(`/api/runs/${eRunId}/${reportFile}`) : Promise.resolve(null),
   ]);
 
@@ -2158,7 +2345,10 @@ async function viewRun(runId) {
   const displayedCost = sealed ? score?.metrics?.cost_usd : run.cost;
 
   document.getElementById('detail-panel-info').innerHTML = `
-    <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>
+    <div class="detail-row"><span class="detail-key">Exécution</span><span class="detail-val">${escapeHtml(RUNNER_LABELS[kind])}</span></div>
+    ${simple ? `<div class="detail-row"><span class="detail-key">Réseau</span><span class="detail-val">${escapeHtml(run.target_network || '—')}</span></div>`
+             : `<div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>`}
+    ${kind === 'scripted' && run.script_id ? `<div class="detail-row"><span class="detail-key">Procédure</span><span class="detail-val">${escapeHtml(run.script_id)}</span></div>` : ''}
     <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${displayedCost != null ? '$'+Number(displayedCost).toFixed(4) : '—'}</span></div>
     <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val"><span class="run-badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></span></div>
     ${sealed ? '' : `<div class="detail-row"><span class="detail-key">Fichiers</span><span class="detail-val">${run.files.length}</span></div>`}
@@ -2189,17 +2379,19 @@ async function viewRun(runId) {
   } else if (reportFile && reportData && reportData.content) {
     reportPanel.innerHTML = `<div class="md-render">${renderMarkdown(reportData.content)}</div>`;
   } else {
-    reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px 0">Rapport (phase 6) non généré pour ce run.</div>';
+    reportPanel.innerHTML = simple
+      ? '<div style="color:var(--muted);font-size:11px;padding:4px 0">Aucun résumé disponible pour ce run.</div>'
+      : '<div style="color:var(--muted);font-size:11px;padding:4px 0">Rapport (phase 6) non généré pour ce run.</div>';
   }
 
   // Load vuln data to color graph nodes
-  if (!sealed && run.files.includes('03_vuln_analysis.json')) {
+  if (!simple && !sealed && run.files.includes('03_vuln_analysis.json')) {
     await fetchVulnResults(runId);
   }
 
   // Ledger observations do not depend on the model saving its declaration.
   // The server distinguishes an unavailable journal from zero accesses.
-  if (!sealed) {
+  if (!simple && !sealed) {
     await loadIntrusionOverlay(runId);
   }
 }
@@ -3053,15 +3245,21 @@ function addLog(ev) {
   let fullText = ''; // Store full text for expansion
   let failed = t === 'error';
 
-  if (t === 'phase_start')   text = `▶ Phase ${ev.phase} — ${PHASE_NAMES[ev.phase] || ''}`;
+  if (t === 'runner_started') text = `${RUNNER_LABELS[runnerKind(ev.runner_kind)]} démarré${ev.target_network ? ` — ${ev.target_network}` : ''}`;
+  else if (t === 'runner_done') text = `${RUNNER_LABELS[runnerKind(ev.runner_kind || activeExecutionKind)]} terminé — ${ev.status || 'statut indisponible'}`;
+  else if (t === 'phase_start')   text = `▶ Phase ${ev.phase} — ${PHASE_NAMES[ev.phase] || ''}`;
   else if (t === 'phase_done') text = `✓ Phase ${ev.phase} done (${ev.status}) — $${(ev.cost_usd||0).toFixed(4)}`;
   else if (t === 'lab_waiting') text = 'En attente du laboratoire partagé — une autre instance l’utilise.';
   else if (t === 'lab_acquired') text = 'Laboratoire disponible — exécution autorisée.';
   else if (t === 'pipeline_start') text = `Pipeline démarré — ${ev.device_count} devices, ${ev.cve_count} CVEs`;
   else if (t === 'pipeline_done') {
-    const cost = typeof ev.total_cost_usd === 'number' && Number.isFinite(ev.total_cost_usd)
-      ? `$${ev.total_cost_usd.toFixed(4)}` : 'indisponible';
-    text = `${formatPipelineCompletionSummary(ev)} — Total : ${cost}`;
+    if (ev.runner_kind && ev.runner_kind !== 'lance') {
+      text = `Exécution terminée — ${ev.status || 'statut indisponible'}`;
+    } else {
+      const cost = typeof ev.total_cost_usd === 'number' && Number.isFinite(ev.total_cost_usd)
+        ? `$${ev.total_cost_usd.toFixed(4)}` : 'indisponible';
+      text = `${formatPipelineCompletionSummary(ev)} — Total : ${cost}`;
+    }
     failed = ev.status === 'failed';
   }
   else if (t === 'batch_start')         text = `Batch démarré — ${ev.total} scénario(s) : ${(ev.ids||[]).map(i=>'S'+i).join(', ')}`;
@@ -3222,10 +3420,18 @@ async function pollStatus() {
     return;
   }
   if (!status.running) return;
+  const kind = runnerKind(status.runner_kind);
+  setRunnerView(kind);
+  lockRunnerChoice(true);
 
   // — UI state —
   document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').style.display = 'block';
+  if (kind !== 'lance') {
+    const started = (status.recent_events || []).find(ev => ev.type === 'runner_started');
+    setRunnerActivity('Exécution en cours', 'Connexion au journal…', started?.target_network || 'Réseau direct');
+    document.getElementById('runner-activity').classList.add('running');
+  }
   if (status.stopping) {
     const stopBtn = document.getElementById('btn-stop');
     stopBtn.disabled = true;
@@ -3233,13 +3439,15 @@ async function pollStatus() {
   }
 
   // — Phase pills —
-  for (const p of (status.phases_done || [])) {
-    setPhasePill(p.phase, 'done');
+  if (kind === 'lance') {
+    for (const p of (status.phases_done || [])) {
+      setPhasePill(p.phase, 'done');
+    }
+    if (status.phase > 0) setPhasePill(status.phase, 'running');
   }
-  if (status.phase > 0) setPhasePill(status.phase, 'running');
 
   // — Device progress chips (phase 3) —
-  if (status.current_devices && status.current_devices.length > 0) {
+  if (kind === 'lance' && status.current_devices && status.current_devices.length > 0) {
     for (const dev of status.current_devices) {
       _deviceProgress[dev] = status.devices_done.includes(dev) ? 'done' : 'running';
     }
@@ -3248,7 +3456,7 @@ async function pollStatus() {
 
   // — Replay real log events (most informative: skip text_chunk noise) —
   const replayTypes = new Set([
-    'pipeline_start', 'phase_start', 'phase_done', 'lab_waiting', 'lab_acquired',
+    'pipeline_start', 'phase_start', 'phase_done', 'runner_started', 'runner_done', 'lab_waiting', 'lab_acquired',
     'device_start', 'device_done', 'reflector_start', 'reflector_done',
     'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
     'inject_start', 'inject_done', 'verify_start', 'verify_done',
@@ -3259,7 +3467,7 @@ async function pollStatus() {
   }
 
   // — Sync scenario dropdown & topology —
-  if (status.scenario_id) {
+  if (kind === 'lance' && status.scenario_id) {
     if (isSealedScenarioId(status.scenario_id)) {
       document.getElementById('sel-scenario').value = '';
       showSealedTopologyPlaceholder();

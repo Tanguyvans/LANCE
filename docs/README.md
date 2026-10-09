@@ -43,6 +43,7 @@ ne modifient pas le contrat de référence ci-dessus.
 ## Architecture et développement
 
 - [Pipeline organisé par phase](../src/agent/phases/README.md).
+- [Modes d'exécution et frontière avec l'application](architecture/run-modes.md).
 - [Isolation des livrables par run](architecture/run-artifacts.md).
 - [Rédaction du rapport par sections](architecture/report-writing.md).
 - [Reprise de la phase 1 après troncature](architecture/phase1-graph-recovery.md).

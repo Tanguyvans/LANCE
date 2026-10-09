@@ -3,7 +3,9 @@
 ## À retenir
 
 Créer un run B ne doit jamais rediriger les lectures, écritures ou validations
-du run A. Le pipeline reste unique, avec les mêmes dossiers par phase.
+du run A. Dans le périmètre de cette correction, le pipeline LANCE reste unique,
+avec les mêmes dossiers par phase. Les [modes simples](run-modes.md) ajoutés
+ultérieurement ont leur propre contrat d'artefacts.
 Cette correction n'ajoute ni gestionnaire global de contexte ni nouvelle classe.
 
 Trois règles suffisent :

@@ -129,6 +129,38 @@ def _sealed_summary(scenario_id="20", benchmark_version=None):
 
 
 class TestRunVisibility:
+    def test_runner_kind_is_exposed_and_simple_runs_are_not_benchmark_candidates(
+        self, tmp_path, monkeypatch,
+    ):
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        simple = tmp_path / "2026-10-09_120000"
+        simple.mkdir()
+        (simple / "run_meta.json").write_text(json.dumps({
+            "runner_kind": "scripted", "status": "completed",
+            "target_network": "192.0.2.0/24", "script_id": "discovery-v1",
+        }))
+        (simple / "scenario_meta.json").write_text(json.dumps({"scenario_id": "1"}))
+        (simple / "run_summary.md").write_text("Inventory completed")
+
+        assert get_run(simple.name)["runner_kind"] == "scripted"
+        assert get_run(simple.name)["target_network"] == "192.0.2.0/24"
+        assert get_run(simple.name)["script_id"] == "discovery-v1"
+        assert list_runs()[0]["runner_kind"] == "scripted"
+        assert runs._benchmark_candidate(simple) is None
+        with pytest.raises(HTTPException) as score_error:
+            score_run(simple.name)
+        assert score_error.value.status_code == 404
+        with pytest.raises(HTTPException) as judge_error:
+            runs.evaluate_run_llm(
+                simple.name, runs.LLMJudgeRequest(model="fixture", provider="minimax")
+            )
+        assert judge_error.value.status_code == 404
+
+        legacy = tmp_path / "2026-10-09_110000"
+        legacy.mkdir()
+        (legacy / "run_meta.json").write_text(json.dumps({"status": "completed"}))
+        assert get_run(legacy.name)["runner_kind"] == "lance"
+
     @pytest.mark.parametrize("status,expected", [
         ("completed", "done"),
         ("failed", "failed"),

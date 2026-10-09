@@ -23,7 +23,10 @@ def render(program, **data):
     script = r"""
 const vm = require('node:vm'), fs = require('node:fs');
 class Element {
-  constructor() { this.children=[]; this.style={}; this.textContent=''; }
+  constructor() {
+    this.children=[]; this.style={}; this.textContent='';
+    this.classList={add(){},remove(){},toggle(){}};
+  }
   appendChild(c) { this.children.push(c); }
   removeChild(c) { this.children.splice(this.children.indexOf(c), 1); }
   setAttribute() {}
@@ -43,7 +46,7 @@ class Node {
 }
 const elements=new Map(), nodes=[new Node('192.0.2.1'),new Node('192.0.2.2')];
 let edges=0;
-const document={documentElement:new Element(),
+const document={documentElement:new Element(),body:new Element(),
   getElementById(id) { if(!elements.has(id)) elements.set(id,new Element()); return elements.get(id); },
   createElement:()=>new Element(),querySelectorAll:()=>[],addEventListener(){}};
 const context=vm.createContext({document,console,
@@ -56,7 +59,10 @@ vm.runInContext('cy=mockCy; fetchJSON=async url=>{urls.push(url);return input.re
 (async()=>{
   await vm.runInContext('(async()=>{'+context.input.program+'})()',context);
   console.log(JSON.stringify({nodes:nodes.map(n=>({values:n.values,styles:n.styles})),edges,
-    urls:context.urls,logs:document.getElementById('log').children.map(l=>l.children[0].textContent)}));
+    urls:context.urls,logs:document.getElementById('log').children.map(l=>l.children[0].textContent),
+    launchKind:vm.runInContext('activeExecutionKind',context),
+    targetInput:document.getElementById('inp-target-network').value,
+    cost:document.getElementById('cost-val').textContent}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
 """
     result = subprocess.run(
@@ -174,6 +180,35 @@ def test_view_run_does_not_request_observations_for_sealed_run():
     """, view=VIEW, run={"files": [], "status": "done", "sealed": True})
     assert result["urls"] == ["/api/runs/run", "/api/runs/run/score"]
     assert all("accès corroboré" not in n["values"]["label"] for n in result["nodes"])
+
+
+def test_viewing_script_history_does_not_change_next_launch_mode_or_target():
+    result = render("""
+      activeExecutionKind='vanilla';
+      document.getElementById('inp-target-network').value='198.51.100.0/24';
+      await viewRun('script-run');
+    """, run={"files": [], "status": "done", "runner_kind": "scripted",
+              "target_network": "192.0.2.0/24"})
+    assert result["launchKind"] == "vanilla"
+    assert result["targetInput"] == "198.51.100.0/24"
+
+
+def test_simple_runner_terminal_event_replaces_previous_cost():
+    result = render("""
+      loadRuns=()=>{};
+      setCost(1.5);
+      handleEvent({type:'runner_done',runner_kind:'vanilla',status:'completed',total_cost_usd:0.125});
+    """)
+    assert result["cost"] == "$0.1250"
+
+
+def test_simple_nmap_result_does_not_add_hosts_to_lance_graph():
+    result = render("""
+      activeExecutionKind='vanilla';
+      handleEvent({type:'tool_result',name:'nmap_scan',
+        result:'Nmap scan report for 192.0.2.3\\n80/tcp open http'});
+    """)
+    assert result["edges"] == 0
 
 
 def test_real_server_projection_reaches_dashboard_without_model_claim_promotion(tmp_path):
