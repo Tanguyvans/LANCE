@@ -602,7 +602,13 @@ def test_only_truncated_block_retried_and_all_usage_counted(mock_provider, outpu
     assert attempted == [1, 2, 2]
     assert len(driver.calls) == 4
     assert pipeline.tracker.total_tokens() == (40, 80)
-    assert len({call["deadline"] for call in driver.calls}) == 1
+    # Recovery runs on the device deadline plus one bounded grace: the main
+    # call may burn its whole budget looping on tool searches, and recovery
+    # still needs one bounded invocation to synthesize the deliverable.
+    from src.agent.phases.analysis.devices import recovery_grace_s
+    deadlines = {call["deadline"] for call in driver.calls}
+    main_deadline = min(deadlines)
+    assert deadlines == {main_deadline, main_deadline + recovery_grace_s()}
 
 
 def test_observation_retains_target_arguments():
@@ -610,3 +616,33 @@ def test_observation_retains_target_arguments():
     block_recovery.record_observation(observations, "http_get", "HTTP 200", kwargs={"url": "http://192.0.2.1/admin"})
     rendered = block_recovery.render_observations(observations, {"service_names": ["http"], "ports": [80]})
     assert "http://192.0.2.1/admin" in rendered
+
+
+def _recovery_context(max_duration_s=None, run_started=None):
+    from types import SimpleNamespace
+    return SimpleNamespace(max_duration_s=max_duration_s, run_started=run_started)
+
+
+def test_recovery_deadline_adds_bounded_grace():
+    from src.agent.phases.analysis.devices import _recovery_deadline, PHASE3_RECOVERY_GRACE_S
+    assert _recovery_deadline(1420.0, _recovery_context()) == 1420.0 + PHASE3_RECOVERY_GRACE_S
+
+
+def test_recovery_deadline_never_exceeds_run_cap():
+    from src.agent.phases.analysis.devices import _recovery_deadline
+    context = _recovery_context(max_duration_s=600.0, run_started=1000.0)
+    assert _recovery_deadline(1590.0, context) == 1600.0
+
+
+def test_recovery_deadline_preserves_missing_deadline():
+    from src.agent.phases.analysis.devices import _recovery_deadline
+    assert _recovery_deadline(None, _recovery_context()) is None
+
+
+def test_recovery_grace_env_override(monkeypatch):
+    from src.agent.phases.analysis.devices import _recovery_deadline, recovery_grace_s
+    monkeypatch.setenv("LANCE_PHASE3_RECOVERY_GRACE_S", "60")
+    assert recovery_grace_s() == 60.0
+    assert _recovery_deadline(1420.0, _recovery_context()) == 1480.0
+    monkeypatch.setenv("LANCE_PHASE3_RECOVERY_GRACE_S", "bogus")
+    assert _recovery_deadline(1420.0, _recovery_context()) == 1420.0 + 180.0

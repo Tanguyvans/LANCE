@@ -18,6 +18,33 @@ from src.agent.phases.analysis.context import (
 
 log = logging.getLogger(__name__)
 
+PHASE3_RECOVERY_GRACE_S = 180.0
+
+
+def recovery_grace_s() -> float:
+    """Bounded extra time for Phase 3 block recovery (operator-overridable)."""
+    try:
+        value = float(str(os.environ.get("LANCE_PHASE3_RECOVERY_GRACE_S", "")).strip())
+    except (TypeError, ValueError):
+        return PHASE3_RECOVERY_GRACE_S
+    return value if value > 0 else PHASE3_RECOVERY_GRACE_S
+
+
+def _recovery_deadline(device_deadline: float | None, context: AnalysisContext) -> float | None:
+    """Extend the device deadline with a bounded recovery grace.
+
+    The main device call may consume its whole budget looping on tool
+    searches; block recovery still needs one bounded model invocation to
+    synthesize the deliverable from observations. The grace never exceeds
+    the run cap.
+    """
+    if device_deadline is None:
+        return None
+    extended = device_deadline + recovery_grace_s()
+    if context.max_duration_s is not None and context.run_started is not None:
+        extended = min(extended, context.run_started + context.max_duration_s)
+    return extended
+
 
 def analysis_worker_count(context: AnalysisContext, device_count: int) -> int:
     if context.experiment_scope == "analysis-verification":
@@ -371,7 +398,7 @@ def analyze_full_device(
                 device_tools=device_tools,
                 save_receipts=save_receipts,
                 observations=observations,
-                deadline=device_deadline,
+                deadline=_recovery_deadline(device_deadline, context),
                 stream_callback=context.emit,
             )
             promoted, validation_error = context.services.promoted_deliverable(
