@@ -379,12 +379,14 @@ def test_block_prompt_template_interpolates_cleanly():
     text = load_prompt("analyze_device_block", {
         "device_id": "s2-router", "device_ip": "192.168.100.1",
         "block_index": 1, "block_count": 2, "block_services": "ssh:22, http:80",
+        "block_id_prefix": "s2-router-b0",
         "allowed_services": "ssh, http", "allowed_ports": "22, 80",
         "expected_block_file": "03_blocks/s2-router_part0.json",
         "scan_results": "{}", "automated_findings_summary": "none",
         "prior_observations": "none",
     })
     assert "MISSING" not in text
+    assert "s2-router-b0-001" in text
     assert "03_blocks/s2-router_part0.json" in text
     assert "save_deliverable" in text
 
@@ -447,17 +449,41 @@ def test_validate_block_payload_rejects_misattribution():
     check(dict(base, device_id="other"), "does not match")
     check(dict(base, device_ip="10.9.9.9"), "does not match")
     check(dict(base, block_index=2), "block_index")
-    check(dict(base, vulnerabilities=[_unit_finding("d-x", "ssh", 22, device_id="other")]),
+    check(dict(base, vulnerabilities=[_unit_finding("d-b0-x", "ssh", 22, device_id="other")]),
           "targets")
-    check(dict(base, vulnerabilities=[_unit_finding("d-x", "http", 80)]),
+    check(dict(base, vulnerabilities=[_unit_finding("d-b0-x", "http", 80)]),
           "outside this block")
-    check(dict(base, vulnerabilities=[_unit_finding("d-x", "ssh", 2222)]),
+    check(dict(base, vulnerabilities=[_unit_finding("d-b0-x", "ssh", 2222)]),
           "outside this block")
     check(dict(base, vulnerabilities=[_unit_finding("zzz-x", "ssh", 22)]),
           "not scoped")
-    dup = _unit_finding("d-x", "ssh", 22)
+    check(dict(base, vulnerabilities=[_unit_finding("d-x", "ssh", 22)]),
+          "not scoped")
+    dup = _unit_finding("d-b0-x", "ssh", 22)
     check(dict(base, vulnerabilities=[dup, dict(dup)]), "duplicate")
     check(dict(base, vulnerabilities=[dict(dup, port="eighty")]), "integer or null")
+
+
+def test_block_ids_are_namespaced_per_block():
+    assert block_recovery.block_id_prefix("d", 0) == "d-b0"
+    assert block_recovery.block_id_prefix("d", 1) == "d-b1"
+
+    def validate(payload, index):
+        spec = {"index": index, "service_names": ["ssh"], "ports": [22],
+                "sidecar": f"03_blocks/d_part{index}.json"}
+        base = {"device_id": "d", "device_ip": "10.0.0.1",
+                "block_index": index + 1, "vulnerabilities": payload}
+        return block_recovery.validate_block_payload(
+            base, device_id="d", device_ip="10.0.0.1", spec=spec,
+            device_ports={22}, device_services={"ssh"})
+
+    own_lane = [_unit_finding("d-b1-x", "ssh", 22)]
+    assert validate(own_lane, 1)[0] is True
+    # The same id shape belongs to exactly one block: block 0 must refuse
+    # block 1's lane (the S6 s6-router-001 collision across blocks), and
+    # the old unscoped device style is refused everywhere.
+    assert "not scoped" in validate(own_lane, 0)[1]
+    assert "not scoped" in validate([_unit_finding("d-x", "ssh", 22)], 0)[1]
 
 
 def test_assemble_merges_without_rewriting_classification():
@@ -526,7 +552,7 @@ def test_block_config_defaults_and_env_override(monkeypatch):
 
 def test_service_and_port_must_belong_to_the_same_observed_service():
     spec = block_recovery.derive_blocks(DEVICE)[0]
-    payload = _block_payload(0, [_block_finding(0, "s2-router-wrong", "http", 22)])
+    payload = _block_payload(0, [_block_finding(0, "s2-router-b0-wrong", "http", 22)])
     valid, reason = block_recovery.validate_block_payload(
         payload, device_id=DEVICE["id"], device_ip=DEVICE["ip"], spec=spec,
         device_ports={22, 80, 443}, device_services={"ssh", "http", "https"},

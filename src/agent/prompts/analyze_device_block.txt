@@ -67,7 +67,7 @@ Call save_deliverable("{{expected_block_file}}", json_content) when complete. If
 }
 ```
 
-Each vulnerability must have: id (starting with "{{device_id}}-"), device_id, device_ip, type, severity, service, port, protocol, endpoint, product, version, details, evidence, cve_ids, exploitation_status, suggested_technique, suggested_tools.
+Each vulnerability must have: id (starting with "{{block_id_prefix}}-", e.g. "{{block_id_prefix}}-001" — never reuse another block's ids), device_id, device_ip, type, severity, service, port, protocol, endpoint, product, version, details, evidence, cve_ids, exploitation_status, suggested_technique, suggested_tools.
 
 IMPORTANT: Pass RAW JSON to save_deliverable — do NOT wrap in markdown code blocks.
 

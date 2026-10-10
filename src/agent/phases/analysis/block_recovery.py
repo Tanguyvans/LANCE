@@ -273,8 +273,9 @@ def validate_block_payload(
 ) -> tuple[bool, str]:
     """Strictly validate one saved block before it can join the assembly.
 
-    Rejects cross-device output, wrong service/port attribution, duplicate
-    finding ids, and malformed envelopes. Severity and type values
+    Rejects cross-device output, findings outside this block's id
+    namespace, wrong service/port attribution, duplicate finding ids,
+    and malformed envelopes. Severity and type values
     are never rewritten here; classification rules are out of scope.
     """
     if not isinstance(data, dict):
@@ -299,7 +300,7 @@ def validate_block_payload(
     spec_names = {str(name).casefold() for name in spec.get("service_names", [])}
     known_services = {str(name).casefold() for name in device_services}
     seen_ids: set[str] = set()
-    prefix = f"{device_id}-"
+    prefix = block_id_prefix(device_id, spec["index"]) + "-"
     for index, finding in enumerate(findings):
         where = f"vulnerabilities[{index}]"
         if not isinstance(finding, dict):
@@ -350,6 +351,16 @@ def validate_block_payload(
             ):
                 return False, f"block {where} service/port pair is outside this block's services"
     return True, "OK"
+
+
+def block_id_prefix(device_id: str, index: int) -> str:
+    """Per-block finding-id namespace so sibling blocks never collide.
+
+    Blocks each number their findings from 001 in their own lane
+    (``<device>-b<index>-NNN``). Assembly still dedupes byte-identical
+    findings and fails loudly on real conflicts.
+    """
+    return f"{device_id}-b{index}"
 
 
 def _finding_key(finding: dict) -> str:

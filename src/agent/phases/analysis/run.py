@@ -441,6 +441,7 @@ class AnalysisPhase:
             "device_ip": device_ip,
             "block_index": spec["index"] + 1,
             "block_count": total,
+            "block_id_prefix": block_recovery.block_id_prefix(device_id, spec["index"]),
             "block_services": block_services,
             "allowed_services": ", ".join(spec["service_names"]) or "any declared service",
             "allowed_ports": ", ".join(str(port) for port in spec["ports"]) or "any declared port",
