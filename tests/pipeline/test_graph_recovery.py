@@ -18,6 +18,7 @@ from src.agent.phases.graph.recovery import (
     ledger_lines,
     recovery_config,
     recovery_section_headings,
+    scaled_recovery_tokens,
 )
 from src.agent.pipeline import Pipeline
 from src.agent.registry import AGENTS
@@ -215,6 +216,20 @@ def test_recovery_caps_and_truncation_predicate():
     assert is_truncation({"finish_reason": "stop"}) is False
     assert is_truncation({}) is False
     assert is_truncation(None) is False
+
+
+def test_recovery_tokens_scale_with_topology_but_stay_bounded(monkeypatch):
+    monkeypatch.delenv("LANCE_PHASE1_RECOVERY_MAX_TOKENS", raising=False)
+    small = scaled_recovery_tokens(2, 2048)
+    assert small > 2048
+    s12_scale = scaled_recovery_tokens(35, 2048)
+    assert s12_scale > small
+    assert scaled_recovery_tokens(10_000, 2048) == 8192
+
+
+def test_explicit_recovery_token_knob_wins_untouched(monkeypatch):
+    monkeypatch.setenv("LANCE_PHASE1_RECOVERY_MAX_TOKENS", "1024")
+    assert scaled_recovery_tokens(35, 1024) == 1024
 
 
 def test_recovery_headings_match_template():
@@ -437,6 +452,43 @@ def test_non_length_failure_skips_recovery(mock_provider, output_dir):
     assert status.startswith("failed:")
     assert "truncated_output" not in status
     assert mock_provider.chat_with_tools.call_count == 1
+
+
+def test_truncation_followed_by_stop_still_recovers(mock_provider, output_dir):
+    """S12 run 2026-10-07_201550: turn 2 truncated its save (rejected by
+    the gate), turn 3 ended with stop and no save. The later stop must not
+    erase the truncation: recovery fires from the recorded observations."""
+    pipeline = Pipeline(provider=mock_provider)
+    _write_graph_ledger(pipeline.run_dir)
+    rejected = []
+
+    def provider_call(**kwargs):
+        call = mock_provider.chat_with_tools.call_count
+        if call == 1:
+            # One provider call, three turns sharing one metadata dict
+            # (production): exploration, truncated save (rejected by the
+            # gate), then a trailing stop that overwrites the signal.
+            _propose(kwargs, "length")
+            rejected.append(json.loads(_save_tool(kwargs)(
+                filename="01_graph_analysis.md", content=VALID_MD,
+            )))
+            kwargs["completion_metadata"]["finish_reason"] = "stop"
+            return "(stopped without saving)"
+        _propose(kwargs, "tool_calls")
+        receipt = json.loads(_save_tool(kwargs)(
+            filename="01_graph_analysis.md", content=VALID_MD,
+        ))
+        assert receipt["validated"] is True
+        return "saved"
+
+    mock_provider.chat_with_tools.side_effect = provider_call
+    status = pipeline._run_agent(AGENTS["graph_analysis"], None)
+    assert len(rejected) == 1
+    assert rejected[0].get("error_kind") == "truncated_response"
+    # Recovery ran from the latched truncation instead of reporting a
+    # missing deliverable.
+    assert status == "completed:recovered"
+    assert (pipeline.run_dir / "01_graph_analysis.md").is_file()
 
 
 def test_cancelled_recovery_reports_stopped(mock_provider, output_dir):

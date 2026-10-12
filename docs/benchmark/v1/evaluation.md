@@ -60,6 +60,48 @@ obligatoires selon le contrat. La preuve doit toujours concerner le fichier
 réellement déclaré et démontrer la propriété : un listing ne prouve pas une
 exposition de contenu sensible. Les doublons ne gagnent pas plusieurs crédits.
 
+À partir de `strict-v3.15`, un attendu lié à un endpoint ou un préfixe de
+chemin exige que la déclaration porte ce périmètre. L'absence d'endpoint ne
+reçoit plus de crédit partiel pour cette propriété : une version nginx à la
+racine ne démontre pas la divulgation de chemins par `/robots.txt`.
+Dans l'étape confirmée, le crédit d'un constat de divulgation de contenu,
+de chemins ou de listing HTTP exige une réponse attribuée à la ressource
+attendue et soutenant cette propriété. Un fichier secondaire déclaré
+peut être crédité s'il possède sa propre preuve fraîche ; la preuve du fichier
+principal ne s'étend pas à toute la liste. Les constats d'opérations comme
+la mise à jour OTA restent évalués par leur contrat de preuve d'opération.
+Le crédit partiel pour les autres champs structurels manquants reste un diagnostic.
+
+Le contrat de preuve `evidence-v14` distingue la version HTTP des chemins
+publiés par `robots.txt`. Ce dernier cas exige une réponse fraîche sur le
+chemin déclaré, avec `User-agent` et au moins une directive `Disallow` portant
+un chemin ou motif non vide et plus précis que la racine. Les noms publiés
+ne prouvent ni l'existence des ressources, ni leur contenu, ni leur accès.
+Une version dans l'en-tête ne remplace pas cette preuve de chemins.
+Cette correction vient de la revue des runs S4/S6 de la
+[campagne Qwen UMONS](../../../research/2026-10-05-benchmark-coverage/README.md).
+Les scores historiques restent archivés sous leur contrat d'origine ; les
+nouveaux contrats ne les rendent pas directement comparables aux nouveaux runs.
+
+À partir de `strict-v3.16` / `evidence-v15`, les lectures natives FTP, Redis et
+SNMP ne sont plus liées à un faux chemin HTTP `/`. Les adresses, ports,
+identifiants de constats et références uniques restent obligatoires. Une liste
+FTP explicite de chemins séparés par virgule et espace est découpée ; une
+requête URL contenant une virgule garde son query intact. Les fichiers FTP
+peuvent appartenir à un répertoire explicitement déclaré, sans traversée ni
+extension vers un répertoire voisin. Les credentials fournis ne prouvent pas
+un accès anonyme.
+
+La preuve Redis exige une réponse réussie à `PING`, `GET` ou `KEYS`, sans
+credential et sans erreur Redis ; une lecture vide ou nulle ne prouve pas
+l'exposition d'une valeur sensible. La preuve SNMP directe exige un échange
+GET / GET-RESPONSE corrélé (version, communauté `public`, identifiant et OIDs),
+sans erreur de PDU. Elle prouve une lecture, jamais une communauté privée ni
+une écriture. Un listing FTP prouve des noms, pas le contenu des fichiers.
+Cette correction provient des archives S8–S11 de la campagne Qwen UMONS ;
+les rejeux sont des contrôles d'interprétation et ne recalculent pas les scores
+historiques ni ne modifient la vérité terrain.
+
 Le contrat des fichiers sensibles de S2 inclut ainsi les fichiers de `/backup/`
 et `/config/app.config`, conformément au périmètre décrit dans son référentiel.
 Cette évolution change le contrat interne des métriques : les runs antérieurs
@@ -85,6 +127,14 @@ Ces exigences sont identiques en full et compact :
 
 - **SSH** : requête identifiable et arguments structurés, sans shell local.
 - **HTTP** : pas de preuve attribuée à la requête initiale après une redirection ; chaque destination nécessite un nouvel appel contrôlé.
+- **Telnet, FTP et Redis** : la destination et le transport réellement demandés
+  doivent correspondre à la déclaration ; les métadonnées du candidat ne
+  remplacent jamais les arguments exécutés. Une erreur d'authentification ou une
+  réponse d'un autre service n'est pas une preuve.
+- **Sondes TCP/UDP brutes** : les sondes bornées SNMP/CoAP/S7/ENIP exigent une
+  réponse protocolée cohérente avec leur requête et leur cible. Un simple ACK ou
+  quelques octets reçus ne suffisent pas. Les réponses de découverte ou de
+  négociation ne prouvent ni écriture protégée ni contrôle de la machine.
 - **MQTT** : cible, port TCP et topic effectifs sont enregistrés dans `execution_attestation`, sans que cette attestation prouve un accès. Ports invalides et arguments inconnus sont refusés.
 - **Topics MQTT** : les messages structurés (`-F %j`, format `mosquitto-json-v1`) doivent correspondre à la souscription et au topic annoncé ; seule leur charge utile justifie une fuite. Le stdout brut est conservé. Les anciennes traces non structurées ne permettent pas d’élargir une attribution à d’autres topics.
 - **MQTT sur WebSocket** : `mqtt_ws_listen` effectue une souscription anonyme en lecture seule. La preuve exige des réponses MQTT CONNACK/SUBACK acceptées et un message PUBLISH reçu, attribués à la bonne IP, au port, au chemin et au topic. Un upgrade HTTP ou `mqtt_listen` (TCP, même sur 9001) ne suffit pas. Cette souscription ne prouve ni shell ni pivot.
@@ -94,6 +144,11 @@ attribuables** pour les déclarations finales dédupliquées. Une trace accepté
 doit encore correspondre à une faille de référence pour compter comme VP.
 Ces contrôles ne rejouent pas les sondes et ne constituent pas une preuve formelle
 universelle : leur force dépend des critères propres à chaque outil.
+
+Les corrections de liaison des destinations et d'admission des accès en compact
+sont intégrées au contrat courant `strict-v3.16` / `evidence-v15`. Les runs
+produits avec les versions précédentes ne sont pas déclarés compatibles avec
+ce contrat.
 
 ### Pourquoi un FP peut avoir une preuve acceptée
 
@@ -208,6 +263,39 @@ de sévérité comptent les déclarations ; `06_report_groups.json` signale les
 doublons possibles sans changer la file de vérification ni les VP/FP/FN.
 Une sortie tronquée par la limite du modèle reste `partial:memo_truncated`,
 sans promouvoir une note d’analyse incomplète. Les anciens rapports ne sont pas réécrits.
+
+## Résumer des archives hors ligne
+
+Le [résumeur d'archives](../../../scripts/analysis/summarize_archived_campaign.py)
+lit des dossiers de runs explicitement sélectionnés, sans requête réseau ni
+recalcul des scores. Exemple depuis la racine du dépôt :
+
+```bash
+python scripts/analysis/summarize_archived_campaign.py \
+  --archive-root output/validation/2026-10-04-qwen-umons \
+  --run 2026-10-05_134540 --run 2026-10-05_114742 \
+  --scenarios 1-12 --output /tmp/lance-archives-summary.json
+```
+
+Le fichier de sortie doit être hors du dossier d'archives ; `--output -` émet
+du JSON sur la sortie standard. Les runs restent distincts avec leurs commits,
+contrats, statuts de phase et nettoyage. Un score absent reste `null`, accompagné
+de son motif. `lifecycle_complete_recorded` décrit la cohérence des métadonnées
+de fin, sans certifier le contenu des livrables ni leurs preuves sémantiques.
+La projection `diagnostics.phase3_status` conserve également `scanner_errors`
+tel qu'enregistré, y compris sur un run partiel/encours. Une clé absente reste
+absente ; les entrées textuelles ne sont ni découpées ni dédupliquées et leur
+nombre ne représente pas un décompte déduit d'événements ou de causes.
+Le fichier `score-unavailable-response.json` est accepté sous ses deux formes
+archivées (`http_status` avec corps objet, `status_code` avec corps encodé en
+chaîne) ; des statuts contradictoires sont signalés avec les deux valeurs
+conservées, et aucun statut n'est inventé.
+Les empreintes SHA-256 identifient les fichiers lus ; elles ne remplacent pas
+une vérification des manifestes de collecte. Les avertissements du résumé
+doivent être lus même si la commande termine avec succès.
+
+La [revue S1–S12](../../../research/2026-10-05-corrections-lance/README.md)
+documente l'origine de cet outil et les limites de l'analyse des archives.
 
 ## Sources du code
 

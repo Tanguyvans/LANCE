@@ -27,6 +27,9 @@ contenant une query ou un fragment. Ces cas restent explicitement non vérifiabl
 par cette sonde, sans remplacement silencieux du chemin.
 
 Le dashboard lance le pipeline sur la VM maître, pas sur le navigateur client.
+En mode lot, le suivi après rechargement identifie le scénario et le dossier
+du worker actif, avec ses phases, ses machines et sa préparation. La consommation
+cumulée du lot inclut également les runs interrompus par une erreur.
 Choisir un scénario de développement, le modèle voulu et explicitement `full`
 pour une campagne full. Consigner les paramètres et le commit effectivement exécuté.
 
@@ -59,6 +62,13 @@ réexécuter les outils. Elle est autorisée une fois par état de conversation,
 dans les budgets existants. Un rejet persistant reste une erreur ; les événements
 fournisseur permettent de distinguer cette reprise d’un retry réseau.
 
+Si une requête expire au terme du budget de temps partagé, la cause terminale
+est `deadline`, même lorsque la finalisation interdit tout retry. Le diagnostic
+de la requête conserve l'erreur SDK de type `timeout` ; cela ne prouve pas une
+coupure du fournisseur. Sans retry, un timeout survenant avant l'échéance
+reste une erreur fournisseur. Ce classement n'allonge aucun budget et ne transforme pas une
+analyse inachevée en succès.
+
 Un groupe explicite incompatible avec le scénario est refusé. `--split auto`
 suit le catalogue. `--phases` sert à des exécutions ciblées, pas à prétendre avoir
 validé le pipeline complet.
@@ -74,7 +84,12 @@ automatique est activé, y compris après un échec.
 Les six phases partagent le même moteur. Les sauvegardes sont validées avant
 d’être admises comme livrables ; les tentatives rejetées restent dans `.attempts/`.
 Un rapport enregistré ou une validation de format réussie ne démontre ni une
-intrusion réussie ni une exécution intégralement terminée.
+intrusion réussie ni une exécution intégralement terminée. Les événements de fin
+des phases 3 et 4 publient les coûts et tours de tous leurs workers, y compris
+ceux en échec, sans recompter les phases précédentes.
+Les diagnostics réseau de vérification proviennent des champs d'erreur et codes
+de retour des outils. Un mot comme `timeout` dans une page HTTP ou un en-tête
+`Keep-Alive` ne constitue pas une erreur d'exécution.
 
 En full, une intrusion sans livrable requis peut entrer dans une clôture limitée
 à la sauvegarde : au plus trois requêtes, dans le budget de tours existant, sans
@@ -152,6 +167,39 @@ Exemples d’interprétation :
 Le journal d’outils peut contenir des données du laboratoire : ne pas publier
 les artefacts bruts sans revue des informations sensibles.
 
+### Compteurs après découverte complémentaire
+
+Une adresse déjà présente dans la surface publique connue ne devient pas un
+nouvel hôte lorsqu'un livrable de vérification la mentionne. Ces références
+restent dans les traces, mais ne déclenchent pas une seconde analyse sous un
+identifiant `discovered-*`. La découverte complémentaire concerne les nouvelles
+adresses ; elle ne constitue pas un mécanisme de réanalyse des services d'un
+hôte déjà connu. Les adresses des interfaces de la machine d'audit sont aussi
+exclues, comme en reconnaissance initiale : une adresse client renvoyée par un
+service (par exemple `USER()` dans MySQL) ne crée pas une cible. Cette exclusion
+utilise les interfaces locales du runner, sans adresse fixe ni vérité terrain.
+Si leur lecture échoue, un avertissement est émis ; cette exclusion ne remplace
+pas les contrôles de périmètre.
+
+Une découverte après la vérification peut ajouter des hypothèses au livrable
+canonique. Dans `04_exploitation.json`, `scheduling` conserve la file réellement
+planifiée ; `summary.candidate_count` compte les hypothèses présentes dans la
+projection finale et `summary.skipped_count` celles explicitement ignorées.
+Une hypothèse ajoutée après planification reste `SKIPPED` et non testée :
+actualiser les compteurs ne lui attribue aucune preuve.
+
+Le test MySQL de `try_credential` utilise une connexion TCP avec mot de passe
+explicite, y compris vide, sans demande de saisie interactive ni options client
+héritées. Il vérifie la connexion avec `SELECT CURRENT_USER()` ; la lecture de
+la table administrative `mysql.user` n'est pas nécessaire pour tester un compte.
+Une connexion réussie ne certifie pas les privilèges sur les autres tables.
+
+Une chaîne statique de consultation locale composée de `ls`, `grep`, `head`,
+`tail` ou `which` ne devient pas une action réseau parce qu'un argument nomme
+`mysql` ou `curl`. Les substitutions, interpréteurs, commandes supplémentaires,
+redirections autres que `2>/dev/null` et syntaxes ambiguës conservent le contrôle
+conservateur. Les contrôles des destinations explicites restent appliqués.
+
 ## Consommation et validation
 
 Conserver tokens, temps et coûts même lorsque les scores sont indisponibles.
@@ -173,3 +221,79 @@ Les tests locaux ne prouvent pas la disponibilité de l’endpoint réel ni la b
 injection du laboratoire. Après un essai S1, contrôler préparation, phases, preuves,
 statut et nettoyage avant d’étendre la campagne. Pour les limites de concurrence
 et les tests d’isolation : [livrables par run](../../architecture/run-artifacts.md).
+
+
+La préparation S3/S7 compile `iot_diag.c` en un binaire SUID détenu par root,
+qui lit un fichier local sans lancer de shell. La vérification préalable exige,
+comme utilisateur `admin`, une lecture réussie de `/etc/shadow` par ce binaire
+alors que la lecture directe est interdite, un script de maintenance writable
+et son entrée cron root. Une absence, un retour non nul ou un `FAIL` bloque le
+run ; la sortie sensible du fichier reste masquée. Le bit SUID d'un script
+Bash ne suffit pas sur Linux ([execve(2), man-pages 6.19](https://man7.org/linux/man-pages/man2/execve.2.html)).
+Les conditions réelles (montage, droits, compilation) restent à vérifier sur
+nato après déploiement. Ce contrôle couvre cette injection précise ; il ne
+certifie pas toutes les propriétés de vérité terrain et ne réécrit aucun
+résultat historique. Les références S3/S7 conservent leurs critères initiaux.
+
+La préparation des rôles `nodered_server` vérifie la syntaxe Python du
+simulateur avant son démarrage, encode la page d'administration en UTF-8 et
+attend de façon bornée que le service réponde sur `/admin`. Une absence de
+réponse valide échoue à l'injection. La vérification globale exige ensuite,
+pour chaque rôle attendu, un port 1880 ouvert et une réponse HTTP réussie
+contenant l'identification Node-RED ; un contrôle absent ou négatif bloque le
+run. Ces contrôles portent sur la disponibilité du simulateur HTTP. Ils ne
+certifient ni une véritable installation Node-RED ni l'exécution d'un flow.
+Le comportement reste à vérifier sur nato après déploiement ; les scores et
+références des runs historiques ne sont pas modifiés.
+
+### Interprétation des erreurs d'outils
+
+Le statut du scanner et le compteur global `total_tool_errors` distinguent
+l'échec d'exécution du résultat d'un audit. Les codes 2/3 de `ssh-audit`, avec
+une sortie d'audit, signalent des avertissements/faiblesses ; ils ne rendent pas
+la phase partielle à eux seuls. Le code 27 de `mqtt_listen`, accompagné de
+l'interprétation de fin d'écoute du wrapper, signifie que la fenêtre d'écoute
+est terminée. Les interruptions du processus, refus d'authentification et
+erreurs de connexion restent comptés comme erreurs. Une écoute sans message
+reste non concluante : cette distinction ne confirme aucune vulnérabilité.
+Les résultats et codes d'origine sont conservés dans le journal des outils.
+Pour le listener WebSocket MQTT optionnel sur 9001, le scanner conserve d'abord
+la sonde de port. Si elle réussit et observe explicitement un port fermé qui
+n'était pas déclaré, la négociation HTTP est omise et cette décision figure
+sur l'observation (`skipped_followups`). Un port ouvert, filtré, inconnu, une
+sonde en erreur ou un listener déclaré restent soumis à la vérification HTTP.
+Ce choix n'établit ni accès MQTT ni absence durable de vulnérabilité ; les
+anciens refus de connexion restent inchangés dans leurs runs d'origine.
+Le catalogue présenté au modèle exclut `python_exec`, toujours refusé par le
+moteur, ainsi que `search_history` pendant les benchmarks et expériences.
+Le contrôle à l'exécution reste actif si un appel interdit est néanmoins soumis.
+
+Un échec de phase reste visible dans le suivi API après nettoyage : le dossier
+du run est disponible dès sa création et l'événement terminal conserve le statut
+et le nettoyage calculés par le pipeline. Une exécution interrompue avant
+l'évaluation ne reçoit pas de score automatique ; ses artefacts restent consultables.
+Dans le tableau Benchmark, une exception connue est présentée avec sa phase et
+une cause bornée (connexion, délai, authentification ou erreur d'exécution).
+Un run sans audit évaluable affiche « Audit non produit », sans transformer
+les métriques absentes en zéros. Le détail rappelle le nettoyage s'il est confirmé.
+Pendant l’exécution, le worker actif fait autorité pour le statut « En cours » ;
+les scores définitifs attendent sa fin. Les données intermédiaires restent
+consultables dans le détail. Ce statut ne réécrit pas les anciens runs inachevés.
+
+Références des codes de sortie : [manuel ssh-audit](https://github.com/jtesta/ssh-audit/blob/master/ssh-audit.1)
+et [client Mosquitto 2.0.21](https://github.com/eclipse-mosquitto/mosquitto/blob/v2.0.21/client/sub_client.c).
+
+
+Quand un candidat HTTP place une liste de chemins séparés par une virgule et
+une espace dans `endpoint`, la projection conserve le premier comme chemin
+principal et les chemins dans `endpoints`. Les virgules internes aux chemins
+et les chaînes de requête restent inchangées. La preuve doit toujours correspondre
+à l’hôte, au port et au chemin principal ; une réponse sur un autre chemin
+ne confirme pas automatiquement toute la liste. Le candidat brut reste archivé.
+
+
+Le nom de service Nmap `mbap` est normalisé en `modbus` lors de la fusion de
+reconnaissance et du choix des outils. Le service déclaré et son alias observé
+ne produisent qu’une entrée par port et transport. Cette correspondance de nom
+ne constitue ni une preuve de lecture de registres, ni une preuve d’absence
+d’authentification ; les verdicts restent fondés sur les réponses aux sondes.

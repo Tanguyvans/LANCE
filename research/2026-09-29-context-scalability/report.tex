@@ -5,7 +5,7 @@
 \frenchsetup{SmallCapsFigTabCaptions=false}
 \usepackage{lmodern,microtype}
 \usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
-\usepackage{graphicx,booktabs,array,tabularx,longtable}
+\usepackage{graphicx,booktabs,array,tabularx,longtable,float}
 \usepackage{xcolor,tikz}
 \usepackage{enumitem,titlesec}
 \usepackage{hyperref}
@@ -28,7 +28,7 @@
 \titlespacing*{\section}{0pt}{16pt}{7pt}
 \titlespacing*{\subsection}{0pt}{11pt}{5pt}
 \pagestyle{plain}
-\setcounter{tocdepth}{2}
+\setcounter{tocdepth}{1}
 
 % Reusable TikZ styles for sober scientific figures.
 % Required packages: xcolor, tikz.
@@ -135,12 +135,12 @@
   {\par\end{quote}}
 \title{\bfseries Conserver les preuves, borner le contexte du pipeline LANCE\\[0.5em]\large\mdseries\itshape Diagnostic actuel et protocole d'évaluation}
 \author{Projet LANCE}
-\date{Dernière révision : 30 septembre 2026 à 21:55\\[0.15em]\small Europe/Brussels (UTC+02:00)\\[0.4em]\small Exploration rouverte ; architecture proposée}
+\date{Dernière révision : 1er octobre 2026 à 10:23\\[0.15em]\small Europe/Brussels (UTC+02:00)\\[0.4em]\small Exploration rouverte ; architecture proposée}
 \hypersetup{pdftitle={Conserver les preuves, borner le contexte du pipeline LANCE}}
 \begin{document}
 \maketitle
 \begin{abstract}
-La gestion du contexte concerne la conservation des observations autant que la fenêtre du modèle. La revue des six phases identifie des coupes avant archivage, des historiques sans budget d'entrée, des projections parfois sans récupération et des transmissions qui retirent certaines alternatives. Cinq probes synthétiques caractérisent des pertes d'information et des limites de reprise ; leur effet sur les scores réels reste inconnu. L'architecture proposée sépare une preuve durable de ses vues temporaires, rend les omissions explicites et borne les lectures ciblées. Le protocole compare d'abord une sélection déterministe renforcée à des représentations augmentées par le modèle, à capacités de lecture identiques. Aucune amélioration de rappel, coût ou réussite réseau n'est établie. L'utilité du mémo et de la rédaction doit être évaluée séparément des findings du scanner.
+La gestion du contexte concerne la conservation des observations autant que la fenêtre du modèle. La revue des six phases identifie des coupes avant archivage, des historiques sans budget d'entrée, des projections parfois sans récupération et des transmissions qui retirent certaines alternatives. Cinq tests diagnostiques synthétiques caractérisent des pertes d'information et des limites de reprise ; leur effet sur les scores réels reste inconnu. L'architecture proposée sépare une observation archivée de ses vues temporaires, rend les omissions explicites et borne les lectures ciblées. Le protocole compare d'abord une sélection déterministe renforcée à des représentations augmentées par le modèle, à capacités de lecture identiques. Aucune amélioration de rappel, coût ou réussite réseau n'est établie. L'utilité du mémo et de la rédaction doit être évaluée séparément des constats candidats du scanner.
 \end{abstract}
 \clearpage
 
@@ -155,17 +155,37 @@ La difficulté ne se réduit pas à la fenêtre du modèle. Le code présente de
 
 La priorité proposée est de préserver la capture native, rendre les omissions observables et comparer des représentations récupérables. Cette priorité est une conclusion de conception issue du code ; \textbf{aucun gain de rappel, coût ou réussite réseau n'est démontré}. Les cinq probes locales caractérisent les transformations, sans appeler de modèle ni de cible.
 
+\subsection{Repères de lecture}
+Un grand modèle de langage (LLM) reçoit une requête contenant des consignes et
+un contexte : messages, observations et résultats d'outils. Sa fenêtre limite
+la quantité d'entrée et de sortie disponible, mesurée en tokens (unités de texte
+propres au modèle), distincts des caractères et des octets.
+
+La capture native est la sortie de l'outil avant réduction ; le journal conserve
+les résultats archivés ; une projection est la vue réduite envoyée au modèle.
+Une référence de journal identifie une observation conservée, sans garantir que
+son contenu prouve une faille. Les \emph{probes} sont des tests diagnostiques
+sur des entrées synthétiques. Un run est une exécution de l'audit.
+
+Les profils \code{compact} et \code{full} sont des configurations qui changent
+représentation, outils et budgets. D1 désigne l'automatisation à règles sans
+LLM ; A1 l'agent avec LLM. Leur comparaison actuelle impose \code{full}.
+Les codes C1--C8 repèrent les constats, P1--P5 les tests synthétiques du
+tableau~\ref{tab:probes}, et R0--R3 les représentations proposées. Les priorités
+P0--P2 de la section~\ref{sec:architecture} sont un classement de travaux,
+indépendant de ces tests.
+
 \subsection{Méthode et base inspectée}
 La révision source étudiée est \code{45c8dab892ecb4e5f513813387090e0cded1b85d}. Le checkout contenait déjà une réorganisation documentaire ; le SHA ne représente donc pas seul tous les documents lus. La revue combine lecture du code, contrats actuels, probes synthétiques et sources primaires ciblées. Les corrections proposées ne sont pas implémentées.
 
 L'ancien \code{plan.md} de ce dossier reste archivé. Il concernait surtout la rédaction globale du rapport ; ses estimations et anciens numéros de phase ne décrivent plus l'architecture actuelle. Les notes détaillées sont conservées dans \code{analysis.md}. Dans les références de code ci-dessous, \code{analysis/}, \code{verification/}, \code{intrusion/} et \code{report/} désignent les sous-dossiers de \code{src/agent/phases/}.
 
 \subsection{Acquis à préserver}
-\noindent\begin{tabularx}{\linewidth}{@{}p{30mm}Y@{}}
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{30mm}Y@{}}
 \toprule
 \textbf{Frontière} & \textbf{Comportement vérifié dans le code} \\
 \midrule
-Conversations & Chaque appel modèle démarre un historique indépendant ; il n'existe pas une conversation unique transmise des phases 1 à 6. \\
+Conversations & Chaque invocation de la boucle outils démarre un historique indépendant ; les requêtes successives de cette boucle reprennent cet historique. Il n'existe pas une conversation unique transmise des phases 1 à 6. \\
 Analyse et preuve & Phase 3 par équipement ; phase 4 par hypothèse et équipement. La preuve de phase 3 reste un contexte, pas un verdict de vérification. \\
 Traçabilité & Journal avec références, arguments, phase, agent et origine ; les livrables sont liés explicitement au dossier du run. \\
 Rapport & Phase 6 par fiches, cache et reprises bornées ; assemblage et synthèse factuelle déterministes. Les commentaires ne sont pas des preuves validées. \\
@@ -176,7 +196,7 @@ Rapport & Phase 6 par fiches, cache et reprises bornées ; assemblage et synthè
 \section{Capture et historique : deux limites différentes}
 La figure~\ref{fig:current} localise deux endroits où une information peut disparaître. Une réduction avant archivage et une vue abrégée d'une source conservée n'offrent pas la même possibilité de réparation. Ce schéma décrit des transformations présentes ; il ne signifie pas que chaque outil emprunte tous ces chemins.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[sfig diagram]
 \node[sfig input,text width=22mm,minimum height=16mm] (native) at (0,0) {Sortie\\native};
@@ -256,9 +276,9 @@ Cette limite \textbf{ne caractérise pas directement D1/A1}, dont le contraste a
 \subsection{Cinq probes synthétiques reproductibles}
 Les probes utilisent seulement la bibliothèque standard, une extraction AST de la fonction de projection et les modules purs de récupération et de mémo. Elles n'importent pas Pipeline et ne déclenchent ni fournisseur ni scanner. Les assertions décrivent la version étudiée ; elles ne sont pas les critères d'un futur correctif.
 
-\begin{table}[htbp]
+\begin{table}[H]
 \centering\small
-\noindent\begin{tabularx}{\linewidth}{@{}p{8mm}p{54mm}Y@{}}
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{8mm}>{\raggedright\arraybackslash}p{54mm}Y@{}}
 \toprule
 \textbf{ID} & \textbf{Entrée synthétique} & \textbf{Observation reproduite} \\
 \midrule
@@ -292,13 +312,14 @@ Le fichier de contexte de 981\,930 octets du premier exemple ne prouve pas que c
 
 \section{Architecture proposée : une preuve, plusieurs vues}
 \label{sec:architecture}
-La figure~\ref{fig:proposal} distingue la source durable et sa présentation temporaire. La projection demeure révocable : elle peut être reconstruite ou complétée sans refaire une action réseau. Le modèle n'obtient pas pour autant un accès illimité ; les lectures et l'entrée restent bornées.
+La figure~\ref{fig:proposal} distingue l’observation durable et sa présentation temporaire. Une observation archivée
+n’est pas automatiquement une preuve validée. La projection demeure révocable : elle peut être reconstruite ou complétée sans refaire une action réseau. Le modèle n'obtient pas pour autant un accès illimité ; les lectures et l'entrée restent bornées.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[sfig diagram]
 \node[sfig input,text width=28mm,minimum height=17mm] (capture) at (0,0) {Capture avant\\les coupes};
-\node[sfig focal,text width=28mm,minimum height=17mm] (raw) at (4.25,0) {Preuve\\versionnée};
+\node[sfig focal,text width=28mm,minimum height=17mm] (raw) at (4.25,0) {Observation\\versionnée};
 \node[sfig neutral,text width=28mm,minimum height=17mm] (projection) at (8.5,0) {Vue et budget\\d'entrée};
 \node[sfig output,text width=28mm,minimum height=17mm] (model) at (12.75,0) {Modèle};
 \node[sfig neutral,text width=30mm,minimum height=15mm] (read) at (8.5,-2.9) {Lecture ciblée\\par référence};
@@ -333,14 +354,14 @@ Attribuer chaque décision au scanner, aux règles, au modèle ou au fallback. S
 \subsection{A. Fidélité de représentation, hors ligne}
 Geler un corpus synthétique, puis des traces historiques dont la provenance est vérifiée. Annoter \emph{avant} le test les informations nécessaires : cible, service, résultat positif ou négatif, contradiction et référence. Varier la position début/milieu/fin, l'ordre des services, le volume, les doublons, les erreurs et la dispersion des preuves. La sensibilité à la position et les tâches de combinaison motivent ces facteurs~\cite{liu,ruler} ; elles ne préjugent pas du comportement des modèles actuels.
 
-\begin{table}[htbp]
+\begin{table}[H]
 \centering\small
-\noindent\begin{tabularx}{\linewidth}{@{}p{12mm}Yp{52mm}@{}}
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{12mm}Y>{\raggedright\arraybackslash}p{52mm}@{}}
 \toprule
 \textbf{Bras} & \textbf{Représentation comparée} & \textbf{Interprétation} \\
 \midrule
 R0 & Données intégrales lorsque leur taille respecte le budget. & Référence ; exclusions hors budget explicites. \\
-R1 & Projection actuellement utilisée. & Mesure de la politique existante. \\
+R1 & Projection actuelle dans un dispositif expérimental offrant les mêmes lectures que les autres bras. & Effet de la représentation actuelle ; ne reproduit pas tout le runtime sans lecture. \\
 R2 & Projection déterministe améliorée, références et omissions. & Effet d'une meilleure sélection sans résumé LLM. \\
 R3 & R2, avec résumé LLM additionnel. & Exploration distincte : qualité et coût du résumé. \\
 \bottomrule
@@ -354,7 +375,7 @@ Le modèle, la politique de décision et les plafonds restent identiques. \textb
 \subsection{B. Décision et utilité marginale}
 À preuves initiales communes, comparer un routage à règles, le même routage avec résumé LLM, un agent choisissant ses lectures/actions, puis cet agent avec R2. Les profils compact et full ne sont pas un contraste causal propre : ils changent outils, budgets, obligations, reprises et rôle du modèle à la fois.
 
-\noindent\begin{tabularx}{\linewidth}{@{}p{38mm}Y@{}}
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{38mm}Y@{}}
 \toprule
 \textbf{Dimension} & \textbf{Mesures à préenregistrer} \\
 \midrule
@@ -372,7 +393,7 @@ Le replay hors ligne ne reproduit pas l'effet d'un choix sur le réseau. Les fut
 \subsection{Critères d'acceptation proposés}
 Avant le pilote, fixer la marge de non-infériorité, les plafonds coût/délai et l'unité d'analyse. Aucun seuil universel de gain n'est justifié par cette revue. L'hypothèse nulle est admissible : le LLM peut ne pas améliorer la tâche testée.
 
-\noindent\begin{tabularx}{\linewidth}{@{}p{24mm}Y@{}}
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{24mm}Y@{}}
 \toprule
 \textbf{Étape} & \textbf{Barre d'acceptation à vérifier} \\
 \midrule
@@ -408,9 +429,10 @@ pourront mesurer l'utilité marginale du modèle. Le succès d'une compilation,
 d'un test logiciel ou d'un résumé ne constitue pas cette preuve.
 
 \par\end{samepage}
-\phantomsection
-\addcontentsline{toc}{section}{Références}
 \begin{thebibliography}{9}
+\phantomsection\addcontentsline{toc}{section}{Références}
+\interlinepenalty=10000
+
 \small
 \bibitem{liu} N. F. Liu et al. \emph{Lost in the Middle: How Language Models Use Long Contexts}. arXiv:2307.03172v3, 20 novembre 2023 ; publication TACL. Résumé : dépendance à la position en QA multi-documents et récupération clé-valeur.\par
 \url{https://arxiv.org/abs/2307.03172v3}

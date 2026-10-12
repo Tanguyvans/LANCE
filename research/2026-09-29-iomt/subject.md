@@ -1,4 +1,11 @@
-# Proposition de sujet de TFE
+# Proposition de sujet de TFE — archive historique
+
+**Archivée le 1er octobre 2026.** Cette proposition, dont la date initiale est
+inconnue, est remplacée par le [rapport révisé](report.pdf) et sa
+[source LaTeX](report.tex). Le texte d'origine est conservé ci-dessous : les
+mentions de vérification non intrusive, de score pondéré et de déploiement
+hospitalier ne constituent pas le périmètre validé ni le contrat actuel.
+
 
 ## Développement et évaluation d'un agent d'intelligence artificielle pour l'audit automatisé de réseaux IoMT (Internet of Medical Things)
 

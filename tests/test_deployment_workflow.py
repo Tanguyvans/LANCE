@@ -23,7 +23,10 @@ def test_deployment_requires_successful_checks_and_cannot_run_directly():
     job = ci["jobs"]["deploy-master"]
 
     assert set(job["needs"]) == {"contracts-and-scenarios", "sealed-worker-image"}
-    assert job["if"] == "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
+    assert job["if"] == (
+        "github.ref == 'refs/heads/main' && github.event_name != 'pull_request' "
+        "&& needs.contracts-and-scenarios.outputs.full == 'true'"
+    )
     assert job["uses"] == "./.github/workflows/update-master.yml"
     assert "workflow_dispatch" in ci["on"]
     assert set(deploy["on"]) == {"workflow_call"}
@@ -37,6 +40,7 @@ def test_deployment_requires_successful_checks_and_cannot_run_directly():
     development = ci["jobs"]["deploy-development"]
     assert development["needs"] == job["needs"]
     assert "github.event_name != 'pull_request'" in development["if"]
+    assert "needs.contracts-and-scenarios.outputs.full == 'true'" in development["if"]
     assert ci["on"]["push"]["branches"] == ["main", "dev/1", "dev/2"]
     for script in (WORKFLOWS.parents[1] / "scripts/deployment").glob("*.sh"):
         subprocess.run(["bash", "-n", str(script)], check=True)

@@ -24,6 +24,25 @@ from src.agent.evidence.mqtt_ws import mqtt_ws_claim_path, mqtt_ws_claim_topic
 COMPACT_PHASE4_DEFAULT_MAX_WORKERS = 2
 
 
+# Verdicts proving the finding from tool traces: a recovered probe transient
+# on the way there leaves no mark on the proof.
+CONFIRMED_VERDICTS = frozenset({"CONFIRMED", "EXPLOITED", "COMPROMISED"})
+
+
+def unconfirmed_with_diagnostics(run, identifier: str, result: dict | None) -> bool:
+    """True when execution diagnostics stand on an unconfirmed verdict.
+
+    A probe that failed then succeeded on retry leaves diagnostics behind,
+    but they must not degrade Phase 4 once the traces prove the verdict:
+    diagnostics are preserved as information while only an unconfirmed
+    verdict degrades the phase.
+    """
+    errors = getattr(run, "_phase4_execution_errors", None)
+    if not isinstance(errors, dict) or str(identifier) not in errors:
+        return False
+    return str((result or {}).get("status", "")).upper() not in CONFIRMED_VERDICTS
+
+
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
     "decode_value", "list_skills", "load_skill", "search_knowledge",
 })

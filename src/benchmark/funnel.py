@@ -100,6 +100,7 @@ def evaluate_funnel(
     compatible: bool, provenance_available: bool,
     compatibility_reason: str | None = None, total_cost: float | None = None,
     total_turns: int | None = None,
+    match_confirmed: Callable[[list[dict]], dict[int, int]] | None = None,
 ) -> dict:
     """Evaluate independent snapshots. Never reconstruct candidates from survivors."""
     raw = _read(run_dir / "03_vuln_analysis_raw.json", "candidates")
@@ -173,11 +174,12 @@ def evaluate_funnel(
             matches = match(matching_input)
         else:
             indices = sorted(supported)
-            matches = {indices[i]: gt for i, gt in match(matching_input).items()}
+            proof_match = match_confirmed or match
+            matches = {indices[i]: gt for i, gt in proof_match(matching_input).items()}
         stages[name] = stage_metrics(findings, gt_count, matches, supported=supported)
         if supported is not None:
             stages[name]["ground_truth_matches"] = len(match(findings))
-            diagnostics["claims"] = build_claim_diagnostics(findings, matches, match)
+            diagnostics["claims"] = build_claim_diagnostics(findings, matches, match_confirmed or match)
 
     # One verification state per canonical candidate. Duplicate or orphan test
     # IDs cannot inflate coverage, and conflicting results remain indeterminate.

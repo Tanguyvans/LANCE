@@ -6,9 +6,9 @@ L'application est le plan de commande : elle valide la demande, garantit un seul
 run actif par instance, diffuse les événements, expose l'arrêt et relit les
 artefacts. Le code d'exécution est sélectionné par `runner_kind` et garde son
 propre cycle de vie. `src/api/run_coordinator.py` porte l'état et le flux SSE ;
-`src/agent/run_modes.py` sélectionne le runner. Cette séparation ne transforme
-pas les six phases historiques en services indépendants : `Pipeline` conserve
-leur orchestration interne.
+`src/agent/run_modes.py` sélectionne le runner. `Pipeline` conserve l'orchestration
+interne des six phases, avec leurs [contextes explicites et leur graphe par
+run](../../src/agent/phases/README.md#graphe-et-frontières-propres-au-run).
 
 | Mode | Exécution | Modèle | Scénario / benchmark |
 | --- | --- | --- | --- |
@@ -37,6 +37,9 @@ aucun outil ni budget modèle : seul `max_duration_s` y est accepté. `full` et
 `compact` ne s'appliquent pas à ces runners. `POST /api/pipeline/stop`
 demande un arrêt coopératif. `GET /api/pipeline/status` et le flux SSE exposent
 `runner_kind` et les événements de démarrage, activité et fin.
+Le coordinateur utilise le journal SSE commun à tous les modes : chaque lecteur
+possède son curseur et reçoit les événements conservés puis les événements en
+direct, sans les retirer aux autres lecteurs.
 
 Exemples de corps de requête :
 

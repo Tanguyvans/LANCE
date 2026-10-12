@@ -16,8 +16,9 @@ REGISTERS = {
     "ssh_creds_check": "ssh", "web_listing_check": "web",
     "web_version_check": "web_version", "redis_ping_check": "redis",
     "modbus_svc_check": "modbus",
+    "nodered_port_check": "nodered", "nodered_admin_check": "nodered_admin",
 }
-ROLES = ["mqtt_broker", "db_server", "ssh_server", "web_server", "db_server_v2", "modbus_server"]
+ROLES = ["mqtt_broker", "db_server", "ssh_server", "web_server", "db_server_v2", "modbus_server", "nodered_server"]
 
 
 def test_preflight_fact_tasks_with_real_ansible(tmp_path):
@@ -76,7 +77,7 @@ def test_preflight_fact_tasks_with_real_ansible(tmp_path):
             {"ansible.builtin.assert": {"that": [
                 "_verify_all_ok == expected_verdict",
                 *[f"_check_{key}_ok == expected_verdict" for key in REGISTERS.values()
-                  if key != "web_version"],
+                  if key not in {"web_version", "nodered_admin"}],
                 *[f"_{key}_results == expected_rows" for key in REGISTERS.values()],
             ]}},
         ]})
@@ -95,4 +96,54 @@ def test_preflight_fact_tasks_with_real_ansible(tmp_path):
              "ANSIBLE_NOCOLOR": "1", "ANSIBLE_CONFIG": str(config)},
         capture_output=True, text=True, timeout=60,
     )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_suid_preflight_runtime_requires_behavior_not_mode_bits(tmp_path):
+    executable = shutil.which("ansible-playbook")
+    if not executable:
+        if os.environ.get("CI"):
+            pytest.fail("CI must install ansible-core")
+        pytest.skip("ansible-playbook is not installed")
+    production = yaml.safe_load(VERIFY.read_text())[0]["tasks"]
+    names = {
+        "Préparer les résultats des checks vulnérables",
+        "Évaluer les résultats — consolider les checks OK/FAIL",
+        "Calculer le statut global de vérification",
+    }
+    facts = [task for task in production if task.get("name") in names]
+    assert len(facts) == 3
+    assert all("ansible.builtin.set_fact" in task for task in facts)
+    blocks = []
+    for name, results, expected in [
+        ("privileged_read", [{"rc": 0, "stdout": "OK"}], True),
+        ("explicit_not_skipped", [{"rc": 0, "stdout": "OK", "skipped": False}], True),
+        ("mode_bits_only", [{"rc": 0, "stdout": "4755"}], False),
+        ("read_failed", [{"rc": 1, "stdout": "OK"}], False),
+        ("missing_read", [], False),
+        ("contradicted", [{"rc": 0, "stdout": "OK\nFAIL"}], False),
+    ]:
+        blocks.append({"name": name, "vars": {
+            "scenario_id": "7", "source_scenario_id": "7",
+            "benchmark_scenarios": {"7": {"router_vulns": [],
+                "services": [{"role": "ssh_server"}]}},
+            "ssh_creds_check": {"results": [{"rc": 0, "stdout": "OK"}]},
+            "privesc_behavior_check": {"results": results},
+            "expected_verdict": expected,
+        }, "block": [*copy.deepcopy(facts), {"ansible.builtin.assert": {"that": [
+            "_privesc_expected == 1", "_check_privesc_ok == expected_verdict",
+            "_verify_all_ok == expected_verdict", "_check_ssh_ok",
+        ]}}]})
+    playbook = tmp_path / "suid-preflight-runtime.yml"
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\n")
+    playbook.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False,
+        "tasks": blocks,
+    }], allow_unicode=True, sort_keys=False))
+    result = subprocess.run([executable, "-i", "localhost,", str(playbook)],
+        cwd=tmp_path, env={**os.environ, "ANSIBLE_CONFIG": str(config),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "local"),
+            "ANSIBLE_REMOTE_TEMP": str(tmp_path / "remote"), "ANSIBLE_NOCOLOR": "1"},
+        capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr

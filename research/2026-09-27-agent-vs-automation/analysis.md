@@ -6,7 +6,7 @@ Recherche exploratoire, lecture du dépôt et de sources primaires. Aucune expé
 
 État lu : commit `45c8dab892ecb4e5f513813387090e0cded1b85d`, avec modifications locales notamment de classement documentaire et `research/` non suivi. Le commit seul ne décrit donc pas tous les documents consultés. Lecture d'AGENTS.md, des index [research/README.md](../../research/README.md) et [docs/README.md](../../docs/README.md), des quatre documents `research/2026-09-27-agent-vs-automation/`, des guides D1/A1, du manifeste pilote et du code cité. Les comptes de tests anciens présents dans le plan n'ont pas été reproduits.
 
-Cette revue complète le [protocole existant](protocol.md), sans le remplacer. La [synthèse transversale](research-review.md) relie les priorités benchmark, contexte et comparaison.
+Cette revue complète le [protocole existant](protocol.md), sans le remplacer. La [synthèse transversale](report.pdf) relie les priorités benchmark, contexte et comparaison.
 
 ## Conclusion de la revue
 

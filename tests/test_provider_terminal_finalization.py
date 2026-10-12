@@ -707,3 +707,26 @@ def test_two_incidents_then_third_interruption_enters_finalization():
     for request in provider.client.chat.completions.create.call_args_list[5:]:
         assert _request_tool_names(request) == ["save_deliverable"]
         assert request.kwargs["tool_choice"] == "required"
+
+
+def test_reserved_turns_allow_repair_of_rejected_json_without_extra_actions():
+    action = MagicMock(return_value='{"ok":true}')
+    save = MagicMock(side_effect=[
+        '{"ok":false,"error":"Invalid JSON: missing closing brace","validated":false}',
+        '{"status":"saved","validated":true}',
+    ])
+    provider = _provider([
+        *[_tool_response("action", json.dumps({"query": str(i)}), f"query-{i}")
+          for i in range(8)],
+        _tool_response("save_deliverable", '{"content":"broken"}', "save-rejected"),
+        _tool_response("save_deliverable", '{"content":"repaired"}', "save-repaired"),
+    ])
+    _run(provider, _tools(action, save), max_turns=10)
+
+    requests = provider.client.chat.completions.create.call_args_list
+    assert len(requests) == 10
+    assert action.call_count == 8
+    assert save.call_count == 2
+    for request in requests[-2:]:
+        assert _request_tool_names(request) == ["save_deliverable"]
+        assert request.kwargs["tool_choice"] == "required"

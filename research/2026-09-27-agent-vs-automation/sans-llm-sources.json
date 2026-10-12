@@ -1,0 +1,801 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-07T14:45:38+02:00",
+  "research_start": "2026-09-27",
+  "extension_start": "2026-10-07",
+  "status": "Targeted literature research and proposed offline experimental protocols; no new performance results.",
+  "method": "Primary sources and targeted sections, no systematic-review completeness or experimental reproduction claimed. Distinct pages/documents may belong to one publication/tool. Repeated sources retain each reader’s actual scope.",
+  "external_readings_count": 29,
+  "external_distinct_primary_urls_count": 27,
+  "specialist_registries": [
+    {
+      "path": "sans-llm-outils-sources.json",
+      "sha256": "c587c49ddbeac6690f661a3199b206cb034914e684f1883e228154964080e066",
+      "author_agent": "/root/sans_llm_outils"
+    },
+    {
+      "path": "sans-llm-raisonnement-sources.json",
+      "sha256": "f12efe9d61f6e93d5f94f2ea7baae4966b4e7339ddb7071ce92cf4bba520b907",
+      "author_agent": "/root/sans_llm_raisonnement"
+    },
+    {
+      "path": "sans-llm-experiences-sources.json",
+      "sha256": "990f899f472877e5d74e90f240e910e2c4b9e58885dbc3a37c3677594e6ed616",
+      "author_agent": "/root/sans_llm_experiences"
+    }
+  ],
+  "sources": [
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "nist115",
+      "title": "Technical Guide to Information Security Testing and Assessment — NIST SP 800-115",
+      "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-115.pdf",
+      "publication_date_or_version": "2008-09",
+      "read_scope": "Résumé exécutif, §2.1–2.2 ; §4.1 limitations, §4.2–4.3 identification et scanning, pages imprimées 4-2 à 4-6 (PDF 25 à 29).",
+      "limits": "Lecture ciblée et non intégrale ; outils et exemples historiques de 2008 ; pas de taux de performance transposé.",
+      "contribution": "Séparer examen et test, identification et vulnérabilité ; limites des signatures, points de vue, versions et bases.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "nist8259",
+      "title": "IoT Device Cybersecurity Capability Core Baseline — NISTIR 8259A",
+      "url": "https://nvlpubs.nist.gov/nistpubs/ir/2020/NIST.IR.8259A.pdf",
+      "publication_date_or_version": "2020-05-29",
+      "read_scope": "Introduction, §2 et tableau 1, six capacités (pages imprimées 5 à 10), annexe A (page imprimée 14).",
+      "limits": "Baseline générale à contextualiser ; pas une procédure de test ni un catalogue exhaustif ; références du tableau non prétendues lues.",
+      "contribution": "Base défensive pour construire une checklist contextualisée dont les critères observables restent un travail expérimental.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "nmap",
+      "title": "Service and Version Detection — Nmap Network Scanning",
+      "url": "https://nmap.org/book/man-version-detection.html",
+      "publication_date_or_version": "Documentation en ligne, instantané consulté le 2026-10-07 ; version du binaire non fixée",
+      "read_scope": "Texte principal et discussion des bases services/probes, identification/CPE, informations absentes, intensité et limites de certains dispositifs.",
+      "limits": "Documentation de mécanismes ; aucun scan exécuté ; pas de comptage des signatures ni de couverture IoT revendiquée.",
+      "contribution": "Distinguer numéro de port, identité probable et identification par réponses ; mesurer l’inventaire séparément des conclusions de sécurité.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "nuclei-matchers",
+      "title": "Matchers — ProjectDiscovery Documentation",
+      "url": "https://docs.projectdiscovery.io/templates/reference/matchers",
+      "publication_date_or_version": "Documentation en ligne, instantané consulté le 2026-10-07 ; moteur/templates à geler avant étude",
+      "read_scope": "Types ; matcher DSL descriptif ; negative matchers ; multiple matchers ; matchers condition (composition AND/OR).",
+      "limits": "Sections de matching lues ; pas de templates opérationnels reproduits, pas d’évaluation du dépôt de templates ou de leur innocuité.",
+      "contribution": "Montrer les prédicats classiques disponibles et la nécessité de distinguer correspondance syntaxique et preuve de propriété.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "nuclei-workflows",
+      "title": "Template Workflows Overview — ProjectDiscovery Documentation",
+      "url": "https://docs.projectdiscovery.io/templates/workflows/overview",
+      "publication_date_or_version": "Documentation en ligne, instantané consulté le 2026-10-07 ; moteur/templates à geler avant étude",
+      "read_scope": "Generic workflows et conditional workflows, branchements par correspondance et matcher nommé.",
+      "limits": "Mécanismes décrits, aucune recette ni exécution ; aucun workflow offensif proposé dans le rapport.",
+      "contribution": "Le choix conditionnel et l’adaptation limitée existent sans LLM ; comparateur externe limité aux propriétés couvertes.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "oval",
+      "title": "Getting Started — The OVAL Community Guidelines",
+      "url": "https://oval-community-guidelines.readthedocs.io/en/v5.12.3/getting-started.html",
+      "publication_date_or_version": "Documentation OVAL 5.12.3",
+      "read_scope": "What is OVAL ; OVAL Structure (definitions/tests/objects/states/variables) ; OVAL Features et Related Standards ; exemples observés sans reproduction.",
+      "limits": "Pas de lecture complète des schémas ; documentation et compatibilité d’un interpréteur sont distinctes ; date de release non inférée.",
+      "contribution": "Assertions déclaratives d’état local et rôle des checklists ; références plus expressives qu’un simple script linéaire.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "openscap",
+      "title": "OpenSCAP User Manual",
+      "url": "https://static.open-scap.org/openscap-1.4.1/oscap_user_manual.html",
+      "publication_date_or_version": "Chemin documentaire OpenSCAP 1.4.1 ; compatibilité de binaires non vérifiée",
+      "read_scope": "§4.2–4.4, notamment définitions OVAL, variables, résultats XCCDF et applicabilité CPE ; aperçu §6 tailoring.",
+      "limits": "Pas de profil IoT validé ; pas d’installation ni exécution ; contenu et paramètres du profil déterminent le contrôle.",
+      "contribution": "Référence de conformité locale ; statuts pass/fail/error/unknown/notapplicable/notchecked distincts et nécessité d’entrées comparables.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "nvd",
+      "title": "Product APIs — National Vulnerability Database",
+      "url": "https://nvd.nist.gov/developers/products",
+      "publication_date_or_version": "Documentation API 2.0, page indexée consultée le 2026-10-07",
+      "read_scope": "Section Match Criteria API et Response Details : critères CPE, matchCriteriaId, bornes de versions, dates de modification, noms associés.",
+      "limits": "Lecture substantielle du contenu indexé renvoyé par le moteur ; ouverture suivante vide ; aucune requête API ni extraction de base exécutée.",
+      "contribution": "Modèle pour une tâche hors ligne de rapprochement identité/avis ; correspondance d’applicabilité distincte d’impact observé.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "cyclonedx",
+      "title": "Authoritative Guide to SBOM",
+      "url": "https://cyclonedx.org/guides/sbom/consumption",
+      "publication_date_or_version": "Troisième édition, 2025-10-21, mise à jour pour CycloneDX 1.7",
+      "read_scope": "Métadonnées édition ; définition SBOM et inventaire (pages imprimées 7–9) ; pedigree/backport et composition completeness/known unknowns (pages imprimées 63–66).",
+      "limits": "Lecture ciblée du PDF de 82 pages, pas lecture intégrale ; n’établit pas la complétude réelle d’une SBOM ; exigences réglementaires du guide non exploitées.",
+      "contribution": "Une nomenclature est un inventaire avec provenance/complétude ; variations, rétroportages et inconnus dans le matching.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "csaf",
+      "title": "Common Security Advisory Framework Version 2.0",
+      "url": "https://docs.oasis-open.org/csaf/csaf/v2.0/os/csaf-v2.0-os.html",
+      "publication_date_or_version": "OASIS Standard, 2022-11-18",
+      "read_scope": "Métadonnées ; §3.2.3.9 Product Status ; §6.1.27.7–8 VEX Product Status et Vulnerability ID ; table des matières pour profil VEX.",
+      "limits": "Standard historique explicite, pas présenté comme dernière édition ou dernier errata ; aucune validation de documents CSAF ni confiance producteur attestée.",
+      "contribution": "Distinguer affecté/non affecté/corrigé/investigation et statut d’applicabilité de preuve expérimentale.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "consulted_at": "2026-10-07",
+      "consultation_timezone": "Europe/Brussels (UTC+02:00)",
+      "type": "primary_source",
+      "reproduced_in_lance": false,
+      "id": "vex",
+      "title": "Vulnerability Exploitability eXchange (VEX) — CycloneDX",
+      "url": "https://www.cyclonedx.org/capabilities/vex/",
+      "publication_date_or_version": "Page descriptive en ligne, instantané consulté le 2026-10-07",
+      "read_scope": "Introduction to VEX, Highlights et Expected Outcomes.",
+      "limits": "Page conceptuelle courte ; résultats attendus de l’organisme, pas résultats reproduits ; pas analyse normative de tout le schéma.",
+      "contribution": "VEX porte une appréciation dans le contexte produit ; ne pas le traiter comme preuve indépendante d’exploitation ou de non-exploitabilité.",
+      "reader": "/root/sans_llm_outils",
+      "source_registry": "sans-llm-outils-sources.json"
+    },
+    {
+      "id": "sql",
+      "title": "SQLite : SELECT et The WITH Clause",
+      "url": "https://www.sqlite.org/lang_select.html",
+      "related_urls": [
+        "https://www.sqlite.org/lang_with.html"
+      ],
+      "publication_date_or_version": "Documentation officielle consultée le 2026-10-07 ; révision web non figée",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "SELECT 2.1-2.3, 2.6 ; WITH 3.2-3.3 ; jointures, NULL, agrégation et récursion/cycles",
+      "limits": "Aucun moteur installé ni benchmark reproduit ; documentation évolutive",
+      "contribution": "Établit que liaisons, doublons et récursion simple n’exigent pas un LLM ni Datalog.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "souffle",
+      "title": "Soufflé : Datalog Language",
+      "url": "https://souffle-lang.org/datalog-language",
+      "related_urls": [],
+      "publication_date_or_version": "Documentation officielle consultée le 2026-10-07 ; version exécutable non testée",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Page de langage : relations, types, clauses et négation stratifiée",
+      "limits": "Certaines pages de provenance/clauses inaccessibles via browser ; elles ne fondent aucune conclusion. Article provenance consulté séparément.",
+      "contribution": "Relations typées et règles récursives ; formalisation explicite à comparer à SQL.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "provenance",
+      "title": "Provenance for Large-scale Datalog",
+      "url": "https://arxiv.org/html/1907.05045v1",
+      "related_urls": [
+        "https://arxiv.org/abs/1907.05045v1"
+      ],
+      "publication_date_or_version": "arXiv:1907.05045v1, 2019-07-11",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée sections 3.1-3.4, passages 4.2, section 5 (protocole Doop/DaCapo et coûts de provenance)",
+      "limits": "Preuves mathématiques non vérifiées intégralement ; aucun artefact ni expérience reproduit ; résultats Java non transférés à IoT",
+      "contribution": "Fixpoint, absence de tuple vs fausseté terrain, arbres de dérivation et coût de provenance.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "opa",
+      "title": "OPA : Policy Language",
+      "url": "https://www.openpolicyagent.org/docs/policy-language",
+      "related_urls": [],
+      "publication_date_or_version": "Documentation officielle consultée le 2026-10-07 ; révision non figée",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Passages valeurs undefined, Negation, Universal Quantification, Every Keyword, Default Keyword ; lecture ciblée",
+      "limits": "Non lu intégralement ; pas de version OPA installée/testée ni garantie de coût transposée",
+      "contribution": "Politique déclarative sur données structurées et pièges undefined/quantification ; nécessite couche de verdict audit.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "cedar",
+      "title": "Cedar: A New Language for Expressive, Fast, Safe, and Analyzable Authorization (Extended Version)",
+      "url": "https://arxiv.org/html/2403.04651v1",
+      "related_urls": [
+        "https://arxiv.org/abs/2403.04651v1"
+      ],
+      "publication_date_or_version": "arXiv:2403.04651v1, 2024-03-07 ; OOPSLA1 avril 2024",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée sections 2, 3.3/3.5, 4.3, 5 : sémantique, validateur, hiérarchie, protocole de mesure en mémoire, refactoring symbolique",
+      "limits": "Preuves Lean et artefact non vérifiés ; PDF Amazon Science inaccessible via browser, HTML primaire exploité ; versions publiées non assimilées à logiciel actuel",
+      "contribution": "Modèle principal/opération/ressource/contexte, décision par défaut vs preuve du déploiement, limites de comparaison des moteurs.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "fireman",
+      "title": "FIREMAN: A Toolkit for FIREwall Modeling and ANalysis",
+      "url": "https://haochen.org/publications/yuan2006fireman.pdf",
+      "related_urls": [],
+      "publication_date_or_version": "IEEE Symposium on Security and Privacy, 2006, p.199-213",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée sections 2, 4.1, 4.2.2-4.3, 5.1-5.3 ; pages PDF 2-3,7-11 ; sémantique, BDD, politique et avertissements",
+      "limits": "Pas de reproduction ni modernisation d’implémentation ; garanties limitées à classification/modèle ; intention de propriétaire requise",
+      "contribution": "Anomalies formelles de règles distinctes de vulnérabilité métier ; explicitement couvrir ordre, implicit rules et modèle.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "hsa",
+      "title": "Header Space Analysis: Static Checking for Networks",
+      "url": "https://web.stanford.edu/class/cs244/papers/HeaderSpaceAnalysis.pdf",
+      "related_urls": [
+        "https://www.usenix.org/conference/nsdi12/technical-sessions/presentation/kazemian"
+      ],
+      "publication_date_or_version": "NSDI 2012, p.113-126, avril 2012",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée section 2, accessibilité section 4, début section 7 et section 8 ; pages PDF 2-3,5-6,9-10,13",
+      "limits": "Pas de reproduction, preuve intégrale ni revue de Hassel actuel ; relevés statiques, dynamique et intent hors capacité générale",
+      "contribution": "Modèle de transformations plus riche que graphe d’adjacence ; conclusions attachées au snapshot fourni.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "batfish",
+      "title": "A General Approach to Network Configuration Analysis",
+      "url": "https://ratul.org/papers/nsdi2015-batfish.pdf",
+      "related_urls": [],
+      "publication_date_or_version": "NSDI 2015, p.469-483",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée sections 3 (modèle et 3.3 Discussion), 6 (restrictions), 7 (corpus, protocole, résultats, coûts) ; pages PDF 4-6,9-13",
+      "limits": "Article historique, pas logiciel actuel ; aucune reproduction ; environnements et fonctionnalités non couvertes limitent garanties",
+      "contribution": "Analyse statique de configurations, contre-exemples dans modèle et différences de données/formalisation ; pas observation d’accès terrain.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "batfishdocs",
+      "title": "Batfish : Snapshot Input",
+      "url": "https://batfish.readthedocs.io/en/latest/notebooks/snapshot.html",
+      "related_urls": [],
+      "publication_date_or_version": "Documentation affichée pybatfish 0.36.0, consultée le 2026-10-07 ; URL latest évolutive",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Sections Snapshot Initialization Issues, Snapshot Input File Parse Status et Parse Warnings",
+      "limits": "Serveur/client non installés ni testés ; version exacte serveur à figer dans une expérience future",
+      "contribution": "Statuts partiels/erreurs et warnings à conserver avant verdict de configuration.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "netplumber",
+      "title": "Real Time Network Policy Checking Using Header Space Analysis",
+      "url": "https://www.usenix.org/system/files/conference/nsdi13/nsdi13-final8.pdf",
+      "related_urls": [
+        "https://www.usenix.org/conference/nsdi13/technical-sessions/presentation/kazemian"
+      ],
+      "publication_date_or_version": "NSDI 2013, p.99-111, avril 2013",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée section 3.1 (plumbing graph), section 6 (protocole et données), section 7 (discussion/limitations) ; pages PDF 2-3,9-12",
+      "limits": "Pas de reproduction ; matériel/corpus différents de HSA/Batfish ; états dynamiques middleboxes et changements de liens limitent usage",
+      "contribution": "Incrémentalité intéressante seulement si question porte sur mises à jour, hors premier pilote ponctuel.",
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "hernan",
+      "title": "Causal Inference: What If",
+      "authors": "Miguel A. Hernán; James M. Robins",
+      "url": "https://www.hsph.harvard.edu/miguel-hernan/wp-content/uploads/sites/1268/2024/04/hernanrobins_WhatIf_26apr24.pdf",
+      "publication_date_or_version": "2020; PDF version dated 2024-04-26",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Section 2.1 Randomization, indexed excerpt from primary Harvard PDF; author book landing page.",
+      "limits": "Full PDF access failed via web tool; other chapters not used. No experiment reproduced; epidemiological examples are not empirical LANCE evidence.",
+      "contribution": "Motivates a well-defined contrast and randomized/controlled allocation; application to shared software observations is proposed by this study.",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "id": "lazic",
+      "title": "The problem of pseudoreplication in neuroscientific studies: is it affecting your analysis?",
+      "authors": "Stanley E. Lazic",
+      "url": "https://link.springer.com/article/10.1186/1471-2202-11-5",
+      "publication_date_or_version": "2010-01-14; BMC Neuroscience 11:5; DOI 10.1186/1471-2202-11-5",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Abstract, Background, repeated measurements and hierarchical structure sections in publisher HTML.",
+      "limits": "Neuroscience examples; no quantitative dependence estimate for LANCE, no statistical implementation validated.",
+      "contribution": "Motivates separating observations, repeated model responses, dossiers and families; avoiding pseudoreplication.",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "id": "lakens",
+      "title": "Equivalence Tests: A Practical Primer for t Tests, Correlations, and Meta-Analyses",
+      "authors": "Daniël Lakens",
+      "url": "https://pure.tue.nl/ws/portalfiles/portal/80918653/lakeequi2017.pdf",
+      "publication_date_or_version": "2017; publisher version; Social Psychological and Personality Science 8(4):355–362; DOI 10.1177/1948550617697177",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Testing for Equivalence; Setting Equivalence Bounds; Discussion, with introductory statements about nonsignificance.",
+      "limits": "No TOST/power computation run. Generic t-test formula does not automatically fit bounded, clustered LANCE metrics; adapted inferential design remains required.",
+      "contribution": "Distinguishes nonsignificance from equivalence and non-inferiority; motivates prespecified useful margins and uncertainty.",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "id": "barr",
+      "title": "The Oracle Problem in Software Testing: A Survey",
+      "authors": "Earl T. Barr; Mark Harman; Phil McMinn; Muzammil Shahbaz; Shin Yoo",
+      "url": "https://discovery.ucl.ac.uk/1471263/1/06963470.pdf",
+      "publication_date_or_version": "2015-05; IEEE TSE 41(5):507–525; DOI 10.1109/TSE.2014.2372785; PDF notes current version 2015-05-15",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Publisher PDF on UCL: abstract, introduction, sections 2.1–2.3, soundness/completeness, discussion of partial/metamorphic oracle in introduction. UCL metadata page.",
+      "limits": "Not a systematic reanalysis of the survey corpus; techniques not reproduced. Independent LANCE oracle and invariance labels remain to be built/validated.",
+      "contribution": "Separates correct system configuration from partial evidence oracle; motivates independent annotation, trace adequacy and metamorphic control.",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "id": "sculley",
+      "title": "Hidden Technical Debt in Machine Learning Systems",
+      "authors": "D. Sculley et al.",
+      "url": "https://proceedings.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf",
+      "publication_date_or_version": "2015; Advances in Neural Information Processing Systems 28",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Sections 3, 5, 6, 7 and 9 in proceedings PDF; abstract metadata.",
+      "limits": "Engineering observations, not a pricing model and not an empirical cost comparison of LANCE. No numerical claim imported.",
+      "contribution": "Motivates development/maintenance/configuration/dependency cost accounting alongside inference cost.",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "id": "nist115-synthese",
+      "title": "Technical Guide to Information Security Testing and Assessment — NIST SP 800-115",
+      "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-115.pdf",
+      "publication_date_or_version": "2008-09; DOI10.6028/NIST.SP.800-115",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Sections3.3–3.4; printed pages3-2–3-3; official notice consulted.",
+      "limits": "Targeted reading, not full document; no reproduction and no performance attribution to LANCE.",
+      "contribution": "Ruleset/configuration review as legitimate classical assessment; local data/access requirements.",
+      "reader": "/root",
+      "source_registry": "sans-llm-sources.json"
+    },
+    {
+      "id": "nist53a-synthese",
+      "title": "Assessing Security and Privacy Controls in Information Systems and Organizations — NIST SP 800-53A Rev.5",
+      "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53Ar5.pdf",
+      "publication_date_or_version": "Rev.5 January2022; official notice reports minor update5.2.0 on2025-08-27",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Section2.4 Objects, Methods, and Objectives; printed pages11–12; notice https://csrc.nist.gov/pubs/sp/800/53/a/r5/final.",
+      "limits": "Current PDF has extended appendices; only named section read. No full-update reading/conformance asserted.",
+      "contribution": "Traceable assessment objects/coverage/method and criteria; transfer to proposed LANCE fiches.",
+      "reader": "/root",
+      "source_registry": "sans-llm-sources.json"
+    },
+    {
+      "id": "lakens-synthese",
+      "title": "Equivalence Tests: A Practical Primer for t Tests, Correlations, and Meta-Analyses",
+      "url": "https://pure.tue.nl/ws/portalfiles/portal/80918653/lakeequi2017.pdf",
+      "publication_date_or_version": "2017; SPPS8(4)355–362; DOI10.1177/1948550617697177",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Introduction and Testing for Equivalence; printed pages355–356, institutional publisher PDF.",
+      "limits": "PMC opening was blocked; institutional primary PDF used. Not all sections read, no automatic application to clustered metrics.",
+      "contribution": "Nonsignificance is not equivalence; prespecified meaningful bounds and suitable inference needed.",
+      "reader": "/root",
+      "source_registry": "sans-llm-sources.json"
+    }
+  ],
+  "local_readings": [
+    {
+      "id": "local-1",
+      "title": "Instructions de dépôt",
+      "path": "AGENTS.md",
+      "url": "AGENTS.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Texte complet",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "2c2e415a97c6b7889850aecc3c8e96982a7ce3feec09dc023d6fac7b9f17787a",
+      "bytes": 5290,
+      "lines": 85,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-2",
+      "title": "Index de recherche",
+      "path": "research/README.md",
+      "url": "research/README.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Index et conventions ciblées ; conflits conservés",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "808a26006ae5f9e36aae2b30ac002b7e6ffa6f44030da8b17b12dc1c146496e5",
+      "bytes": 22387,
+      "lines": 291,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-3",
+      "title": "Index documentaire",
+      "path": "docs/README.md",
+      "url": "docs/README.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Index complet",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "6efd78aa54c3f2a5fd10cfba93353eb49e364ee5688e0360057ec81dbfbc7be9",
+      "bytes": 5076,
+      "lines": 86,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-4",
+      "title": "Étude agent/automatisation",
+      "path": "research/2026-09-27-agent-vs-automation/README.md",
+      "url": "research/2026-09-27-agent-vs-automation/README.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Synthèse et navigation",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "7ba9d0b855429ec482f41ff4d77fc21dff1d6ab101d7d9a1ffedc91607854091",
+      "bytes": 7139,
+      "lines": 120,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-5",
+      "title": "Protocole D0/D1/A1",
+      "path": "research/2026-09-27-agent-vs-automation/protocol.md",
+      "url": "research/2026-09-27-agent-vs-automation/protocol.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée étendue, références classiques, égalité des observations, budgets et test réservé",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "5ff4797f4c11bf958b42c8574f44dd4fd68ef10de000379c44599ae8acf35fa1",
+      "bytes": 29288,
+      "lines": 418,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-6",
+      "title": "État de l’art historique",
+      "path": "research/2026-09-27-agent-vs-automation/state-of-the-art.md",
+      "url": "research/2026-09-27-agent-vs-automation/state-of-the-art.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée du cadre D1 ; sources offensives historiques non exploitées ici",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "065403b357878b6decc11eda7f64cd143866af651e756555af124b37b98f5716",
+      "bytes": 16924,
+      "lines": 204,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-7",
+      "title": "Étude des méthodes",
+      "path": "research/2026-10-07-methodes-audit/README.md",
+      "url": "research/2026-10-07-methodes-audit/README.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Question et navigation",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "0f00a4ffdd7ddc667515f56a7ea96752fd8a35ccb60e57a199e73c84ca401c99",
+      "bytes": 8594,
+      "lines": 121,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-8",
+      "title": "Diagnostic pipeline",
+      "path": "research/2026-10-07-methodes-audit/pipeline.tex",
+      "url": "research/2026-10-07-methodes-audit/pipeline.tex",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Sections initiales architecture/preuves/méthode ; pas une nouvelle lecture du code applicatif",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "62f3051fdee6be012f6fd890403f090b4ea22092afbc197b74ed466c7c6340e4",
+      "bytes": 22077,
+      "lines": 384,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-9",
+      "title": "Familles de méthodes",
+      "path": "research/2026-10-07-methodes-audit/methodes.tex",
+      "url": "research/2026-10-07-methodes-audit/methodes.tex",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Sections initiales : preuve, propriétés, politique et sources",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "da4bdb8f5cb5308677aff58cfe5f71c05c5fe15a252ef1460e4d5844c5cbda26",
+      "bytes": 23956,
+      "lines": 191,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-10",
+      "title": "Protocole E0/E1/E2",
+      "path": "research/2026-10-07-methodes-audit/protocole.tex",
+      "url": "research/2026-10-07-methodes-audit/protocole.tex",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée dossiers figés, complétude, soutien/réalité et attribution",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "69665730eccf00af403605f3167d71c2744efac519a2d93022d830cf0dfe1fdc",
+      "bytes": 22418,
+      "lines": 361,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "id": "local-11",
+      "title": "D1/A1 : premier incrément CLI documenté",
+      "path": "docs/benchmark/agent-vs-automation-cli.md",
+      "url": "docs/benchmark/agent-vs-automation-cli.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; base Git a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et modifications locales",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Guide intégral, notamment périmètre phases 3/4 et Ce que fait D1",
+      "limits": "Documentation locale ; comportement exécutable non vérifié, conflits locaux conservés",
+      "contribution": "Distingue le D1 existant de son adaptateur hors ligne proposé dans cette revue",
+      "sha256": "9d47324c083ca6abbdf57f9c68364d6f04f8e5381232600747b649f05feeb508",
+      "bytes": 9068,
+      "lines": 173,
+      "reader": "/root/sans_llm_raisonnement",
+      "source_registry": "sans-llm-raisonnement-sources.json"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "2c2e415a97c6b7889850aecc3c8e96982a7ce3feec09dc023d6fac7b9f17787a",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "research/README.md",
+      "sha256": "808a26006ae5f9e36aae2b30ac002b7e6ffa6f44030da8b17b12dc1c146496e5",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "docs/README.md",
+      "sha256": "6efd78aa54c3f2a5fd10cfba93353eb49e364ee5688e0360057ec81dbfbc7be9",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/README.md",
+      "sha256": "7ba9d0b855429ec482f41ff4d77fc21dff1d6ab101d7d9a1ffedc91607854091",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/protocol.md",
+      "sha256": "5ff4797f4c11bf958b42c8574f44dd4fd68ef10de000379c44599ae8acf35fa1",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/implementation-plan.md",
+      "sha256": "c9455884d47a183b7a5895d71482d38d5189d9bbcc4ecf73a5ae440c365560b6",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/state-of-the-art.md",
+      "sha256": "065403b357878b6decc11eda7f64cd143866af651e756555af124b37b98f5716",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/analysis.md",
+      "sha256": "bbea785aa43afdf218da7d960b65792db77be347159ad6110c0e002bf7028a02",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "docs/benchmark/agent-vs-automation-cli.md",
+      "sha256": "9d47324c083ca6abbdf57f9c68364d6f04f8e5381232600747b649f05feeb508",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "docs/benchmark/agent-vs-automation-campaign.md",
+      "sha256": "84208a3feaf562682688a9db996df76b9d485feead4c0ded5b4925b583c3361f",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "research/2026-10-07-methodes-audit/protocole.tex",
+      "sha256": "69665730eccf00af403605f3167d71c2744efac519a2d93022d830cf0dfe1fdc",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/phases/rules.py",
+      "sha256": "ae7ec1843a104e8b2be6a80d9358bf462f125f3eee87928906793f578c8183ff",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/phases/analysis/run.py",
+      "sha256": "f35ecba24502d81ecb6a3d6e65aada9e38053e60bbdfb93d5c928b6a65986426",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/phases/analysis/scan.py",
+      "sha256": "f225830969ce46c4593c5cc80f64c0cb908366823301303c1ada1ad77d08d9a3",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/phases/analysis/devices.py",
+      "sha256": "8617296f76adab4222da18b96b5e444340f1e1d1c298928eb3dfabcba9320f9d",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/phases/analysis/supplemental.py",
+      "sha256": "704d7b00ad7411bb3c6a6658a39ca340781e451011f4f53bc0c83724685af5e1",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation_loading.py",
+      "sha256": "b6f543021df162d84c8833300f09061aa101e85a423afe62c5473c029115a483",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation.py",
+      "sha256": "258df70314f5ec00fc3dfc38c73a170080f5616bc6abf52b95a6176c6f163e22",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/phases/verification/rules.py",
+      "sha256": "dba61d0b2550dc7d38fe86fbbba026aa498814b7f0b6da6a219787cc4d768c45",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/audit_experiment.py",
+      "sha256": "9a1575bea290f7157458de62e8467c5b0aa3a8bfa485fe1d5edb18174e57a4fa",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/scanner.py",
+      "sha256": "d31a84504c06837f065dfa491242bca60afe08c0827b0257a6b21a3f07a05f56",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/benchmark/compare_policies.py",
+      "sha256": "ffb175621761c7d6afe26c0151488db977080e8f51539b7fa76a8b327f0ac506",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/benchmark/policy_campaign.py",
+      "sha256": "09b094f0a80c7d526ac2a4221cac67f4b52293b72d29849a209820f537b47d8a",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/benchmark/metric_contract.py",
+      "sha256": "9b2935fa41d013d71280f8e81719931d131a57a8d2f3ed098011f6f3ceffec09",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/exploit_evidence.py",
+      "sha256": "9edace119c05b9f2186fad4f15821c9cc29c025443be17396a3a152e429fc802",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    },
+    {
+      "path": "src/agent/phases/verification/run.py",
+      "sha256": "eb7cb2a876c7fbb679202977599bba13ae5351df7a281eabc7f875d02e3c5381",
+      "scope": "targeted static reading; no application import or execution",
+      "reader": "/root/sans_llm_experiences",
+      "source_registry": "sans-llm-experiences-sources.json"
+    }
+  ],
+  "limits": [
+    "Mutable documentation consulted, not archived in full; experiment must freeze executable/data/profile versions.",
+    "A cited manual version does not prove tool compatibility or installation.",
+    "Hernan indexed excerpt and NVD indexed reading limitations retained from author registers.",
+    "Read-only static code observations in a dirty, conflicted checkout; no application import/run."
+  ]
+}

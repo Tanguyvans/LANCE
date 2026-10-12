@@ -3,10 +3,13 @@
 `src.agent.pipeline.Pipeline` reste le moteur des audits LANCE en six phases,
 utilisé par l'API, le CLI historique et les benchmarks. Le sélecteur de
 [modes d'exécution](../../../docs/architecture/run-modes.md) ajoute des runners
-simples distincts ; il ne change pas l'organisation des phases décrite ici.
-Le pipeline initialise le run, résout le profil de chaque modèle, vérifie
-les prérequis et garantit la finalisation. `registry.run_phase` appelle un seul
-`run(context, config, stream_callback)` par phase, pour les deux profils. Sa table
+simples distincts. Le pipeline initialise le run, résout le profil de chaque
+modèle, vérifie les prérequis et garantit la finalisation. `registry.run_phase`
+construit un `PhaseContext`, puis appelle `run(context)` par phase, pour les
+deux profils. Ce contexte expose la configuration, le profil, les variables
+capturées, le fournisseur, le suivi de coût, l'arrêt et les services d'exécution
+nécessaires. Les entrées de phase ne reçoivent plus directement `Pipeline`.
+Sa table
 référence directement les six modules : aucun chemin d'import n'est construit
 dynamiquement et il n'y a pas de système de plugins à maintenir.
 
@@ -18,13 +21,16 @@ agent/
 │   ├── runner.py               # Boucle modèle/outils, transactions, événements
 │   ├── lifecycle.py            # Préparation, déploiement, nettoyage
 │   ├── runtime.py              # Dépendances d'infrastructure et catalogue d'outils
+│   ├── run_context.py          # Dossier et graphe appartenant au run
+│   ├── graph_context.py        # État du graphe et liaison dans les workers
 │   ├── probes.py               # Sondes protocolaires communes aux phases 4 et 5
 │   └── memo.py                 # Contrôles structurels des mémos Markdown
 └── phases/
     ├── registry.py             # Routage par numéro de phase, pas par profil
+    ├── context.py              # Entrées explicites et services des phases
     ├── graph/                  # Phase 1 : run.py, compact.py, recovery.py
     ├── recon/                  # Phase 2 : run.py, compact.py
-    ├── analysis/               # Phase 3 : run, compact, aggregation, evidence, prompts
+    ├── analysis/               # Phase 3 : contexte, scan, appareils, sondes, agrégation
     ├── verification/           # Phase 4 : run, contract, evidence, prompts
     ├── intrusion/              # Phase 5 : run, compact, evidence, scope
     └── report/                 # Phase 6 : run, sections, context, rendering, validation…
@@ -63,14 +69,90 @@ indépendantes et un assemblage déterministe, communs aux deux profils.
 Voir la [rédaction du rapport](../../../docs/architecture/report-writing.md) pour les limites,
 les fichiers produits et la reprise des fiches.
 
+## Frontières d'exécution de la phase 3
+
+`analysis/run.py` construit un `AnalysisContext` au début de la phase, après
+l'application d'un éventuel changement de modèle. Il capture le fournisseur,
+le profil, le dossier de run, les variables de prompt et les politiques.
+Le contexte contient également le graphe du run. Les prompts d'appareil,
+scanners, agrégateurs et workers utilisent ce graphe, y compris lorsque
+l'exécution passe dans un autre thread. L'exécution suit trois étapes explicites :
+
+1. `scan.scan_phase` produit les observations et les erreurs de scanner.
+   `supplemental.py` conserve les sondes mTLS, OTA et cloud dérivées de preuves
+   déjà observées, avec leur provenance.
+2. `devices.analyze_devices` prépare les prompts et appelle les analystes.
+   Chaque worker renvoie un `DeviceResult` ; le coordinateur calcule les nombres
+   de réussites et d'échecs. Les preuves intégrales du profil full, les mémos
+   locaux en fichiers annexes et la récupération par blocs restent inchangés.
+3. `run.aggregate_phase` appelle l'agrégation avec des entrées explicites puis
+   valide le livrable. Il renvoie
+   un `PhaseResult` avec statut, erreurs, références d'artefacts existants et
+   consommation de cette phase (tokens, coût et durée). Les fichiers de diagnostic
+   référencés ne sont pas des certifications ; le livrable principal n'est inclus
+   dans ce résultat que si sa validation réussit.
+
+Une agrégation valide conserve le statut partiel si une analyse d'appareil ou
+l'inventaire a échoué, ou si des erreurs scanner n'ont laissé aucune analyse.
+Une erreur scanner récupérée reste dans l'artefact de diagnostic sans dégrader
+à elle seule le verdict du run. Une validation invalide donne un échec. Les budgets,
+arrêts et erreurs d'archivage restent des interruptions propagées ; ils ne
+deviennent pas des résultats partiels réussis. Le suivi de coût du worker est
+fermé même lors d'une interruption.
+
+La découverte complémentaire après phase 4 applique les mêmes CIDR autorisés,
+budgets et journalisation aux scanners et aux analystes. Les IP malformées ou
+hors périmètre sont ignorées, y compris en mode réseau découvert ; un arrêt
+interrompt le suivi avant le prochain appel modèle. Chaque observation scanner
+possède une référence dans `tool_calls.jsonl`, et le suivi de coût de l'analyste
+est fermé même si le fournisseur échoue.
+
+`03_phase3_status.json` décrit le scan et les analyses par appareil ; le résultat
+de validation de l'agrégat reste porté par le statut de phase. La registry et le
+runner de compatibilité traduisent le résultat structuré vers les chaînes déjà
+utilisées par l'API et le CLI. Les champs publics des événements sont conservés.
+La politique `rules` n'appelle aucun modèle. Le dry-run renvoie `skipped` avant
+toute découverte active, scan, analyse ou agrégation.
+
+En profil full, les deux derniers tours de chaque analyse d'appareil imposent
+l'outil de sauvegarde. Un rejet de validation passe également en sauvegarde seule,
+avec au plus trois requêtes dans les limites existantes de tours, de délai et de
+coût. Le coût et les tours publiés à la fin de phase incluent tous les workers,
+y compris ceux dont le livrable a été refusé. Le modèle reçoit le rejet pour
+corriger son livrable ; une tentative encore invalide reste un échec et conserve
+les observations du scanner.
+
+La compatibilité CVE exige une version observée explicite, y compris pour une
+requête CPE. Un champ de version `*`, `-` ou vide reste indéterminé ; une version
+placée dans le champ de mise à jour ne suffit pas à confirmer une CVE.
+
+Les configurations internes personnalisées peuvent encore demander une
+agrégation seule (`has_device_agents=False`) ou un agrégateur maître LLM
+(`deterministic_aggregation=False`). Les méthodes `_run_phase3` et
+`_aggregate_device_vulns` restent des adaptateurs internes, notamment pour la
+découverte complémentaire après vérification. Le chemin courant de phase 3
+n'utilise plus la boucle générique pour son agrégation déterministe.
+
 ## Reconnaissance et restitution
 
 En profil complet (et hors adaptation locale compacte), `02_recon.md` est
 construit par `recon/rendering.py` depuis les observations du journal d’outils.
 Le modèle choisit toujours les sondes ; il ne recopie plus leur inventaire.
+Une réponse textuelle ou tronquée sans sauvegarde acceptée demande une
+continuation avec appel d'outil dans tous les profils. Les outils d'exploration
+restent disponibles et une sauvegarde prématurée reçoit les exigences de
+couverture manquantes. Trois réponses consécutives sans outil arrêtent cette
+reprise ; les limites de tours, de coût et l'arrêt utilisateur restent en vigueur.
+Cette continuation ne garantit pas que le modèle terminera les sondes.
 Une note de fin suffit à demander la sauvegarde. Si le dialogue se termine sans
 sauvegarde, le contrôleur tente une seule sauvegarde locale, sans nouveau scan
 ni appel au modèle, via les mêmes contrôles de couverture et de validation.
+
+Lors de la fusion avec les services déclarés, une version non vide observée sur
+le même port, protocole et service complète ou remplace la version de l'inventaire.
+Une observation sans version n'efface pas celle déjà collectée. Les analyses
+suivantes retrouvent cette information via le graphe ; les observations originales
+restent dans `02_recon_evidence.json`.
 
 La finalisation exige le contrat de reconnaissance satisfait et des observations
 exploitables. Un journal invalide ou absent ne donne pas un succès. Un arrêt
@@ -82,6 +164,13 @@ L’adaptation locale compacte conserve sa restitution et ses contrôles existan
 
 ## Clôture d’intrusion et délais fournisseur
 
+Le garde de destination commun refuse les actions réseau hors des CIDR du
+scénario. Un nom de programme suivi de `/` dans un chemin, comme le répertoire
+`.ssh/`, ne constitue pas à lui seul une action réseau. Les exécutables comme
+`/usr/bin/ssh` et les actions ajoutées ensuite à la commande restent contrôlés.
+Cette reconnaissance lexicale ne certifie pas le comportement d'un binaire
+personnalisé ni les droits obtenus par son exécution.
+
 En profil complet, `save_deliverable` en phase 5 reçoit un petit marqueur de fin
 (`{"finish":true}`), pas une copie de toute la campagne. Le contrôleur produit
 le JSON depuis le journal, filtre les accès avec les règles communes de preuve
@@ -91,6 +180,16 @@ un objectif ou un pivot. La projection actuelle ne reconstruit pas les transitio
 réseau ; les traces originales restent disponibles. Sans signal de fin accepté,
 les observations sont conservées mais la campagne reste incomplète. Les arrêts,
 budgets et journaux invalides ne sont pas convertis en succès.
+
+Les adaptations compactes utilisent également `evidence.capabilities.access_supported`
+pour la synthèse, la couverture et la collecte après accès. Pour les identifiants
+HTTP, un refus anonyme 401/403 suivi d'une réponse authentifiée 2xx est nécessaire ;
+une erreur serveur ou une redirection ne suffit pas. Les identifiants Telnet
+sont transmis comme paramètres d'un programme constant, sans interpolation dans
+le code shell local ; Redis reçoit des trames RESP sur stdin, sans shell, en
+conservant espaces et retours à la ligne dans le mot de passe. Un prompt Telnet
+ou un PONG Redis après un AUTH refusé ne
+certifie pas une authentification.
 
 Un identifiant récupéré sans protocole déclaré porte `service: null` (jamais un
 protocole deviné ni la chaîne `"None"`) ; les services connus sont conservés
@@ -108,14 +207,114 @@ plus une reprise de la même requête, sans rejouer les outils, uniquement s’i
 du temps et du budget. Les reprises des autres erreurs transitoires restent
 bornées par le mécanisme de transport existant.
 
+### Agrégation et reprise des découvertes
+
+`aggregation.capture_context` capture la surface et la topologie au moment de
+l'agrégation, après les analystes : identité publique des appareils, rôles, liens,
+profil compact, politique de décision, split du benchmark et catalogue d'outils.
+Le cœur reçoit un `AggregationContext`, sans `Pipeline` ni callback métier.
+Le traitement suit quatre étapes :
+
+1. `aggregation_loading.load_inputs` lit les candidats dans un ordre stable,
+   promeut les observations scanner admises par le profil et charge les preuves
+   CVE/MQTT archivées ainsi que les identifiants du précédent agrégat.
+2. `aggregation_normalization.normalize_candidates` travaille sur des copies,
+   conserve le candidat avant la normalisation sémantique et inscrit les motifs
+   d'exclusion dans le registre brut. Une CVE non vérifiée reste planifiable ; sa
+   compatibilité pour le score reste distincte. Une incompatibilité explicite
+   exclut la revendication de la file canonique.
+3. `aggregation_projection.project_candidates` déduplique, conserve la provenance
+   de chaque membre et reprend les identifiants existants. Ce stade utilise les
+   preuves MQTT déjà chargées : il ne relit pas le disque et ne transfère pas la
+   preuve du scanner au candidat modèle retenu dans un groupe MQTT.
+4. `aggregation.render_projection` construit les résultats, puis
+   `write_projection` écrit les fichiers `03_vuln_analysis.json`,
+   `03_vuln_analysis_raw.json` et, en compact, `03_config_observations.json`.
+
+La reprise de découverte conserve l'adaptateur `_aggregate_device_vulns` et ces
+noms de fichiers, même lorsqu'elle est déclenchée depuis la phase 4. Le remapping
+des identifiants `discovered-*` conserve son comportement historique : il utilise
+les surfaces contenant une clé `nodes`, pas les surfaces représentées par une
+liste. Le snapshot est local à cette agrégation ; sa capture dépend encore du
+contexte global de graphe. Les étapes de normalisation et de projection modifient
+les copies de travail et le registre de décisions reçus, sans modifier les
+fichiers d'entrée ni les valeurs originales conservées dans `raw_finding`.
+
+Le validateur d'appareil et le registre de candidats partagent les contrôles de
+types de `finding_schema.py`. Un candidat historique mal typé est marqué
+`rejected_malformed` avec son motif et sa valeur brute ; il ne bloque pas ses
+voisins valides. Les champs manquants restent soumis à la normalisation et aux
+règles sémantiques. Les expositions HTTP du scanner sont regroupées par origine
+observée : schéma et port, notamment HTTPS sur 8443, restent ceux de la requête
+et sont conservés jusqu'au plan de vérification.
+
+La promotion PKI exige une même empreinte SHA-256 sur au moins deux appareils
+ayant des identifiants et des adresses IP distincts. Les requêtes répétées, lignes
+de topologie dupliquées et alias d'une même IP ne comptent qu'une fois. Chaque
+observation doit provenir d'une réponse HTTP 2xx de `/identity/fingerprint` sur
+l'IP de l'appareil ; erreurs, redirections, réponses attribuées à une autre origine
+et valeurs malformées sont ignorées sans perdre les observations valides voisines.
+Ce contrôle porte sur les empreintes déclarées par les services du laboratoire ;
+il ne démontre pas la possession de la clé privée correspondante.
+
+## Graphe et frontières propres au run
+
+Chaque `Pipeline` crée un `RunContext` avec son dossier et un `GraphContext`
+distinct. Ce dernier possède la topologie déclarée ou découverte, le backend,
+les observations CVE/risque, le graphe pondéré et son dernier delta. Charger,
+réinitialiser ou modifier le graphe du run B ne modifie pas celui du run A.
+
+La liaison par `ContextVar` fournit ce graphe aux outils existants sans changer
+leurs arguments exposés au modèle. Le cycle de vie et les services de phase
+lient le contexte ; chaque outil et les workers des phases 3/4 capturent aussi
+le propriétaire explicitement. Ils ne dépendent donc pas de la propagation
+implicite des variables de contexte vers les threads. Une liaison imbriquée ou
+en échec restaure toujours le contexte précédent.
+
+Un appel Python autonome aux outils de graphe conserve sa session de
+compatibilité. Pour lire le graphe d'un run en dehors de son exécution, le lier
+explicitement :
+
+```python
+from src.agent.core.graph_context import bind_graph_context
+from src.agent.tools.graph_tools import get_device_info
+
+with bind_graph_context(pipeline.run_context.graph):
+    observation = get_device_info("device-id")
+```
+
+La topologie doit avoir été chargée auparavant, comme pendant la préparation
+normale du pipeline. Les phases peuvent également recevoir directement un
+`PhaseContext` et des `PhaseServices` fournis par l'appelant. L'adaptation des
+anciens appels `run(pipeline, config, callback)` reste disponible ; les statuts,
+événements, noms de livrables et profils conservent leurs contrats.
+
 ## Limites conservées explicitement
 
-Les composants restent des mixins utilisant l'état du même `Pipeline`. Ce passage
-clarifie la propriété du code ; il n'isole pas encore les phases dans des contextes
-indépendants. Le runner coordonne encore certaines adaptations. Les livrables et
-validateurs utilisent désormais un dossier explicite par run ; d'autres outils
-conservent des états globaux, notamment le contexte de graphe et la politique CVE.
-Ce ne sont pas six moteurs autonomes, ni une garantie de runs complets concurrents.
+Les méthodes de compatibilité et plusieurs services restent des mixins utilisant
+l'état du même `Pipeline`. Les entrées des six phases ont désormais un contexte
+explicite ; leurs services d'exécution peuvent encore appeler ce moteur.
+La phase 3 rend ses dépendances visibles et ses étapes
+testables avec un contexte explicite, mais les transactions, récupérations
+et validations CVE locales utilisent encore des callbacks liés au moteur.
+Ce contexte est construit pour une invocation de phase ; modifier le moteur
+pendant cette invocation n'est pas pris en charge. Le runner coordonne encore
+certaines adaptations des autres phases. Les livrables et
+validateurs utilisent un dossier explicite par run ; le graphe est lui aussi
+propre au run. Cela ne rend pas les six phases entièrement autonomes et ne
+garantit pas l'exécution simultanée de scénarios sur le laboratoire partagé.
+Les réservations du laboratoire et les verrous des fournisseurs restent en place.
+
+La source CVE appartient au run (`cve_lookup_policy`) et le filtre de connaissances
+à la configuration de la phase. La frontière d'exécution des outils les lie pour
+chaque appel, y compris dans les threads des sous-agents, puis restaure le contexte
+précédent. Créer un autre pipeline ne change plus ces politiques. Le passage CVE
+compact applique la même liaison ; le snapshot figé ne dépend pas de ChromaDB.
+Les setters de `tools/skill_tools.py` servent seulement aux appels autonomes dans
+leur contexte, et ne configurent plus le pipeline.
+
+Un scénario absent, sans topologie déclarée ou avec un fichier de topologie absent
+échoue explicitement au chargement. Il ne se rabat pas sur le laboratoire physique.
 
 Les chemins LANCE de l'API, du CLI et des workers passent par `Pipeline`. Le worker fournit son dossier
 parent via `Pipeline(output_dir=...)`, sans modifier une variable globale.

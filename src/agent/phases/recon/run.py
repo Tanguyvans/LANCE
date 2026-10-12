@@ -1,5 +1,6 @@
 """Recon phase: common execution and evidence handling."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 from collections.abc import Callable
 import ipaddress
 import json
@@ -7,14 +8,42 @@ import re
 import subprocess
 import logging
 from src.agent.core import runtime
+from src.agent.core.executor import RunStopped, check_execution_limits
+from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 
 
 log = logging.getLogger(__name__)
 
 
+def expand_port_spec(spec: str) -> set[int]:
+    """Expand common nmap comma/range syntax into a coverage set."""
+    result: set[int] = set()
+    for token in str(spec).replace(" ", ",").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        token = re.sub(r"^[TtUu]:", "", token)
+        if token == "-":
+            result.update(range(1, 65536))
+            continue
+        try:
+            if "-" in token:
+                start, end = (int(part) for part in token.split("-", 1))
+                if 1 <= start <= end <= 65535:
+                    result.update(range(start, end + 1))
+            else:
+                port = int(token)
+                if 1 <= port <= 65535:
+                    result.add(port)
+        except ValueError:
+            continue
+    return result
+
+
 class ReconPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
+    @graph_bound
     def _build_recon_evidence_projection(self) -> dict:
         """Project raw Recon tool evidence into a compact, lossless-sidecar ledger."""
         devices: dict[str, dict] = {}
@@ -112,8 +141,8 @@ class ReconPhase:
                         row["failures"].append(str(payload.get("stderr") or "scan failed"))
 
         try:
-            from src.agent.tools.graph_tools import _scenario_topology
-            nodes = (_scenario_topology or {}).get("nodes", [])
+            from src.agent.core.graph_context import current_graph_context
+            nodes = (current_graph_context().scenario_topology or {}).get("nodes", [])
             names = {str(node.get("ip")): node.get("id", "") for node in nodes}
         except Exception:
             names = {}
@@ -191,6 +220,7 @@ class ReconPhase:
             return False
         return isinstance(result, dict) and not result.get("error") and self._validator(config.validator)(config.deliverable_file)[0]
 
+    @graph_bound
     def _reconcile_phase2_attack_surface(self, projection: dict | None = None) -> dict:
         """Promote Phase 2 service observations into the Phase 3 scenario graph.
 
@@ -212,9 +242,9 @@ class ReconPhase:
         if not isinstance(projection, dict):
             return {"status": "invalid_projection"}
 
-        from src.agent.tools.graph_tools import _scenario_topology
+        from src.agent.core.graph_context import current_graph_context
 
-        topology = _scenario_topology or {}
+        topology = current_graph_context().scenario_topology or {}
         nodes = topology.get("nodes", [])
         if not isinstance(nodes, list):
             return {"status": "missing_topology"}
@@ -237,7 +267,7 @@ class ReconPhase:
             if row:
                 observed_services.extend(row.get("services") or [])
             normalized_services: list[dict] = []
-            seen_services: set[tuple[int, str, str]] = set()
+            seen_services: dict[tuple[int, str, str], dict] = {}
             for service in observed_services:
                 if not isinstance(service, dict):
                     continue
@@ -254,15 +284,20 @@ class ReconPhase:
                 version = str(service.get("version") or "")
                 key = (port, protocol, name)
                 if key in seen_services:
+                    # Declared services are the coverage floor, but must not
+                    # discard a version actually observed on the same endpoint.
+                    if version.strip():
+                        seen_services[key]["version"] = version
                     continue
-                seen_services.add(key)
-                normalized_services.append({
+                normalized = {
                     "name": name,
                     "port": port,
                     "protocol": protocol,
                     "version": version,
                     "source": "phase2_recon",
-                })
+                }
+                seen_services[key] = normalized
+                normalized_services.append(normalized)
 
             if normalized_services:
                 normalized_services.sort(
@@ -314,12 +349,7 @@ class ReconPhase:
         print(f"{'=' * 60}\n")
 
         # Own IPs — the master VM must never appear as a target.
-        local_ips: set[str] = set()
-        try:
-            hn = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5)
-            local_ips = {ip for ip in hn.stdout.split() if ip}
-        except (OSError, subprocess.SubprocessError):
-            pass
+        local_ips = runtime.local_interface_ips()
 
         tcp_cmd = ["nmap", "-Pn", "-sT", "-p", tcp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]
         udp_cmd = ["nmap", "-Pn", "-sU", "-p", udp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]
@@ -434,7 +464,11 @@ class ReconPhase:
         )
         return "\n".join(lines)
 
-    def _apply_recon_tool_contract(self, tools: list[dict]) -> list[dict]:
+    @graph_bound
+    def _apply_recon_tool_contract(
+        self, tools: list[dict], nodes: list | None = None,
+        require_baseline: bool = True,
+    ) -> list[dict]:
         """Enforce Recon invariants without prescribing the model's strategy.
 
         All models receive the same non-mutating reconnaissance surface and may
@@ -442,6 +476,12 @@ class ReconPhase:
         and use specialized probes.  The contract enforces only universal
         invariants: network scope, a discovery/read baseline, minimum per-device
         port coverage, and a non-empty validated deliverable at completion.
+
+        ``nodes`` scopes the coverage ledger to a batch (sub-agent recon);
+        ``None`` keeps the full topology ledger (single-agent recon).
+        ``require_baseline`` is False for coverage batches: the discovery
+        trio is a run-level requirement satisfied once by the sweep agent
+        and rechecked globally at merge time.
         """
         supporting_names = {
             tool["name"]
@@ -451,9 +491,11 @@ class ReconPhase:
         allowed_names = runtime.RECON_READ_ONLY_TOOL_NAMES | supporting_names
         selected = [tool for tool in tools if tool["name"] in allowed_names]
 
-        from src.agent.tools.graph_tools import _scenario_topology as topology
+        from src.agent.core.graph_context import current_graph_context
+        topology = current_graph_context().scenario_topology
 
-        nodes = (topology or {}).get("nodes", [])
+        if nodes is None:
+            nodes = (topology or {}).get("nodes", [])
         plan = self._recon_scan_plan(nodes)
         expected_scans: dict[str, dict] = {
             item["target"]: item for item in plan
@@ -491,28 +533,7 @@ class ReconPhase:
             return None
 
         def _ports(spec: str) -> set[int]:
-            """Expand common nmap comma/range syntax into a coverage set."""
-            result: set[int] = set()
-            for token in str(spec).replace(" ", ",").split(","):
-                token = token.strip()
-                if not token:
-                    continue
-                token = re.sub(r"^[TtUu]:", "", token)
-                if token == "-":
-                    result.update(range(1, 65536))
-                    continue
-                try:
-                    if "-" in token:
-                        start, end = (int(part) for part in token.split("-", 1))
-                        if 1 <= start <= end <= 65535:
-                            result.update(range(start, end + 1))
-                    else:
-                        port = int(token)
-                        if 1 <= port <= 65535:
-                            result.add(port)
-                except ValueError:
-                    continue
-            return result
+            return expand_port_spec(spec)
 
         def _succeeded(result: str) -> bool:
             if str(result).startswith("Error"):
@@ -532,7 +553,7 @@ class ReconPhase:
 
         def _discover_targets(result: str) -> None:
             """In blind mode, discovery results become the mandatory scan ledger."""
-            if plan:
+            if plan or getattr(self, "target_network", None) is None:
                 return
             discovered: set[str] = set()
             try:
@@ -560,17 +581,17 @@ class ReconPhase:
 
         def _missing_requirements() -> list[dict]:
             missing: list[dict] = []
-            if "arp_scan" not in completed_calls:
+            if require_baseline and "arp_scan" not in completed_calls:
                 missing.append({"requirement": "local_discovery", "tool": "arp_scan"})
             for subnet in target_subnets:
                 marker = f"nmap_discovery:{subnet}"
-                if marker not in completed_calls:
+                if require_baseline and marker not in completed_calls:
                     missing.append({
                         "requirement": "subnet_discovery",
                         "target": subnet,
                         "tool": "nmap_discovery",
                     })
-            if "read_phase1" not in completed_calls:
+            if require_baseline and "read_phase1" not in completed_calls:
                 missing.append({
                     "requirement": "phase1_context",
                     "filename": "01_graph_analysis.md",
@@ -813,6 +834,7 @@ class ReconPhase:
             return "unknown", "tcp"
         service = {
             21: "ftp", 22: "ssh", 23: "telnet", 80: "http", 443: "https",
+            8080: "http", 8443: "https",
             161: "snmp", 389: "ldap", 502: "modbus", 102: "modbus",
             3306: "mysql", 44818: "modbus", 4840: "opcua", 5683: "coap",
             6379: "redis", 1883: "mqtt", 8883: "mqtt", 9001: "mqtt",
@@ -834,8 +856,15 @@ class ReconPhase:
         3. Re-aggregate all device findings so the new vulns appear in 03_vuln_analysis.json
            before Phase 5 report generation.
         """
-        from src.agent.scanner import run_scanner
-        from src.agent.tools.graph_tools import update_discovery_hosts, get_network_neighbors
+        if getattr(self, "dry_run", False):
+            return
+
+        def check_limits():
+            check_execution_limits(self)
+            if self._stop_event is not None and self._stop_event.is_set():
+                raise RunStopped("Discovery followup stopped")
+
+        check_limits()
 
         print(f"\n{'=' * 60}")
         print(f"PHASE 2.5/3.5: DISCOVERY FOLLOWUP ({len(new_hosts)} new host(s))")
@@ -850,14 +879,43 @@ class ReconPhase:
         analysis_candidates = self._apply_scenario_tool_policy(
             recon_limited + skill_tools + runtime.DELIVERABLE_TOOLS, 3
         )
-        analysis_tools = [self._wrap_tool(t) for t in analysis_candidates]
+        scanner_tools = [
+            self._wrap_tool(
+                tool, phase=3, agent="followup_scanner", decision_source="rules",
+                config=runtime.AGENTS["vuln_analysis"],
+            )
+            for tool in self._apply_scenario_tool_policy(available_recon_tools, 3)
+        ]
+        analyzed = 0
 
         for host in new_hosts:
-            ip = host.get("ip", "")
-            if not ip:
+            check_limits()
+            if not isinstance(host, dict) or not isinstance(host.get("ip"), str):
                 continue
+            try:
+                ip = str(ipaddress.ip_address(host["ip"].strip()))
+            except ValueError:
+                log.warning("Ignoring malformed discovered host: %r", host.get("ip"))
+                continue
+            refusal = _intrusion_scope_violation(
+                "nmap_scan", {"target": ip}, self.context.get("target_subnet", ""),
+            )
+            if refusal:
+                log.warning("Ignoring discovered host %s: %s", ip, refusal["error"])
+                continue
+            raw_ports = host.get("open_ports", [])
+            ports = []
+            for raw in raw_ports if isinstance(raw_ports, list) else []:
+                if isinstance(raw, bool) or not isinstance(raw, (str, int)):
+                    continue
+                try:
+                    port = int(raw)
+                except ValueError:
+                    continue
+                if 0 < port <= 65535 and port not in ports:
+                    ports.append(port)
             device_id = f"discovered-{ip.replace('.', '-')}"
-            inferred_role = self._infer_role_from_ports(host.get("open_ports", []))
+            inferred_role = self._infer_role_from_ports(ports)
             device = {
                 "id": device_id,
                 "ip": ip,
@@ -869,21 +927,25 @@ class ReconPhase:
                         "port": p,
                         "protocol": self._service_for_discovered_port(p)[1],
                     }
-                    for p in host.get("open_ports", [])
+                    for p in ports
                 ],
             }
             print(f"  [+] Followup scan: {device_id} ({ip})")
 
             # 1. Targeted nmap scan
-            scanner_kwargs = {"compact": self._uses_compact_local_moe()}
+            scanner_kwargs = {
+                "compact": self._uses_compact_local_moe(), "tools": scanner_tools,
+                "stop_event": self._stop_event,
+            }
             recon_policy = runtime.tool_policy_for_phase(
                 self.scenario_tool_policy, "recon"
             )
             if recon_policy is not None:
                 scanner_kwargs["allowed_tool_names"] = recon_policy
-            mini_scan = run_scanner(
+            mini_scan = runtime.run_scanner(
                 self.run_dir, [device], stream_callback, **scanner_kwargs
             )
+            check_limits()
             scan_data = mini_scan.get(device_id, {})
 
             # Prepare scan results for prompt
@@ -906,7 +968,7 @@ class ReconPhase:
             variables["device_ip"] = ip
             variables["device_type"] = inferred_role
             variables["device_role"] = inferred_role
-            variables["device_services"] = ", ".join(str(p) for p in host.get("open_ports", []))
+            variables["device_services"] = ", ".join(str(p) for p in ports)
             variables["device_os"] = "unknown"
             variables["expected_deliverable"] = deliverable_file
             variables["scan_results"] = json.dumps(scan_for_prompt, indent=2, ensure_ascii=False)
@@ -925,32 +987,43 @@ class ReconPhase:
                 prompt_template="analyze_device",
                 deliverable_file=deliverable_file,
                 tools=[],
-                validator="json_valid",
+                validator="json_device_vulns",
+                skill_filter=runtime.AGENTS["vuln_analysis"].skill_filter,
             )
+            analysis_tools = [
+                self._wrap_tool(t, phase=3, agent=phase_name, config=followup_config)
+                for t in analysis_candidates
+            ]
             followup_tools = self._apply_deliverable_transaction(
                 analysis_tools, followup_config, stream_callback
             )
             self.tracker.start_phase(phase_name)
-            self.provider.chat_with_tools(
-                system_prompt=system_prompt,
-                user_message=(
-                    f"Analyze vulnerabilities for newly discovered host {ip}. "
-                    f"MANDATORY: call save_deliverable('{deliverable_file}', json_content) before finishing."
-                ),
-                tools=followup_tools,
-                max_turns=config.max_turns,
-                max_tokens=config.max_tokens,
-                cost_tracker=self.tracker,
-                stream_callback=self._model_stream_callback(
-                    stream_callback, phase="3.5", agent=phase_name
-                ),
-                required_tool="save_deliverable",
-                terminate_after_tool="save_deliverable",
-                stop_event=self._stop_event,
-            )
-            self.tracker.end_phase()
+            try:
+                self.provider.chat_with_tools(
+                    system_prompt=system_prompt,
+                    user_message=(
+                        f"Analyze vulnerabilities for newly discovered host {ip}. "
+                        f"MANDATORY: call save_deliverable('{deliverable_file}', json_content) before finishing."
+                    ),
+                    tools=followup_tools,
+                    max_turns=config.max_turns,
+                    max_tokens=config.max_tokens,
+                    cost_tracker=self.tracker,
+                    stream_callback=self._model_stream_callback(
+                        stream_callback, phase="3.5", agent=phase_name
+                    ),
+                    required_tool="save_deliverable",
+                    terminate_after_tool="save_deliverable",
+                    stop_event=self._stop_event,
+                )
+            finally:
+                self.tracker.end_phase()
+            check_limits()
+            analyzed += 1
             print(f"  [+] Followup done: {device_id}")
 
+        if not analyzed:
+            return
         # 3. Re-aggregate all device findings (including newly discovered ones)
         print("  [+] Re-aggregating device vulns with new findings...")
         self._aggregate_device_vulns(config, stream_callback)
@@ -1069,5 +1142,8 @@ class ReconPhase:
         log.info("Topology inference complete: %d edges, saved to %s", len(edges_data), edges_path)
 
 
-def run(context, config, stream_callback=None):
-    return context._run_agent(config, stream_callback)
+@graph_bound
+def run(context, config=None, stream_callback=None):
+    from src.agent.phases.context import phase_context
+    explicit = phase_context(context, config, stream_callback)
+    return explicit.services.execute(explicit.config, explicit.emit)

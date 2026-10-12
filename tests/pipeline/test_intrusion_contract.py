@@ -184,7 +184,11 @@ class TestPhase5Context:
                 "name": "try_credential",
                 "description": "try",
                 "input_schema": {},
-                "function": lambda **_kwargs: json.dumps({"success": True, "authenticated": True}),
+                "function": lambda **_kwargs: json.dumps({
+                    "success": True, "authenticated": True,
+                    "anonymous_access": False, "stdout": "offline MQTT message",
+                    "unauthenticated_http_code": "401", "http_code": "200",
+                }),
             },
         ])
         tool_map = {tool["name"]: tool["function"] for tool in tools}
@@ -629,13 +633,14 @@ class TestPhase5Context:
                 "phase": 5,
                 "tool": "try_credential",
                 "args": {"ip": "192.168.100.12", "service": "http", "user": "root", "password": "root", "port": 80},
-                "result": json.dumps({"success": True, "authenticated": True}),
+                "result": json.dumps({"success": True, "authenticated": True,
+                                      "unauthenticated_http_code": "401", "http_code": "200"}),
             },
             {
                 "phase": 5,
                 "tool": "try_credential",
                 "args": {"ip": "192.168.100.13", "service": "ssh", "user": "root", "password": "root", "port": 22},
-                "result": json.dumps({"success": True, "authenticated": True}),
+                "result": json.dumps({"success": True, "authenticated": True, "stdout": "uid=0(root)"}),
             },
         ]
         (run_dir / "tool_calls.jsonl").write_text(

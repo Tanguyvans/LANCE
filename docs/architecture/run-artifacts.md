@@ -3,10 +3,11 @@
 ## À retenir
 
 Créer un run B ne doit jamais rediriger les lectures, écritures ou validations
-du run A. Dans le périmètre de cette correction, le pipeline LANCE reste unique,
-avec les mêmes dossiers par phase. Les [modes simples](run-modes.md) ajoutés
-ultérieurement ont leur propre contrat d'artefacts.
-Cette correction n'ajoute ni gestionnaire global de contexte ni nouvelle classe.
+du run A. Le pipeline LANCE conserve les mêmes dossiers par phase.
+`RunContext` regroupe aujourd'hui le dossier et le graphe du run ; les
+[frontières de phase et de graphe](../../src/agent/phases/README.md#graphe-et-frontières-propres-au-run)
+décrivent leur isolation et les adaptateurs de compatibilité. Les
+[modes simples](run-modes.md) ont leur propre contrat d'artefacts.
 
 Trois règles suffisent :
 
@@ -50,6 +51,13 @@ ni les preuves, ni les scores. Vérifier son effet avec un nouveau run contrôl�
 Les catalogues `DELIVERABLE_TOOLS` et `VALIDATORS` décrivent des fonctions, pas
 un « run courant ». Les setters `set_output_dir` et `set_expected_deliverable`,
 ainsi que les variables globales de dossier des outils/validateurs, sont supprimés.
+
+La frontière `core/executor.py` lie aussi la politique CVE du run et le filtre de
+connaissances de la phase pendant chaque invocation. Ces valeurs sont propres au
+contexte d'appel et sont restaurées même si l'outil échoue. Elles sont appliquées
+dans les threads de travail sans dépendre d'un « dernier pipeline créé ». Le
+passage CVE compact lie lui aussi la source à son run. En mode snapshot figé,
+ChromaDB et ses dépendances ne sont pas importés pour rechercher les CVE.
 
 ## Création et appels
 
@@ -138,8 +146,8 @@ phase remet ce diagnostic à zéro ; les anciens runs ne sont pas migrés.
 
 ## Limites : ce changement ne rend pas tout concurrent
 
-L'isolation porte sur les livrables et leurs validateurs. D'autres états partagés
-subsistent dans les outils, notamment le graphe et la politique de recherche CVE.
+L'isolation porte sur les livrables, leurs validateurs et les politiques de
+connaissances. D'autres états partagés subsistent dans les outils, notamment le graphe.
 L'API garde sa restriction sur les exécutions simultanées ; ne pas la supprimer
 sur la seule base de cette correction.
 

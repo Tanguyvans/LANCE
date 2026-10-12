@@ -1,0 +1,300 @@
+{
+  "report": "sans-llm-raisonnement.tex",
+  "revision": "2026-10-07 14:28 (Europe/Brussels, UTC+02:00)",
+  "status": "Revue ciblée et expériences proposées ; aucun gain mesuré",
+  "method": "Sources primaires ; lecture ciblée substantielle ; aucune reproduction ; pas de classement numérique inter-corpus",
+  "sources": [
+    {
+      "id": "sql",
+      "title": "SQLite : SELECT et The WITH Clause",
+      "url": "https://www.sqlite.org/lang_select.html",
+      "related_urls": [
+        "https://www.sqlite.org/lang_with.html"
+      ],
+      "publication_date_or_version": "Documentation officielle consultée le 2026-10-07 ; révision web non figée",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "SELECT 2.1-2.3, 2.6 ; WITH 3.2-3.3 ; jointures, NULL, agrégation et récursion/cycles",
+      "limits": "Aucun moteur installé ni benchmark reproduit ; documentation évolutive",
+      "contribution": "Établit que liaisons, doublons et récursion simple n’exigent pas un LLM ni Datalog."
+    },
+    {
+      "id": "souffle",
+      "title": "Soufflé : Datalog Language",
+      "url": "https://souffle-lang.org/datalog-language",
+      "related_urls": [],
+      "publication_date_or_version": "Documentation officielle consultée le 2026-10-07 ; version exécutable non testée",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Page de langage : relations, types, clauses et négation stratifiée",
+      "limits": "Certaines pages de provenance/clauses inaccessibles via browser ; elles ne fondent aucune conclusion. Article provenance consulté séparément.",
+      "contribution": "Relations typées et règles récursives ; formalisation explicite à comparer à SQL."
+    },
+    {
+      "id": "provenance",
+      "title": "Provenance for Large-scale Datalog",
+      "url": "https://arxiv.org/html/1907.05045v1",
+      "related_urls": [
+        "https://arxiv.org/abs/1907.05045v1"
+      ],
+      "publication_date_or_version": "arXiv:1907.05045v1, 2019-07-11",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée sections 3.1-3.4, passages 4.2, section 5 (protocole Doop/DaCapo et coûts de provenance)",
+      "limits": "Preuves mathématiques non vérifiées intégralement ; aucun artefact ni expérience reproduit ; résultats Java non transférés à IoT",
+      "contribution": "Fixpoint, absence de tuple vs fausseté terrain, arbres de dérivation et coût de provenance."
+    },
+    {
+      "id": "opa",
+      "title": "OPA : Policy Language",
+      "url": "https://www.openpolicyagent.org/docs/policy-language",
+      "related_urls": [],
+      "publication_date_or_version": "Documentation officielle consultée le 2026-10-07 ; révision non figée",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Passages valeurs undefined, Negation, Universal Quantification, Every Keyword, Default Keyword ; lecture ciblée",
+      "limits": "Non lu intégralement ; pas de version OPA installée/testée ni garantie de coût transposée",
+      "contribution": "Politique déclarative sur données structurées et pièges undefined/quantification ; nécessite couche de verdict audit."
+    },
+    {
+      "id": "cedar",
+      "title": "Cedar: A New Language for Expressive, Fast, Safe, and Analyzable Authorization (Extended Version)",
+      "url": "https://arxiv.org/html/2403.04651v1",
+      "related_urls": [
+        "https://arxiv.org/abs/2403.04651v1"
+      ],
+      "publication_date_or_version": "arXiv:2403.04651v1, 2024-03-07 ; OOPSLA1 avril 2024",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée sections 2, 3.3/3.5, 4.3, 5 : sémantique, validateur, hiérarchie, protocole de mesure en mémoire, refactoring symbolique",
+      "limits": "Preuves Lean et artefact non vérifiés ; PDF Amazon Science inaccessible via browser, HTML primaire exploité ; versions publiées non assimilées à logiciel actuel",
+      "contribution": "Modèle principal/opération/ressource/contexte, décision par défaut vs preuve du déploiement, limites de comparaison des moteurs."
+    },
+    {
+      "id": "fireman",
+      "title": "FIREMAN: A Toolkit for FIREwall Modeling and ANalysis",
+      "url": "https://haochen.org/publications/yuan2006fireman.pdf",
+      "related_urls": [],
+      "publication_date_or_version": "IEEE Symposium on Security and Privacy, 2006, p.199-213",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée sections 2, 4.1, 4.2.2-4.3, 5.1-5.3 ; pages PDF 2-3,7-11 ; sémantique, BDD, politique et avertissements",
+      "limits": "Pas de reproduction ni modernisation d’implémentation ; garanties limitées à classification/modèle ; intention de propriétaire requise",
+      "contribution": "Anomalies formelles de règles distinctes de vulnérabilité métier ; explicitement couvrir ordre, implicit rules et modèle."
+    },
+    {
+      "id": "hsa",
+      "title": "Header Space Analysis: Static Checking for Networks",
+      "url": "https://web.stanford.edu/class/cs244/papers/HeaderSpaceAnalysis.pdf",
+      "related_urls": [
+        "https://www.usenix.org/conference/nsdi12/technical-sessions/presentation/kazemian"
+      ],
+      "publication_date_or_version": "NSDI 2012, p.113-126, avril 2012",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée section 2, accessibilité section 4, début section 7 et section 8 ; pages PDF 2-3,5-6,9-10,13",
+      "limits": "Pas de reproduction, preuve intégrale ni revue de Hassel actuel ; relevés statiques, dynamique et intent hors capacité générale",
+      "contribution": "Modèle de transformations plus riche que graphe d’adjacence ; conclusions attachées au snapshot fourni."
+    },
+    {
+      "id": "batfish",
+      "title": "A General Approach to Network Configuration Analysis",
+      "url": "https://ratul.org/papers/nsdi2015-batfish.pdf",
+      "related_urls": [],
+      "publication_date_or_version": "NSDI 2015, p.469-483",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée sections 3 (modèle et 3.3 Discussion), 6 (restrictions), 7 (corpus, protocole, résultats, coûts) ; pages PDF 4-6,9-13",
+      "limits": "Article historique, pas logiciel actuel ; aucune reproduction ; environnements et fonctionnalités non couvertes limitent garanties",
+      "contribution": "Analyse statique de configurations, contre-exemples dans modèle et différences de données/formalisation ; pas observation d’accès terrain."
+    },
+    {
+      "id": "batfishdocs",
+      "title": "Batfish : Snapshot Input",
+      "url": "https://batfish.readthedocs.io/en/latest/notebooks/snapshot.html",
+      "related_urls": [],
+      "publication_date_or_version": "Documentation affichée pybatfish 0.36.0, consultée le 2026-10-07 ; URL latest évolutive",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Sections Snapshot Initialization Issues, Snapshot Input File Parse Status et Parse Warnings",
+      "limits": "Serveur/client non installés ni testés ; version exacte serveur à figer dans une expérience future",
+      "contribution": "Statuts partiels/erreurs et warnings à conserver avant verdict de configuration."
+    },
+    {
+      "id": "netplumber",
+      "title": "Real Time Network Policy Checking Using Header Space Analysis",
+      "url": "https://www.usenix.org/system/files/conference/nsdi13/nsdi13-final8.pdf",
+      "related_urls": [
+        "https://www.usenix.org/conference/nsdi13/technical-sessions/presentation/kazemian"
+      ],
+      "publication_date_or_version": "NSDI 2013, p.99-111, avril 2013",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée section 3.1 (plumbing graph), section 6 (protocole et données), section 7 (discussion/limitations) ; pages PDF 2-3,9-12",
+      "limits": "Pas de reproduction ; matériel/corpus différents de HSA/Batfish ; états dynamiques middleboxes et changements de liens limitent usage",
+      "contribution": "Incrémentalité intéressante seulement si question porte sur mises à jour, hors premier pilote ponctuel."
+    }
+  ],
+  "local_sources": [
+    {
+      "id": "local-1",
+      "title": "Instructions de dépôt",
+      "path": "AGENTS.md",
+      "url": "AGENTS.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Texte complet",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "2c2e415a97c6b7889850aecc3c8e96982a7ce3feec09dc023d6fac7b9f17787a",
+      "bytes": 5290,
+      "lines": 85
+    },
+    {
+      "id": "local-2",
+      "title": "Index de recherche",
+      "path": "research/README.md",
+      "url": "research/README.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Index et conventions ciblées ; conflits conservés",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "808a26006ae5f9e36aae2b30ac002b7e6ffa6f44030da8b17b12dc1c146496e5",
+      "bytes": 22387,
+      "lines": 291
+    },
+    {
+      "id": "local-3",
+      "title": "Index documentaire",
+      "path": "docs/README.md",
+      "url": "docs/README.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Index complet",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "6efd78aa54c3f2a5fd10cfba93353eb49e364ee5688e0360057ec81dbfbc7be9",
+      "bytes": 5076,
+      "lines": 86
+    },
+    {
+      "id": "local-4",
+      "title": "Étude agent/automatisation",
+      "path": "research/2026-09-27-agent-vs-automation/README.md",
+      "url": "research/2026-09-27-agent-vs-automation/README.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Synthèse et navigation",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "7ba9d0b855429ec482f41ff4d77fc21dff1d6ab101d7d9a1ffedc91607854091",
+      "bytes": 7139,
+      "lines": 120
+    },
+    {
+      "id": "local-5",
+      "title": "Protocole D0/D1/A1",
+      "path": "research/2026-09-27-agent-vs-automation/protocol.md",
+      "url": "research/2026-09-27-agent-vs-automation/protocol.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée étendue, références classiques, égalité des observations, budgets et test réservé",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "5ff4797f4c11bf958b42c8574f44dd4fd68ef10de000379c44599ae8acf35fa1",
+      "bytes": 29288,
+      "lines": 418
+    },
+    {
+      "id": "local-6",
+      "title": "État de l’art historique",
+      "path": "research/2026-09-27-agent-vs-automation/state-of-the-art.md",
+      "url": "research/2026-09-27-agent-vs-automation/state-of-the-art.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée du cadre D1 ; sources offensives historiques non exploitées ici",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "065403b357878b6decc11eda7f64cd143866af651e756555af124b37b98f5716",
+      "bytes": 16924,
+      "lines": 204
+    },
+    {
+      "id": "local-7",
+      "title": "Étude des méthodes",
+      "path": "research/2026-10-07-methodes-audit/README.md",
+      "url": "research/2026-10-07-methodes-audit/README.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Question et navigation",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "0f00a4ffdd7ddc667515f56a7ea96752fd8a35ccb60e57a199e73c84ca401c99",
+      "bytes": 8594,
+      "lines": 121
+    },
+    {
+      "id": "local-8",
+      "title": "Diagnostic pipeline",
+      "path": "research/2026-10-07-methodes-audit/pipeline.tex",
+      "url": "research/2026-10-07-methodes-audit/pipeline.tex",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Sections initiales architecture/preuves/méthode ; pas une nouvelle lecture du code applicatif",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "62f3051fdee6be012f6fd890403f090b4ea22092afbc197b74ed466c7c6340e4",
+      "bytes": 22077,
+      "lines": 384
+    },
+    {
+      "id": "local-9",
+      "title": "Familles de méthodes",
+      "path": "research/2026-10-07-methodes-audit/methodes.tex",
+      "url": "research/2026-10-07-methodes-audit/methodes.tex",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Sections initiales : preuve, propriétés, politique et sources",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "da4bdb8f5cb5308677aff58cfe5f71c05c5fe15a252ef1460e4d5844c5cbda26",
+      "bytes": 23956,
+      "lines": 191
+    },
+    {
+      "id": "local-10",
+      "title": "Protocole E0/E1/E2",
+      "path": "research/2026-10-07-methodes-audit/protocole.tex",
+      "url": "research/2026-10-07-methodes-audit/protocole.tex",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; git HEAD a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et changements locaux",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Lecture ciblée dossiers figés, complétude, soutien/réalité et attribution",
+      "limits": "Lecture documentaire, aucun comportement exécuté démontré ; conflits non résolus conservés",
+      "contribution": "Cadre et périmètre de la présente extension",
+      "sha256": "69665730eccf00af403605f3167d71c2744efac519a2d93022d830cf0dfe1fdc",
+      "bytes": 22418,
+      "lines": 361
+    },
+    {
+      "id": "local-11",
+      "title": "D1/A1 : premier incrément CLI documenté",
+      "path": "docs/benchmark/agent-vs-automation-cli.md",
+      "url": "docs/benchmark/agent-vs-automation-cli.md",
+      "publication_date_or_version": "Copie locale lue le 2026-10-07 ; base Git a8dbeb9404f0cad960d61e42f02a1d70ca143a59 et modifications locales",
+      "consulted_at": "2026-10-07 (Europe/Brussels, UTC+02:00)",
+      "read_scope": "Guide intégral, notamment périmètre phases 3/4 et Ce que fait D1",
+      "limits": "Documentation locale ; comportement exécutable non vérifié, conflits locaux conservés",
+      "contribution": "Distingue le D1 existant de son adaptateur hors ligne proposé dans cette revue",
+      "sha256": "9d47324c083ca6abbdf57f9c68364d6f04f8e5381232600747b649f05feeb508",
+      "bytes": 9068,
+      "lines": 173
+    }
+  ],
+  "independent_review_revisions": [
+    "D1 existant phases 3/4 distingué du lecteur à règles hors ligne proposé",
+    "Porte d’acceptation du lecteur avant test réservé, gel et effort humain actif ; corrections post-test interdites pour recalcul silencieux du même contraste",
+    "Sept sauts de page systématiques supprimés ; pagination naturelle à vérifier"
+  ],
+  "validation": {
+    "checked_at": "2026-10-07T14:31+02:00",
+    "compile": "latexmk -pdf -interaction=nonstopmode -halt-on-error ; 9 pages",
+    "render": "pdftoppm, PNG 1500 px ; toutes les pages finales 1 à 9 inspectées par view_image après corrections",
+    "format": "A4, 11pt, marges23mm, TOC et liens ; pagination naturelle, zéro newpage imposé, aucune boîte overfull ni référence undefined",
+    "warnings": "Patrons de césure française absents dans TinyTeX ; aucun débordement observé ; aucune configuration TeX utilisateur modifiée",
+    "pdf_sha256": "cf412d714a0c4f50d79efa5713e9a628a5d667d067b3f76685fda3cff60a9f72",
+    "tex_sha256": "15ff0fce557e13c1632b5d7898226024d4ded3539cd723be754005e4c137a104",
+    "pages": 9,
+    "software_tests": "Aucun test applicatif : changement documentaire uniquement ; aucun run labo ni outil d’audit exécuté."
+  }
+}

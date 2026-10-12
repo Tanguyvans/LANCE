@@ -15,8 +15,8 @@ def test_recorded_recon_completion(mock_provider, output_dir, monkeypatch, outco
     import src.agent.tools.graph_tools as graph_tools
     nodes = [{"id": "a", "ip": "192.0.2.1", "role": "router"},
              {"id": "b", "ip": "192.0.2.2", "role": "router"}]
-    monkeypatch.setattr(graph_tools, "_scenario_topology", {"nodes": nodes})
     pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {"nodes": nodes})
     pipeline.context = {"target_subnet": "192.0.2.0/24"}
     pipeline._stop_event = threading.Event()
     scans = []

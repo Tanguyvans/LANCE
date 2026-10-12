@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import queue
 import sys
 import threading
@@ -140,6 +141,7 @@ def test_deploy_only_worker_does_not_construct_model_provider(monkeypatch):
     class Pipeline:
         def __init__(self, *, provider, **kwargs):
             assert provider.model == ""
+            self.run_dir = "/tmp/deploy-fixture"
 
         def run_deploy_only(self, *, stream_callback, stop_event):
             stream_callback({"type": "pipeline_done", "status": "completed", "run_dir": "/tmp/deploy-fixture"})
@@ -221,3 +223,35 @@ def test_scripted_worker_publishes_terminal_event_without_benchmark_evaluation(m
     assert route._state["run_status"] == terminal_status
     assert received[4]["status"] == terminal_status
     assert not any(event["type"] == "evaluation_done" for event in received)
+
+
+def test_offline_script_replays_the_same_journal_to_two_viewers(tmp_path, monkeypatch):
+    from src.agent.core import runtime
+
+    monkeypatch.setattr(runtime, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(route, "_state", dict(route._state, running=False, teardown_running=False))
+
+    async def check():
+        route._coordinator.begin(
+            route._state, loop=asyncio.get_running_loop(), runner_kind="scripted",
+            scenario_id=None, model=None, execution_profile=None,
+            execution_profile_policy=None,
+        )
+        route._simple_runner_thread(route.StartRequest(runner_kind="scripted", script_id="smoke-v1"))
+        await asyncio.sleep(0)
+        first, second = await route.stream_events(), await route.stream_events()
+
+        async def receive(response):
+            return [json.loads(item["data"]) async for item in response.body_iterator]
+
+        seen = await asyncio.wait_for(asyncio.gather(receive(first), receive(second)), timeout=1)
+        assert seen[0] == seen[1]
+        assert [event["type"] for event in seen[0]] == [
+            "runner_started", "script_step", "runner_done", "pipeline_done",
+        ]
+        status = route.get_status()
+        assert status["running"] is False
+        assert status["run_status"] == "completed"
+        assert status["event_cursor"] == route._state["queue"].latest_id
+
+    asyncio.run(check())

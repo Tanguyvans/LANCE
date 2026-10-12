@@ -60,6 +60,12 @@ log = logging.getLogger(__name__)
 DEFAULT_MAX_ATTEMPTS = 2
 DEFAULT_MAX_TURNS = 4
 DEFAULT_MAX_TOKENS = 2048
+# Output headroom per declared device for the save-only synthesis. S12
+# (34 declared services) truncated twice at the flat 2048 cap: one ledger
+# row per device must fit the synthesis. Small topologies stay near the
+# historical cap; the ceiling keeps large ones bounded.
+RECOVERY_TOKENS_PER_DEVICE = 64
+RECOVERY_MAX_TOKENS_LIMIT = 8192
 
 MAX_LEDGER_EDGES = 40
 MAX_LEDGER_PATHS = 10
@@ -98,6 +104,24 @@ def recovery_config() -> dict[str, int]:
             "LANCE_PHASE1_RECOVERY_MAX_TOKENS", DEFAULT_MAX_TOKENS
         ),
     }
+
+
+def scaled_recovery_tokens(node_count: int, configured_tokens: int) -> int:
+    """Scale the save-only recovery output cap with topology size.
+
+    An explicit ``LANCE_PHASE1_RECOVERY_MAX_TOKENS`` operator knob wins
+    untouched. Otherwise the historical flat default grows by a bounded
+    per-device allowance (capped), so large topologies get headroom
+    instead of a guaranteed second truncation.
+    """
+    raw = os.environ.get("LANCE_PHASE1_RECOVERY_MAX_TOKENS", "").strip()
+    if raw:
+        return configured_tokens
+    try:
+        count = max(0, int(node_count))
+    except (TypeError, ValueError):
+        count = 0
+    return min(DEFAULT_MAX_TOKENS + RECOVERY_TOKENS_PER_DEVICE * count, RECOVERY_MAX_TOKENS_LIMIT)
 
 
 def is_truncation(completion_metadata: dict | None) -> bool:
@@ -360,6 +384,12 @@ class GraphRecoveryPhase:
 
             def gated_save(*args, _original=original_save, _cell=cell, **kwargs):
                 if is_truncation(_cell["gate"]):
+                    gate = _cell.get("gate")
+                    if isinstance(gate, dict):
+                        # Latch the truncation: later turns share the same
+                        # metadata dict, and a trailing stop must not erase
+                        # the fact that a truncated save was proposed.
+                        gate["truncated_save_rejected"] = True
                     return json.dumps({
                         "ok": False,
                         "error_kind": "truncated_response",
@@ -454,7 +484,10 @@ class GraphRecoveryPhase:
         diagnosis stands untouched. ``BudgetExceeded`` is never converted:
         it propagates so the run records budget exhaustion.
         """
-        if not is_truncation(completion):
+        truncated_seen = is_truncation(completion) or bool(
+            isinstance(completion, dict) and completion.get("truncated_save_rejected")
+        )
+        if not truncated_seen:
             return False, (
                 "not_applicable: phase 1 did not end with finish_reason=length"
             )
@@ -498,6 +531,7 @@ class GraphRecoveryPhase:
 
         receipts: list[dict] = []
         caps = recovery_config()
+        max_tokens = scaled_recovery_tokens(len(nodes), caps["max_tokens"])
         last_error = "no attempt made"
         for attempt in range(1, caps["max_attempts"] + 1):
             try:
@@ -583,7 +617,7 @@ class GraphRecoveryPhase:
                     user_message=user_message,
                     tools=checked,
                     max_turns=caps["max_turns"],
-                    max_tokens=caps["max_tokens"],
+                    max_tokens=max_tokens,
                     cost_tracker=self.tracker,
                     stream_callback=self._model_stream_callback(
                         stream_callback, phase=config.phase, agent=config.name

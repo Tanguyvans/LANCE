@@ -1,0 +1,80 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern,microtype}
+\usepackage[margin=22mm]{geometry}
+\usepackage{booktabs,array,tabularx}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue,pdftitle={LANCE — Run 2, campagne corrective S1–S12}}
+\urlstyle{same}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:\do\,}
+\newcommand{\code}[1]{{\urlstyle{tt}\nolinkurl{#1}}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{2em}
+\title{LANCE — Run 2 : campagne corrective S1–S12\\\large État observé et portée des validations}
+\author{Projet LANCE\\\small Rédaction Luna ; orchestration, relecture et compilation Codex}
+\date{Dernière révision : 2026-10-06 00:49\\Europe/Brussels (UTC+02:00)\\\textbf{Résultats intermédiaires ; objectif non atteint}}
+\begin{document}
+\maketitle
+\begin{abstract}
+Cette mise à jour documentaire suit le même Run2 entre deux inventaires : celui du 5 octobre à 23:08 et celui du 6 octobre à 00:28. S11 passe de \code{running} à \code{partial} ; au relevé le plus récent, deux scénarios sont \code{done}, huit \code{partial}, deux \code{failed}, aucun \code{running}. L'objectif S1–S12 n'est pas atteint ; ces métadonnées ne certifient pas la sémantique des livrables.
+\end{abstract}
+\tableofcontents
+\section{Objectif et périmètre}
+Cette révision suit le même Run2 de la campagne corrective \code{batch-a4a0a1d88e00} (référence \code{0f4e5ff}), sans décrire une nouvelle campagne. Les pièces historiques indiquent le modèle \code{qwen3.8:27b}, le profil \code{full} pour les douze runs sélectionnés, un fournisseur UMONS et six phases ; ces paramètres n'ont pas été revalidés. LLM signifie grand modèle de langage. Elles décrivent C01–C14 comme déployées et C15–C20 comme préparées localement, non déployées ; aucun effet des secondes n'est établi. S13–S29 et les deux diagnostics S1 sont exclus \cite{journal,inv}.
+
+Le gel historique du 5 octobre à 23:08:05 et les relevés S8 (19:31), S9 (20:38), S10 (21:54/21:55) et S11 (22:34–22:36) gardent chacun leur portée. Le nouvel inventaire est daté du 6 octobre à 00:28:09 ; les quatre fichiers valides de S11 ont été reçus jusqu'à 00:31:29.368738. Ces observations ne sont pas fusionnées \cite{inv,snapshots,inv6}.
+\section{Méthode}
+Synthèse hors ligne des inventaires, métadonnées locales, journal de 22:55 et revues de reporting ; les conditions historiques d'exécution n'ont pas été revalidées. Pour S11, seules les quatre copies sous \code{metadata-2026-10-06-003129/2026-10-05_212745/} sont retenues ; la tentative d'extraction du dossier parent est explicitement invalidée. Aucun score n'a été recalculé et aucun code n'a été modifié \cite{journal,inv,snapshots,inv6,report}.
+\section{Constats}
+\begin{table}[ht]
+\centering\small
+\caption{Statuts aux deux gels d'inventaire. Le premier est historique (5 octobre, 23:08:05), le second est le relevé actualisé (6 octobre, 00:28:09) ; les détails S8–S10 restent attachés à leurs propres gels.}\label{tab:run2}
+\begin{tabularx}{\linewidth}{@{}l l l Y@{}}\toprule
+Scénario & 05/10 23:08 & 06/10 00:28 & Fait et limite \\\midrule
+S1 & partial & partial & Run \code{2026-10-05_120819}; archive partielle, sans conclusion causale nouvelle.\\
+S2 & done & done & Run \code{2026-10-05_124823}; sémantique non certifiée.\\
+S3 & done & done & Run \code{2026-10-05_134540}; sémantique non certifiée.\\
+S4 & partial & partial & Run \code{2026-10-05_145156}; délai du routeur enregistré.\\
+S5 & partial & partial & Run \code{2026-10-05_155516}; délai LLM enregistré.\\
+S6 & partial & partial & Run \code{2026-10-05_170301}; erreurs scanner consignées.\\
+S7 & failed & failed & Run \code{2026-10-05_175740}; échec structurel, cause non établie.\\
+S8 & partial & partial & Run \code{2026-10-05_181656}; gel 19:31 ; texte répété ne prouve ni nombre d'événements ni cause.\\
+S9 & partial & partial & Run \code{2026-10-05_193029}; gel 20:38 ; même limite sur le texte répété.\\
+S10 & partial & partial & Run \code{2026-10-05_203230}; gels 21:54/21:55 : 6/6 analysés, aucun appareil déclaré en échec, une entrée scanner.\\
+S11 & running & partial & Run \code{2026-10-05_212745}; transition au second gel ; détails après le tableau.\\
+S12 & failed & failed & Run \code{2026-10-05_114742}; réponse HTTP 404 historique, aucun score numérique.\\
+\bottomrule\end{tabularx}
+\end{table}
+
+Les étiquettes d'inventaire décrivent le cycle de vie, pas la réussite sémantique. Au gel historique, S11 était en phase 4 et \code{running} ; au relevé du 6 octobre, le pipeline est inactif (\code{running=false}) en phase 6 et le statut est \code{partial}. Les métadonnées valides jusqu'à 00:31:29 indiquent les phases 1, 2, 4, 5 et 6 terminées ; la phase 1 est récupérée et la phase 3 comporte des erreurs. Malgré la validation du rapport « OK » et le nettoyage et l'usage enregistrés terminés, le run reste \code{partial} \cite{inv,snapshots,inv6}.
+
+La phase 3 a analysé 14 appareils sur 15 avec des erreurs. Un délai LLM pour s11-gw1 est distinct d'une seule entrée scanner MQTT pour s11-mqtt2, dont le texte est répété ; ni multiplicité ni cause commune ne sont établies. Le contrat enregistré est \code{strict-v3.16/evidence-v15}. Le préflight est passé, mais ne confirme pas toutes les propriétés de vérité terrain.
+
+Le CLI 1.1.2 constate que les six phases et le cycle de vie complet ne sont pas enregistrés comme achevés. Aucun score n'est collecté, le fichier correspondant manquant dans la copie locale. Aucune requête de score n'a été faite dans cette révision. « Non collecté » ne signifie ni zéro ni indisponibilité distante ; aucun score n'a été recalculé \cite{inv6,report}.
+
+\section{Corrections et validations}
+\textbf{C01–C14 — historiquement déployées.} Elles couvrent les incohérences de projection, la discipline des sondes et de découverte, la portée des inspections locales, la forme et le rattachement des preuves, le classement des échéances, la cohérence des fixtures, la reprise de génération bornée et les preuves applicatives natives. Leur présence historique dans le déploiement ne démontre pas à elle seule leur effet individuel sur chaque résultat. Cette révision n'a pas revalidé le code, la CI ni les effets de laboratoire \cite{journal}.
+
+\textbf{C15–C20 — préparées localement, non déployées selon les pièces historiques.} Aucune preuve ne permet de leur attribuer les états de Run2. Les rapports antérieurs détaillent leurs motivations ; ce compte rendu n'en déduit aucun effet dans cette campagne \cite{journal}.
+
+\textbf{Correction du reporting hors ligne.} La version 1.1.2 conserve les erreurs scanner présentes dans les archives sans fabriquer un champ absent. Sa revue et ses 45 tests indépendants (0,56 s) datent du 5 octobre. Le 6 octobre, le CLI a été vérifié sur la nouvelle copie S11 : sortie réussie et donnée scanner conservée ; aucun code ni test n'a été modifié ou relancé. Cette vérification concerne le reporting d'archives, pas le pipeline \cite{report,inv6}.
+\section{Discussion et limites}
+Les copies sont des métadonnées sélectionnées ; leurs empreintes locales n'authentifient pas une provenance distante. Le préflight ne vérifie pas toutes les propriétés de vérité terrain. Aucune cause commune entre erreurs, validité sémantique des livrables ou gain expérimental n'est établi ; la CI et le code ne sont pas revalidés ici.
+\section{Conclusion}
+Run2 reste la même campagne corrective, actualisée au 6 octobre à 00:28 et complétée par les métadonnées S11 reçues à 00:31. Son objectif S1–S12 demeure non atteint ; l'état \code{partial} de S11 ne démontre ni réussite sémantique ni cause commune \cite{inv6}.
+\small
+\setlength{\parskip}{1pt}
+\begin{thebibliography}{9}
+\setlength{\itemsep}{0pt}
+\addcontentsline{toc}{section}{Références}
+\bibitem{journal} Projet LANCE, journal historique des corrections, révision 2026-10-05 22:55 : \code{output/validation/2026-10-05-archive-review/historical-report-2026-10-05-2255/report.tex}. Source de contexte et de références, désormais archivée au profit de Run1/Run2.
+\bibitem{inv} Projet LANCE, inventaire passif du 5 octobre 2026 à 23:08:05 : \code{output/validation/2026-10-05-archive-review/passive-monitor-2026-10-05-230805/}. Copies et métadonnées locales ; aucune authentification distante revendiquée.
+\bibitem{snapshots} Projet LANCE, copies locales sous \code{output/validation/2026-10-05-archive-review/} : dossiers \code{luna-monitor-2026-10-05-193110/}, \code{luna-monitor-2026-10-05-203807/}, \code{luna-monitor-2026-10-05-215404/} et \code{luna-monitor-2026-10-05-223408/}. Elles documentent respectivement S8 à 19:31, S9 à 20:38, S10 à 21:54/21:55 et S11 reçu jusqu'à 22:36, distinct de l'inventaire de 23:08.
+\bibitem{inv6} Projet LANCE, inventaire du 6 octobre 2026 à 00:28:09 et revue des métadonnées reçues jusqu'à 00:31:29.368738 : dossier \code{output/validation/2026-10-05-archive-review/passive-monitor-2026-10-06-002809/}, copies valides S11 sous \code{metadata-2026-10-06-003129/2026-10-05_212745/}, résumé \code{s11-summary.json}. La tentative d'extraction au niveau du dossier parent est invalidée ; elle n'est pas utilisée comme preuve.
+\bibitem{report} Projet LANCE, correctif de restitution et revues : dossier \code{output/validation/2026-10-05-archive-review/iterative-reporting-2026-10-05-231103/}, fichiers \code{implementation-review.json}, \code{codex-review.json} et \code{iteration-final-review.json}. Reporting hors ligne uniquement.
+\end{thebibliography}
+\normalsize
+\end{document}

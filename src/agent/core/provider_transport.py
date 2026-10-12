@@ -157,6 +157,13 @@ def call_with_retry(
                 "APITimeoutError", "ReadTimeout", "Timeout",
             }
             if is_timeout:
+                # The SDK timeout is capped by the caller's remaining budget.
+                # Diagnose its exhaustion even on a finalization request that
+                # forbids retries; retain the original SDK failure as evidence.
+                try:
+                    deadline_remaining(deadline)
+                except TimeoutError as deadline_error:
+                    raise deadline_error from exc
                 if timeout_retries >= 1:
                     raise
                 timeout_retries += 1

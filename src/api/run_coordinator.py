@@ -11,6 +11,8 @@ import threading
 from datetime import datetime
 from typing import Any
 
+from src.api.events import EventJournal
+
 
 class RunCoordinator:
     MAX_RECENT_EVENTS = 200
@@ -43,7 +45,7 @@ class RunCoordinator:
                 "cost": 0.0,
                 "run_dir": None,
                 "run_status": None,
-                "queue": asyncio.Queue(),
+                "queue": EventJournal(),
                 "loop": loop,
                 "stop_event": threading.Event(),
                 "runner_kind": runner_kind,
@@ -92,7 +94,7 @@ class RunCoordinator:
             state["teardown_scenario_id"] = scenario_id
             # A completed run may leave __done__ in its old queue.  Manual
             # teardown gets a fresh stream so teardown_done cannot be lost.
-            state["queue"] = asyncio.Queue()
+            state["queue"] = EventJournal()
             state["loop"] = loop
 
     def finish_teardown(self, state: dict[str, Any]) -> None:
@@ -125,7 +127,7 @@ class RunCoordinator:
             return
         if event_type == "phase_start":
             state["phase"] = event.get("phase", state.get("phase", 0))
-            state["phase_name"] = event.get("agent", "")
+            state["phase_name"] = event.get("name") or event.get("agent", "")
             state["current_devices"] = []
             state["devices_done"] = []
         elif event_type == "phase_done":
@@ -133,7 +135,7 @@ class RunCoordinator:
             state["cost"] = state.get("cost", 0.0) + cost
             state.setdefault("phases_done", []).append({
                 "phase": event.get("phase"),
-                "name": event.get("agent", ""),
+                "name": event.get("name") or event.get("agent", ""),
                 "cost": cost,
                 "duration_s": event.get("duration_s", 0),
             })
@@ -181,4 +183,5 @@ class RunCoordinator:
             "run_dir": state["run_dir"],
             "run_status": state.get("run_status"),
             "recent_events": state.get("recent_events", []),
+            "event_cursor": getattr(state.get("queue"), "latest_id", None),
         }

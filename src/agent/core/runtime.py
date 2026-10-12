@@ -1,6 +1,7 @@
 """Infrastructure dependencies and tool catalog for the run engine; phase policies live with their phase."""
 from __future__ import annotations
 
+import ipaddress
 import logging
 import subprocess
 from pathlib import Path
@@ -42,6 +43,7 @@ from src.config import (
     DEVICE_DEFAULT_PORTS,
     LOCAL_MOE_REPORT_PHASE_TIMEOUT,
     REPORT_SECTION_TIMEOUT,
+    REPORT_TIMEOUT_PER_SECTION_S,
     PHYSICAL_SUBNET,
 )
 from src.agent.prompt_manager import load_prompt
@@ -64,8 +66,6 @@ from src.agent.tools.skill_tools import (
     SKILL_TOOLS,
     cve_search,
     get_skills_metadata,
-    set_cve_cache_only,
-    set_skill_filter,
 )
 from src.agent.scanner import run_scanner
 from src.agent.validators import VALIDATORS
@@ -77,6 +77,28 @@ from src.agent.vuln_taxonomy import canonicalize, exploit_category, is_noise
 log = logging.getLogger(__name__)
 
 OUTPUT_DIR = Path("output/agent")
+
+
+def local_interface_ips() -> set[str]:
+    """Read this runner's interface addresses without probing the network."""
+    try:
+        result = subprocess.run(
+            ["hostname", "-I"], capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("Unable to identify runner interface addresses: %s", exc)
+        return set()
+    if result.returncode != 0:
+        log.warning("Unable to identify runner interface addresses (exit %s)", result.returncode)
+        return set()
+    addresses = set()
+    for value in result.stdout.split():
+        try:
+            addresses.add(str(ipaddress.ip_address(value)))
+        except ValueError:
+            continue
+    return addresses
+
 
 def _resolve_model_provider(model: str) -> str:
     """Resolve phase overrides explicitly; never guess a provider from a name."""

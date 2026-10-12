@@ -1,0 +1,79 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern,microtype}
+\usepackage[margin=22mm]{geometry}
+\usepackage{booktabs,array,tabularx}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue,pdftitle={LANCE — Run 1, état initial S1–S12}}
+\urlstyle{same}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:\do\,}
+\newcommand{\code}[1]{{\urlstyle{tt}\nolinkurl{#1}}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{2em}
+\title{LANCE — Run 1 : état initial de la campagne S1–S12\\\large Résultats gelés et corrections motivées}
+\author{Projet LANCE\\\small Rédaction Luna ; orchestration, relecture et compilation Codex}
+\date{Dernière révision : 2026-10-05 23:38\\Europe/Brussels (UTC+02:00)\\\textbf{Résultats historiques intermédiaires — aucune réécriture rétroactive}}
+\begin{document}
+\maketitle
+\begin{abstract}
+Ce rapport restitue le premier lot réel S1–S12 commencé le 4 octobre et gelé le 5 octobre 2026 à 11:32. Il reprend les scores officiels historiques sans recalcul ni certification sémantique. Le lot révèle des incohérences de projection, de sondes, de portée et de liaison des preuves ; quatorze corrections ont été motivées ensuite et ne changent pas les résultats de Run1. S12 échoue avec un score indisponible (HTTP 404 historique). Les scénarios S13–S29 et deux diagnostics S1 distincts sont exclus des résultats du lot.
+\end{abstract}
+\tableofcontents
+\section{Objectif et périmètre}
+La question est de décrire ce que le premier lot permet d'observer avant les corrections générales. Il comprend S1 commun et S2–S12, dans le cadre de la campagne Qwen UMONS autorisée, avec le modèle historique \code{qwen3.8:27b} / \code{ollama-umons}. Le lot a démarré sur le commit initial \code{e9d7d5590d4adf7a3675ae49d95fe8926127f790}. Le faisceau au gel contient 14 archives : deux diagnostics S1 séparés, le S1 commun, les archives S2–S11 et l'échec S12. Les deux diagnostics S1 ne sont pas agrégés au lot. S13–S29 sont hors périmètre. Le rapport historique de référence est celui de la campagne, révisé à 11:48, avec données gelées à 11:32 \cite{base}. Le F1 est une mesure combinant précision et rappel ; les valeurs affichées sont recopiées, sans nouveau calcul. Le sigle LLM désigne un grand modèle de langage.
+
+Les F1 sont ceux des fichiers officiels historiques sous \code{strict-v3.14} / \code{evidence-v13}. Ils sont reproduits tels quels : aucun recalcul, score nouveau ou certification de validité sémantique n'est revendiqué. Les états de cycle de vie et les scores mesurent des aspects différents.
+\section{Méthode}
+Synthèse documentaire hors réseau des rapports et instantanés sélectionnés dans les références \cite{base,bundle,corrections}. Les archives complètes et leurs empreintes historiques n'ont pas été recontrôlées dans cette révision. Les résultats numériques demeurent ceux du gel historique ; les causes des corrections sont résumées à partir du journal source, sans reproduire de procédure d'audit ni d'instruction d'exploitation. Une correction n'est pas considérée comme appliquée à un run antérieur.
+\section{Constats}
+Les scores officiels ci-dessous sont une transcription du tableau historique. S12 a échoué à la reconnaissance, score indisponible lors de ce run (réponse HTTP 404 historique) ; ce statut n'est pas un zéro. Les deux diagnostics S1 ont respectivement des F1 de 0,917 et 0,846, mais restent séparés et exclus du tableau.
+\begin{table}[ht]
+\centering\small
+\caption{Run1 — état historique du gel de données, sans requalification.}\label{tab:run1}
+\begin{tabularx}{\linewidth}{@{}l l r Y@{}}\toprule
+Scénario & État historique & F1 officiel & Lecture limitée \\\midrule
+S1 & terminé & 0,880 & Run commun ; six phases terminées.\\
+S2 & partiel & 0,750 & Score historique conservé.\\
+S3 & partiel & 0,545 & Score historique conservé.\\
+S4 & partiel & 0,450 & Score historique conservé.\\
+S5 & partiel & 0,541 & Score historique conservé.\\
+S6 & terminé & 0,686 & Crédit de chemins historiquement contesté.\\
+S7 & partiel & 0,552 & Score historique conservé.\\
+S8 & partiel & 0,483 & Score historique conservé.\\
+S9 & partiel & 0,538 & Score historique conservé.\\
+S10 & partiel & 0,333 & Score historique conservé.\\
+S11 & partiel & 0,481 & Score historique conservé.\\
+S12 & échec & indisponible & Échec sans rapport final ; HTTP 404 historique.\\
+\bottomrule\end{tabularx}
+\end{table}
+
+Les contrôles arithmétiques consignés ne certifient pas la sémantique des preuves. Le rapport historique note notamment des compteurs périmés pour S1 commun et un crédit erroné de chemins pour S6. Il distingue la vérité terrain, les observations et les propriétés réellement vérifiées ; les limites de lecture des archives restent applicables \cite{base}.
+\section{Corrections C01–C14 motivées après Run1}
+Les corrections générales ont été préparées à l'issue de l'analyse du lot. Elles n'ont pas été appliquées rétroactivement aux données, scores ou statuts du tableau.
+
+\textbf{Projection et conservation des constats (C01, C03).} S2 montrait des compteurs de résumé désynchronisés de la projection finale ; S3 perdait un constat vérifié lors d'un suivi redondant. La motivation est de garder les résumés cohérents avec leurs éléments et de préserver les vérifications déjà planifiées.
+
+\textbf{Sondes et découverte (C02, C05, C06).} Les traces faisaient apparaître des tentatives redondantes vers un port déclaré fermé, un alias de protocole traité comme un service incompatible, et une adresse du runner ajoutée comme cible. Ces observations motivent une meilleure prise en compte des sondes fraîches, des alias et du périmètre de découverte.
+
+\textbf{Portée locale (C07, C10).} Des inspections locales étaient refusées parce que le vocabulaire ou un composant de chemin évoquait une action réseau. La correction vise à classer l'action d'après sa destination réelle, tout en conservant les gardes de portée.
+
+\textbf{Forme et rattachement des preuves (C04, C09, C14).} Des réponses HTTP valides sous forme composite étaient rejetées ; des preuves de chemins étaient mal distinguées d'une bannière de version ; des observations applicatives n'étaient pas toujours liées à la ressource et au protocole qu'elles pouvaient établir. Les corrections motivées renforcent la normalisation et l'exigence d'une preuve rattachée à sa propriété.
+
+\textbf{Échéances et fixtures (C08, C11, C12).} Un délai LLM devait être restitué comme tel ; un environnement de test privilégié et la fixture Node-RED ne garantissaient pas toujours le comportement ou la disponibilité attendus. Les corrections visent un diagnostic honnête et des préconditions de scénario cohérentes.
+
+\textbf{Reprise de génération et liaison native (C13, C14).} S12 a échoué en reconnaissance incomplète ; certaines interprétations de protocole ne reposaient pas sur un échange applicatif complet. Les corrections motivées visent une reprise bornée sans élargissement des budgets et une preuve native suffisante. Le journal historique indique que C01–C14 sont décrites comme déployées avant Run2 ; cet état n'implique ni succès individuel ni certification expérimentale \cite{corrections,run2}.
+\section{Discussion et limites}
+Les scores sont des valeurs officielles historiques, non recalculées ici. Les statuts ne suffisent pas à démontrer la validité sémantique des constats ou l'exhaustivité des faux négatifs. Les corrections sont des réponses à des défauts documentés ; leurs validations hors réseau ne réécrivent pas le run initial et ne démontrent pas, seules, un gain sur le terrain. S12 n'a pas fourni de score.
+\section{Conclusion}
+Run1 établit un état initial circonscrit et ses limites de mesure. Il motive les corrections C01–C14, mais reste entièrement inchangé par elles. Les résultats du lot suivant sont publiés séparément dans Run2 \cite{run2}.
+\begin{thebibliography}{9}
+\addcontentsline{toc}{section}{Références}
+\bibitem{base} Projet LANCE, \emph{Validation expérimentale LANCE — Qwen UMONS S1–S12}, révision 2026-10-05 11:48, données gelées 11:32. \code{research/2026-10-05-benchmark-coverage/validation-qwen-umons.tex} et PDF. Scores officiels recopiés sans recalcul.
+\bibitem{bundle} Projet LANCE, faisceau du premier lot et archives référencées : \code{output/validation/2026-10-04-qwen-umons/}. Les archives ne sont pas reproduites dans ce rapport ; les limites de disponibilité et de provenance sont détaillées dans le rapport initial \cite{base}.
+\bibitem{corrections} Projet LANCE, journal historique des corrections, révision 2026-10-05 22:55 : \code{output/validation/2026-10-05-archive-review/historical-report-2026-10-05-2255/report.tex}. Source de motivation ; désormais archive documentaire, remplacée par les rapports Run1 et Run2.
+\bibitem{run2} Projet LANCE, \emph{Run2 : campagne corrective S1–S12}, présent rapport distinct : \code{research/2026-10-05-corrections-lance/run-02.tex}.
+\end{thebibliography}
+\end{document}

@@ -19,6 +19,37 @@ ports doivent être accessibles depuis le réseau autorisé. `/api/environment`
 renvoie l'emplacement, la branche, le commit réellement déployé et l'activation
 du verrou commun.
 
+## Validation CI selon les fichiers modifiés
+
+Les workflows restent déclenchés sur chaque push et pull request. Les changements
+limités aux documents connus passent par un parcours léger : classification du
+diff et contrôle des espaces, sans installation de dépendances, tests Python,
+construction Docker ni déploiement. Les jobs restent présents dans les checks.
+Ce parcours couvre les README explicitement listés et les fichiers Markdown,
+LaTeX, PDF, bibliographie et images sous `docs/` et `research/`.
+
+Tout code, configuration ou chemin inconnu conserve les tests complets de
+`tests/` et `model_training/tests/`, les contrôles de scénario et Ansible, la
+construction du worker et son contrôle d'absence de vérité terrain. Les prompts
+Markdown sous `src/` et les scripts d'expérience sous `research/` suivent donc
+le parcours complet. Une exécution manuelle lance également tous les contrôles ;
+les tags de version déclenchent la construction complète de l'image applicative.
+
+Le classement compare tout le push depuis son commit précédent déclaré par
+GitHub, ou le commit de base d'une PR avec son checkout de fusion. Il conserve
+les suppressions et les deux chemins d'un renommage. Un historique ou événement
+indéterminé déclenche le parcours complet ; un échec du job bloque le déploiement.
+Un push documentaire n'entraîne pas de redémarrage des instances.
+
+Les anciennes validations d'une même PR peuvent être annulées par une nouvelle
+version. Les pushes, tags et exécutions manuelles utilisent des groupes distincts ;
+la sérialisation des déploiements sur nato reste gérée par `Update LANCE instance`.
+Le worker possède un cache Docker dédié et reste chargé puis contrôlé localement.
+L'image applicative conserve aussi les couches intermédiaires de compilation dans
+son cache de registre. Le gain de durée dépend des couches réutilisables ; il doit
+être mesuré dans les prochains runs. Les deux architectures AMD64 et ARM64 de
+l'image applicative restent construites sur le parcours complet.
+
 ## Vue commune de l’activité
 
 Les trois interfaces affichent une barre **Activité partagée** avec un accès à
@@ -31,7 +62,13 @@ soumis ne sont pas transférés d’un environnement à l’autre.
 La barre se rafraîchit toutes les cinq secondes quand l’onglet est visible.
 L’attente du laboratoire, le déploiement d’un scénario, le nettoyage et l’arrêt
 sont distingués. Une réponse absente, invalide ou d’une identité inattendue est
-marquée **Indisponible**, jamais « Disponible ». Si le serveur de l’interface
+marquée **Indisponible**. Si un environnement exécute une opération ou attend le
+laboratoire, les environnements sans exécution affichent **Laboratoire occupé** :
+ils restent consultables, mais un lancement attendra la libération du laboratoire.
+Si une instance est injoignable sans activité connue ailleurs, les instances
+inactives affichent **Disponibilité du labo inconnue**. « Disponible » n’apparaît
+que lorsque les trois instances déclarent n’avoir aucune opération active.
+Si le serveur de l’interface
 courante ne répond plus, les anciens états sont retirés au prochain échec de
 rafraîchissement. Il s’agit de l’activité déclarée par les applications : cette
 vue ne montre pas les opérations CLI, Proxmox ou les jobs de déploiement du code.
@@ -50,7 +87,29 @@ Les liens conservent le protocole et l’hôte du navigateur et changent uniquem
 le port : ils correspondent à l’accès direct actuel via Tailscale. Un déploiement
 derrière des chemins de reverse proxy nécessiterait une configuration des liens.
 Les trois branches doivent contenir cette fonctionnalité ; une ancienne version
-sans `/api/activity/local` apparaît indisponible jusqu’à sa mise à jour.
+sans `/api/activity/local` apparaît indisponible jusqu'à sa mise à jour.
+
+### Plusieurs lecteurs d'un même run
+
+Plusieurs personnes ou onglets peuvent suivre simultanément le dashboard d'une
+même instance. Chaque connexion SSE reçoit tous les nouveaux événements, avec
+son propre curseur : consulter un run ne retire plus les événements des autres
+lecteurs. Les lancements simples, les batchs et les nettoyages manuels possèdent
+chacun leur historique de suivi.
+
+L'instance conserve les 1 000 derniers événements en mémoire. À l'ouverture,
+le navigateur reçoit cet historique puis les événements en direct ; après une
+coupure, il reprend après le dernier identifiant reçu. Cela inclut la fin d'un
+run survenue pendant la coupure. Une coupure dépassant la fenêtre conservée
+déclenche un avertissement ; les journaux sauvegardés restent la référence pour
+l'historique complet. Un redémarrage du serveur perd cet historique en mémoire.
+
+`GET /api/pipeline/stream` accepte le curseur via `after` ou `Last-Event-ID`.
+`GET /api/pipeline/status` expose `event_cursor`, l'identifiant du dernier
+événement publié. Le curseur identifie aussi l'opération : celui d'un ancien run
+ne peut pas faire sauter les premiers événements du suivant. Cette diffusion
+ne change pas la restriction à une seule exécution par instance ni la réservation
+commune du laboratoire.
 
 ## Première activation
 

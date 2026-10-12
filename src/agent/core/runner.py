@@ -1,5 +1,6 @@
 """Model/tool execution, deliverable transactions and event forwarding."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -248,8 +249,12 @@ class AgentRunner:
             wrapped.append({**tool, "function": transactional_save})
         return wrapped
 
+    @graph_bound
     def _run_agent(self, config: runtime.AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> str:
         """Run a single agent phase."""
+        if config.phase == 3 and config.deterministic_aggregation:
+            from src.agent.phases.analysis.run import run
+            return run(self, config, stream_callback).legacy_status
         if getattr(self, "decision_policy", "llm") == "rules":
             from src.agent.phases.rules import run_phase
             return run_phase(self, config, stream_callback)
@@ -259,15 +264,25 @@ class AgentRunner:
             self._phase5_terminal_status = None
             self._full_intrusion_saved = False
             self._full_intrusion_save_attempted = False
-        # Set skill filter for this phase (hard filtering)
-        filter_tags = config.skill_filter.get("tags") if config.skill_filter else None
-        runtime.set_skill_filter(filter_tags)
-
         tools = self._resolve_tools(config)
         tools = runtime.filter_profile_tools(self.execution_profile, config.phase, tools)
         max_turns, max_tokens = self.execution_profile.limits_for_phase(
             config.phase, config.max_turns, config.max_tokens
         )
+        # Recon splits into a sweep agent plus per-batch coverage agents
+        # (each with a fresh, batch-scoped context) when the coverage plan
+        # spans more than one batch. Compact, blind, sealed, rules,
+        # dry-run and single-batch modes keep the single-agent path. This
+        # runs before the deliverable transaction so configs wrap raw tools.
+        if config.name == "recon":
+            from src.agent.phases.recon.subagents import (
+                run_recon_subagents,
+                subagents_eligible,
+            )
+            if subagents_eligible(self, config):
+                subagent_status = run_recon_subagents(self, config, tools, stream_callback)
+                if subagent_status is not None:
+                    return subagent_status
         local_intrusion_memo = (
             config.name == "intrusion" and self._uses_compact_local_moe()
         )
@@ -281,6 +296,12 @@ class AgentRunner:
             )
             tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
+        # Full-profile intrusion refuses a terminal finish while no action
+        # was attempted although entry points exist. Compact keeps its own
+        # completion machinery; the gate wraps the transacted save so a
+        # refused finish is never archived as an attempt.
+        if config.name == "intrusion" and not self._uses_compact_local_moe():
+            tools = self._apply_intrusion_noop_gate(tools, config.deliverable_file)
         # Full-profile Phase 1 keeps its autonomous report composition, but a
         # provider output truncation (finish_reason=length) with no validated
         # save is recoverable from the recorded graph observations. Compact
@@ -406,35 +427,9 @@ class AgentRunner:
         if config.has_device_agents:
             self._run_phase3(config, stream_callback)
 
-        # If this phase uses deterministic aggregation, skip the LLM and merge directly
-        if config.deterministic_aggregation:
-            self._aggregate_device_vulns(config, stream_callback)
-            validator_fn = self._validator(config.validator)
-            valid, msg = validator_fn(config.deliverable_file)
-            if valid and config.name == "vuln_analysis":
-                status = getattr(self, "_phase3_execution_status", None) or "completed"
-            else:
-                status = "completed" if valid else f"failed:{msg}"
-            if valid:
-                log.info("Phase %d deterministic aggregation validated: %s", config.phase, msg)
-                print(f"  Deliverable validated: {config.deliverable_file}")
-            else:
-                log.error("Phase %d deterministic aggregation FAILED: %s", config.phase, msg)
-                print(f"  Deliverable FAILED validation: {msg}")
-            if stream_callback:
-                stream_callback({
-                    "type": "phase_done",
-                    "phase": config.phase,
-                    "name": config.name,
-                    "status": status,
-                    "deliverable": config.deliverable_file,
-                    "cost_usd": 0,
-                    "turns": 0,
-                })
-            return status
-
         # If this phase has exploit sub-agents, run them and skip the LLM aggregator
         if config.has_exploit_agents:
+            usage_before = self.tracker.summary()
             self._run_exploit_agents(config, stream_callback)
             # Check for newly discovered hosts and run a mini analysis cycle if found
             new_hosts = self._collect_new_hosts()
@@ -454,14 +449,15 @@ class AgentRunner:
                 log.error("Phase %d exploit aggregation FAILED: %s", config.phase, msg)
                 print(f"  Deliverable FAILED validation: {msg}")
             if stream_callback:
+                usage_after = self.tracker.summary()
                 stream_callback({
                     "type": "phase_done",
                     "phase": config.phase,
                     "name": config.name,
                     "status": status,
                     "deliverable": config.deliverable_file,
-                    "cost_usd": 0,
-                    "turns": 0,
+                    "cost_usd": usage_after["total_cost_usd"] - usage_before["total_cost_usd"],
+                    "turns": usage_after["total_turns"] - usage_before["total_turns"],
                 })
             return status
 
@@ -487,8 +483,12 @@ class AgentRunner:
                     else "save_deliverable"
                 ),
                 terminate_on_unavailable_tools=None,
-                strict_required_tool=local_intrusion_memo or compact_local_recon,
-                force_tool_on_stall=local_intrusion_memo or compact_local_recon,
+                # Recon's coverage contract applies to every profile. A text
+                # or truncated turn must not exit after one save reminder while
+                # required scans are missing. Keep action tools available and
+                # retain the provider's three-stall and phase turn limits.
+                strict_required_tool=local_intrusion_memo or config.name == "recon",
+                force_tool_on_stall=local_intrusion_memo or config.name == "recon",
                 force_completion_on_recon_ready=compact_local_recon,
                 reopen_intrusion_tools_on_contract_error=local_intrusion_memo,
                 recover_required_tool_on_stall=local_intrusion_memo,
@@ -671,6 +671,16 @@ class AgentRunner:
         """
         tools = []
         seen_names: set[str] = set()
+        # Match the shared executor's unconditional refusals before presenting
+        # tools to the model. Keep the execution boundary as defense in depth.
+        forbidden = {"python_exec"}
+        if self.sealed:
+            forbidden.update(runtime.SEALED_FORBIDDEN_TOOLS)
+        if (
+            getattr(self, "benchmark_split", "unassigned") not in (None, "unassigned")
+            or getattr(self, "experiment_scope", None)
+        ):
+            forbidden.add("search_history")
 
         for ref in config.tools:
             if ref == "recon" and self.dry_run:
@@ -679,20 +689,20 @@ class AgentRunner:
             # Try group resolution first
             if ref in runtime.TOOL_GROUPS:
                 for tool in runtime.TOOL_GROUPS[ref]:
-                    if self.sealed and tool["name"] in runtime.SEALED_FORBIDDEN_TOOLS:
+                    if tool["name"] in forbidden:
                         continue
                     if tool["name"] not in seen_names:
-                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name))
+                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name, config=config))
                         seen_names.add(tool["name"])
                 continue
 
             # Fall back to individual tool name lookup
             for group in runtime.TOOL_GROUPS.values():
                 for tool in group:
-                    if self.sealed and tool["name"] in runtime.SEALED_FORBIDDEN_TOOLS:
+                    if tool["name"] in forbidden:
                         continue
                     if tool["name"] == ref and ref not in seen_names:
-                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name))
+                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name, config=config))
                         seen_names.add(ref)
                         break
 
@@ -728,9 +738,9 @@ class AgentRunner:
         allowed.update(runtime.INTERNAL_TOOLS)
         return [tool for tool in tools if tool.get("name") in allowed]
 
-    def _wrap_tool(self, tool: dict, *, phase=None, agent=None, decision_source=None) -> dict:
+    def _wrap_tool(self, tool: dict, *, phase=None, agent=None, decision_source=None, config=None) -> dict:
         from src.agent.core.executor import wrap_tool
-        return wrap_tool(self, tool, phase=phase, agent=agent, decision_source=decision_source)
+        return wrap_tool(self, tool, phase=phase, agent=agent, decision_source=decision_source, config=config)
 
     def _filter_skills(self, config: runtime.AgentConfig) -> str:
         """Filter skills by tag intersection with config.skill_filter.

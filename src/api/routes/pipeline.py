@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 from src.agent.provider import validate_provider_choice
 from sse_starlette.sse import EventSourceResponse
@@ -40,7 +40,7 @@ _state: dict[str, Any] = {
     "phase_name": "",
     "cost": 0.0,
     "run_dir": None,
-    "queue": None,
+    "queue": None,  # EventJournal owned by this operation
     "loop": None,
     "stop_event": None,   # threading.Event | None
     # Run metadata
@@ -63,6 +63,43 @@ _coordinator = RunCoordinator(_state_lock)
 
 def _lab_event(event: dict, *, publish: bool = False) -> None:
     _coordinator.lab_event(_state, event, publish=publish)
+
+
+def _update_pipeline_progress(event: dict, *, previous_cost: float = 0.0) -> None:
+    """Keep reload state consistent for single runs and batch sub-pipelines."""
+    t = event.get("type")
+    if t == "phase_start":
+        _state["phase"] = event.get("phase", _state["phase"])
+        _state["phase_name"] = event.get("name") or event.get("agent", "")
+        _state["current_devices"] = []
+        _state["devices_done"] = []
+    elif t == "phase_done":
+        cost = event.get("cost_usd", 0.0)
+        _state["cost"] += cost
+        _state["phases_done"].append({
+            "phase": event.get("phase"),
+            "name": event.get("name") or event.get("agent", ""),
+            "cost": cost,
+            "duration_s": event.get("duration_s", 0),
+        })
+    elif t == "device_start":
+        dev = event.get("device_id", "")
+        if dev and dev not in _state["current_devices"]:
+            _state["current_devices"].append(dev)
+    elif t == "device_done":
+        dev = event.get("device_id", "")
+        if dev and dev not in _state["devices_done"]:
+            _state["devices_done"].append(dev)
+    elif t == "deploy_start":
+        _state["deploy_status"] = "deploying"
+    elif t == "deploy_done":
+        _state["deploy_status"] = "deployed" if event.get("success") else "failed"
+    elif t in {"inject_done", "verify_done"} and not event.get("success"):
+        _state["deploy_status"] = "failed"
+    elif t == "pipeline_done":
+        _state["run_dir"] = event.get("run_dir")
+        if event.get("total_cost_usd") is not None:
+            _state["cost"] = previous_cost + event["total_cost_usd"]
 
 
 class ModelSelection(BaseModel):
@@ -261,6 +298,8 @@ def _evaluate_single_run(pipeline: Any, req: StartRequest) -> dict[str, Any]:
 
 def _pipeline_thread(req: StartRequest):
     """Run the pipeline in a background thread, pushing events to the async queue."""
+    pipeline = None
+    callback = None
     try:
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env")
@@ -309,6 +348,7 @@ def _pipeline_thread(req: StartRequest):
 
         pending_pipeline_done: dict[str, Any] | None = None
         release_pipeline_done = False
+        _state["run_dir"] = str(pipeline.run_dir)
 
         def callback(event: dict):
             nonlocal pending_pipeline_done
@@ -347,7 +387,19 @@ def _pipeline_thread(req: StartRequest):
             callback(pending_pipeline_done)
 
     except Exception as exc:
-        _coordinator.publish(_state, {"type": "error", "message": str(exc)})
+        error_event = {"type": "error", "message": str(exc)}
+        if callback is not None:
+            callback(error_event)
+            terminal = getattr(pipeline, "terminal_event", None)
+            if isinstance(terminal, dict):
+                release_pipeline_done = True
+                callback({
+                    **terminal,
+                    "evaluation_status": "skipped",
+                    "evaluation_error": "Pipeline interrupted before post-run evaluation",
+                })
+        else:
+            _coordinator.publish(_state, error_event)
     finally:
         _coordinator.finish(_state)
 
@@ -452,6 +504,13 @@ async def stop_pipeline():
     return {"status": "stopping"}
 
 
+def active_run_directory() -> str | None:
+    """Identify the live worker without persisting a stale running status."""
+    with _state_lock:
+        directory = _state.get("run_dir")
+        return directory if _state.get("running") and isinstance(directory, str) else None
+
+
 @router.get("/status")
 def get_status():
     """Return full pipeline state — used by frontend on load to sync UI."""
@@ -494,6 +553,7 @@ def _batch_thread(req: BatchRequest):
 
         results = []
         evaluation_results = []
+        completed_cost = 0.0
         total = len(batch_ids)
         batch_id = f"batch-{uuid4().hex[:12]}"
 
@@ -513,6 +573,11 @@ def _batch_thread(req: BatchRequest):
 
             gt_file = resolve_ground_truth_path(sid)
             benchmark_split = resolve_scenario_split(sid)
+            _state.update({
+                "phase": 0, "phase_name": "", "run_dir": None,
+                "phases_done": [], "current_devices": [], "devices_done": [],
+                "deploy_status": None,
+            })
             _push({
                 "type": "batch_scenario_start",
                 "batch_id": batch_id,
@@ -528,15 +593,7 @@ def _batch_thread(req: BatchRequest):
                     ev["batch_id"] = batch_id
                     ev["batch_scenario_id"] = scenario_id
                     _push(ev)
-                    t = ev.get("type")
-                    if t == "phase_start":
-                        _state["phase"] = ev.get("phase", _state["phase"])
-                        _state["phase_name"] = ev.get("agent", "")
-                    elif t == "phase_done":
-                        cost = ev.get("cost_usd", 0.0)
-                        _state["cost"] += cost
-                    elif t == "pipeline_done":
-                        _state["run_dir"] = ev.get("run_dir")
+                    _update_pipeline_progress(ev, previous_cost=completed_cost)
                 return callback
 
             pipeline = None
@@ -553,6 +610,7 @@ def _batch_thread(req: BatchRequest):
                     execution_profile=req.execution_profile,
                     manage_scenario=True,
                 )
+                _state["run_dir"] = str(pipeline.run_dir)
                 run_results = pipeline.run(
                     stream_callback=make_callback(sid),
                     stop_event=_state.get("stop_event"),
@@ -572,6 +630,8 @@ def _batch_thread(req: BatchRequest):
                 failed_run_dir = getattr(pipeline, "run_dir", None)
                 tracker = getattr(pipeline, "tracker", None)
                 cost = round(tracker.total_cost(), 4) if tracker is not None else 0.0
+                completed_cost += cost
+                _state["cost"] = completed_cost
                 entry = {
                     "batch_id": batch_id,
                     "batch_index": idx,
@@ -600,6 +660,8 @@ def _batch_thread(req: BatchRequest):
 
             run_dir = pipeline.run_dir
             cost = round(pipeline.tracker.total_cost(), 4)
+            completed_cost += cost
+            _state["cost"] = completed_cost
 
             metrics = None
             evaluation_error = None
@@ -781,27 +843,11 @@ async def teardown_scenario(req: TeardownRequest):
 
 
 @router.get("/stream")
-async def stream_events():
+async def stream_events(request: Request = None, after: str | None = None):
     """SSE endpoint — streams pipeline events until done."""
     q = _state.get("queue")
     if q is None:
         raise HTTPException(status_code=400, detail="No active pipeline run")
 
-    async def generator():
-        while True:
-            try:
-                event = await asyncio.wait_for(q.get(), timeout=30.0)
-            except asyncio.TimeoutError:
-                # Keep-alive ping
-                yield {"event": "ping", "data": "{}"}
-                continue
-
-            if event.get("type") == "__done__":
-                break
-            yield {"data": json.dumps(event)}
-            # Sub-pipeline completion and errors can be followed by evaluation,
-            # teardown and further scenarios. Only the worker owns stream end.
-            if event.get("type") == "teardown_done" and event.get("manual") is True:
-                break
-
-    return EventSourceResponse(generator())
+    cursor = after or (request.headers.get("last-event-id") if request else None)
+    return EventSourceResponse(q.stream(cursor))

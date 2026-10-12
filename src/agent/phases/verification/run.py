@@ -1,5 +1,6 @@
 """Verification phase: common execution and evidence handling."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound, bind_graph_callable, graph_for
 from collections.abc import Callable
 from pathlib import Path
 import json
@@ -24,6 +25,7 @@ from src.agent.core import runtime
 from src.agent.report_evidence import verification_state
 from src.agent.core.executor import EvidenceWriteError, check_execution_limits
 from src.agent.cost_tracker import BudgetExceeded
+from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 
 
 log = logging.getLogger(__name__)
@@ -32,6 +34,7 @@ log = logging.getLogger(__name__)
 class VerificationPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
+    @graph_bound
     def _run_exploit_agents(
         self,
         config: runtime.AgentConfig,
@@ -495,7 +498,7 @@ class VerificationPhase:
             max_workers = 1
         pool = ThreadPoolExecutor(max_workers=max(1, min(len(exploit_tasks), max_workers)))
         futures = [
-            pool.submit(_run_with_stagger, item)
+            pool.submit(bind_graph_callable(graph_for(self), _run_with_stagger), item)
             for item in enumerate(exploit_tasks)
         ]
         pending = set(futures)
@@ -535,47 +538,60 @@ class VerificationPhase:
         # 3. Deterministic aggregation
         self._aggregate_exploit_results()
 
+    @graph_bound
     def _collect_new_hosts(self) -> list[dict]:
-        """Collect hosts discovered during Phase 4 exploitation that were not in the original scan.
+        """Collect Phase 4 host references absent from the known public surface.
 
         Reads new_hosts_discovered from all Phase 4 exploit output files.
         Returns deduplicated list of {"ip": str, "open_ports": [...], "discovered_via": str}.
-        For scenario runs, only returns hosts within the scenario's expected subnets.
+        Only returns literal IPs inside the run's declared authorization CIDRs.
         """
         import ipaddress as _ip
 
+        # A reference to an existing device is a relationship, not a new
+        # host. Re-scanning it under discovered-* can replace canonical
+        # findings after their verification IDs have already been scheduled.
+        # Both public scenario and discovery surfaces can be list-shaped.
+        # A service may echo the audit client's address (for example MySQL
+        # USER()). It must not turn the runner into a newly discovered target.
+        seen_ips: set[str] = runtime.local_interface_ips()
+        try:
+            surface = json.loads(runtime.get_attack_surface())
+            nodes = surface.get("nodes", []) if isinstance(surface, dict) else surface
+            for node in nodes if isinstance(nodes, list) else []:
+                if isinstance(node, dict) and node.get("ip"):
+                    try:
+                        seen_ips.add(str(_ip.ip_address(str(node["ip"]).strip())))
+                    except ValueError:
+                        continue
+        except (TypeError, ValueError, KeyError) as exc:
+            log.warning("Unable to read known hosts for discovery followup: %s", exc)
+
         new_hosts: list[dict] = []
-        seen_ips: set[str] = set()
-        for f in self.run_dir.glob("04_exploits/**/*.json"):
+        for f in sorted(self.run_dir.glob("04_exploits/**/*.json")):
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
+                if not isinstance(data, dict) or not isinstance(data.get("new_hosts_discovered", []), list):
+                    continue
                 for h in data.get("new_hosts_discovered", []):
-                    ip = h.get("ip", "").strip()
-                    if ip and ip not in seen_ips:
-                        seen_ips.add(ip)
-                        new_hosts.append(h)
-            except Exception:
-                pass
-
-        if new_hosts and self.scenario_id is not None:
-            from src.agent.tools.graph_tools import _scenario_topology
-            subnets = (_scenario_topology or {}).get("subnets", [])
-            if subnets:
-                try:
-                    nets = [_ip.ip_network(s, strict=False) for s in subnets]
-                    filtered = []
-                    for h in new_hosts:
-                        try:
-                            addr = _ip.ip_address(h["ip"])
-                            if any(addr in n for n in nets):
-                                filtered.append(h)
-                            else:
-                                log.info("Excluding out-of-scope discovered host %s (not in %s)", h["ip"], subnets)
-                        except ValueError:
-                            filtered.append(h)
-                    new_hosts = filtered
-                except Exception:
-                    pass
+                    if not isinstance(h, dict) or not isinstance(h.get("ip"), str):
+                        continue
+                    try:
+                        ip = str(_ip.ip_address(h["ip"].strip()))
+                    except ValueError:
+                        continue
+                    if ip in seen_ips:
+                        continue
+                    refusal = _intrusion_scope_violation(
+                        "nmap_scan", {"target": ip}, self.context.get("target_subnet", ""),
+                    )
+                    if refusal:
+                        log.info("Excluding discovered host %s: %s", ip, refusal["error"])
+                        continue
+                    seen_ips.add(ip)
+                    new_hosts.append({**h, "ip": ip})
+            except (OSError, ValueError):
+                log.warning("Could not load discoveries from %s", f)
 
         if new_hosts:
             log.info("Phase 4 discovered %d new host(s): %s", len(new_hosts), [h["ip"] for h in new_hosts])
@@ -664,12 +680,11 @@ class VerificationPhase:
                 {
                     "summary": {
                         "total_tested": sum(verification_state(test) != "not_tested" for test in tests),
-                        "candidate_count": getattr(
-                            self, "_phase4_schedule", {}
-                        ).get("candidate_count", len(tests)),
-                        "skipped_count": getattr(
-                            self, "_phase4_schedule", {}
-                        ).get("skipped_count", 0),
+                        # Discovery followup can add canonical findings after
+                        # scheduling. Summarize the current projection while
+                        # retaining the original schedule as execution history.
+                        "candidate_count": len(tests),
+                        "skipped_count": sum(test["status"] == "SKIPPED" for test in tests),
                         "execution_state": (
                             getattr(self, "_phase4_execution_status", None)
                             or "executed"
@@ -727,5 +742,8 @@ class VerificationPhase:
         return entry
 
 
-def run(context, config, stream_callback=None):
-    return context._run_agent(config, stream_callback)
+@graph_bound
+def run(context, config=None, stream_callback=None):
+    from src.agent.phases.context import phase_context
+    explicit = phase_context(context, config, stream_callback)
+    return explicit.services.execute(explicit.config, explicit.emit)

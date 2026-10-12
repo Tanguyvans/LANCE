@@ -2,7 +2,7 @@
 
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Lock
 from unittest.mock import patch
 
 from src.agent.pipeline import Pipeline
@@ -26,6 +26,8 @@ def test_umons_full_phase3_serializes_without_reducing_context_or_deadline(
         for device in devices
     }
     observed = []
+    active = peak = 0
+    lock = Lock()
 
     def model_call(**kwargs):
         observed.append(kwargs)
@@ -45,7 +47,20 @@ def test_umons_full_phase3_serializes_without_reducing_context_or_deadline(
         assert receipt["status"] == "saved"
         return "Done."
 
-    mock_provider.chat_with_tools.side_effect = model_call
+    def measured_model_call(**kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        try:
+            Event().wait(0.05)
+            return model_call(**kwargs)
+        finally:
+            with lock:
+                active -= 1
+
+    mock_provider.chat_with_tools.side_effect = measured_model_call
+    monkeypatch.setattr("src.agent.phases.analysis.devices.time.sleep", lambda _: None)
     config = AgentConfig(
         name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
         deliverable_file="03_vuln_analysis.json", tools=[], has_device_agents=True,
@@ -58,11 +73,10 @@ def test_umons_full_phase3_serializes_without_reducing_context_or_deadline(
             "upstream": [], "downstream": [], "role": "unknown",
         }),
         patch("src.agent.core.runtime.load_prompt", side_effect=lambda name, variables: variables["scan_results"]),
-        patch("concurrent.futures.ThreadPoolExecutor", wraps=ThreadPoolExecutor) as executor,
     ):
         pipeline._run_phase3(config)
 
-    executor.assert_called_once_with(max_workers=1)
+    assert peak == 1
     assert scanner.call_args.kwargs["compact"] is False
     assert len(observed) == 2
     status = json.loads((pipeline.run_dir / "03_phase3_status.json").read_text())

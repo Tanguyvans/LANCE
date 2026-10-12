@@ -1,0 +1,402 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-07T13:59:18+02:00",
+  "head": "a8dbeb9404f0cad960d61e42f02a1d70ca143a59",
+  "scope": "Sources locales consultées de manière ciblée par root et les trois agents ; certains fichiers ne sont lus que par extraits ou recherches. Le contenu ne constitue pas une version exécutable validée.",
+  "integrity_limit": "Les empreintes identifient la copie locale ; elles ne certifient pas une provenance distante. research/README.md reçoit uniquement une entrée nouvelle hors blocs de conflit.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "2c2e415a97c6b7889850aecc3c8e96982a7ce3feec09dc023d6fac7b9f17787a",
+      "bytes": 5290,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "2c2e415a97c6b7889850aecc3c8e96982a7ce3feec09dc023d6fac7b9f17787a",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "README.md",
+      "sha256": "d95695d7dd8fd97e62fe02e690dd866ef3c31b531ede8a34fc9477f89db118be",
+      "bytes": 4302,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "d95695d7dd8fd97e62fe02e690dd866ef3c31b531ede8a34fc9477f89db118be",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "research/README.md",
+      "sha256": "808a26006ae5f9e36aae2b30ac002b7e6ffa6f44030da8b17b12dc1c146496e5",
+      "bytes": 22387,
+      "conflict_marker_lines": [
+        15,
+        19,
+        24,
+        35,
+        39,
+        42
+      ],
+      "sha256_before_study": "c5b40bb55d2f5ea455238369fba8079d87edde9410fe18f7f05f4b5f94d761ae",
+      "unchanged_since_initial_snapshot": false
+    },
+    {
+      "path": "docs/README.md",
+      "sha256": "6efd78aa54c3f2a5fd10cfba93353eb49e364ee5688e0360057ec81dbfbc7be9",
+      "bytes": 5076,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "6efd78aa54c3f2a5fd10cfba93353eb49e364ee5688e0360057ec81dbfbc7be9",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "tests/README.md",
+      "sha256": "6f5b2b002ae97caacdc461654eadcc044a5fbba346639830eeac9408b0fa0e08",
+      "bytes": 6983,
+      "conflict_marker_lines": [
+        89,
+        90,
+        105
+      ]
+    },
+    {
+      "path": "src/agent/phases/README.md",
+      "sha256": "f0229cde097db30f0383c17607155bf85377905728e1a60e2700dca4f40f7106",
+      "bytes": 18400,
+      "conflict_marker_lines": [
+        230,
+        231,
+        240
+      ],
+      "sha256_before_study": "f0229cde097db30f0383c17607155bf85377905728e1a60e2700dca4f40f7106",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "docs/architecture/run-artifacts.md",
+      "sha256": "84ce532d85fb7a1e3e9f20460251e77a676c35799749bf6b53ffc4701badc4a4",
+      "bytes": 9367,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "84ce532d85fb7a1e3e9f20460251e77a676c35799749bf6b53ffc4701badc4a4",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "docs/architecture/report-writing.md",
+      "sha256": "ee24081f9d53c49d4bcb3cbb853d655a78f2e4b537901c0180b1380b71b4c8bf",
+      "bytes": 7868,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "ee24081f9d53c49d4bcb3cbb853d655a78f2e4b537901c0180b1380b71b4c8bf",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "docs/benchmark/v1/evaluation.md",
+      "sha256": "5e30f27325004a3bee8cf35ef4d941203dcdff80d227f61a9b594c5e28b9b19d",
+      "bytes": 19843,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "docs/benchmark/v1/scenarios.md",
+      "sha256": "baaf7233fd51f4b57fda231e513f5faf0debf737f66b1031f268b66c203dfde3",
+      "bytes": 5297,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "docs/benchmark/agent-vs-automation-cli.md",
+      "sha256": "9d47324c083ca6abbdf57f9c68364d6f04f8e5381232600747b649f05feeb508",
+      "bytes": 9068,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "docs/benchmark/agent-vs-automation-campaign.md",
+      "sha256": "84208a3feaf562682688a9db996df76b9d485feead4c0ded5b4925b583c3361f",
+      "bytes": 13526,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "84208a3feaf562682688a9db996df76b9d485feead4c0ded5b4925b583c3361f",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/README.md",
+      "sha256": "ab5e17d260a76434674c07ef4e1edf37c30fcfdf81f233c3181f1a67cd95890e",
+      "bytes": 5608,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "ab5e17d260a76434674c07ef4e1edf37c30fcfdf81f233c3181f1a67cd95890e",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/protocol.md",
+      "sha256": "5ff4797f4c11bf958b42c8574f44dd4fd68ef10de000379c44599ae8acf35fa1",
+      "bytes": 29288,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/state-of-the-art.md",
+      "sha256": "065403b357878b6decc11eda7f64cd143866af651e756555af124b37b98f5716",
+      "bytes": 16924,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "065403b357878b6decc11eda7f64cd143866af651e756555af124b37b98f5716",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/analysis.md",
+      "sha256": "bbea785aa43afdf218da7d960b65792db77be347159ad6110c0e002bf7028a02",
+      "bytes": 29711,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/report.tex",
+      "sha256": "234020dfe13bf34cd0db3abee343db3ecbda364e701db79345a145428d0d1b4c",
+      "bytes": 33588,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "research/2026-09-29-context-scalability/README.md",
+      "sha256": "ae324987b4a7843a5a107a2f9bb86693c531b5d01638c15328f893d8bf9b08dc",
+      "bytes": 3642,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "research/2026-09-29-context-scalability/analysis.md",
+      "sha256": "f74f268cd76bfbdd4dd960923707266488f9f738f9f5e38d05e93505fcc1cc41",
+      "bytes": 31283,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "research/2026-09-29-context-scalability/report.tex",
+      "sha256": "666a0ab01f54b836cbef222317ca550aa0b8068859eabad015bc60b21ca6f01c",
+      "bytes": 35902,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "research/2026-09-29-benchmark-coverage/README.md",
+      "sha256": "8dc87ef167aa9728a5b135c926367f80d0a9f837dbf512c5a99264123181b021",
+      "bytes": 4144,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "research/2026-09-29-benchmark-coverage/analysis.md",
+      "sha256": "0a2e6271535a1a034dd0b720889ffbf2f9a8fd085be61fe09caf9f0fcc015f8b",
+      "bytes": 23449,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "research/2026-10-05-corrections-lance/README.md",
+      "sha256": "702eda034b6c734fcff442b26c601e5747057d9936fbee75551f642629b777fd",
+      "bytes": 2986,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "702eda034b6c734fcff442b26c601e5747057d9936fbee75551f642629b777fd",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "research/2026-10-03-organisation-code/report.tex",
+      "sha256": "1eeb623a9208ff466a25b4be8231cd30412feb40f90ec978cd09b1d174f18030",
+      "bytes": 36145,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/registry.py",
+      "sha256": "14d0ccd7613a906edbdf69fbe1a8c9cc98b0bc1720d81fb21a6e3f68e07d491c",
+      "bytes": 948,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "14d0ccd7613a906edbdf69fbe1a8c9cc98b0bc1720d81fb21a6e3f68e07d491c",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "src/agent/phases/contracts.py",
+      "sha256": "e100b0042e5b7e353c9110d3308b3a40cc040cc3295accd31674325d9f190959",
+      "bytes": 860,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/pipeline.py",
+      "sha256": "a4f730210e1a5d39a3c66a3a0c1bba9a0b0f6cd006f57bf7dd5d2b35cd83735b",
+      "bytes": 44484,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/results.py",
+      "sha256": "f46fba581983cc733095fa3a8d856fdb9b4693f7238982d3680a00bfd8a28cb5",
+      "bytes": 1061,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/finding_schema.py",
+      "sha256": "6ea5b7f0304a51d7863bb987ce481323a6797a5b34c9ef011eae057fb9b6b7e4",
+      "bytes": 2162,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/artifacts.py",
+      "sha256": "2f9fb26d7310b91d946f003a58d00cfc1d4c6fa68818871b395211ecebfb5172",
+      "bytes": 3137,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/core/executor.py",
+      "sha256": "addc1ae24c28b7796cabc8171f27e5aacbf7077a0733a0c4ad17ca3c5a365741",
+      "bytes": 6640,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/core/runner.py",
+      "sha256": "5cf6864df2f2addb56b9dd4e77a921b6528fd3f47678e57c80ea9c83897ccdee",
+      "bytes": 39435,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "5cf6864df2f2addb56b9dd4e77a921b6528fd3f47678e57c80ea9c83897ccdee",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "src/agent/core/lifecycle.py",
+      "sha256": "f42cbce23881dac2984ce32ac799109c3c69b0b19fdf75e64a01c0cc03c33640",
+      "bytes": 25209,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/core/completion_policy.py",
+      "sha256": "a6febd2563640dc2a7603da6c04e76ee2a668b678e1414f3c091367a0703417a",
+      "bytes": 2899,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/core/runtime.py",
+      "sha256": "266f3240a1895c2fe5ebb3ce82a29c38f02d18a4167620959c84332d06a848cb",
+      "bytes": 6524,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation_loading.py",
+      "sha256": "b6f543021df162d84c8833300f09061aa101e85a423afe62c5473c029115a483",
+      "bytes": 14470,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation.py",
+      "sha256": "258df70314f5ec00fc3dfc38c73a170080f5616bc6abf52b95a6176c6f163e22",
+      "bytes": 6283,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/analysis/scan.py",
+      "sha256": "f225830969ce46c4593c5cc80f64c0cb908366823301303c1ada1ad77d08d9a3",
+      "bytes": 3069,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation_context.py",
+      "sha256": "e3f1d6c52c0de3c796aae9ef7549743502c8aa2e9f04e23b107560310408e12d",
+      "bytes": 964,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation_normalization.py",
+      "sha256": "7be880cc7a1b3b23ec9eec54ef4104281503de8ec000697d49bf4fa35a337c43",
+      "bytes": 10656,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation_projection.py",
+      "sha256": "e8541842c9782ce7daa68205fbfbf36dc0136d170e8a390ff5cc1a18a5954b1d",
+      "bytes": 8991,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/tools/tool_loader.py",
+      "sha256": "c66e0b439f3d18e75915f37d3c7e2d8ef98fc8e6807d786182a4763014bb9ac5",
+      "bytes": 16235,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/report/traceability.py",
+      "sha256": "029781c785ad1fe7270e55f37c26f00802fa3590163bdbbe93fcda0fb6a15592",
+      "bytes": 5388,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "029781c785ad1fe7270e55f37c26f00802fa3590163bdbbe93fcda0fb6a15592",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "src/agent/phases/report/run.py",
+      "sha256": "70efd2b3ed749180869c22361d53aeb336246a7555a038e673127329479df4e8",
+      "bytes": 14219,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/report/validation.py",
+      "sha256": "780e877f567b585b1588ee152e00d17f9a5383df19d9615bd409f0954e5b0a4a",
+      "bytes": 961,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/evidence/records.py",
+      "sha256": "3683f1db2704505f856e3b7d28a1020ebb56d001b67ffed64cba50623e4b279b",
+      "bytes": 2783,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/finding_policy.py",
+      "sha256": "7898e45c1f6cdd6207b369d13a350402b0bd812f71a71288895f2b05a326457d",
+      "bytes": 5082,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/exploit_evidence.py",
+      "sha256": "9edace119c05b9f2186fad4f15821c9cc29c025443be17396a3a152e429fc802",
+      "bytes": 85328,
+      "conflict_marker_lines": [
+        1622,
+        1632,
+        1637,
+        1650,
+        1654,
+        1666,
+        1671,
+        1686,
+        1702
+      ]
+    },
+    {
+      "path": "src/agent/phases/verification/run.py",
+      "sha256": "eb7cb2a876c7fbb679202977599bba13ae5351df7a281eabc7f875d02e3c5381",
+      "bytes": 38735,
+      "conflict_marker_lines": [
+        568,
+        570,
+        573,
+        579,
+        610,
+        629
+      ]
+    },
+    {
+      "path": "src/agent/phases/verification/contract.py",
+      "sha256": "284dd7e42b4d107baf8d41520caffe3ec883f7cdd80ef98f1f038b7d3f07fb5b",
+      "bytes": 31954,
+      "conflict_marker_lines": []
+    },
+    {
+      "path": "src/agent/phases/verification/evidence.py",
+      "sha256": "578804b96346af52bef848d7fadb109c9ff384274c589b3c6319722d3a02646e",
+      "bytes": 4653,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "578804b96346af52bef848d7fadb109c9ff384274c589b3c6319722d3a02646e",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "src/benchmark/claim_diagnostics.py",
+      "sha256": "9651b97338bd78449f1150ea5d816a9d74750c1365f573676cdc3bb960788ca2",
+      "bytes": 5255,
+      "conflict_marker_lines": [],
+      "sha256_before_study": "9651b97338bd78449f1150ea5d816a9d74750c1365f573676cdc3bb960788ca2",
+      "unchanged_since_initial_snapshot": true
+    },
+    {
+      "path": "src/benchmark/metric_contract.py",
+      "sha256": "9b2935fa41d013d71280f8e81719931d131a57a8d2f3ed098011f6f3ceffec09",
+      "bytes": 1367,
+      "conflict_marker_lines": [
+        9,
+        12,
+        15
+      ]
+    },
+    {
+      "path": "src/benchmark/funnel.py",
+      "sha256": "1d6103e17a25a4d6ab5d9d1dc21a5f381e20888fab73c77cb9c3b38e2aeaf80f",
+      "bytes": 12290,
+      "conflict_marker_lines": []
+    }
+  ],
+  "index_edit_verified": "Removing exactly the new 2026-10-07 row reconstructs the pre-study research/README.md SHA-256; pre-existing conflict blocks are unchanged."
+}

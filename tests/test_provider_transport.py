@@ -51,16 +51,22 @@ def test_sdk_timeout_retries_same_request_once_only(clock):
     assert failed.call_count == 2
 
 
-def test_sdk_timeout_does_not_retry_after_deadline(clock):
+@pytest.mark.parametrize("max_retries", [0, 5])
+def test_sdk_timeout_does_not_retry_after_deadline(clock, max_retries):
     from openai import APITimeoutError
     error = APITimeoutError(request=httpx.Request("POST", "https://example.invalid"))
     def expired():
         clock["now"] = 110.0
         raise error
     call = MagicMock(side_effect=expired)
-    with pytest.raises(TimeoutError):
-        transport.call_with_retry(call, deadline=105.0)
+    errors = []
+    with pytest.raises(TimeoutError, match="deadline exceeded") as caught:
+        transport.call_with_retry(call, deadline=105.0, max_retries=max_retries,
+                                  on_error=errors.append)
+    assert caught.value.__cause__ is error
+    assert errors == [error]
     assert call.call_count == 1
+    assert clock["delays"] == []
 
 
 def test_timeout_after_tool_result_preserves_history_and_request_limit(monkeypatch):

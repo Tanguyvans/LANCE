@@ -61,6 +61,10 @@ def test_cleanup_runs_on_phase_exception_and_preserves_exception(pipeline):
     assert pipeline._update_run_meta.call_args.args[0]["status"] == "failed"
     assert pipeline._update_run_meta.call_args.args[0]["results"] == {"recon": "failed:exception"}
     pipeline._persist_run.assert_called_once_with("failed")
+    assert pipeline.terminal_event["status"] == "failed"
+    assert pipeline.terminal_event["cleanup_status"] == "completed"
+    assert pipeline.terminal_event["run_dir"] == str(pipeline.run_dir)
+    assert pipeline.terminal_event["results"] == {"recon": "failed:exception"}
 
 
 @pytest.mark.parametrize("owned,auto,dry", [(False, True, False), (True, False, False), (True, True, True)])
@@ -348,8 +352,8 @@ def _configured_budget_pipeline(tmp_path, monkeypatch):
         "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": "none",
     })
     monkeypatch.setattr(runtime, "init_weighted_graph", lambda: None)
-    monkeypatch.setattr(graph_tools, "_scenario_topology", None)
-    monkeypatch.setattr(graph_tools, "_backend", None)
+    monkeypatch.setattr(graph_tools.current_graph_context(), "scenario_topology", None)
+    monkeypatch.setattr(graph_tools.current_graph_context(), "backend", None)
     pipeline = Pipeline(
         provider=SimpleNamespace(model="offline", provider="codex"),
         phases=[1, 2], max_cost_usd=1.0,

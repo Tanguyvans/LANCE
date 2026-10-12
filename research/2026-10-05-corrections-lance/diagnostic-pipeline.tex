@@ -1,0 +1,84 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern,microtype}
+\usepackage[margin=19mm]{geometry}
+\usepackage{booktabs,array,tabularx}
+\usepackage{float}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue,pdftitle={LANCE — Où les runs S1–S12 se bloquent}}
+\urlstyle{same}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:\do\,}
+\newcommand{\code}[1]{{\urlstyle{tt}\nolinkurl{#1}}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{2em}
+\title{LANCE — Où les runs S1–S12 se bloquent\\\large Diagnostic fondé sur les métadonnées sélectionnées}
+\author{Projet LANCE\\\small Rédaction Luna ; relecture Codex}
+\date{Dernière révision : 2026-10-06 10:34\\Europe/Brussels (UTC+02:00)\\\textbf{Diagnostic hors ligne — aucune nouvelle exécution}}
+\begin{document}
+\maketitle
+\begin{abstract}
+Ce rapport examine les douze runs sélectionnés de la campagne corrective S1–S12 à partir de métadonnées locales et d'une copie du code au commit \code{0f4e5ff}. Huit runs partiels portent des erreurs de workers en phase 3 ; S7 échoue à la validation structurelle après analyse des appareils et S12 s'arrête sur une sortie tronquée en phase 1. L'inventaire du 6 octobre à 09:29 compte deux runs terminés, huit partiels et deux échoués. Ces statuts ne démontrent pas la validité sémantique des résultats ni l'atteinte de l'objectif S1–S12.
+\end{abstract}
+\tableofcontents
+\section{Objectif et périmètre}
+L'objectif est de préciser ce que les pièces locales établissent sur le comportement du pipeline dans la campagne corrective \code{batch-a4a0a1d88e00}, sans attribuer de cause au-delà des preuves. L'inventaire de référence est daté du 6 octobre 2026 à 09:29:13 (Europe/Brussels) ; il sélectionne explicitement douze identifiants de run, un par scénario S1–S12. Les identifiants et leurs chemins sont conservés dans la projection de métadonnées citée en \cite{projection}.
+
+Les détails des runs proviennent de gels distincts : S1–S7 et S12 ont des copies horodatées du 5 octobre à 18:30 ; S8 à 19:31, S9 à 20:38, S10 à 21:54/21:55. Pour S11, seule la copie valide reçue jusqu'au 6 octobre à 00:31:29 est retenue ; l'extraction antérieure du répertoire parent est invalide et exclue. L'inventaire, ces gels détaillés et la date du présent rapport sont trois repères différents.
+\section{Méthode}
+La synthèse confronte la projection sélectionnée, le résumé d'inventaire, les métadonnées figées de chaque run et les fichiers source copiés depuis le commit \code{0f4e5ff}. Le manifeste cité donne le SHA complet et les empreintes des six fichiers sources ; l'examen est une lecture seule \cite{provenance}.
+
+Les règles observées dans le code ont été rapprochées des états agrégés enregistrés. Aucun score n'a été recalculé, aucun journal brut reproduit et aucune exécution, requête réseau, test ou modification applicative n'a été effectuée pour ce rapport.
+\section{Constats}
+Le résumé d'inventaire du 6 octobre à 09:29:13 classe deux runs \code{done} (S2, S3), huit \code{partial} (S1, S4–S6, S8–S11) et deux \code{failed} (S7, S12), sans run actif. Les douze identifiants sélectionnés ont tous le préfixe \code{2026-10-05_} ; leurs suffixes, dans l'ordre S1–S12, sont \code{120819}, \code{124823}, \code{134540}, \code{145156}, \code{155516}, \code{170301}, \code{175740}, \code{181656}, \code{193029}, \code{203230}, \code{212745} et \code{114742}. Les chemins sélectionnés confirment notamment les gels propres à S8–S11 décrits ci-dessus \cite{inventory,projection}.
+
+LLM signifie « grand modèle de langage ». MQTT est un protocole de messagerie utilisé en IoT (Internet des objets).
+
+\begin{table}[H]
+\centering\small
+\caption{Diagnostic des métadonnées sélectionnées. Les compteurs d'analyse sont ceux enregistrés en phase 3 et ne certifient pas une couverture exhaustive.}
+\label{tab:findings}
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{@{}p{0.22\linewidth}p{0.20\linewidth}Y@{}}
+\toprule
+Run(s) & Statut / phase 3 & Observation établie et limite \\
+\midrule
+\shortstack[l]{S1\\S6} & partial ; compteurs 4/4, 6/6 & Deux erreurs de scanner chacun : aucune règle pour les étiquettes de service \code{domain} et \code{tor-orport}. Les étiquettes ne prouvent pas un protocole ; aucun appareil n'est déclaré en échec. \\
+\shortstack[l]{S4\\S5} & partial ; compteurs 7/8 chacun & Échéance LLM enregistrée pour \code{s4-router} et \code{s5-web}. C'est un symptôme, sans attribution à un fournisseur ou à une machine ; aucune erreur scanner n'est enregistrée. \\
+\shortstack[l]{S8\\S9\\S10} & partial ; compteurs 8/8, 6/6, 6/6 & Une entrée scanner MQTT par run, avec texte d'erreur répété dans l'entrée. Cela n'établit pas plusieurs événements ni leur cause ; aucun appareil n'est déclaré en échec. \\
+S11 & partial ; compteur 14/15 & Échéance LLM enregistrée pour \code{s11-gw1} et une entrée scanner MQTT distincte pour \code{s11-mqtt2}. Ces compteurs ne garantissent pas une couverture exhaustive ; la cause commune éventuelle reste inconnue. \\
+S7 & failed ; compteur 6/6 & Les workers de phase 3 terminent sans erreur scanner ; la validation du résultat agrégé échoue car \code{vulnerabilities[29]} manque le champ \code{port}. Les phases 4–6 sont ignorées faute de prérequis. Le symptôme est connu, son producteur ne l'est pas. \\
+S12 & failed ; phase 3 non atteinte & La réponse de graphe de phase 1 est tronquée (\code{finish_reason=length}) sans sauvegarde validée. La reprise bornée, limitée aux sauvegardes, échoue après deux tentatives ; toutes les phases suivantes sont ignorées. Ce n'est ni une panne de reconnaissance en phase 2 ni le 404 historique de Run1. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Pour les huit runs partiels, \code{results.vuln_analysis=executed_with_worker_errors} et la phase 3 est \code{completed_with_device_errors}. La phase 6 est terminée et la validation du rapport est « OK » ; nettoyage et usage sont marqués terminés, tandis que \code{lifecycle_errors} et \code{usage_errors} sont vides. Ces états décrivent le cycle de vie et la production du rapport, mais ne suffisent pas à rendre l'analyse sémantiquement complète.
+\section{Corrections et validation documentaire}
+\textbf{Statuts de phase 3.} La propriété \code{AnalysisExecutionResult.status} de \code{src/agent/phases/analysis/context.py} produit \code{WORKER_ERRORS} en présence d'une erreur scanner ou appareil (lignes 96–103). Dans \code{src/agent/results.py}, \code{run_status} projette l'état correspondant en statut partiel.
+
+\textbf{S7 — validation agrégée.} Dans \code{src/agent/phases/analysis/run.py}, \code{aggregate_phase} fait dépendre l'état de phase 3 du résultat de validation (lignes 734–763). Le validateur \code{validate_json_vuln_queue} de \code{src/agent/validators/__init__.py} vérifie les champs structurels, dont \code{port} (lignes 208–218).
+
+\textbf{S12 — graphe de phase 1.} \code{src/agent/core/runner.py} consigne la troncature et la reprise bornée de la génération du graphe (lignes 284–299 et 547–549) \cite{sources}.
+
+Cette révision ne contient aucun nouveau correctif applicatif, déploiement ou run. La validation réalisée ici est documentaire : sélection explicite, rapprochement de métadonnées et lecture de source figée. Elle ne constitue ni une nouvelle validation logicielle ni une preuve d'efficacité expérimentale.
+\section{Discussion et limites}
+La sélection est traçable aux chemins et empreintes locaux, mais les empreintes ne constituent pas une authentification distante. Les métadonnées copiées ne sont pas des archives complètes ; les heures différentes décrivent des états pris à des instants distincts. Le diagnostic ne recalcule pas les scores et ne généralise pas au-delà des douze runs retenus.
+
+Un score non collecté n'est pas un zéro ; l'absence d'une copie locale ne démontre pas une indisponibilité distante. Le succès du cycle de vie ne valide pas chaque conclusion des analyses. Les suites utiles restent des lectures hors ligne des livrables détaillés associés à ces mêmes runs et des contrats pertinents ; elles devront préserver la sélection, la provenance et la séparation entre symptôme observé et cause inconnue.
+\section{Conclusion}
+Les pièces soutiennent trois catégories distinctes : erreurs de workers en phase 3 pour huit runs partiels, échec de validation structurelle après analyse en S7 et troncature de phase 1 en S12. L'inventaire reste à deux runs terminés, huit partiels et deux échoués ; l'objectif S1–S12 n'est donc pas établi comme atteint. Ce diagnostic précise les états observés sans ouvrir de nouvelle campagne ni réécrire les résultats historiques de Run1 et Run2.
+\small
+\setlength{\parskip}{1pt}
+\begin{thebibliography}{9}
+\setlength{\itemsep}{0pt}
+\addcontentsline{toc}{section}{Références}
+\bibitem{inventory} Projet LANCE, résumé d'inventaire passif, observé le 2026-10-06 09:29:13 (UTC+02:00), \code{output/validation/2026-10-05-archive-review/passive-monitor-2026-10-06-092913/change-summary.json}. Deux \code{done}, huit \code{partial}, deux \code{failed}; aucun run actif.
+\bibitem{projection} Projet LANCE, projection de métadonnées sélectionnées, \code{output/validation/2026-10-05-archive-review/pipeline-diagnostic-2026-10-06-1026/selected-metadata-projection.json}. Douze identifiants, chemins relatifs et empreintes des métadonnées.
+\bibitem{provenance} Projet LANCE, manifeste de provenance du code, \code{output/validation/2026-10-05-archive-review/pipeline-diagnostic-2026-10-06-1026/code-provenance.json}. Il consigne le SHA complet du commit abrégé ici en \code{0f4e5ff} et les empreintes locales des fichiers copiés.
+\bibitem{sources} Projet LANCE, sources au commit \code{0f4e5ff}, copies locales sous \code{output/validation/2026-10-05-archive-review/pipeline-diagnostic-2026-10-06-1026/code-at-0f4e5ff/src/agent/} : \code{phases/analysis/context.py}, \code{phases/analysis/run.py}, \code{validators/__init__.py}, \code{core/runner.py} et \code{results.py}. Lecture hors ligne ; les empreintes figurent dans le manifeste de provenance \cite{provenance}.
+\end{thebibliography}
+\normalsize
+\end{document}

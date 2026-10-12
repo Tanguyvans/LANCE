@@ -48,6 +48,7 @@ ne modifient pas le contrat de référence ci-dessus.
 - [Rédaction du rapport par sections](architecture/report-writing.md).
 - [Reprise de la phase 1 après troncature](architecture/phase1-graph-recovery.md).
 - [Reprise de la phase 3 par blocs](architecture/phase3-block-recovery.md).
+- [Gate anti-no-op de la phase 5 en profil full](architecture/phase5-noop-gate.md).
 - [Tests automatisés](../tests/README.md).
 
 La [recherche sur le contexte](../research/2026-09-29-context-scalability/README.md)
@@ -56,6 +57,8 @@ La [recherche sur le contexte](../research/2026-09-29-context-scalability/README
 ## Utilisation et infrastructure
 
 - [Authentification et fournisseurs d'exécution](guides/provider-auth.md).
+- [LLM UMONS : connexion, choix des modèles et dépannage](guides/umons-llm.md).
+- [Accès labo nato-master via Tailscale depuis la machine dev](guides/lab-access-tailscale.md).
 - [Session administrateur de 8 heures](guides/admin-session.md).
 - [Scénarios manuels hors catalogue](guides/manual-scenarios.md).
 - [Branches et instances de développement sur nato](guides/development-instances.md).

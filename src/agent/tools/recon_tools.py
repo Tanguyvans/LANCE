@@ -34,12 +34,12 @@ _SSH_LEGACY_OPTIONS = [
 ]
 
 
-def _run(cmd: list[str], timeout: int = 30) -> dict:
+def _run(cmd: list[str], timeout: int = 30, *, input_data: str | None = None) -> dict:
     """Run a command and return structured output (ANSI codes stripped)."""
     stop_event = get_tool_stop_event()
     if stop_event is not None:
         stdout, stderr, return_code, timed_out, cancelled = run_cooperatively(
-            cmd, timeout=timeout
+            cmd, timeout=timeout, input_data=input_data
         )
         payload = {
             "stdout": _ANSI_ESC.sub("", stdout),
@@ -59,6 +59,7 @@ def _run(cmd: list[str], timeout: int = 30) -> dict:
             capture_output=True,
             text=True,
             timeout=timeout,
+            input=input_data,
         )
         return {
             "stdout": _ANSI_ESC.sub('', result.stdout),
@@ -145,9 +146,10 @@ def arp_scan(**kwargs) -> str:
 
     log = logging.getLogger(__name__)
     try:
-        from src.agent.tools.graph_tools import _scenario_topology
+        from src.agent.core.graph_context import current_graph_context
+        topology = current_graph_context().scenario_topology
         # Ensure we have a string here
-        subnet = str(_scenario_topology.get("subnet", "192.168.88.0")).rsplit(".", 1)[0] if _scenario_topology else "192.168.88"
+        subnet = str(topology.get("subnet", "192.168.88.0")).rsplit(".", 1)[0] if topology else "192.168.88"
     except Exception:
         subnet = "192.168.88"
 
@@ -285,11 +287,15 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
         result = _run(auth_probe, timeout=15)
         anon_code = anonymous["stdout"].strip()
         code = result["stdout"].strip()
-        auth_required = anon_code in ("401", "403")
-        success = auth_required and code not in ("401", "403", "000", "")
+        auth_required = anonymous["return_code"] == 0 and anon_code in ("401", "403")
+        success = (
+            auth_required and result["return_code"] == 0
+            and code.isdigit() and 200 <= int(code) < 300
+        )
         return json.dumps({"success": success, "authenticated": success, "service": "http", "port": p,
                            "http_code": code, "unauthenticated_http_code": anon_code,
-                           "anonymous_access": not auth_required and anon_code not in ("000", "")})
+                           "anonymous_access": anonymous["return_code"] == 0
+                           and anon_code.isdigit() and 200 <= int(anon_code) < 300})
 
     if service == "ftp":
         p = port or 21
@@ -318,34 +324,49 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
     if service == "telnet":
         p = port or 23
         # Use netcat to send credentials and check response
+        # The shell program is constant. Credentials are positional data,
+        # never interpolated into executable source (including quotes/$()/`).
         cmd = ["bash", "-c",
-               f"(echo '{user}'; sleep 0.5; echo '{password}'; sleep 1; echo 'id') | "
-               f"nc -w 5 {ip} {p} 2>/dev/null"]
+               '(printf "%s\\n" "$1"; sleep 0.5; printf "%s\\n" "$2"; '
+               'sleep 1; printf "%s\\n" id) | nc -w 5 "$3" "$4" 2>/dev/null',
+               "lance-telnet-credential", user, password, ip, str(p)]
         result = _run(cmd, timeout=12)
         stdout = result["stdout"]
-        success = "uid=" in stdout or "$" in stdout or "#" in stdout
+        success = result["return_code"] == 0 and bool(re.search(r"\buid=\d+\b", stdout))
         return json.dumps({"success": success, "authenticated": success, "service": "telnet", "port": p,
                            "stdout": stdout[:300]})
 
     if service == "redis":
         p = port or 6379
-        # Try AUTH then PING
-        cmd = ["bash", "-c",
-               f"(echo 'AUTH {password}'; echo 'PING'; echo 'KEYS *') | "
-               f"nc -w 5 {ip} {p} 2>/dev/null"]
-        result = _run(cmd, timeout=10)
+        # RESP bulk strings preserve spaces, quotes and CRLF inside a password.
+        # The bytes are stdin data, never an inline Redis or shell program.
+        commands = [("AUTH", password), ("PING",), ("KEYS", "*")]
+        wire = "".join(
+            f"*{len(parts)}\r\n" + "".join(
+                f"${len(part.encode('utf-8'))}\r\n{part}\r\n" for part in parts
+            )
+            for parts in commands
+        )
+        result = _run(["nc", "-w", "5", ip, str(p)], timeout=10, input_data=wire)
         stdout = result["stdout"]
-        success = "+OK" in stdout or "+PONG" in stdout
+        success = (
+            result["return_code"] == 0 and stdout.lstrip().startswith("+OK")
+            and not re.search(r"(?i)wrongpass|noauth|(?:^|[\r\n])-?err\b", stdout)
+        )
         return json.dumps({"success": success, "authenticated": success, "service": "redis", "port": p,
                            "stdout": stdout[:300]})
 
     if service == "mysql":
         p = port or 3306
-        cmd = ["mysql", f"-h{ip}", f"-P{p}", f"-u{user}",
-               f"-p{password}", "--connect-timeout=5",
-               "-e", "SELECT user,host FROM mysql.user LIMIT 5;", "2>/dev/null"]
+        # A bare -p prompts instead of testing an empty password. Keep the
+        # explicit credential on TCP and do not inherit client option files.
+        password_arg = f"--password={password}" if password else "--skip-password"
+        cmd = ["mysql", "--no-defaults", "--protocol=TCP", f"-h{ip}", f"-P{p}",
+               f"-u{user}", password_arg, "--connect-timeout=5", "-N",
+               "-e", "SELECT CURRENT_USER();"]
         result = _run(cmd, timeout=12)
-        success = result["return_code"] == 0 and "ERROR" not in result["stderr"]
+        success = (result["return_code"] == 0 and "ERROR" not in result["stderr"]
+                   and bool(result["stdout"].strip()))
         return json.dumps({"success": success, "authenticated": success, "service": "mysql", "port": p,
                            "stdout": result["stdout"][:300], "stderr": result["stderr"][:100]})
 

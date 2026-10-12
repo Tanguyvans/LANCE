@@ -5,7 +5,7 @@
 \frenchsetup{SmallCapsFigTabCaptions=false}
 \usepackage{lmodern,microtype}
 \usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
-\usepackage{graphicx,booktabs,array,tabularx,longtable}
+\usepackage{graphicx,booktabs,array,tabularx,longtable,float}
 \usepackage{xcolor,tikz}
 \usepackage{enumitem,titlesec}
 \usepackage{hyperref}
@@ -134,12 +134,12 @@
   {\par\end{quote}}
 \title{\bfseries IoTChainBench : couverture et validité de l'évaluation\\[0.5em]\large\mdseries\itshape Corpus, mesures, preuves et protocole de validation}
 \author{Projet LANCE}
-\date{Dernière révision : 30 septembre 2026 à 21:55\\[0.15em]\small Europe/Brussels (UTC+02:00)\\[0.4em]\small Exploration ; contre-exemples logiciels reproduits}
+\date{Dernière révision : 1er octobre 2026 à 10:23\\[0.15em]\small Europe/Brussels (UTC+02:00)\\[0.4em]\small Exploration ; contre-exemples logiciels reproduits}
 \hypersetup{pdftitle={IoTChainBench : couverture et validité de l'évaluation}}
 \begin{document}
 \maketitle
 \begin{abstract}
-Le catalogue IoTChainBench définit 29 scénarios et 288 vulnérabilités attendues. Ces nombres ne mesurent ni leur présence dans le laboratoire ni la couverture effectivement atteinte par LANCE. Cette étude distingue couverture du corpus, tentatives et rappel prouvé, à partir des contrats, de l'évaluateur et de reproductions synthétiques. Elle observe un taux de tentative de 100\,\% sans tentative déclarée, deux admissions de preuves HTTP insuffisantes et une collision d'attribution d'un contrôle négatif. Le test est concentré sur HTTP/SSH et aucun scénario officiel n'est entièrement sain. La priorité proposée est de fiabiliser les mesures et les oracles, puis d'élargir les familles et les contrôles vérifiables. Aucun correctif du runtime, résultat de campagne ou gain LLM n'est démontré par cette revue.
+Le catalogue IoTChainBench définit 29 scénarios et 288 vulnérabilités attendues. Ces nombres ne mesurent ni leur présence dans le laboratoire ni la couverture effectivement atteinte par LANCE. Cette étude distingue couverture du corpus, tentatives et rappel prouvé, à partir des contrats, de l'évaluateur et de reproductions synthétiques. Elle observe un taux de tentative de 100\,\% sans tentative déclarée, deux admissions de preuves HTTP insuffisantes et une collision d'attribution d'un contrôle négatif. Le test est concentré sur HTTP/SSH et aucun scénario officiel n'est entièrement sain. La priorité proposée est de fiabiliser les mesures et les validateurs de preuve, puis d'élargir les familles et les contrôles vérifiables. Aucun correctif du runtime, résultat de campagne ou gain d'un grand modèle de langage (LLM) n'est démontré par cette revue.
 \end{abstract}
 \clearpage
 
@@ -162,18 +162,31 @@ n'est apportée ici. La contrelecture GPT a été intégrée ; la revue Muse n'a
 été exécutée. La comparaison avec l'automatisation est développée dans le
 \href{../2026-09-27-agent-vs-automation/report.pdf}{rapport transversal sur l'apport des LLM}.
 
+\subsection{Repères de lecture}
+La vérité terrain (\emph{ground truth}, GT) est la référence des propriétés
+attendues dans un scénario. Elle est utilisée après l'audit pour évaluer les
+constats, sans révéler les réponses à l'agent. Un contrôle négatif demande un
+comportement sain précis, par exemple le refus d'un accès avec une identité
+limitée ; il ne signifie pas que tout le scénario est sans faille.
+
+Un oracle est le validateur de preuve qui décide si une observation suffit à
+confirmer une propriété. Les \emph{probes} sont des tests diagnostiques sur des
+entrées synthétiques. Un LLM est un grand modèle de langage ; IoT désigne
+l'Internet des objets. Un run est une exécution de l'audit, et un pivot une
+transition d'accès effectuée depuis une machine ou une session déjà obtenue.
+
 \section{Trois couvertures, des dénominateurs distincts}
 \label{sec:denominators}
 La couverture du \emph{corpus} décrit les propriétés représentées. La couverture d'\emph{exécution} mesure les hypothèses effectivement tentées dans la file retenue. Le rappel \emph{prouvé} rapporte les vrais positifs étayés à la vérité terrain. La figure~\ref{fig:denominators} sépare les deux populations utilisées pendant un run.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[sfig diagram]
   \node[sfig neutral,text width=36mm,minimum height=13mm] (c) at (0,0) {Candidats\\proposés};
   \node[sfig process,text width=36mm,minimum height=13mm] (q) at (55mm,0) {File retenue\\$Q$ hypothèses};
   \node[sfig focal,text width=36mm,minimum height=13mm] (t) at (110mm,0) {Tentatives\\effectives $T$};
   \node[sfig neutral,text width=36mm,minimum height=13mm] (n) at (0,-30mm) {Déclarations finales\\$N$ prédictions};
-  \node[sfig output,text width=36mm,minimum height=13mm] (v) at (55mm,-30mm) {Vrais positifs\\étayés $V$};
+  \node[sfig output,text width=36mm,minimum height=13mm] (v) at (55mm,-30mm) {Appariement\\et preuve : $V$};
   \node[sfig input,text width=36mm,minimum height=13mm] (g) at (110mm,-30mm) {Vérité terrain\\$G$ propriétés};
   \draw[sfig flow] (c) -- (q);
   \draw[sfig primary flow] (q) -- (t);
@@ -184,13 +197,18 @@ La couverture du \emph{corpus} décrit les propriétés représentées. La couve
 \label{fig:denominators}
 \end{figure}
 
-Pour un scénario positif évaluable, le rappel final vaut $V/G$ et le F1 final $2V/(N+G)$. Le taux de tentative vaut $T/Q$ lorsque cette population est connue et non vide. Un taux de tentative élevé peut coexister avec un faible rappel : les failles jamais proposées sont absentes de $Q$. Un résultat indisponible reste distinct d'un zéro.
+Ici, $Q$ compte les hypothèses retenues, $T$ celles effectivement tentées,
+$N$ les prédictions finales dédupliquées, $V$ les vrais positifs étayés et $G$
+les propriétés positives de référence. La précision vaut $V/N$ lorsque $N>0$ ;
+le rappel mesure la part des propriétés attendues retrouvées. Le F1 est la
+moyenne harmonique de la précision et du rappel.
+Pour un scénario contenant au moins une propriété positive attendue et évaluable, le rappel final vaut $V/G$ et le F1 final $2V/(N+G)$. Le taux de tentative vaut $T/Q$ lorsque cette population est connue et non vide. Un taux de tentative élevé peut coexister avec un faible rappel : les failles jamais proposées sont absentes de $Q$. Un résultat indisponible reste distinct d'un zéro.
 
 \section{Ce que le catalogue représente}
 \label{sec:corpus}
 L'inventaire suit le catalogue 3.2.0 et fusionne les vérités terrain avec leur fichier commun de contrats, comme l'évaluateur. Les 29 empreintes SHA des références concordent. Le tableau~\ref{tab:corpus} compte des \emph{instances définies}, pas des équipements uniques ni des propriétés observées dans le laboratoire.
 
-\begin{table}[htbp]
+\begin{table}[H]
 \centering\small
 \noindent\begin{tabularx}{\linewidth}{Yrrr}
 \toprule
@@ -212,23 +230,33 @@ Chemins déclarés & 58 & 9 & 67 \\
 
 S1--S13 concentrent 229 des 288 GT, soit 79,5\,\%, sans contrôles négatifs explicites. Ils partagent plusieurs packs de configuration, authentification et exposition de données. La macro-moyenne par scénario limite leur domination numérique, mais ne rend pas ces mécanismes indépendants. La figure~\ref{fig:services} montre une autre asymétrie : le test est fortement concentré sur HTTP et SSH.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[sfig diagram,x=1mm,y=1mm]
-  % Largeurs calculées sur les associations GT-service : 251 dev, 36 test.
-  \node[anchor=east,align=right] at (-4,0) {Dev\\251 associations};
-  \node[anchor=east,align=right] at (-4,-17) {Test\\36 associations};
-  \path[fill=sfigBlueFill,draw=sfigBlueLine,line width=.55pt] (0,-4) rectangle (62.749,4);
-  \path[fill=white,draw=sfigMuted,line width=.55pt] (62.749,-4) rectangle (78.227,4);
-  \path[fill=sfigNeutral,draw=sfigMuted,line width=.55pt] (78.227,-4) rectangle (105,4);
-  \path[fill=sfigBlueFill,draw=sfigBlueLine,line width=.55pt] (0,-21) rectangle (90.417,-13);
-  \path[fill=white,draw=sfigMuted,line width=.55pt] (90.417,-21) rectangle (96.25,-13);
-  \path[fill=sfigNeutral,draw=sfigMuted,line width=.55pt] (96.25,-21) rectangle (105,-13);
-  \node[anchor=north,align=center] at (12,-28) {HTTP + SSH\\150 dev / 31 test};
-  \node[anchor=north,align=center] at (53,-28) {MQTT\\37 dev / 2 test};
-  \node[anchor=north,align=center] at (92,-28) {Autres\\64 dev / 3 test};
+  % Les parts conservent les valeurs de l'inventaire du 29 septembre 2026.
+  \node[anchor=east,align=right] at (-4,0) {Développement\\251 associations};
+  \node[anchor=east,align=right] at (-4,-16) {Test\\36 associations};
+  \path[fill=sfigBlueFill,draw=sfigBlue,line width=.55pt] (0,-4) rectangle (59.761,4);
+  \path[fill=white,draw=sfigMuted,line width=.55pt] (59.761,-4) rectangle (74.502,4);
+  \path[fill=gray!18,draw=sfigMuted,line width=.55pt] (74.502,-4) rectangle (100,4);
+  \path[fill=sfigBlueFill,draw=sfigBlue,line width=.55pt] (0,-20) rectangle (86.111,-12);
+  \path[fill=white,draw=sfigMuted,line width=.55pt] (86.111,-20) rectangle (91.667,-12);
+  \path[fill=gray!18,draw=sfigMuted,line width=.55pt] (91.667,-20) rectangle (100,-12);
+  \node at (29.88,0) {59,8\,\%};
+  \node at (43.06,-16) {86,1\,\%};
+  \node[sfig annotation,anchor=south] at (67.13,5) {14,7\,\%};
+  \node[sfig annotation,anchor=south] at (87.25,5) {25,5\,\%};
+  \node[sfig annotation,anchor=north] at (88.89,-23) {5,6\,\%};
+  \node[sfig annotation,anchor=north] at (100,-23) {8,3\,\%};
+  % Légende avec symboles ; sa position ne représente pas celle des segments.
+  \path[fill=sfigBlueFill,draw=sfigBlue,line width=.55pt] (-25,-35) rectangle (-20,-31);
+  \node[anchor=west] at (-18,-33) {HTTP + SSH};
+  \path[fill=white,draw=sfigMuted,line width=.55pt] (22,-35) rectangle (27,-31);
+  \node[anchor=west] at (29,-33) {MQTT};
+  \path[fill=gray!18,draw=sfigMuted,line width=.55pt] (65,-35) rectangle (70,-31);
+  \node[anchor=west] at (72,-33) {Autres};
 \end{tikzpicture}
-\caption{Composition des associations GT--service, de gauche à droite : HTTP/SSH, MQTT, autres. Les barres sont normalisées séparément à 100\,\% ; HTTP/SSH représentent 59,8\,\% du dev et 86,1\,\% du test. Données issues de l'inventaire des contrats, sans estimation de performance.}
+\caption{Répartition des associations entre propriétés attendues et services. Chaque barre suit les catégories de la légende : HTTP/SSH, MQTT, autres (respectivement 150/37/64 en développement et 31/2/3 en test). Les barres sont normalisées séparément à 100\,\% ; HTTP/SSH représentent 59,8\,\% du dev et 86,1\,\% du test. Données issues de l'inventaire des contrats, sans estimation de performance.}
 \label{fig:services}
 \end{figure}
 
@@ -236,7 +264,11 @@ Les associations ne sont pas nécessairement bijectives avec les GT : le dev en 
 
 \section{Représentativité et limites de généralisation}
 \label{sec:representativity}
-La diversité d'instances doit être distinguée de celle des mécanismes. PKI, OTA avancée, IAM cloud et OT multi-protocole n'ont chacun qu'un scénario dev. Les neuf GT dev de catégorie CVE se rapportent au seul identifiant autorisé dans le catalogue hors ligne, Terrapin. Ces répétitions sont utiles pour varier les contextes, mais ne constituent pas neuf vulnérabilités logicielles indépendantes.
+La diversité d'instances doit être distinguée de celle des mécanismes.
+Les sigles suivants désignent des domaines : PKI, infrastructure à clés
+publiques ; OTA, mise à jour distante ; IAM, gestion des identités et des accès ;
+OT, technologies opérationnelles. CVE désigne un identifiant public de
+vulnérabilité logicielle. PKI, OTA avancée, IAM cloud et OT multi-protocole n'ont chacun qu'un scénario dev. Les neuf GT dev de catégorie CVE se rapportent au seul identifiant autorisé dans le catalogue hors ligne, Terrapin. Ces répétitions sont utiles pour varier les contextes, mais ne constituent pas neuf vulnérabilités logicielles indépendantes.
 
 Les étiquettes de difficulté décrivent une intention de conception : le dev contient 1 scénario \emph{easy}, 5 \emph{medium}, 8 \emph{hard} et 5 \emph{expert} ; le test contient 2 \emph{hard} et 8 \emph{expert}. Aucun étalonnage humain ni taux de résolution associé n'est établi par cette étude. Taille du réseau, difficulté protocolaire, dépendance de secrets et nombre de pivots doivent être analysés séparément.
 
@@ -249,9 +281,9 @@ La fidélité varie selon les composants : services réseau, simulateurs API/PKI
 \subsection{Une extension guidée par les questions}
 Le prochain incrément devrait combiner quatre types de variations, chacun avec un contraste précis. Le tableau~\ref{tab:extensions} définit des propositions et non des scénarios déjà validés.
 
-\begin{table}[htbp]
+\begin{table}[H]
 \centering\small
-\noindent\begin{tabularx}{\linewidth}{p{31mm}YY}
+\noindent\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{31mm}YY}
 \toprule
 Axe proposé & Variation contrôlée & Ce qu'elle permet de tester \\
 \midrule
@@ -280,7 +312,7 @@ Les familles OTA, PKI, OT et MQTT-WebSocket gagneraient ensuite des variantes de
 \]
 Le script local fournit un candidat et deux résultats \code{TIMEOUT} portant le même identifiant. Les deux contiennent explicitement \code{verification_attempted:false}. Le résultat observé est pourtant : population~1, inconclusif~1, non testé~0, taux~1,0.
 
-L'ambiguïté d'attribution ne prouve aucun démarrage effectif. Le contre-exemple établit un défaut de calcul pour ces entrées ; il n'établit pas leur fréquence dans les campagnes. Même corrigé, le taux restera limité à la file retenue et ne renseignera pas les services oubliés ou les GT jamais proposées.
+L'ambiguïté d'attribution ne prouve aucun démarrage effectif. Le contre-exemple établit un défaut de calcul pour ces entrées ; il n'établit pas leur fréquence dans les campagnes. Même corrigé, le taux restera limité à la file retenue et ne renseignera pas les services oubliés ou les propriétés attendues jamais proposées comme hypothèses.
 
 \textbf{Correction proposée, P0.} Séparer quatre dimensions : attribution, tentative, conclusion et incident. Si toutes les entrées indiquent une absence de tentative, le numérateur ne peut pas augmenter. Si les entrées se contredisent, conserver un état inconnu et une convention explicite de taux ou d'intervalle. Les cas d'identifiants dupliqués, résultats orphelins, contradictions et ancien champ absent doivent avoir des tests distincts.
 
@@ -336,9 +368,9 @@ La projection actuelle des observations d'intrusion expose des transitions vides
 
 \textbf{Proposition P1.} Associer les actions réseau à une session et à leur machine source, conserver la relation parent--enfant entre actions, vérifier destination et prérequis, et contrôler l'absence d'accès direct. Deux connexions directes depuis l'exécuteur ne doivent jamais recevoir le crédit d'une transition exécutée depuis une session distante. Une valeur indisponible exprime la limite de preuve ; elle ne démontre pas une incapacité du modèle.
 
-\begin{table}[htbp]
+\begin{table}[H]
 \centering\small
-\noindent\begin{tabularx}{\linewidth}{p{12mm}p{41mm}Y}
+\noindent\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{12mm}>{\raggedright\arraybackslash}p{41mm}Y}
 \toprule
 Priorité & Objet & Condition avant conclusion expérimentale \\
 \midrule
@@ -359,7 +391,7 @@ P1 & Pivot et diversité & Transitions causales observables ; variantes indépen
 \label{sec:protocol}
 L'amélioration du benchmark doit permettre de conclure aussi à l'absence d'apport du LLM. Les hypothèses suivantes guident des expériences futures, après correction des défauts de mesure.
 
-\textbf{H1 --- Les pertes précèdent parfois la vérification.} Une couverture élevée de la file peut masquer des observations absentes ou des GT jamais proposées. Il faut enregistrer chaque dénominateur : actifs attendus lorsqu'ils sont connus, services observés, GT proposées et retenues, candidats tentés, preuves admises et GT confirmées. L'hypothèse serait affaiblie si les principales fausses négatives subsistaient malgré observation pertinente, candidat retenu et tentative valide.
+\textbf{H1 --- Les pertes précèdent parfois la vérification.} Une couverture élevée de la file peut masquer des observations absentes ou des propriétés attendues jamais proposées comme hypothèses. Il faut enregistrer chaque dénominateur : actifs attendus lorsqu'ils sont connus, services observés, hypothèses proposées puis retenues, candidats tentés, preuves admises et GT confirmées. L'hypothèse serait affaiblie si les principales fausses négatives subsistaient malgré observation pertinente, candidat retenu et tentative valide.
 
 \textbf{H2 --- L'oracle peut contribuer aux confirmations indues.} Une calibration indépendante et une adjudication des traces, en aveugle à la politique évaluée, permettraient d'estimer ce risque. L'hypothèse serait affaiblie si les fausses admissions restaient sous un seuil prédéfini et ne changeaient pas les écarts comparatifs. Le même oracle doit s'appliquer aux politiques LLM et déterministes.
 
@@ -387,9 +419,9 @@ Les scripts sont conservés sous \code{benchmarks/experiments/research-review/}.
 \end{itemize}
 Leur \href{../../benchmarks/experiments/research-review/README.md}{README de reproduction} donne les commandes exactes avec le chemin d'import du projet. Les observations importantes sont conservées dans les notes ; leur disponibilité ne dépend pas des fichiers temporaires de cette session.
 
-\begin{table}[htbp]
+\begin{table}[H]
 \centering\small
-\noindent\begin{tabularx}{\linewidth}{p{35mm}YY}
+\noindent\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{35mm}YY}
 \toprule
 Vérification & Résultat disponible & Limite \\
 \midrule
@@ -422,12 +454,12 @@ pivots exige en plus une preuve de transition depuis la session source.
 Ces propositions ne changent pas le contrat actuellement implémenté.
 
 \par\end{samepage}
-\clearpage
-\phantomsection
-\addcontentsline{toc}{section}{Références}
 \begingroup
 \small
 \begin{thebibliography}{9}
+\phantomsection\addcontentsline{toc}{section}{Références}
+\interlinepenalty=10000
+
 \bibitem{cybench}
 A. K. Zhang et al., \emph{Cybench: A Framework for Evaluating Cybersecurity Capabilities and Risks of Language Models}. Prépublication du 15 août 2024 ; ICLR 2025. \href{https://arxiv.org/abs/2408.08926}{Notice et résumé} ; \href{https://cybench.github.io/}{site des auteurs}. Consultés le 29 septembre 2026. Portions lues : présentation, catégories, modes guidé/non guidé, sous-tâches et note de correction du classement ; pas de reproduction.
 

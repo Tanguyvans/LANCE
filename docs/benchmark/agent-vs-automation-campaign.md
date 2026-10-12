@@ -36,7 +36,11 @@ déploiements et audits de cette campagne, même si un inventaire local y pointe
 Respecter la [consigne de ciblage du dépôt](../../AGENTS.md) ; un accès à nato
 indisponible ne justifie pas un repli vers le homelab.
 
-Le push sur `main` déclenche [Benchmark integrity](../../.github/workflows/benchmark-integrity.yml).
+Un push de code sur `main` déclenche les contrôles complets de
+[Benchmark integrity](../../.github/workflows/benchmark-integrity.yml).
+Les changements uniquement documentaires suivent le
+[parcours CI léger](../guides/development-instances.md#validation-ci-selon-les-fichiers-modifiés)
+sans déploiement ; une exécution manuelle conserve tous les contrôles.
 Après réussite des tests et de la construction de l'image isolée, le workflow
 [Update LANCE instance](../../.github/workflows/update-master.yml) s'exécute sur le
 runner `nato-master` de `pve-nato` : récupération du commit exact, mise à jour des

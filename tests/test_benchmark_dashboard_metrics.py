@@ -224,6 +224,24 @@ for (const status of ['failed', 'running', 'stopped', 'partial']) {
   assert(elements['bm-tbody'].innerHTML.includes(`run-badge ${status}`));
 }
 
+context._bmData = [{...row, status: 'failed', score: null,
+  completion: {failure_phase: 1, failure_cause: 'provider_connection_error', cleanup_status: 'completed'}}];
+context.renderBenchmarkTable();
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
+assert(html.includes('Audit non produit'));
+assert(html.includes('Échec en phase 1 : connexion au modèle impossible.'));
+assert(html.includes('Nettoyage du scénario effectué.'));
+assert(!html.includes('Ancien run ou artefact absent'));
+assert(!html.includes('F1 final 0'));
+
+context._bmData = [{...row, status: 'running', score}];
+context.renderBenchmarkTable();
+assert(elements['bm-tbody'].innerHTML.includes('Audit en cours'));
+assert(elements['bm-tbody'].innerHTML.includes('En cours</span>'));
+assert(!elements['bm-tbody'].innerHTML.includes('F1 final'));
+assert(!elements['bm-tbody'].innerHTML.includes('Audit final indisponible'));
+assert(elements['bm-selected-run'].innerHTML.includes('données affichées sont intermédiaires'));
+
 elements['bm-tbody'].innerHTML = '';
 context._bmData = [{...row, id: 'legacy', score: {
   ...score, evidence_contract_compatible: false, metrics_compatibility_reason: 'legacy',

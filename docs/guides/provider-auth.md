@@ -52,6 +52,9 @@ bloquées ; les lancements de scénarios et batches restent accessibles. La CLI 
 
 ## Fournisseurs d’exécution
 
+Pour le point d’accès `ollama-umons`, le choix des modèles et les commandes de
+diagnostic, consulter le [guide LLM UMONS](umons-llm.md).
+
 OpenRouter, Codex et Anthropic ne sont plus des fournisseurs exécutables dans
 LANCE : CLI, worker, API de lancement et évaluation LLM les refusent explicitement.
 Le pont d’exécution Codex est supprimé. Leurs anciennes lignes dans le registre

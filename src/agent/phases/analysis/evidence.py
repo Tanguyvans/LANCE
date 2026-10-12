@@ -1,9 +1,68 @@
 """Normalize finding structure and tool suggestions without inventing observations."""
 from __future__ import annotations
+import os
 import re
 from urllib.parse import urlsplit
 from src.benchmark.tool_registry import available_tool_names
 from src.agent.exploit_evidence import extract_endpoint_paths as _extract_endpoint_paths
+
+
+SCAN_EVIDENCE_ENTRY_MAX_CHARS = 2000
+
+
+def scan_evidence_entry_budget() -> int:
+    """Per-entry char budget for raw scanner evidence in model prompts."""
+    try:
+        value = int(str(os.environ.get("LANCE_PHASE3_SCAN_EVIDENCE_ENTRY_CHARS", "")).strip())
+    except (TypeError, ValueError):
+        return SCAN_EVIDENCE_ENTRY_MAX_CHARS
+    return value if value > 0 else SCAN_EVIDENCE_ENTRY_MAX_CHARS
+
+
+def _bound_tool_entries(entries: list, budget: int) -> list:
+    """Cut verbose raw tool output; entries without a long result pass through."""
+    kept = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            kept.append(entry)
+            continue
+        result = entry.get("result")
+        if isinstance(result, str) and len(result) > budget:
+            entry = {
+                **entry,
+                "result": result[:budget] + f"…[evidence truncated: {len(result)} chars total]",
+                "_evidence_truncated": True,
+            }
+        kept.append(entry)
+    return kept
+
+
+def bound_scan_evidence(scan_data: dict) -> dict:
+    """Bound raw scanner evidence for full-profile device prompts.
+
+    Accepts the device observation envelope (``scan_results`` plus the
+    untouched ``findings`` list) or a bare service map. Only verbose raw
+    tool output is cut, with an explicit marker and the original length;
+    service entries are never dropped and finding dicts (no ``result``
+    key) pass through unchanged, so nothing detected is hidden from the
+    analyzer. Compact projections keep their shape (already short).
+    """
+    if not isinstance(scan_data, dict):
+        return scan_data
+    budget = scan_evidence_entry_budget()
+    bounded: dict = {}
+    for key, value in scan_data.items():
+        if key == "scan_results" and isinstance(value, dict):
+            bounded[key] = {
+                service: _bound_tool_entries(entries, budget)
+                if isinstance(entries, list) else entries
+                for service, entries in value.items()
+            }
+        elif isinstance(value, list):
+            bounded[key] = _bound_tool_entries(value, budget)
+        else:
+            bounded[key] = value
+    return bounded
 
 
 def _sanitize_suggested_tools(
@@ -69,6 +128,11 @@ def _enrich_finding_structure(
                 finding[field] = ""
         if finding.get("endpoint") is None:
             finding["endpoint"] = ""
+        if "port" not in finding:
+            # The strict queue validator requires the key to be present
+            # (null is accepted and means "no observed port"). One model
+            # finding omitting it failed the whole Phase 3 aggregation.
+            finding["port"] = None
 
     service = str(finding.get("service", "")).strip().casefold()
     if service and not str(finding.get("protocol", "")).strip():
@@ -88,7 +152,18 @@ def _enrich_finding_structure(
         )
         if endpoints:
             finding["endpoints"] = endpoints
-            if not str(finding.get("endpoint", "")).strip():
+            primary = str(finding.get("endpoint", "")).strip()
+            # The singular field must identify one URL. Models sometimes
+            # put a comma-and-space separated list of paths there. Preserve
+            # its first path as primary and every path in the plural field;
+            # do not split valid commas inside a path or query string.
+            listed_paths = re.split(r",\s+(?=/)", primary)
+            if len(listed_paths) > 1 and all(
+                path.startswith("/") and not re.search(r"[\s?#]", path)
+                for path in listed_paths
+            ):
+                finding["endpoint"] = listed_paths[0]
+            elif not primary:
                 finding["endpoint"] = endpoints[0]
     if not str(finding.get("endpoint", "")).strip():
         text = f"{finding.get('details', '')} {finding.get('evidence', '')}"

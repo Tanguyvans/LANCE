@@ -1,5 +1,6 @@
 """Intrusion phase: common execution and evidence handling."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 import json
 import logging
 import re
@@ -8,9 +9,50 @@ from src.agent.phases.intrusion.compact import COMPACT_INTRUSION_FALLBACK_MAX_RO
 from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 from src.agent.phases.intrusion.evidence import finalize_synthesis
 from src.agent.phases.intrusion.observations import project_intrusion_observations
+from src.agent.evidence.capabilities import access_supported
 from src.agent.core import runtime
 
 log = logging.getLogger(__name__)
+
+
+# Tools that count as intrusion attempts: the same attempt classifier the
+# ledger synthesis uses (attempted vs merely observed). Any call counts —
+# even an errored one: the gate demands attempts, the synthesis judges them.
+INTRUSION_ACTION_TOOLS = frozenset({
+    "try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get",
+    "curl_headers", "telnet_connect", "ftp_list",
+})
+
+INTRUSION_CONTEXT_FILE = "05_intrusion_context.json"
+
+
+def _phase5_ledger_attempts(run_dir) -> int:
+    """Count Phase 5 action-tool calls in the tool ledger."""
+    try:
+        lines = (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return 0
+    count = 0
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if record.get("phase") not in (5, "5"):
+            continue
+        if record.get("tool") in INTRUSION_ACTION_TOOLS:
+            count += 1
+    return count
+
+
+def _phase5_entry_points(run_dir) -> list:
+    """Entry points staged for Phase 5; [] when unknown (fail-open)."""
+    try:
+        context = json.loads((run_dir / INTRUSION_CONTEXT_FILE).read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        return []
+    entries = context.get("entry_points") if isinstance(context, dict) else None
+    return [entry for entry in entries] if isinstance(entries, list) else []
 
 
 def _normalize_credential_service(value: object) -> object:
@@ -87,6 +129,61 @@ class IntrusionPhase:
             "transition_evidence_available": observations["transition_evidence_available"],
         }
         return data
+
+    def _apply_intrusion_noop_gate(self, tools: list[dict], deliverable_file: str) -> list[dict]:
+        """Refuse a terminal finish while no intrusion action was attempted.
+
+        The full-profile agent may otherwise end after read-only turns with
+        entry points untouched (S12 run 2026-10-07_211430: 6 turns, 12
+        reads, 0 attempts → blocked). The gate reuses the ledger attempt
+        classifier and the staged entry points: with entry points to try
+        and zero attempts, the save is refused with guidance; otherwise the
+        save passes untouched. Stops, dry runs, missing context, and tool
+        surfaces without action tools fail open — downstream validation
+        keeps judging those cases. The existing turn budget still bounds
+        the phase: the gate redirects, never loops.
+        """
+        event = getattr(self, "_stop_event", None)
+        if (event is not None and event.is_set()) or getattr(self, "dry_run", False):
+            return tools
+        if not any(
+            tool.get("name") in INTRUSION_ACTION_TOOLS
+            for tool in tools if isinstance(tool, dict)
+        ):
+            return tools
+        gated: list[dict] = []
+        for tool in tools:
+            if tool.get("name") != "save_deliverable" or not callable(
+                tool.get("function")
+            ):
+                gated.append(tool)
+                continue
+            original_save = tool["function"]
+            run_dir = self.run_dir
+
+            def gated_save(*args, _original=original_save, **kwargs):
+                filename = kwargs.get("filename")
+                if len(args) > 0 and filename is None:
+                    filename = args[0]
+                if filename != deliverable_file:
+                    return _original(*args, **kwargs)
+                if _phase5_entry_points(run_dir) and not _phase5_ledger_attempts(run_dir):
+                    return json.dumps({
+                        "ok": False,
+                        "error_kind": "intrusion_no_action",
+                        "error": (
+                            "Finish refused: no intrusion action attempted yet "
+                            "while entry points remain. Attempt at least one "
+                            "entry point (ssh_login, try_credential, "
+                            "mqtt_listen, http_get, telnet_connect, ftp_list, "
+                            "ssh_exec, curl_headers) before saving the "
+                            "terminal deliverable."
+                        ),
+                    })
+                return _original(*args, **kwargs)
+
+            gated.append({**tool, "function": gated_save})
+        return gated
 
     def _phase5_finish_submitted(self, filename: str) -> bool:
         """Return whether a Phase 5 finish marker was submitted in this run.
@@ -383,15 +480,7 @@ class IntrusionPhase:
                 ip = _target_from_tool(str(tool or ""), args)
                 if tool in {"try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and ip:
                     attempted.add(ip)
-                stdout = str(res.get("stdout") or res.get("output") or "") if isinstance(res, dict) else ""
-                authenticated = (
-                    isinstance(res, dict)
-                    and res.get("authenticated", True) is not False
-                    and (
-                        res.get("success") is True
-                        or (tool == "ssh_login" and (res.get("return_code") == 0 or re.search(r"\buid=\d+", stdout.casefold())))
-                    )
-                )
+                authenticated = access_supported(rec)
                 if tool in {"try_credential", "ssh_exec", "ssh_login"}:
                     supplied_credential = _credential_from_tool(str(tool), args)
                     if supplied_credential not in allowed_credentials:
@@ -465,6 +554,7 @@ class IntrusionPhase:
             "chains": chains,
         }
 
+    @graph_bound
     def _generate_intrusion_context(self) -> None:
         """Pre-generate 05_intrusion_context.json for the intrusion agent.
 
@@ -877,5 +967,8 @@ class IntrusionPhase:
             "hops": 0,
         })
 
-def run(context, config, stream_callback=None):
-    return context._run_agent(config, stream_callback)
+@graph_bound
+def run(context, config=None, stream_callback=None):
+    from src.agent.phases.context import phase_context
+    explicit = phase_context(context, config, stream_callback)
+    return explicit.services.execute(explicit.config, explicit.emit)

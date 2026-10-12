@@ -13,6 +13,8 @@ from uuid import uuid4
 from src.agent.phases.intrusion.compact import CompactIntrusionPhase
 from src.agent.core import runtime
 from src.agent.phases.registry import run_phase
+from src.agent.core.run_context import RunContext
+from src.agent.core.graph_context import graph_bound
 from src.agent.phases.graph.run import GraphPhase
 from src.agent.phases.graph.compact import CompactGraphPhase
 from src.agent.phases.graph.recovery import GraphRecoveryPhase
@@ -155,7 +157,6 @@ class Pipeline(
         self.cve_lookup_policy = (
             "cache_only" if self.benchmark_split != "unassigned" or experiment_scope else "live_on_miss"
         )
-        runtime.set_cve_cache_only(self.cve_lookup_policy == "cache_only")
         self.manage_scenario = bool(manage_scenario)
         self._generated_deployment: runtime.GeneratedScenarioDeployment | runtime.ManualScenarioDeployment | None = None
         self.auto_teardown = auto_teardown
@@ -229,8 +230,10 @@ class Pipeline(
             except FileExistsError:
                 self.run_dir = output_root / f"{timestamp}_{uuid4().hex[:12]}"
         self.git_commit = runtime._get_git_commit()
+        self.run_context = RunContext(self.run_dir)
 
     @serialized_lab
+    @graph_bound
     def run(
         self,
         stream_callback: Callable[[dict], None] | None = None,
@@ -243,6 +246,7 @@ class Pipeline(
         self._scenario_owned = False
         self._active_phase = None
         self._run_results: dict[str, str] = {}
+        self.terminal_event: dict | None = None
         primary_error = None
         self._run_error_diagnostic = None
         lifecycle_error = None
@@ -412,6 +416,24 @@ class Pipeline(
             except (Exception, KeyboardInterrupt, SystemExit) as exc:
                 capture_lifecycle_error("run_persistence", exc)
 
+            # Keep the authoritative outcome available to API callers even
+            # when the original execution exception is re-raised after cleanup.
+            total_cost = None
+            try:
+                raw_total_cost = self.tracker.total_cost()
+                total_cost = round(raw_total_cost, 4) if raw_total_cost is not None else None
+            except Exception:
+                log.exception("Could not calculate final usage cost")
+            self.terminal_event = {
+                "type": "pipeline_done",
+                "results": dict(self._run_results) if primary_error is not None else results,
+                "status": status, "cleanup_status": cleanup,
+                "total_cost_usd": total_cost,
+                "usage_status": usage_status,
+                "metadata_status": metadata_status,
+                "run_dir": str(self.run_dir),
+            }
+
             # If a lifecycle-only interruption happened after a successful
             # execution, report the terminal state then re-raise it. An
             # execution exception already in flight always wins.
@@ -419,20 +441,7 @@ class Pipeline(
                 raise lifecycle_error.with_traceback(lifecycle_error.__traceback__)
 
         if stream_callback:
-            total_cost = None
-            try:
-                raw_total_cost = self.tracker.total_cost()
-                total_cost = round(raw_total_cost, 4) if raw_total_cost is not None else None
-            except Exception:
-                log.exception("Could not calculate final usage cost")
-            stream_callback({
-                "type": "pipeline_done", "results": results,
-                "status": status, "cleanup_status": cleanup,
-                "total_cost_usd": total_cost,
-                "usage_status": usage_status,
-                "metadata_status": metadata_status,
-                "run_dir": str(self.run_dir),
-            })
+            stream_callback(dict(self.terminal_event))
         return results
 
     def _persist_run(self, status: str) -> None:
@@ -460,6 +469,7 @@ class Pipeline(
         except Exception as exc:
             log.warning("DB run persistence failed (non-fatal): %s", exc)
 
+    @graph_bound
     def _execute_run(
         self,
         stream_callback: Callable[[dict], None] | None = None,
@@ -492,7 +502,7 @@ class Pipeline(
         elif self.scenario_id is not None:
             from src.agent.tools.graph_tools import load_scenario_topology
             lab = load_scenario_topology(self.scenario_id)
-            from src.agent.tools.graph_tools import _scenario_topology as _st_post
+            _st_post = self.run_context.graph.scenario_topology
             _subnets = (_st_post or {}).get("subnets", [runtime.BENCHMARK_SUBNET])
             target_subnet = " ".join(_subnets) if len(_subnets) > 1 else (_subnets[0] if _subnets else runtime.BENCHMARK_SUBNET)
             # Initialize weighted attack graph for disbalance computation
@@ -516,7 +526,8 @@ class Pipeline(
         }
 
         # Build compact edge list from whatever topology is available
-        from src.agent.tools.graph_tools import _scenario_topology as _st, _backend as _bk
+        _st = self.run_context.graph.scenario_topology
+        _bk = self.run_context.graph.backend
         if _st is not None:
             edges = _st.get("edges", [])
             self.context["network_topology_edges"] = "\n".join(

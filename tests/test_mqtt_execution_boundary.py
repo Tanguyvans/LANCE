@@ -23,7 +23,7 @@ def boundary(tmp_path, monkeypatch):
     run = SimpleNamespace(
         run_dir=tmp_path, _artifact_log_lock=Lock(), max_tool_calls=None,
         _tool_call_count=0, context={"target_subnet": "192.0.2.0/24"},
-        tracker=SimpleNamespace(check_budget=Mock()),
+        tracker=SimpleNamespace(check_budget=Mock(), record_execution=Mock()),
         _stop_event=Event(), benchmark_split="dev-public",
         _exploit_tool_context=SimpleNamespace(vulnerability={
             "vuln_id": "fixture", "device_ip": "192.0.2.11", "port": 1883,
@@ -52,6 +52,7 @@ def test_requested_and_effective_destination_are_both_archived(boundary, profile
     assert receipt["stdout"] == "sensors/temp 22\n"
     assert receipt["stderr"] == "Timed out\n"
     assert receipt["return_code"] == 27
+    assert run.tracker.record_execution.call_args.kwargs["error"] is False
     assert receipt["execution_attestation"] == {
         "protocol": "TCP", "host": "192.0.2.11",
         "port": effective_port, "topic": "sensors/#",

@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "report_revision": "2026-10-07 14:43 (Europe/Brussels, UTC+02:00)",
+  "research_start": "2026-09-27",
+  "scope": "Exploratory method design; no LANCE/LLM/laboratory run; no comparative performance result",
+  "git_head_at_read": "a8dbeb9404f0cad960d61e42f02a1d70ca143a59",
+  "checkout_state": "Locally modified with pre-existing merge conflicts; HEAD alone is insufficient. Hashes identify selected files at source-register creation, not a complete execution environment.",
+  "sources": [
+    {
+      "id": "hernan",
+      "title": "Causal Inference: What If",
+      "authors": "Miguel A. Hernán; James M. Robins",
+      "url": "https://www.hsph.harvard.edu/miguel-hernan/wp-content/uploads/sites/1268/2024/04/hernanrobins_WhatIf_26apr24.pdf",
+      "publication_date_or_version": "2020; PDF version dated 2024-04-26",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Section 2.1 Randomization, indexed excerpt from primary Harvard PDF; author book landing page.",
+      "limits": "Full PDF access failed via web tool; other chapters not used. No experiment reproduced; epidemiological examples are not empirical LANCE evidence.",
+      "contribution": "Motivates a well-defined contrast and randomized/controlled allocation; application to shared software observations is proposed by this study."
+    },
+    {
+      "id": "lazic",
+      "title": "The problem of pseudoreplication in neuroscientific studies: is it affecting your analysis?",
+      "authors": "Stanley E. Lazic",
+      "url": "https://link.springer.com/article/10.1186/1471-2202-11-5",
+      "publication_date_or_version": "2010-01-14; BMC Neuroscience 11:5; DOI 10.1186/1471-2202-11-5",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Abstract, Background, repeated measurements and hierarchical structure sections in publisher HTML.",
+      "limits": "Neuroscience examples; no quantitative dependence estimate for LANCE, no statistical implementation validated.",
+      "contribution": "Motivates separating observations, repeated model responses, dossiers and families; avoiding pseudoreplication."
+    },
+    {
+      "id": "lakens",
+      "title": "Equivalence Tests: A Practical Primer for t Tests, Correlations, and Meta-Analyses",
+      "authors": "Daniël Lakens",
+      "url": "https://pure.tue.nl/ws/portalfiles/portal/80918653/lakeequi2017.pdf",
+      "publication_date_or_version": "2017; publisher version; Social Psychological and Personality Science 8(4):355–362; DOI 10.1177/1948550617697177",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Testing for Equivalence; Setting Equivalence Bounds; Discussion, with introductory statements about nonsignificance.",
+      "limits": "No TOST/power computation run. Generic t-test formula does not automatically fit bounded, clustered LANCE metrics; adapted inferential design remains required.",
+      "contribution": "Distinguishes nonsignificance from equivalence and non-inferiority; motivates prespecified useful margins and uncertainty."
+    },
+    {
+      "id": "barr",
+      "title": "The Oracle Problem in Software Testing: A Survey",
+      "authors": "Earl T. Barr; Mark Harman; Phil McMinn; Muzammil Shahbaz; Shin Yoo",
+      "url": "https://discovery.ucl.ac.uk/1471263/1/06963470.pdf",
+      "publication_date_or_version": "2015-05; IEEE TSE 41(5):507–525; DOI 10.1109/TSE.2014.2372785; PDF notes current version 2015-05-15",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Publisher PDF on UCL: abstract, introduction, sections 2.1–2.3, soundness/completeness, discussion of partial/metamorphic oracle in introduction. UCL metadata page.",
+      "limits": "Not a systematic reanalysis of the survey corpus; techniques not reproduced. Independent LANCE oracle and invariance labels remain to be built/validated.",
+      "contribution": "Separates correct system configuration from partial evidence oracle; motivates independent annotation, trace adequacy and metamorphic control."
+    },
+    {
+      "id": "sculley",
+      "title": "Hidden Technical Debt in Machine Learning Systems",
+      "authors": "D. Sculley et al.",
+      "url": "https://proceedings.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf",
+      "publication_date_or_version": "2015; Advances in Neural Information Processing Systems 28",
+      "consulted_at": "2026-10-07",
+      "read_scope": "Sections 3, 5, 6, 7 and 9 in proceedings PDF; abstract metadata.",
+      "limits": "Engineering observations, not a pricing model and not an empirical cost comparison of LANCE. No numerical claim imported.",
+      "contribution": "Motivates development/maintenance/configuration/dependency cost accounting alongside inference cost."
+    }
+  ],
+  "local_files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "2c2e415a97c6b7889850aecc3c8e96982a7ce3feec09dc023d6fac7b9f17787a",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "research/README.md",
+      "sha256": "808a26006ae5f9e36aae2b30ac002b7e6ffa6f44030da8b17b12dc1c146496e5",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "docs/README.md",
+      "sha256": "6efd78aa54c3f2a5fd10cfba93353eb49e364ee5688e0360057ec81dbfbc7be9",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/README.md",
+      "sha256": "7ba9d0b855429ec482f41ff4d77fc21dff1d6ab101d7d9a1ffedc91607854091",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/protocol.md",
+      "sha256": "5ff4797f4c11bf958b42c8574f44dd4fd68ef10de000379c44599ae8acf35fa1",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/implementation-plan.md",
+      "sha256": "c9455884d47a183b7a5895d71482d38d5189d9bbcc4ecf73a5ae440c365560b6",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/state-of-the-art.md",
+      "sha256": "065403b357878b6decc11eda7f64cd143866af651e756555af124b37b98f5716",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/analysis.md",
+      "sha256": "bbea785aa43afdf218da7d960b65792db77be347159ad6110c0e002bf7028a02",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "docs/benchmark/agent-vs-automation-cli.md",
+      "sha256": "9d47324c083ca6abbdf57f9c68364d6f04f8e5381232600747b649f05feeb508",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "docs/benchmark/agent-vs-automation-campaign.md",
+      "sha256": "84208a3feaf562682688a9db996df76b9d485feead4c0ded5b4925b583c3361f",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "research/2026-10-07-methodes-audit/protocole.tex",
+      "sha256": "69665730eccf00af403605f3167d71c2744efac519a2d93022d830cf0dfe1fdc",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/phases/rules.py",
+      "sha256": "ae7ec1843a104e8b2be6a80d9358bf462f125f3eee87928906793f578c8183ff",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/phases/analysis/run.py",
+      "sha256": "f35ecba24502d81ecb6a3d6e65aada9e38053e60bbdfb93d5c928b6a65986426",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/phases/analysis/scan.py",
+      "sha256": "f225830969ce46c4593c5cc80f64c0cb908366823301303c1ada1ad77d08d9a3",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/phases/analysis/devices.py",
+      "sha256": "8617296f76adab4222da18b96b5e444340f1e1d1c298928eb3dfabcba9320f9d",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/phases/analysis/supplemental.py",
+      "sha256": "704d7b00ad7411bb3c6a6658a39ca340781e451011f4f53bc0c83724685af5e1",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation_loading.py",
+      "sha256": "b6f543021df162d84c8833300f09061aa101e85a423afe62c5473c029115a483",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation.py",
+      "sha256": "258df70314f5ec00fc3dfc38c73a170080f5616bc6abf52b95a6176c6f163e22",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/phases/verification/rules.py",
+      "sha256": "dba61d0b2550dc7d38fe86fbbba026aa498814b7f0b6da6a219787cc4d768c45",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/audit_experiment.py",
+      "sha256": "9a1575bea290f7157458de62e8467c5b0aa3a8bfa485fe1d5edb18174e57a4fa",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/scanner.py",
+      "sha256": "d31a84504c06837f065dfa491242bca60afe08c0827b0257a6b21a3f07a05f56",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/benchmark/compare_policies.py",
+      "sha256": "ffb175621761c7d6afe26c0151488db977080e8f51539b7fa76a8b327f0ac506",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/benchmark/policy_campaign.py",
+      "sha256": "09b094f0a80c7d526ac2a4221cac67f4b52293b72d29849a209820f537b47d8a",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/benchmark/metric_contract.py",
+      "sha256": "9b2935fa41d013d71280f8e81719931d131a57a8d2f3ed098011f6f3ceffec09",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/exploit_evidence.py",
+      "sha256": "9edace119c05b9f2186fad4f15821c9cc29c025443be17396a3a152e429fc802",
+      "scope": "targeted static reading; no application import or execution"
+    },
+    {
+      "path": "src/agent/phases/verification/run.py",
+      "sha256": "eb7cb2a876c7fbb679202977599bba13ae5351df7a281eabc7f875d02e3c5381",
+      "scope": "targeted static reading; no application import or execution"
+    }
+  ],
+  "static_check": {
+    "interpreter": "Python 3.11.9",
+    "method": "ast.parse on selected Python source bytes; no imports",
+    "syntax_errors_at_merge_markers": [
+      "src/benchmark/metric_contract.py:9",
+      "src/agent/phases/verification/run.py:568"
+    ],
+    "other_limit": "src/agent/exploit_evidence.py includes merge markers at lines 1622+; Python 3.11 parsing first stops on a Python-3.12-compatible f-string at line 1157, which is not asserted to be a runtime-target defect.",
+    "interpretation": "Not a Python 3.12 validation or proof of current importability; historical tests not rerun."
+  },
+  "independent_review_corrections": {
+    "reviewed_version": "2026-10-07 14:22 (Europe/Brussels, UTC+02:00)",
+    "status": "Author corrections incorporated; corrected PDF awaiting independent verification",
+    "scope": [
+      "Separate T_state and T_evidence labels; two recall denominators, incomplete dossiers and abstentions retained.",
+      "Normative access matrix remains legitimate common input; private non-conformity label is withheld.",
+      "Source-dossier identity controlled; report omissions/hallucinations remain measured outcomes and costs.",
+      "All-healthy F1 defined by explicit formula and zero-denominator convention; false positives and specificity primary.",
+      "Normalized semantic contrast separated from raw parser robustness; raw parsing failures retained.",
+      "Families defined by shared generators/services/structures; private test does not certify absence of pretraining contamination."
+    ]
+  }
+}

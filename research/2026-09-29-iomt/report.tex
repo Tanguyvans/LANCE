@@ -1,0 +1,353 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\frenchsetup{SmallCapsFigTabCaptions=false}
+\usepackage{lmodern,microtype}
+\usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
+\usepackage{graphicx,booktabs,array,tabularx,longtable,float}
+\usepackage{xcolor,tikz}
+\usepackage{enumitem,titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=sfigBlue,pdfauthor={Projet LANCE},pdflang={fr-FR}}
+\urlstyle{same}
+\setlength{\parindent}{1.2em}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{2em}
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+\setlist{nosep,leftmargin=5mm,topsep=3pt}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\?\do\&\do\=\do\:\do\,}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\code}[1]{{\small\ttfamily\path{#1}}}
+\newcommand{\evidence}[1]{\par\smallskip{\small\color{sfigMuted}\textbf{Preuve / limite.} #1}\par\smallskip}
+\titleformat{\section}{\Large\bfseries}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.7em}{}
+\titlespacing*{\section}{0pt}{16pt}{7pt}
+\titlespacing*{\subsection}{0pt}{11pt}{5pt}
+\pagestyle{plain}
+\setcounter{tocdepth}{1}
+
+% Reusable TikZ styles for sober scientific figures.
+% Required packages: xcolor, tikz.
+% Required TikZ libraries: arrows.meta, positioning, fit, calc.
+
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+
+\definecolor{sfigInk}{HTML}{1F242C}
+\definecolor{sfigMuted}{HTML}{5C626C}
+\definecolor{sfigLine}{HTML}{D9DEE5}
+\definecolor{sfigNeutral}{HTML}{F7F8FA}
+\definecolor{sfigBlue}{HTML}{1D5C96}
+\definecolor{sfigBlueLine}{HTML}{93B1CD}
+\definecolor{sfigBlueFill}{HTML}{EFF6FC}
+\definecolor{sfigRaspberry}{HTML}{AF0032}
+\definecolor{sfigRoseLine}{HTML}{DB8CA3}
+\definecolor{sfigRoseFill}{HTML}{FDF0F4}
+
+\tikzset{
+  sfig diagram/.style={
+    >=Latex,
+    node distance=10mm and 12mm,
+    every node/.style={font=\sffamily\small,text=sfigInk}
+  },
+  sfig base/.style={
+    draw=sfigLine,
+    fill=white,
+    rounded corners=2pt,
+    line width=0.55pt,
+    inner xsep=6pt,
+    inner ysep=4pt,
+    align=center
+  },
+  sfig input/.style={
+    sfig base,
+    draw=sfigBlueLine,
+    fill=sfigBlueFill
+  },
+  sfig process/.style={
+    sfig base,
+    draw=sfigRoseLine,
+    fill=sfigRoseFill
+  },
+  sfig neutral/.style={
+    sfig base,
+    fill=sfigNeutral
+  },
+  sfig focal/.style={
+    sfig base,
+    draw=sfigRaspberry,
+    fill=sfigRoseFill,
+    line width=0.75pt,
+    font=\sffamily\small\bfseries,
+    text=sfigRaspberry
+  },
+  sfig output/.style={
+    sfig neutral,
+    font=\sffamily\small\bfseries
+  },
+  sfig group/.style={
+    draw=sfigLine,
+    fill=none,
+    dashed,
+    rounded corners=3pt,
+    line width=0.5pt,
+    inner sep=6pt
+  },
+  sfig flow/.style={
+    -{Latex[length=2mm,width=1.2mm]},
+    draw=sfigMuted,
+    line width=0.6pt
+  },
+  sfig blue flow/.style={
+    -{Latex[length=2mm,width=1.2mm]},
+    draw=sfigBlue,
+    line width=0.68pt
+  },
+  sfig primary flow/.style={
+    -{Latex[length=2mm,width=1.2mm]},
+    draw=sfigRaspberry,
+    line width=0.78pt
+  },
+  sfig blocked/.style={
+    draw=sfigRaspberry,
+    dashed,
+    line width=0.68pt
+  },
+  sfig annotation/.style={
+    font=\sffamily\scriptsize,
+    text=sfigMuted,
+    align=center
+  },
+  sfig formula/.style={
+    font=\small,
+    text=sfigInk,
+    align=center
+  }
+}
+
+% Classical article front matter; standalone source for the native editor.
+\renewenvironment{abstract}
+  {\begin{quote}\small\noindent\textbf{Résumé.}\ }
+  {\par\end{quote}}
+\title{\bfseries LANCE : proposition de spécialisation IoMT\\[0.5em]\large\mdseries\itshape Périmètre simulé, vérification des preuves et évaluation comparative}
+\author{Projet LANCE}
+\date{Dernière révision : 1er octobre 2026 à 10:23\\[0.15em]\small Europe/Brussels (UTC+02:00)\\[0.4em]\small Proposition de TFE ; aucun résultat expérimental}
+\hypersetup{pdftitle={LANCE : proposition de spécialisation IoMT}}
+\begin{document}
+\maketitle
+\begin{abstract}
+Cette proposition de travail de fin d'études (TFE) examine comment adapter LANCE,
+un outil d'audit autorisé de l'Internet des objets (IoT), à des services médicaux
+simulés de l'Internet of Medical Things (IoMT). La relecture de la proposition
+historique fait apparaître trois points à préciser : services effectivement
+couverts, preuves attendues et portée des conclusions. Le travail proposé
+consiste à construire des scénarios vulnérables et durcis, puis à comparer la
+version généraliste et la version spécialisée à ressources comparables.
+Les observations passives et les actions actives de laboratoire sont évaluées
+séparément. Un éventuel bénéfice technique reste à mesurer ; le banc virtuel
+ne valide ni la sûreté d'un dispositif médical réel ni un déploiement hospitalier.
+\end{abstract}
+\clearpage
+\begingroup\small\tableofcontents\endgroup
+\clearpage
+
+\section{Question et périmètre}
+La question est de savoir si une spécialisation IoMT améliore la découverte des
+services et la confirmation des propriétés de sécurité sur un banc simulé,
+par rapport à la version généraliste de LANCE. L'amélioration est une hypothèse,
+pas une conséquence garantie de l'ajout de connaissances médicales.
+
+Le périmètre envisagé comprend des services d'imagerie, de messages cliniques
+et de télémétrie, alimentés par des données synthétiques. Il ne comprend aucun
+patient, dispositif de soin réel ou donnée de santé réelle. Les essais futurs
+restent à autoriser explicitement et ciblent nato/pve-nato selon le guide du
+dépôt~\cite{repo}. Aucune infrastructure n'a été modifiée pour cette relecture.
+
+Un grand modèle de langage (LLM) peut participer aux décisions de LANCE.
+La présente comparaison porte sur la spécialisation du système complet ; elle
+n'isole pas automatiquement l'apport causal du modèle. Pour cette autre question,
+le protocole agent/automatisation compare D1, politique à règles sans LLM,
+et A1, agent avec LLM, dans un périmètre borné~\cite{agent}.
+
+\section{Méthode de la relecture et provenance}
+La date de rédaction de la proposition initiale est inconnue. Le dossier a été
+classé le 29 septembre 2026 ; cette date ne constitue pas une date d'expérience.
+La présente révision relit \code{subject.md}, les conventions de recherche et
+les pages de référence sur les scénarios et l'évaluation. La base du checkout
+est \code{5f78e5c9eba4dbbe51ce91c08176a50b611928e1}, avec des modifications
+documentaires locales ; ce SHA ne représente pas à lui seul les textes révisés.
+
+Le document Word \code{subject.docx} est conservé comme version historique.
+Son contenu n'a pas été rendu ni corrigé lors de cette révision. Le présent
+rapport et sa source LaTeX portent le cadre révisé. Le README sert de résumé
+et de navigation ; \code{subject.md} et \code{subject.docx} conservent la
+proposition historique. Aucun code IoMT, service réseau, rôle Ansible ou score
+n'a été validé par cette relecture.
+
+Deux sources primaires ont été consultées le 1er octobre 2026 : la section de
+sécurité DICOM PS3.15 B.12, version 2026d~\cite{dicom}, et les sections HTTP et
+DICOM de la documentation de sécurité Orthanc~\cite{orthanc}. Elles servent à
+préciser ce qui devra être testé. Cette lecture ciblée n'est ni une revue
+exhaustive des normes médicales ni une validation clinique.
+
+\section{Constats et points à clarifier}
+La proposition historique mélangeait la vérification dite non intrusive et
+un chemin comprenant compromission et pivot. Une observation passive lit une
+trace déjà disponible ; une requête active sollicite un service, même si elle
+ne vise pas à le modifier. Une action de compromission ou une modification de
+service appartient à une autre classe d'essai. Leur présence dans un banc
+simulé ne prouve pas leur innocuité sur un appareil médical.
+
+La présence d'un protocole n'est pas, à elle seule, une faille. DICOM décrit un
+profil de transport sécurisé par TLS~\cite{dicom}. Orthanc distingue la sécurité
+de son interface HTTP et celle de son serveur DICOM~\cite{orthanc}. Le scénario
+doit donc préciser interface, identité, opération et résultat attendu avant de
+qualifier une exposition. Une simple bannière de service ne prouve pas un défaut
+d'authentification, ni une fuite de données.
+
+La pondération clinique envisagée n'est pas le score principal actuel de LANCE.
+Ce dernier repose sur le F1 final des confirmations ; les scores de sévérité
+restent distincts~\cite{evaluation}. Une nouvelle grille clinique serait un
+instrument de recherche à construire et à faire valider, sans modifier
+implicitement ce contrat logiciel.
+
+\section{Services et propriétés proposés}
+Le tableau~\ref{tab:scope} distingue les rôles applicatifs et les limites du
+banc envisagé. Il ne décrit pas des extensions déjà disponibles.
+PACS désigne un système d'archivage et de communication des images ; DICOM le
+standard utilisé pour les données d'imagerie. HL7 désigne une famille de standards
+d'échange de données cliniques. MQTT est un protocole de publication/abonnement ;
+BLE désigne Bluetooth Low Energy.
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{31mm}YY@{}}\toprule
+Rôle proposé & Propriété à tester & Limite de représentation \\\midrule
+Imagerie PACS / DICOM & Lecture ou transfert autorisé/refusé, chiffrement de l'interface effectivement utilisée. & Orthanc ne représente pas tous les équipements d'imagerie ; distinguer DICOM et API HTTP. \\
+Messages HL7 & Règles d'accès et de traitement d'un profil et d'un transport fixés avant test. & Version des messages et transport à choisir ; un parseur permissif ne suffit pas à définir une injection. \\
+Télémétrie MQTT & Accès à un topic synthétique selon l'identité, lecture autorisée et refus témoin. & Aucun moniteur clinique réel ni preuve de fidélité physiologique. \\
+Moniteur ou pompe émulés & Authentification et propriété applicative explicitement simulée. & Une API HTTP ne représente pas la sûreté physique d'une pompe ni son firmware réel. \\
+BLE & Hors du premier périmètre proposé. & La couche radio du banc envisagé reste non validée ; une émulation TCP ne prouverait pas sa couverture. \\\bottomrule
+\end{tabularx}
+\caption{Périmètre envisagé : chaque propriété exige un attendu positif, un contrôle négatif et une preuve propre à l'interface.}\label{tab:scope}
+\end{table}
+
+Pour chaque cas, la vérité terrain (\emph{ground truth}, GT) décrit la propriété
+attendue et reste réservée à l'évaluateur. Un contrôle négatif exige un
+comportement sain précis, par exemple refuser la lecture d'un topic à une
+identité limitée. Conserver des cas entièrement durcis pour mesurer les
+fausses alertes ; un scénario contenant quelques contrôles sains ne suffit pas.
+
+Le chemin poste soignant--télémétrie--PACS reste une \emph{hypothèse de scénario}.
+La topologie, les accès et les dépendances doivent le rendre possible ; aucune
+relation réseau ne se déduit des seuls rôles médicaux. Les expériences de pivot
+sont facultatives et distinctes du premier audit de services. Elles exigeraient
+une preuve de transition depuis une session source et un contrôle d'absence
+d'accès direct, conformément aux limites déjà étudiées~\cite{benchmark}.
+
+\section{Protocole d'évaluation proposé}
+La figure~\ref{fig:protocol} présente l'ordre de travail. Chaque étape reste
+proposée, y compris la construction et le déploiement des services.
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[sfig diagram]
+\node[sfig input,text width=27mm,minimum height=15mm] (scope) at (0,0) {Propriétés\\et preuves};
+\node[sfig base,text width=28mm,minimum height=15mm] (cases) at (4.1,0) {Cas vulnérables\\et durcis};
+\node[sfig focal,text width=28mm,minimum height=15mm] (pair) at (8.2,0) {Audits\\appariés};
+\node[sfig output,text width=28mm,minimum height=15mm] (results) at (12.3,0) {Résultats\\et limites};
+\draw[sfig flow] (scope) -- (cases);
+\draw[sfig primary flow] (cases) -- (pair);
+\draw[sfig flow] (pair) -- (results);
+\end{tikzpicture}
+\caption{Évaluation proposée : comparer les deux versions sur les mêmes états initiaux, après validation des propriétés et des preuves. Aucun gain n'est présumé.}\label{fig:protocol}
+\end{figure}
+
+\subsection{Comparaison principale}
+Figer une version généraliste et une version spécialisée, puis les exécuter sur
+les mêmes instances et états initiaux restaurés. Conserver le même modèle,
+les mêmes paramètres et des plafonds comparables de durée et de charge réseau.
+Documenter les outils et connaissances ajoutés : ce contraste mesure leur effet
+combiné. Une comparaison supplémentaire où seuls les prompts changent pourrait
+isoler leur contribution, si les mêmes observations et outils restent accessibles.
+
+Séparer les cas utilisés pour le développement de variantes réservées avant
+les réglages. Définir les répétitions à partir d'un pilote et de sa variance ;
+aucun nombre d'essais n'est justifié à ce stade. Enregistrer échecs, exclusions,
+états incomplets et coûts, avec une règle de disponibilité fixée avant lecture
+des résultats. Une mesure manquante ne devient pas un zéro.
+
+\subsection{Mesures et qualification des preuves}
+Un vrai positif (VP) est une propriété attendue correctement confirmée avec
+la preuve exigée. Pour $N$ prédictions dédupliquées et $G>0$ propriétés positives
+attendues, le contrat actuel donne précision $VP/N$ si $N>0$, rappel $VP/G$ et
+F1 $2VP/(N+G)$~\cite{evaluation}. Le F1 combine la précision et le rappel.
+Sur les cas entièrement sains, analyser séparément les fausses alertes : leur
+rappel et leur F1 restent indisponibles dans ce contrat.
+
+Mesurer aussi couverture des services, taux de preuves acceptables, durée,
+charge de sondage et coût total, y compris les essais échoués. Les observations
+passives, requêtes actives de lecture et actions modifiant un service sont
+rapportées séparément. Une grille d'impact clinique serait secondaire,
+préenregistrée et revue avec des personnes qualifiées ; aucun score clinique
+n'est retenu dans cette proposition.
+
+Chaque propriété simulée exige un validateur et des contre-exemples : réponse
+d'aide, observation d'une mauvaise identité, ou simple déclaration de succès
+ne doivent pas recevoir automatiquement le crédit d'une confirmation.
+La revue des traces doit être indépendante de la politique comparée.
+
+\subsection{Conditions de reproduction et livrables}
+Avant toute expérience, conserver code et modifications locales, images et
+versions de services, topologie, données synthétiques, identités de test,
+contrats de preuve, configuration des modèles, budgets, ordre des essais et
+attestation de remise à zéro. Référencer ensuite les identifiants de runs et
+leurs artefacts, sans publier de secret. Aucun de ces artefacts expérimentaux
+n'existe à ce stade pour la spécialisation proposée.
+
+Les livrables envisagés sont une extension logicielle, des scénarios
+reproductibles, une analyse comparative et un rapport de limites. Leur
+validation logicielle et leur évaluation expérimentale seront rapportées
+séparément. Une proposition déclarative de scénario ne garantit ni son
+déploiement ni la présence des propriétés attendues.
+
+\section{Discussion et limites}
+Le banc virtuel permettrait d'évaluer des propriétés réseau et applicatives
+explicitement simulées. Il ne reproduit pas automatiquement comportement radio,
+firmware, matériel, contraintes temporelles cliniques ou effets sur un patient.
+Un gain sur ces services ne permettrait pas d'annoncer la sûreté d'un audit en
+soins, une conformité réglementaire ou l'aptitude à un déploiement hospitalier.
+
+Une spécialisation peut améliorer la couverture grâce à de nouveaux outils,
+à des règles ou à des connaissances de domaine, sans que le LLM soit la cause du
+gain. Les effets doivent être attribués au contraste effectivement réalisé.
+Des coûts ou fausses alertes accrus peuvent rendre le résultat défavorable ;
+une conclusion négative ou indéterminée reste admissible.
+
+La faisabilité des rôles médicaux, la définition du transport HL7, la capacité
+de durcissement de chaque service, les preuves de pivot et les pondérations
+cliniques restent à vérifier. Cette relecture documentaire ne les résout pas.
+
+\section{Conclusion et prochaines étapes}
+Le sujet peut être formulé comme une étude comparative de spécialisation sur
+services IoMT simulés. Les étapes prioritaires sont de choisir un petit ensemble
+de propriétés vérifiables, définir les preuves et les témoins durcis, confirmer
+la faisabilité du banc puis fixer le protocole avant expérimentation.
+L'extension BLE et les pivots doivent être étudiés séparément si leur utilité
+est justifiée. Les conclusions finales porteront sur les services testés et
+leurs limites ; les recommandations hospitalières resteront préliminaires,
+à valider dans un cadre distinct.
+
+\begin{thebibliography}{9}
+\phantomsection\addcontentsline{toc}{section}{Références}
+\interlinepenalty=10000
+\small
+\bibitem{repo} Projet LANCE. Guide du dépôt, conventions de recherche et description du pipeline. Documents locaux consultés le 1er octobre 2026, base de checkout \code{5f78e5c9eba4dbbe51ce91c08176a50b611928e1} avec modifications documentaires locales. \code{AGENTS.md}, \code{research/README.md}, \code{src/agent/phases/README.md}. La proposition IoMT reste une piste de recherche.
+\bibitem{evaluation} Projet LANCE. \emph{Évaluation et preuves V1}. Sections sur populations, métriques et qualification de preuve lues le 1er octobre 2026. \code{docs/benchmark/v1/evaluation.md}. Aucun score IoMT reproduit.
+\bibitem{agent} Projet LANCE. \emph{LANCE : mesurer l'apport des LLM}. Étude commencée le 27 septembre 2026 ; revue des constats du 29 septembre. \href{../2026-09-27-agent-vs-automation/report.pdf}{Rapport}. Protocole proposé, gain expérimental non établi.
+\bibitem{benchmark} Projet LANCE. \emph{Couverture et validité du benchmark}. Étude du 29 septembre 2026, limites de preuves de chemins et préparation des propriétés. \href{../2026-09-29-benchmark-coverage/report.pdf}{Rapport}. Aucun résultat clinique.
+\bibitem{dicom} DICOM Standards Committee. \emph{DICOM PS3.15 2026d, B.12 : BCP 195 RFC 8996, 9325 TLS Secure Transport Connection Profile}. Section B.12 lue le 1er octobre 2026 ; périmètre limité au profil de transport, pas à toute la norme. \url{https://dicom.nema.org/medical/dicom/current/output/chtml/part15/sect_B.12.html}. Le lien courant est évolutif.
+\bibitem{orthanc} Communauté Orthanc. \emph{Securing Orthanc}. Documentation vivante, date de publication non précisée ; sections de sécurité HTTP et DICOM lues le 1er octobre 2026. \url{https://orthanc.uclouvain.be/book/faq/security.html}. Aucun déploiement reproduit.
+\end{thebibliography}
+\end{document}

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 from src.agent.pipeline import Pipeline
 from src.agent.registry import AgentConfig, AGENTS
+from src.agent.core.graph_context import bind_graph_context
 
 
 def test_discovery_followup_maps_declared_ports_to_scanner_services():
@@ -19,13 +20,13 @@ class TestReconToolContract:
     ):
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        pipeline = Pipeline(provider=mock_provider)
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
             "nodes": [
                 {"id": "router", "ip": "192.168.100.1", "role": "router"},
                 {"id": "mqtt", "ip": "192.168.100.11", "role": "mqtt_broker"},
             ]
         })
-        pipeline = Pipeline(provider=mock_provider)
         pipeline.context = {"target_subnet": "192.168.100.0/24"}
 
         calls = []
@@ -72,7 +73,7 @@ class TestReconToolContract:
         guarded["arp_scan"]()
         guarded["nmap_discovery"](target="192.168.100.0/24")
         guarded["read_deliverable"](filename="01_graph_analysis.md")
-        for item in pipeline._recon_scan_plan(graph_tools._scenario_topology["nodes"]):
+        for item in pipeline._recon_scan_plan(pipeline.run_context.graph.scenario_topology["nodes"]):
             guarded["nmap_scan"](
                 target=item["target"],
                 ports=item["ports"],
@@ -98,15 +99,15 @@ class TestReconToolContract:
     ):
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {
-            "nodes": [{
-                "id": "web", "ip": "192.168.100.12", "role": "web_server",
-            }]
-        })
         provider = MagicMock()
         provider.provider = "local-moe"
         provider.model = "lance-moe"
         pipeline = Pipeline(provider=provider, execution_profile=profile)
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
+            "nodes": [{
+                "id": "web", "ip": "192.168.100.12", "role": "web_server",
+            }]
+        })
         pipeline.context = {"target_subnet": "192.168.100.0/24"}
         read = MagicMock(return_value='{"content":"phase1"}')
 
@@ -134,7 +135,7 @@ class TestReconToolContract:
         guarded["nmap_discovery"](target="192.168.100.0/24")
         guarded["read_deliverable"](filename="01_graph_analysis.md")
         item = pipeline._recon_scan_plan(
-            graph_tools._scenario_topology["nodes"]
+            pipeline.run_context.graph.scenario_topology["nodes"]
         )[0]
         guarded["nmap_scan"](
             target=item["target"], ports=item["ports"], skip_discovery=True
@@ -156,10 +157,10 @@ class TestReconToolContract:
     ):
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        pipeline = Pipeline(provider=mock_provider)
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
             "nodes": [{"id": "web", "ip": "192.168.100.12", "role": "web_server"}]
         })
-        pipeline = Pipeline(provider=mock_provider)
         pipeline.context = {"target_subnet": "192.168.100.0/24"}
         failure = '{"stdout":"","stderr":"timeout","return_code":-1}'
 
@@ -185,7 +186,7 @@ class TestReconToolContract:
         guarded["nmap_discovery"](target="192.168.100.0/24")
         guarded["read_deliverable"](filename="01_graph_analysis.md")
         ports = pipeline._recon_scan_plan(
-            graph_tools._scenario_topology["nodes"]
+            pipeline.run_context.graph.scenario_topology["nodes"]
         )[0]["ports"]
 
         first = json.loads(guarded["nmap_scan"](
@@ -206,7 +207,8 @@ class TestReconToolContract:
         """A capable model may widen, split, reorder, and repeat its scans."""
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        pipeline = Pipeline(provider=mock_provider)
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
             "nodes": [
                 {"id": "router", "ip": "192.168.100.1", "role": "router"},
                 {"id": "mqtt", "ip": "192.168.100.11", "role": "mqtt_broker"},
@@ -214,7 +216,6 @@ class TestReconToolContract:
                 {"id": "ssh", "ip": "192.168.100.13", "role": "ssh_server"},
             ]
         })
-        pipeline = Pipeline(provider=mock_provider)
         pipeline.context = {"target_subnet": "192.168.100.0/24"}
         execute = MagicMock(return_value='{"status":"ok"}')
         tools = [{
@@ -237,7 +238,7 @@ class TestReconToolContract:
             target="192.168.100.0/24", ports="22,80", skip_discovery=True
         )
         guarded["read_deliverable"](filename="01_graph_analysis.md")
-        plan = pipeline._recon_scan_plan(graph_tools._scenario_topology["nodes"])
+        plan = pipeline._recon_scan_plan(pipeline.run_context.graph.scenario_topology["nodes"])
         for item in plan:
             if item["target"] in {"192.168.100.1", "192.168.100.11"}:
                 continue
@@ -288,8 +289,8 @@ class TestReconToolContract:
     ):
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {"nodes": []})
         pipeline = Pipeline(provider=mock_provider)
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {"nodes": []})
         pipeline.context = {"target_subnet": "192.168.100.0/24"}
         execute = MagicMock(return_value='{"stdout":"ok"}')
         guarded = pipeline._apply_recon_tool_contract([{
@@ -318,12 +319,12 @@ class TestReconToolContract:
     ):
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        pipeline = Pipeline(provider=mock_provider)
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
             "nodes": [{
                 "id": "web", "ip": "192.168.100.12", "role": "web_server",
             }]
         })
-        pipeline = Pipeline(provider=mock_provider)
         pipeline.context = {"target_subnet": "192.168.100.0/24"}
         guarded = {
             item["name"]: item["function"]
@@ -353,10 +354,10 @@ class TestReconToolContract:
     ):
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        pipeline = Pipeline(provider=mock_provider)
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
             "nodes": [{"id": "web", "ip": "192.168.100.12", "role": "web_server"}]
         })
-        pipeline = Pipeline(provider=mock_provider)
         pipeline.context = {"target_subnet": "192.168.100.0/24"}
         scan = MagicMock(side_effect=[
             '{"stdout":"","stderr":"timeout","return_code":-1}',
@@ -385,7 +386,7 @@ class TestReconToolContract:
         guarded["arp_scan"]()
         guarded["nmap_discovery"](target="192.168.100.0/24")
         guarded["read_deliverable"](filename="01_graph_analysis.md")
-        ports = pipeline._recon_scan_plan(graph_tools._scenario_topology["nodes"])[0]["ports"]
+        ports = pipeline._recon_scan_plan(pipeline.run_context.graph.scenario_topology["nodes"])[0]["ports"]
 
         guarded["nmap_scan"](target="192.168.100.12", ports=ports)
         rejected = json.loads(guarded["save_deliverable"](
@@ -405,9 +406,9 @@ class TestPhase5Context:
 
     @pytest.mark.parametrize(
         ("profile", "expected_strict", "expected_force", "expected_ready_force"),
-        [("compact", True, True, True), ("full", False, False, False)],
+        [("compact", True, True, True), ("full", True, True, False)],
     )
-    def test_local_moe_recon_requires_successful_save_only_for_compact(
+    def test_recon_requires_save_but_only_compact_forces_completion_when_ready(
         self, mock_provider, output_dir, profile, expected_strict, expected_force,
         expected_ready_force
     ):
@@ -493,12 +494,12 @@ class TestInformationPreservingArchitecture:
                 "role": "custom_role", "services": [],
             },
         ]
+        pipeline = Pipeline(provider=mock_provider, scenario_id=22)
         monkeypatch.setattr(
-            graph_tools,
-            "_scenario_topology",
+            pipeline.run_context.graph,
+            "scenario_topology",
             {"nodes": nodes, "node_index": {node["id"]: node for node in nodes}},
         )
-        pipeline = Pipeline(provider=mock_provider, scenario_id=22)
         projection = {
             "devices": [
                 {
@@ -511,6 +512,8 @@ class TestInformationPreservingArchitecture:
                 {
                     "ip": "192.0.2.11",
                     "services": [
+                        {"port": 1883, "protocol": "tcp", "service": "mosquitto", "version": "version 2.0.21"},
+                        {"port": 1883, "protocol": "tcp", "service": "mqtt", "version": ""},
                         {"port": 8080, "protocol": "tcp", "service": "http-proxy"},
                     ],
                 },
@@ -531,29 +534,33 @@ class TestInformationPreservingArchitecture:
         assert result["unresolved_nodes"] == ["s22-unobserved"]
         by_id = {node["id"]: node for node in nodes}
         assert [service["name"] for service in by_id["s22-custom-a"]["services"]] == ["mqtt", "http"]
+        assert by_id["s22-custom-a"]["services"][0]["version"] == "version 2.0.21"
+        with bind_graph_context(pipeline.run_context.graph):
+            assert json.loads(graph_tools.get_device_info("s22-custom-a"))["services"][0]["version"] == "version 2.0.21"
         assert [service["name"] for service in by_id["s22-router"]["services"]] == [
             "http", "https",
         ]
-        assert {
-            node["id"] for node in json.loads(graph_tools.get_attack_surface())
-        } == {node["id"] for node in nodes}
+        with bind_graph_context(pipeline.run_context.graph):
+            assert {
+                node["id"] for node in json.loads(graph_tools.get_attack_surface())
+            } == {node["id"] for node in nodes}
 
     def test_compact_local_recon_rebuilds_fact_sections_before_validation(
         self, output_dir, monkeypatch
     ):
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
             "nodes": [
                 {"id": "router", "ip": "192.0.2.10", "role": "router"},
                 {"id": "mqtt", "ip": "192.0.2.11", "role": "mqtt_broker"},
                 {"id": "offline", "ip": "192.0.2.12", "role": "server"},
             ]
         })
-        provider = MagicMock()
-        provider.provider = "local-moe"
-        provider.model = "lance-moe"
-        pipeline = Pipeline(provider=provider, execution_profile="compact")
         records = [
             {
                 "tool": "arp_scan",
@@ -640,16 +647,16 @@ class TestInformationPreservingArchitecture:
     ):
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
             "nodes": [
                 {"id": "router", "ip": "192.0.2.10", "role": "router"},
                 {"id": "mqtt", "ip": "192.0.2.11", "role": "mqtt_broker"},
             ]
         })
-        provider = MagicMock()
-        provider.provider = "local-moe"
-        provider.model = "lance-moe"
-        pipeline = Pipeline(provider=provider, execution_profile="compact")
         records = [
             {"tool": "arp_scan", "args": {}, "result": json.dumps({
                 "hosts": [{"ip": "192.0.2.10"}, {"ip": "192.0.2.11"}],
@@ -686,16 +693,16 @@ class TestInformationPreservingArchitecture:
     ):
         import src.agent.tools.graph_tools as graph_tools
 
-        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
             "nodes": [
                 {"id": "router", "ip": "192.0.2.10", "role": "router", "services": [{"port": 22}]},
                 {"id": "mqtt", "ip": "192.0.2.11", "role": "mqtt_broker", "services": [{"port": 1883}]},
             ]
         })
-        provider = MagicMock()
-        provider.provider = "local-moe"
-        provider.model = "lance-moe"
-        pipeline = Pipeline(provider=provider, execution_profile="compact")
         pipeline.context = {"target_subnet": "192.0.2.0/24"}
         projection = {
             "device_count": 2,
@@ -739,7 +746,7 @@ class TestInformationPreservingArchitecture:
             exposed["arp_scan"]()
             exposed["nmap_discovery"](target="192.0.2.0/24")
             exposed["read_deliverable"](filename="01_graph_analysis.md")
-            for item in pipeline._recon_scan_plan(graph_tools._scenario_topology["nodes"]):
+            for item in pipeline._recon_scan_plan(pipeline.run_context.graph.scenario_topology["nodes"]):
                 exposed["nmap_scan"](
                     target=item["target"], ports=item["ports"], skip_discovery=True
                 )
@@ -797,3 +804,29 @@ class TestInformationPreservingArchitecture:
         assert result["error_kind"] == "invalid_recon_evidence"
         assert "missing or invalid" in result["error"]
         save.assert_not_called()
+
+
+def test_nmap_mbap_alias_preserves_one_modbus_scan(mock_provider, output_dir, monkeypatch):
+    from src.agent import scanner
+    from src.agent.tools import graph_tools
+
+    node = {"id": "plc", "ip": "192.0.2.15", "role": "modbus_server",
+            "services": [{"name": "modbus", "port": 502, "protocol": "tcp"}]}
+    pipeline = Pipeline(provider=mock_provider, scenario_id=4)
+    monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {
+        "nodes": [node], "node_index": {"plc": node},
+    })
+    pipeline._reconcile_phase2_attack_surface({"devices": [{
+        "ip": node["ip"], "services": [{"service": "mbap?", "port": 502, "protocol": "tcp"}],
+    }]})
+    assert len(node["services"]) == 1
+    calls = []
+    def nmap_scan(**kwargs):
+        calls.append(kwargs)
+        return json.dumps({"stdout": "502/tcp open mbap", "stderr": "", "return_code": 0})
+    diagnostics = []
+    scanner.scan_device(node, {"nmap_scan": nmap_scan}, diagnostics=diagnostics)
+    assert diagnostics == []
+    assert len(calls) == 1
+    assert calls[0]["target"] == node["ip"]
+    assert calls[0]["scripts"] == "modbus-discover"

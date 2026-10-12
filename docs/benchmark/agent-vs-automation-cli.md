@@ -166,7 +166,7 @@ configuration et refuse de mélanger les politiques.
 L'identité expérimentale utilise `policy_schema_version: 1` et le journal
 `execution_ledger_version: 2`. `provider` et `model` valent `null` en `rules`.
 Les anciennes identités restent lisibles et séparées des nouvelles mesures.
-Les contrats sémantiques `strict-v3.14` / `evidence-v13` ne sont pas assouplis.
+Les contrats sémantiques courants `strict-v3.16` / `evidence-v15` ne sont pas assouplis.
 
 L'API et l'interface ne lancent pas ce périmètre : l'API rejette explicitement
 ces paramètres au lieu de les ignorer. Les garde-fous applicatifs ne constituent
