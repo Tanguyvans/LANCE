@@ -50,6 +50,7 @@ nouveau.
 
 ## Documents
 
+- [Audit de couverture des scénarios](audit-couverture.md) : matrice réelle du corpus (75 % de failles à signature, strate logique réduite à S15, edge cases absents) et verdict sur le set pilote (remplacer le contrôle sain fictif par S1h).
 - [Plan de soumission](plan-soumission.md) : exigences AsiaCCS vérifiées,
   contributions candidates, expériences E1-E3, pistes bonus, rétroplanning,
   critères de décision et risques.
