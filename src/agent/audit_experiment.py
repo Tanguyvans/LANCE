@@ -16,7 +16,7 @@ from pathlib import Path
 EXPERIMENT_SCOPE = "analysis-verification"
 POLICY_SCHEMA_VERSION = 1
 EXECUTION_LEDGER_VERSION = 2
-RULES_VERSION = "shared-scanner-bounded-verification-v2"
+RULES_VERSION = "shared-scanner-bounded-verification-v3"
 
 
 def digest(value: object) -> str:

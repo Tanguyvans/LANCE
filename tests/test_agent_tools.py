@@ -66,7 +66,7 @@ class TestReconTools:
         result = json.loads(fn(host="192.168.88.247"))
         assert result["return_code"] == 0
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["ssh-audit", "192.168.88.247:22"]
+        assert cmd == ["ssh-audit", "--skip-rate-test", "--no-colors", "192.168.88.247:22"]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_ssh_audit_custom_port(self, mock_run):
@@ -74,7 +74,7 @@ class TestReconTools:
         fn = _get_tool_fn("ssh_audit")
         fn(host="192.168.88.231", port=2222)
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["ssh-audit", "192.168.88.231:2222"]
+        assert cmd == ["ssh-audit", "--skip-rate-test", "--no-colors", "192.168.88.231:2222"]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_curl_headers(self, mock_run):

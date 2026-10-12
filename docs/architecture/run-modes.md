@@ -138,6 +138,13 @@ contrôles après le déploiement ; l'API accepte jusqu'à 2 000 appels et 3 600
 secondes. Le déploiement conserve son propre délai et la réservation commune
 du laboratoire reste détenue pendant l'ensemble de l'opération.
 
+Les sondes `ssh-audit` omettent le test de débit des connexions pour éviter de
+pénaliser les contrôles suivants sur les serveurs qui limitent les connexions.
+Elles n'évaluent donc pas la résistance à DHEat. Les diagnostics de connexion
+restent dans les traces ; les codes 2/3 accompagnés de résultats sont des
+observations de configuration, pas des erreurs d'exécution ni une preuve à eux
+seuls. La vérification conserve les critères de preuve SSH communs.
+
 ```json
 {"runner_kind":"rules","scenario_id":"1","max_tool_calls":200,"max_duration_s":600,"auto_teardown":true}
 ```

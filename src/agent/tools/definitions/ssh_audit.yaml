@@ -1,6 +1,6 @@
 name: "ssh_audit"
 command: "ssh-audit"
-args: []
+args: ["--skip-rate-test", "--no-colors"]
 enabled: true
 timeout: 30
 short_description: "SSH configuration analyzer"
@@ -10,8 +10,10 @@ description: |
   Exit codes 2 (warnings) and 3 (algorithm failures) are audit findings, not
   execution failures. Exit code 1 is a connection error. Inspect the actual
   output before making a vulnerability claim; the exit code alone is not proof.
-filter_lines: "(gen) banner|(gen) software|(gen) compat|\\[fail\\]|\\[warn\\]|CVE-"
-max_output: 2000
+  The connection-rate test is skipped to avoid penalizing subsequent probes on
+  servers with connection throttling. This tool does not assess DHEat resistance.
+filter_lines: "^\\((?:gen|kex|key|enc|mac)\\)|\\[fail\\]|\\[warn\\]|CVE-"
+max_output: 8000
 parameters:
   - name: "host"
     type: "string"

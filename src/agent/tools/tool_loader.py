@@ -225,7 +225,10 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
         tool_name = tool_def["name"]
 
 
-        if filter_lines and result.get("stdout"):
+        from src.agent.tools.outcomes import tool_execution_failed
+        # Connection diagnostics often arrive on stdout (not stderr). Filtering
+        # a failed audit would erase the reason and prevent a targeted retry.
+        if filter_lines and result.get("stdout") and not tool_execution_failed(tool_name, result):
             import re
             pattern = re.compile(filter_lines)
             lines = [l for l in result["stdout"].splitlines() if pattern.search(l)]

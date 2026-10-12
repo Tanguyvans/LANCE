@@ -15,6 +15,7 @@ from src.agent.phases.verification.contract import (
 )
 from src.agent.phases.verification.evidence import _exploit_relpath, _tool_records_for_vuln
 from src.agent.exploit_evidence import synthesize_exploit_result
+from src.agent.tools.outcomes import tool_execution_failed
 
 
 # These are observation rules, never proof rules. Verdicts stay in the common
@@ -58,7 +59,7 @@ def _observation(raw, error=None, *, tool=None):
             or transient_exit
             or re.match(r"^(?:Timeout|ReadTimeout|ConnectTimeout|TimeoutError|ConnectionResetError|ConnectionAbortedError):", diagnostic)):
         return "transient_error"
-    if error or data.get("error") or data.get("ok") is False or data.get("return_code", 0) not in (0, None):
+    if error or tool_execution_failed(tool, data):
         return "tool_error"
     if code is not None and code >= 300:
         return "negative_response"

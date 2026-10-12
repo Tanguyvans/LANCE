@@ -237,6 +237,25 @@ class TestBuildSubprocessFunction:
         assert "192.168.88.1:22" in cmd
 
     @patch("src.agent.tools.recon_tools._run")
+    def test_ssh_audit_preserves_connection_failure_diagnostic(self, mock_run):
+        diagnostic = "[exception] did not receive banner: Connection reset by peer"
+        mock_run.return_value = {"stdout": diagnostic, "stderr": "", "return_code": 1}
+        fn = build_subprocess_function(load_tool_yaml(DEFINITIONS_DIR / "ssh_audit.yaml"))
+        result = json.loads(fn(host="192.0.2.10", port=2222))
+        assert result["stdout"] == diagnostic
+        assert result["return_code"] == 1
+
+    @patch("src.agent.tools.recon_tools._run")
+    def test_ssh_audit_keeps_server_algorithms_without_connection_rate_test(self, mock_run):
+        rows = "(gen) banner: SSH-2.0-OpenSSH_10.0\n(kex) curve25519-sha256\n(enc) aes128-cbc -- [warn] weak cipher mode"
+        mock_run.return_value = {"stdout": rows, "stderr": "", "return_code": 2}
+        fn = build_subprocess_function(load_tool_yaml(DEFINITIONS_DIR / "ssh_audit.yaml"))
+        result = json.loads(fn(host="192.0.2.10"))
+        assert result["stdout"] == rows
+        assert result["return_code"] == 2
+        assert "--skip-rate-test" in mock_run.call_args.args[0]
+
+    @patch("src.agent.tools.recon_tools._run")
     def test_function_returns_json(self, mock_run):
         mock_run.return_value = {"stdout": "test", "stderr": "", "return_code": 0}
         data = load_tool_yaml(DEFINITIONS_DIR / "nmap.yaml")

@@ -58,6 +58,12 @@ coûts des échecs, précontrôles et identités incompatibles, exports JSON/CSV
 ne mesurent pas les performances d'un modèle sur un laboratoire réel ; voir le
 [guide de comparaison](../docs/benchmark/agent-vs-automation-cli.md).
 
+`test_tool_loader.py` vérifie aussi les sondes SSH sans test de débit et la
+conservation des diagnostics de connexion. `test_rules_ssh_observations.py`
+distingue les résultats de configuration retournés par `ssh-audit` (codes 2/3)
+des échecs sans observation ; les tests de preuve SSH restent responsables
+des confirmations. Tous ces appels d'outils sont simulés.
+
 `test_lab_lock.py` vérifie la réservation du laboratoire entre processus et son
 annulation sans opération réseau. `test_deployment_workflow.py` vérifie les
 déploiements par branche dans des dépôts temporaires ; voir le
