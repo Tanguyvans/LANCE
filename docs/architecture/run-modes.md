@@ -144,6 +144,11 @@ Elles n'évaluent donc pas la résistance à DHEat. Les diagnostics de connexion
 restent dans les traces ; les codes 2/3 accompagnés de résultats sont des
 observations de configuration, pas des erreurs d'exécution ni une preuve à eux
 seuls. La vérification conserve les critères de preuve SSH communs.
+Si la première connexion SSH expire et que la sonde Nmap suivante observe le
+même port TCP ouvert sur le même équipement, le scanner répète `ssh-audit`
+une seule fois, avec la même cible et le même port. Les deux tentatives restent
+archivées et comptabilisées ; seule une nouvelle observation SSH réussie permet
+de retirer ce timeout des erreurs non résolues de l'équipement.
 
 ```json
 {"runner_kind":"rules","scenario_id":"1","max_tool_calls":200,"max_duration_s":600,"auto_teardown":true}

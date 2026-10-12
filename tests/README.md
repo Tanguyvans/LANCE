@@ -63,6 +63,9 @@ conservation des diagnostics de connexion. `test_rules_ssh_observations.py`
 distingue les résultats de configuration retournés par `ssh-audit` (codes 2/3)
 des échecs sans observation ; les tests de preuve SSH restent responsables
 des confirmations. Tous ces appels d'outils sont simulés.
+`test_scanner_ssh_retry.py` couvre la reprise unique après un timeout de connexion
+SSH, conditionnée à l'observation du même port TCP ouvert, la conservation des
+tentatives, les ports personnalisés et les échecs qui restent incomplets.
 
 `test_lab_lock.py` vérifie la réservation du laboratoire entre processus et son
 annulation sans opération réseau. `test_deployment_workflow.py` vérifie les

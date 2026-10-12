@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
     "ssh": [
-        ("ssh_audit", {"host": "{ip}"}),
+        ("ssh_audit", {"host": "{ip}", "port": "{port}"}),
         ("nmap_scan", {
             "target": "{ip}", "ports": "{port}",
             "scripts": "ssh-auth-methods", "skip_discovery": True,
@@ -461,6 +461,22 @@ def _closed_optional_mqtt_ws_probe(device: dict, results: dict[str, list[dict]])
     return None
 
 
+def _ssh_connection_timed_out(entry: dict) -> bool:
+    if entry.get("tool") != "ssh_audit":
+        return False
+    result = _parse_result(entry)
+    return (tool_execution_failed("ssh_audit", result)
+            and bool(re.search(r"(?m)^\[exception\] cannot connect to .+ port \d+: timed out\s*$",
+                               str(result.get("stdout", "")))))
+
+
+def _ssh_audit_observed(entry: dict) -> bool:
+    result = _parse_result(entry)
+    return (entry.get("tool") == "ssh_audit"
+            and not tool_execution_failed("ssh_audit", result)
+            and bool(re.search(r"(?m)^\((?:gen|kex|key|enc|mac)\) ", str(result.get("stdout", "")))))
+
+
 def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[str] | None = None) -> dict[str, list[dict]]:
     """Run all applicable tools for a device. Returns {service: [{tool, kwargs, result}]}."""
     ip = device.get("ip", "")
@@ -468,9 +484,9 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
     results: dict[str, list[dict]] = {}
     seen_calls: set[str] = set()  # avoid duplicate calls
 
-    def _call(tool_name: str, kwargs: dict, svc_key: str):
+    def _call(tool_name: str, kwargs: dict, svc_key: str, *, retry: bool = False):
         call_key = f"{tool_name}|{json.dumps(kwargs, sort_keys=True)}"
-        if call_key in seen_calls:
+        if call_key in seen_calls and not retry:
             return
         seen_calls.add(call_key)
 
@@ -490,14 +506,16 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
             result_str = json.dumps({"stdout": "", "stderr": str(e), "return_code": -1})
 
         observation = fn.last_observation() if hasattr(fn, "last_observation") else None
-        results.setdefault(svc_key, []).append({
+        entry = {
             "tool": tool_name,
             "kwargs": kwargs,
             "result": result_str,
             "evidence_phase": 3,
             "authoritative": True,
             **({"evidence_ref": observation["evidence_ref"]} if observation else {}),
-        })
+        }
+        results.setdefault(svc_key, []).append(entry)
+        return entry
 
     # Scan each declared service
     for svc in device.get("services", []):
@@ -511,6 +529,8 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
 
         for tool_name, kwargs_tmpl in SCAN_MATRIX[matrix_key]:
             kwargs = _resolve_kwargs(kwargs_tmpl, ip, port)
+            if tool_name == "ssh_audit":
+                kwargs["port"] = port
             if matrix_key == "mqtt" and tool_name == "http_request":
                 closed = _closed_optional_mqtt_ws_probe(device, results)
                 if closed is not None:
@@ -523,6 +543,31 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
                         decisions.append(decision)
                     continue
             _call(tool_name, kwargs, svc_name)
+
+        if matrix_key == "ssh":
+            entries = results.get(svc_name, [])
+            initial = next((entry for entry in entries if entry.get("tool") == "ssh_audit"
+                            and entry.get("kwargs") == {"host": ip, "port": port}), None)
+            # A fresh successful TCP observation can resolve a cold connection
+            # timeout. Repeat the same read-only audit once; both attempts pass
+            # through the executor and retain their evidence and budget usage.
+            reachable = any(
+                entry.get("tool") == "nmap_scan"
+                and entry.get("kwargs", {}).get("target") == ip
+                and str(entry.get("kwargs", {}).get("ports")) == str(port)
+                and not tool_execution_failed("nmap_scan", _parse_result(entry))
+                and re.search(rf"(?m)^{re.escape(str(port))}/tcp\s+open\s", str(_parse_result(entry).get("stdout", "")))
+                for entry in entries
+            )
+            if (initial is not None and _ssh_connection_timed_out(initial) and reachable
+                    and not any("retry_of" in entry and entry["retry_of"] == entries.index(initial)
+                                for entry in entries)):
+                retry_of = entries.index(initial)
+                retry_entry = _call("ssh_audit", dict(initial["kwargs"]), svc_name, retry=True)
+                if retry_entry is not None:
+                    retry_entry["retry_of"] = retry_of
+                    if initial.get("evidence_ref"):
+                        retry_entry["retry_of_evidence_ref"] = initial["evidence_ref"]
 
     # Role-based extra scans
     role = device.get("role", "")
@@ -2319,10 +2364,20 @@ def _fold_repeated_tool_errors(device_id: str, scan_results: dict) -> list[str]:
     Identical failures (e.g. repeated mqtt_listen attempts on one broker)
     describe one symptom: they are folded with a repeat count so the
     status does not read as several distinct events.
+    A timeout resolved by its recorded, same-target SSH retry is retained in the
+    observations but is no longer an unresolved error of this device.
     """
     tool_errors: list[str] = []
     for entries in scan_results.values():
-        for entry in entries:
+        for index, entry in enumerate(entries):
+            recovered = any(
+                type(later.get("retry_of")) is int and later["retry_of"] == index
+                and later.get("kwargs") == entry.get("kwargs")
+                and _ssh_connection_timed_out(entry) and _ssh_audit_observed(later)
+                for later in entries[index + 1:]
+            )
+            if recovered:
+                continue
             if tool_execution_failed(entry.get("tool", ""), entry["result"]):
                 tool_errors.append(
                     f"{device_id}: {entry.get('tool') or 'unsupported service'} returned an error"
