@@ -1,5 +1,7 @@
 # Organisation du code LANCE
 
+**Cycle de vie : Conclu** (inventaire du 2026-10-12) — diagnostic reproduit et réorganisation proposée ; mise en œuvre partielle depuis (contextes de phase isolés, commit `c3dbe94` du 2026-10-12). Ne rouvrir que pour un nouveau diagnostic daté.
+
 **Question.** Comment rendre les responsabilités, les dépendances et les points
 de modification du projet plus explicites, sans modifier ses contrats de preuve ?
 

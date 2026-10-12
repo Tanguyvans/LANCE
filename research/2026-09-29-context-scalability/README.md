@@ -1,5 +1,7 @@
 # Gestion et scalabilité du contexte du pipeline
 
+**Cycle de vie : Actif** (inventaire du 2026-10-12) — exploration rouverte sur le pipeline actuel ; effet sur les scores réels à mesurer.
+
 **Statut : exploration rouverte sur le pipeline actuel.** Nouvelle étude et
 revue des constats : 29 septembre 2026. Le plan initial du rapport reste
 archivé ; sa date d'origine n'est pas renseignée. Son classement à cette date

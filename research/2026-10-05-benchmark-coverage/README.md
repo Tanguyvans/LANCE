@@ -1,5 +1,7 @@
 # Validation expérimentale LANCE — Qwen UMONS S1–S12
 
+**Cycle de vie : Actif** (inventaire du 2026-10-12) — premier lot terminé, validations correctives en cours ; données du rapport gelées au 2026-10-05 11:32.
+
 **Question :** quels résultats, défauts et limites les premiers runs réels
 S1–S12 montrent-ils, et quelles corrections sont effectivement validées ?
 

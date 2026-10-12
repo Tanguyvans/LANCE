@@ -1,5 +1,7 @@
 # Apport de l'agent face à l'automatisation
 
+**Cycle de vie : Actif** (inventaire du 2026-10-12) — protocole proposé, pilote et campagne à établir ; proposition de recentrage et état des lieux ajoutés le 2026-10-12.
+
 **Statut : protocole proposé ; premier incrément logiciel documenté.**
 Travaux documentés les 27 et 28 septembre 2026. Dossier organisé le 29 septembre
 2026 ; ce classement n'ajoute aucune validation expérimentale.

@@ -1,5 +1,7 @@
 # Méthodes d'audit et architectures de preuve pour LANCE
 
+**Cycle de vie : Actif** (inventaire du 2026-10-12) — exploration et protocole proposé, rapports relus ; gain expérimental non établi.
+
 ## Question et périmètre
 
 Comment rendre l'audit IoT plus instructif et ses conclusions plus vérifiables,

@@ -1,5 +1,7 @@
 # LANCE : diagnostic du pipeline et rapports par campagne
 
+**Cycle de vie : Conclu** (inventaire du 2026-10-12) — diagnostic et rapports de campagne gelés (objectif S1–S12 non atteint, constat conservé) ; toute nouvelle campagne relève d'un nouveau dossier daté.
+
 ## Question et périmètre
 
 Que démontrent les métadonnées sélectionnées des runs S1–S12 sur les erreurs de workers, l'agrégation et la troncature ? Le diagnostic est une lecture hors ligne des douze runs retenus ; il ne constitue pas un nouveau run ni une validation sémantique complète.

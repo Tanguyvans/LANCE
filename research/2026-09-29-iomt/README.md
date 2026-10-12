@@ -1,5 +1,7 @@
 # Spécialisation IoMT
 
+**Cycle de vie : Actif — proposition non démarrée** (inventaire du 2026-10-12) — sujet de TFE proposé, expérimentation à définir ; à conclure ou archiver si le sujet n'est pas retenu.
+
 **Statut : proposition de sujet de TFE.** Date initiale non renseignée dans la
 proposition ; dossier organisé le 29 septembre 2026.
 Le préfixe `2026-09-29` est donc la date de classement, pas une date de début

@@ -1,5 +1,7 @@
 # Couverture et validité du benchmark
 
+**Cycle de vie : Actif** (inventaire du 2026-10-12) — exploration et contre-exemples reproduits ; campagne réelle prolongée par le dossier du 2026-10-05.
+
 **Question :** quelles propriétés IoTChainBench définit-il, lesquelles sont
 effectivement observées, et lesquelles ses mesures permettent-elles de valider ?
 Périmètre : catalogue public, contrats, évaluateur et préparation expérimentale.
