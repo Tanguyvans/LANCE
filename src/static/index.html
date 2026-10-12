@@ -65,6 +65,10 @@
           <span><strong>Pipeline LANCE</strong><small>Phases, preuves et rapport</small></span>
         </label>
         <label class="runner-choice">
+          <input type="radio" name="runner-kind" value="rules">
+          <span><strong>Audit par règles</strong><small>Architecture, contrôles et preuves · sans LLM</small></span>
+        </label>
+        <label class="runner-choice">
           <input type="radio" name="runner-kind" value="vanilla">
           <span><strong>Agent simple</strong><small>Une boucle modèle et outils</small></span>
         </label>
@@ -137,17 +141,26 @@
       </div>
 
       <div id="lance-config">
+      <div id="rules-config" hidden>
+        <p class="field-hint">Déploie le scénario choisi, analyse ses équipements puis vérifie les vulnérabilités détectées. Résultats sur le graphe, sans modèle.</p>
+        <div class="simple-limits">
+          <div><label for="inp-rules-max-calls">Appels d'outils max.</label><input id="inp-rules-max-calls" type="number" min="1" max="2000" step="1" value="200"></div>
+          <div><label for="inp-rules-duration">Durée des contrôles (s)</label><input id="inp-rules-duration" type="number" min="1" max="3600" step="1" value="600"></div>
+        </div>
+      </div>
+      <div id="execution-profile-config">
       <label>Profil d'exécution</label>
       <div class="mode-toggle" id="execution-profile-toggle">
         <label><input type="radio" name="execution-profile" value="auto" checked> Auto</label>
         <label><input type="radio" name="execution-profile" value="full"> Complet</label>
         <label><input type="radio" name="execution-profile" value="compact"> Compact</label>
       </div>
+      </div>
 
       <label>Mode</label>
       <div class="mode-toggle">
         <label><input type="radio" name="run-mode" value="preset" checked> Scénario</label>
-        <label><input type="radio" name="run-mode" value="batch"> Batch</label>
+        <label id="batch-mode-choice"><input type="radio" name="run-mode" value="batch"> Batch</label>
         <label><input type="radio" name="run-mode" value="custom"> Personnalisé</label>
       </div>
 
@@ -200,6 +213,7 @@
 
       <button id="btn-teardown" disabled>Teardown</button>
 
+      <div id="phase-selection-config">
       <label>Phases</label>
       <div class="phase-checkboxes">
         <label><input type="checkbox" class="phase-cb" value="1" checked> 1 · Graph Analysis</label>
@@ -209,14 +223,17 @@
         <label><input type="checkbox" class="phase-cb" value="5" checked> 5 · Intrusion</label>
         <label><input type="checkbox" class="phase-cb" value="6" checked> 6 · Report</label>
       </div>
+      </div>
 
       <label>
         <input type="checkbox" id="cb-teardown" checked>
         &nbsp;Auto-teardown scénario
       </label>
 
+      <div id="model-budget-config">
       <label for="inp-budget">Budget max (USD, optionnel)</label>
       <input type="number" id="inp-budget" min="0" step="0.01" placeholder="ex : 0.50">
+      </div>
       </div>
 
       <button id="btn-start">Lancer le pentest</button>

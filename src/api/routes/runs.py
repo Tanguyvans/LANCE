@@ -374,7 +374,7 @@ def _extract_runner_kind(run_dir: Path) -> str:
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         metadata = {}
     kind = metadata.get("runner_kind")
-    return kind if kind in {"lance", "vanilla", "scripted"} else "lance"
+    return kind if kind in {"lance", "rules", "vanilla", "scripted"} else "lance"
 
 
 def _extract_runner_details(run_dir: Path) -> dict[str, str]:
@@ -997,6 +997,16 @@ def get_intrusion_observations(run_id: str):
     from src.agent.phases.intrusion.observations import project_intrusion_observations
 
     return project_intrusion_observations(run_dir)
+
+
+@router.get("/{run_id}/audit-results")
+def get_audit_results(run_id: str):
+    """Public per-device results; declarations alone cannot confirm a finding."""
+    run_dir = _resolve_run_dir(run_id)
+    if _is_sealed_run(run_dir) or _extract_runner_kind(run_dir) != "rules":
+        raise HTTPException(status_code=400, detail="Device audit results require a public rules audit")
+    from src.agent.rules_audit import device_results
+    return device_results(run_dir)
 
 
 @router.get("/{run_id}/{filename}")

@@ -168,6 +168,9 @@ L'identité expérimentale utilise `policy_schema_version: 1` et le journal
 Les anciennes identités restent lisibles et séparées des nouvelles mesures.
 Les contrats sémantiques courants `strict-v3.16` / `evidence-v15` ne sont pas assouplis.
 
-L'API et l'interface ne lancent pas ce périmètre : l'API rejette explicitement
-ces paramètres au lieu de les ignorer. Les garde-fous applicatifs ne constituent
+L'API et l'interface ne lancent pas ce périmètre expérimental : l'API rejette
+explicitement ces paramètres au lieu de les ignorer. Le mode applicatif
+[Audit par règles](../architecture/run-modes.md#audit-dun-scénario-par-règles)
+réutilise la politique sur un scénario déployé avec des résultats par équipement ;
+il ne constitue pas une paire D1/A1 contrôlée. Les garde-fous applicatifs ne constituent
 pas une isolation du système de fichiers pour une évaluation scellée.

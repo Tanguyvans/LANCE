@@ -96,13 +96,22 @@ def load_inventory(path: str | Path) -> dict:
 
 def validate_configuration(*, decision_policy, experiment_scope, inventory,
                            execution_profile, phases, max_tool_calls,
-                           max_duration_s, max_cost_usd, incompatible=False):
+                           max_duration_s, max_cost_usd, incompatible=False,
+                           scenario_rules=False):
     """Validate before constructing a provider or creating execution artifacts."""
     if decision_policy not in {"rules", "llm"}:
         raise ValueError("decision_policy must be rules or llm")
     positive_limit(max_tool_calls, "max_tool_calls", integer=True)
     positive_limit(max_duration_s, "max_duration_s")
     if experiment_scope is None:
+        if scenario_rules:
+            if decision_policy != "rules" or inventory is not None:
+                raise ValueError("Scenario rules audits require rules and no experimental inventory")
+            if execution_profile != "full" or list(phases or []) != [3, 4]:
+                raise ValueError("Scenario rules audits require full and phases 3 4")
+            if max_tool_calls is None or max_duration_s is None or max_cost_usd is not None:
+                raise ValueError("Scenario rules audits require action/time limits and no model budget")
+            return None
         if decision_policy != "llm" or inventory is not None:
             raise ValueError("rules and audit_inventory require experiment_scope=analysis-verification")
         return None

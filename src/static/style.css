@@ -262,6 +262,9 @@ input[type=number] { -moz-appearance: textfield; }
 .runner-choice strong { color: var(--text); font-size: 12px; font-weight: 600; }
 .runner-choice small { color: var(--muted); font-size: 10px; line-height: 1.35; }
 .field-hint { color: var(--muted); font-size: 10px; line-height: 1.45; margin: -5px 0 10px; }
+.audit-verification { margin-top: 6px; font-size: 11px; color: var(--muted); }
+.audit-verification.confirmed { color: var(--sev-low-fg); }
+.audit-verification.error { color: var(--sev-medium-fg); }
 .simple-limits { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .simple-limits input { margin-bottom: 6px; }
 

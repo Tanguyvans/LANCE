@@ -120,7 +120,7 @@ class StartRequest(BaseModel):
             raise ValueError("Inventory policy experiments are CLI-only")
         return value
 
-    runner_kind: Literal["lance", "vanilla", "scripted"] = "lance"
+    runner_kind: Literal["lance", "rules", "vanilla", "scripted"] = "lance"
     model: str | None = None
     provider: str | None = None
     script_id: str | None = None
@@ -152,6 +152,22 @@ class StartRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_runner_contract(self):
+        if self.runner_kind == "rules":
+            if self.scenario_id is None and self.architecture is None:
+                raise ValueError("Rules audits require a selected scenario or architecture")
+            if any(value is not None for value in (self.model, self.provider, self.script_id,
+                                                   self.target_network, self.phase_models, self.max_cost_usd)) or self.blind or self.deploy_only:
+                raise ValueError("Rules audits do not accept a model, direct network, blind mode or deployment-only settings")
+            if self.phases is not None and self.phases != [3, 4]:
+                raise ValueError("Rules audits execute analysis and verification (phases 3 and 4)")
+            if self.execution_profile not in {"auto", "full"}:
+                raise ValueError("Rules audits use the full deterministic profile")
+            self.max_tool_calls = 200 if self.max_tool_calls is None else self.max_tool_calls
+            self.max_duration_s = 600 if self.max_duration_s is None else self.max_duration_s
+            if self.max_tool_calls > 2000 or not math.isfinite(self.max_duration_s) or self.max_duration_s > 3600:
+                raise ValueError("Rules audit limits are at most 2000 calls and 3600 audit seconds")
+            self.execution_profile = "full"
+            return self
         if self.runner_kind == "vanilla" and not (self.model and self.provider):
             raise ValueError("This runner requires an explicit provider and model")
         if self.runner_kind == "lance":
@@ -266,6 +282,8 @@ def _evaluate_single_run(pipeline: Any, req: StartRequest) -> dict[str, Any]:
             pass
         return event
 
+    if req.runner_kind == "rules":
+        return finish("skipped", reason="Scenario rules audit; controlled policy comparison is a separate experiment")
     if scenario_id is None:
         return finish("skipped", reason="No benchmark scenario selected")
 
@@ -313,7 +331,9 @@ def _pipeline_thread(req: StartRequest):
         if req.phase_models and req.phases and req.phases[0] in req.phase_models:
             default_model = req.phase_models[req.phases[0]]
 
-        if req.deploy_only and not (req.provider and req.model):
+        if req.runner_kind == "rules":
+            provider = None
+        elif req.deploy_only and not (req.provider and req.model):
             # Pipeline accepts a provider object during construction, while
             # deploy-only never calls it.  Keep deployment independent of model
             # configuration without opening a provider connection.
@@ -332,7 +352,7 @@ def _pipeline_thread(req: StartRequest):
             }
 
         pipeline = make_runner(
-            "lance",
+            req.runner_kind,
             provider=provider,
             phases=req.phases or None,
             scenario_id=req.scenario_id,
@@ -344,14 +364,21 @@ def _pipeline_thread(req: StartRequest):
             target_network=req.target_network,
             blind=req.blind,
             execution_profile=req.execution_profile,
+            max_tool_calls=req.max_tool_calls if req.runner_kind == "rules" else None,
+            max_duration_s=req.max_duration_s if req.runner_kind == "rules" else None,
         )
 
         pending_pipeline_done: dict[str, Any] | None = None
         release_pipeline_done = False
         _state["run_dir"] = str(pipeline.run_dir)
+        if req.runner_kind == "rules":
+            _state["scenario_id"] = getattr(pipeline, "scenario_id", req.scenario_id)
 
         def callback(event: dict):
             nonlocal pending_pipeline_done
+            if req.runner_kind == "rules":
+                event = {**event, "runner_kind": "rules", "run_dir": str(pipeline.run_dir),
+                         "scenario_id": getattr(pipeline, "scenario_id", req.scenario_id)}
             _lab_event(event)
             # Evaluation must happen before pipeline_done reaches the browser;
             # the frontend closes the SSE stream as soon as it receives that
@@ -468,7 +495,7 @@ async def start_pipeline(req: StartRequest):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     profile_name = None
     profile_policy = None
-    if req.runner_kind == "lance":
+    if req.runner_kind in {"lance", "rules"}:
         from src.agent.execution_profiles import resolve_execution_profile_for_model
         resolution = resolve_execution_profile_for_model(req.execution_profile, req.model)
         profile_name = resolution.profile.name
@@ -486,7 +513,7 @@ async def start_pipeline(req: StartRequest):
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    target = _pipeline_thread if req.runner_kind == "lance" else _simple_runner_thread
+    target = _pipeline_thread if req.runner_kind in {"lance", "rules"} else _simple_runner_thread
     thread = threading.Thread(target=target, args=(req,), daemon=True)
     try:
         thread.start()

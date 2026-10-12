@@ -13,11 +13,13 @@ run](../../src/agent/phases/README.md#graphe-et-frontières-propres-au-run).
 | Mode | Exécution | Modèle | Scénario / benchmark |
 | --- | --- | --- | --- |
 | `lance` | Pipeline de six phases et profils `auto`, `compact`, `full` | Requis pour un audit, sauf « déployer seulement » | Scénarios, déploiement, évaluation et rapports existants |
+| `rules` | Déploiement du scénario, analyse et vérification déterministes (phases 3 et 4) | Aucun | Scénarios publics ou architecture personnalisée, résultats par équipement |
 | `vanilla` | Une boucle modèle–outils bornée sur un CIDR explicite | Requis | Aucun déploiement ni score benchmark |
 | `scripted` | Procédures versionnées et déterministes `smoke-v1` (hors ligne) et `discovery-v1` (Nmap) | Aucun | Aucun déploiement ni score benchmark |
 
 Les choix « scénario prédéfini/personnalisé/batch » restent **à l'intérieur de
-LANCE**. Ils ne sont pas des modes concurrents de `vanilla` ou `scripted`.
+LANCE**. L'audit par règles partage les choix prédéfini/personnalisé ; il ne
+propose pas de batch. Ils ne sont pas des modes concurrents de `vanilla` ou `scripted`.
 `full` et `compact` qualifient l'orchestration du pipeline, pas le type de
 runner. Cette première extraction ne remplace pas le pipeline existant et ne
 promet pas des runs concurrents : l'API conserve un seul run actif par instance.
@@ -102,7 +104,7 @@ score pour ces runs. Les runs antérieurs sans `runner_kind` restent lus comme
 
 Un statut `completed` signifie que le runner a terminé son travail, **pas** que
 la cible est couverte exhaustivement, qu'une vulnérabilité est prouvée ou
-qu'un accès a été obtenu. Les résultats des trois modes ne sont donc pas
+qu'un accès a été obtenu. Les résultats de ces modes ne sont donc pas
 directement comparables par les métriques du benchmark.
 
 ## Tester les procédures
@@ -120,3 +122,48 @@ Une découverte de zéro hôte peut être un résultat valide ; un statut `compl
 ne signifie pas couverture exhaustive. En CLI, les deux commandes ci-dessus
 renvoient le chemin du dossier d'artefacts ; ne pas lancer la commande de
 découverte sur le CIDR d'exemple documentaire.
+
+## Audit d'un scénario par règles
+
+Choisir **Audit par règles**, puis **Scénario** ou **Personnalisé** pour choisir
+l'architecture, la posture et les packs. **Lancer l'audit par règles** déploie
+et vérifie la préparation du scénario, exécute les phases 3 et 4, puis applique
+le choix de nettoyage automatique. Aucun fournisseur, modèle, catalogue de prix
+ou rapport LLM n'est utilisé. Les scénarios scellés restent réservés au contrôleur.
+
+Le moteur réutilise les scanners, l'agrégation et les décisions bornées de la
+politique `rules`, avec le profil `full`, un worker de scan et une source CVE
+figée. Les limites par défaut sont de 200 appels d'outils et 600 secondes de
+contrôles après le déploiement ; l'API accepte jusqu'à 2 000 appels et 3 600
+secondes. Le déploiement conserve son propre délai et la réservation commune
+du laboratoire reste détenue pendant l'ensemble de l'opération.
+
+```json
+{"runner_kind":"rules","scenario_id":"1","max_tool_calls":200,"max_duration_s":600,"auto_teardown":true}
+```
+
+Pour une architecture personnalisée, remplacer `scenario_id` par `architecture`,
+`posture` et `selected_packs`. L'API refuse les modèles, le mode aveugle, les
+réseaux directs, les substitutions de phase et les budgets monétaires de ce mode.
+Les paramètres expérimentaux `decision_policy`, `experiment_scope` et
+`audit_inventory` restent réservés au CLI.
+
+Le run sauvegarde `audit_topology.json`, une projection des identités, services
+et liens publics, ainsi que les observations et livrables des phases 3 et 4.
+`GET /api/runs/{id}/audit-results` fournit les résultats par équipement, à partir
+de cette topologie enregistrée. Les confirmations sont recalculées avec les
+contrôles de preuve communs depuis les traces d'outils : une étiquette CONFIRMED
+dans un rapport ne suffit pas. Les erreurs et contrôles en attente restent
+distincts d'une analyse effectuée sans détection. Les nœuds sans adresse IP
+restent sur le graphe, avec la mention « non ciblé ».
+
+Le graphe affiche les détections et confirmations ; cliquer sur un équipement
+montre ses résultats. Le journal suit le déploiement et les phases. L'historique
+recharge la topologie propre au run, même après nettoyage du scénario, et expose
+un résumé Markdown déterministe ainsi que les fichiers de preuve.
+
+Cet audit applicatif est distinct de l'expérience contrôlée D1/A1 sur inventaire
+public : il ne déclare pas d'identité expérimentale ou de paire comparable.
+Les runs `rules` ne sont pas ajoutés aux comparaisons benchmark de l'interface.
+La comparaison scientifique reste décrite dans le
+[guide D1/A1](../benchmark/agent-vs-automation-cli.md).

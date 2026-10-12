@@ -44,7 +44,7 @@ def scan_phase(context: AnalysisContext) -> ScanResult:
     ]
     scanner_kwargs = {
         "compact": context.compact_local, "tools": tools,
-        "max_workers": 1 if context.experiment_scope == "analysis-verification" else 6,
+        "max_workers": 1 if context.decision_policy == "rules" or context.experiment_scope == "analysis-verification" else 6,
     }
     recon_policy = runtime.tool_policy_for_phase(context.tool_policy, "recon")
     if recon_policy is not None:

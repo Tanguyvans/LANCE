@@ -7,6 +7,10 @@ The app can also start a bounded single-agent reconnaissance run, an offline
 smoke test, or a versioned manual discovery procedure. These are separate
 execution modes, not benchmark scores; see the
 [execution-mode contract](docs/architecture/run-modes.md).
+The **rules audit** mode deploys a public scenario or custom architecture and
+runs deterministic analysis and verification without an LLM. Device findings,
+evidence-based confirmations and incomplete checks appear on the graph and in
+the saved run history.
 
 The accompanying **IoTChainBench** contains 29 public scenarios with
 per-vulnerability ground truth: S1–S19 for development and S20–S29 reserved for
@@ -41,8 +45,8 @@ python -m pip install -r requirements.txt
 python -m src.agent --help
 ```
 
-Before running a scenario, configure an available model provider and an isolated,
-authorized laboratory using the [execution guide](docs/benchmark/v1/execution.md)
+Before running a scenario, configure an isolated, authorized laboratory and,
+for LLM modes, an available model provider using the [execution guide](docs/benchmark/v1/execution.md)
 and [Ansible setup](benchmarks/ansible/README.md). Runs can deploy vulnerable
 services, consume model budget and remove scenario machines during cleanup.
 

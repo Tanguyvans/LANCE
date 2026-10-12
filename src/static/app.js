@@ -9,11 +9,14 @@ let activeRunFiles = []; // deliverables available for the selected historical r
 let activeRunIsSealed = false;
 let activeExecutionKind = 'lance';
 let nodeVulns = {};      // { nodeId: [{id,type,severity,service,details,cve_ids}] }
+let nodeAuditResults = {}; // Evidence-derived rules audit outcomes by device id.
 let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
 let colorMode = 'type';  // 'type' | 'security' — current graph coloring mode
 
 const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Intrusion',6:'Report'};
-const RUNNER_LABELS = {lance: 'Pipeline LANCE', vanilla: 'Agent simple', scripted: 'Script'};
+const RUNNER_LABELS = {lance: 'Pipeline LANCE', rules: 'Audit par règles', vanilla: 'Agent simple', scripted: 'Script'};
+
+function isGraphRunner(kind) { return kind === 'lance' || kind === 'rules'; }
 
 function runnerKind(value) {
   return Object.hasOwn(RUNNER_LABELS, value) ? value : 'lance';
@@ -51,7 +54,7 @@ function setRunnerActivity(title, activity, target = '') {
 
 function setRunnerCanvas(kind) {
   kind = runnerKind(kind);
-  const simple = kind !== 'lance';
+  const simple = !isGraphRunner(kind);
   document.getElementById('phase-bar').hidden = simple;
   document.getElementById('runner-activity').hidden = !simple;
   document.getElementById('simple-run-stage').hidden = !simple;
@@ -59,26 +62,43 @@ function setRunnerCanvas(kind) {
   document.getElementById('detail-placeholder').innerHTML = simple
     ? 'Choisissez un run<br>pour voir ses fichiers'
     : 'Cliquez sur un nœud<br>pour voir ses détails';
-  document.getElementById('cost-badge').hidden = kind === 'scripted';
+  document.getElementById('cost-badge').hidden = kind === 'scripted' || kind === 'rules';
+  document.querySelectorAll('.phase-pill').forEach(pill => {
+    pill.hidden = kind === 'rules' && ![3, 4].includes(Number(pill.dataset.phase));
+  });
   if (simple) resetDeviceProgress();
   document.getElementById('simple-stage-kind').textContent = RUNNER_LABELS[kind];
 }
 
 function setRunnerView(kind) {
+  ++rulesGraphRequest;
   kind = runnerKind(kind);
   activeExecutionKind = kind;
-  const simple = kind !== 'lance';
+  const simple = !isGraphRunner(kind);
+  const rules = kind === 'rules';
   const choice = document.querySelector(`input[name="runner-kind"][value="${kind}"]`);
   if (choice) choice.checked = true;
   document.getElementById('lance-config').hidden = simple;
   document.getElementById('simple-run-config').hidden = !simple;
   document.getElementById('script-config').hidden = kind !== 'scripted';
   updateScriptSelection();
-  document.getElementById('model-config').hidden = kind === 'scripted';
+  document.getElementById('model-config').hidden = kind === 'scripted' || rules;
+  document.getElementById('rules-config').hidden = !rules;
+  document.getElementById('execution-profile-config').hidden = rules;
+  document.getElementById('phase-selection-config').hidden = rules;
+  document.getElementById('model-budget-config').hidden = rules;
+  document.getElementById('batch-mode-choice').hidden = rules;
+  document.getElementById('blind-mode-label').hidden = rules || !document.getElementById('sel-scenario').value;
+  if (rules && document.querySelector('input[name="run-mode"]:checked')?.value === 'batch') {
+    document.querySelector('input[name="run-mode"][value="preset"]').checked = true;
+    document.getElementById('preset-mode').hidden = false;
+    document.getElementById('batch-mode').hidden = true;
+    document.getElementById('custom-mode').hidden = true;
+  }
   document.querySelector('.multi-model-toggle').hidden = kind !== 'lance';
   document.getElementById('multi-model-config').hidden = kind !== 'lance' || !document.getElementById('cb-multi-model').checked;
   setRunnerCanvas(kind);
-  document.getElementById('btn-start').textContent = kind === 'lance' ? 'Lancer le pentest' : kind === 'vanilla' ? "Lancer l'agent" : 'Lancer le script';
+  document.getElementById('btn-start').textContent = kind === 'rules' ? "Lancer l'audit par règles" : kind === 'lance' ? 'Lancer le pentest' : kind === 'vanilla' ? "Lancer l'agent" : 'Lancer le script';
   const batch = !simple && document.querySelector('input[name="run-mode"]:checked')?.value === 'batch';
   document.getElementById('btn-start').hidden = batch;
   document.getElementById('btn-batch-start').hidden = !batch;
@@ -682,7 +702,7 @@ function updateSelectedScenarioActions() {
   remove.disabled = !deletable;
 
   const blindLabel = document.getElementById('blind-mode-label');
-  blindLabel.hidden = !scenarioId || Boolean(scenario?.exported);
+  blindLabel.hidden = activeExecutionKind === 'rules' || !scenarioId || Boolean(scenario?.exported);
   if (blindLabel.hidden) document.getElementById('cb-blind-mode').checked = false;
 }
 
@@ -1017,13 +1037,20 @@ function _updateTopologyTable(nodes) {
   if (!tbody) return;
   tbody.innerHTML = nodes.map(n => {
     const vulns = nodeVulns[n.id] || [];
+    const audit = nodeAuditResults[n.id];
     const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
     const worst = order.find(s => vulns.some(v => v.severity === s)) || 'OK';
+    const badgeClass = audit && worst === 'OK' ? 'INFO' : worst;
     return `<tr>
       <td>${escapeHtml(n.id)}</td>
       <td>${escapeHtml(n.ip || '—')}</td>
       <td>${escapeHtml(n.type || '—')}</td>
-      <td><span class="sev ${worst}">${escapeHtml(worst)}</span></td>
+      <td><span class="sev ${badgeClass}">${escapeHtml(audit
+        ? audit.analysis_status === 'incomplete' || audit.verification_status === 'incomplete' ? 'Contrôles incomplets'
+          : audit.analysis_status === 'pending' ? 'En attente'
+          : audit.analysis_status === 'not_targeted' ? 'Sans IP · non ciblé'
+          : `${audit.findings.length} détection(s) · ${audit.confirmed_count} confirmée(s)`
+        : worst)}</span></td>
     </tr>`;
   }).join('');
 }
@@ -1041,7 +1068,8 @@ function showSealedTopologyPlaceholder() {
   }
 }
 
-async function loadTopology(scenarioId = null) {
+async function loadTopology(scenarioId = null, suppliedData = null) {
+  if (!suppliedData) ++rulesGraphRequest;
   const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
   const cyDiv = document.getElementById('cy');
   const loading = document.getElementById('cy-loading');
@@ -1051,7 +1079,7 @@ async function loadTopology(scenarioId = null) {
     loading.style.display = 'flex';
   }
 
-  const data = await fetchJSON(url);
+  const data = suppliedData || await fetchJSON(url);
 
   if (loading) loading.style.display = 'none';
 
@@ -1062,12 +1090,13 @@ async function loadTopology(scenarioId = null) {
 
   nodeVulns = {};
   nodeHosts = {};
+  nodeAuditResults = {};
   // Reset to type coloring when loading a new topology
   colorMode = 'type';
   document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('color-type')?.classList.add('active');
 
-  const nodes = data.nodes || [];
+  const nodes = (data.nodes || []).map(node => ({...node, color: node.color || TYPE_COLOR[node.type] || TYPE_COLOR.compute}));
   const edges = data.edges || [];
 
   const elements = [
@@ -1375,6 +1404,8 @@ function showNodeDetail(data) {
 
   const vulns = nodeVulns[data.id] || [];
   const hostInfo = nodeHosts[data.ip] || null;
+  const audit = nodeAuditResults[data.id];
+  const verificationLabels = {confirmed: 'Confirmée par les preuves', not_confirmed: 'Non confirmée', error: 'Contrôle indéterminé', not_run: 'Vérification en attente'};
 
   const sevSummary = vulns.length
     ? Object.entries(
@@ -1395,6 +1426,7 @@ function showNodeDetail(data) {
       <span class="sev ${escapeHtml(v.severity)}">${escapeHtml(v.severity)}</span>
       <strong>${escapeHtml(v.type)}</strong> — ${escapeHtml(v.service || '')}${v.port ? ':'+escapeHtml(String(v.port)) : ''}
       <div style="color:var(--muted);margin-top:3px;font-size:10px">${escapeHtml(v.details || '')}</div>
+      ${v.verification ? `<div class="audit-verification ${escapeHtml(v.verification)}">${escapeHtml(verificationLabels[v.verification] || 'Indéterminée')}</div>` : ''}
       ${v.cve_ids?.length ? `<div style="color:#58a6ff;font-size:10px;margin-top:2px">${v.cve_ids.map(escapeHtml).join(', ')}</div>` : ''}
     </div>
   `).join('');
@@ -1405,6 +1437,10 @@ function showNodeDetail(data) {
       ${escapeHtml(data.id)}
     </h2>
     <div class="detail-row"><span class="detail-key">IP</span><span class="detail-val">${escapeHtml(data.ip||'—')}</span></div>
+    ${audit ? `<div class="detail-section"><h3>Audit par règles</h3>
+      <div>${escapeHtml({completed: 'Analyse effectuée', incomplete: 'Contrôles incomplets', pending: 'Analyse en attente', not_targeted: 'Sans adresse IP · non ciblé'}[audit.analysis_status] || 'État indisponible')}</div>
+      <div>${audit.findings.length} détection(s) · ${audit.confirmed_count} confirmation(s) par les preuves</div>
+      ${audit.scanner_error_count ? `<div>${audit.scanner_error_count} erreur(s) de scan</div>` : ''}</div>` : ''}
     ${hostInfo?.hostname ? `<div class="detail-row"><span class="detail-key">Hostname</span><span class="detail-val">${escapeHtml(hostInfo.hostname)}</span></div>` : ''}
     ${hostInfo?.os ? `<div class="detail-row"><span class="detail-key">OS</span><span class="detail-val">${escapeHtml(hostInfo.os)}</span></div>` : ''}
 
@@ -1511,6 +1547,7 @@ async function startSimpleRun(kind) {
 
 async function startRun() {
   const kind = runnerKind(document.querySelector('input[name="runner-kind"]:checked')?.value);
+  if (kind === 'rules') return startRulesAudit();
   if (kind !== 'lance') return startSimpleRun(kind);
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
@@ -1616,6 +1653,54 @@ async function startRun() {
   lockRunnerChoice(true);
   resetDeviceProgress();
 
+  startSSE();
+}
+
+async function startRulesAudit() {
+  ++rulesGraphRequest;
+  const mode = document.querySelector('input[name="run-mode"]:checked')?.value;
+  const body = {runner_kind: 'rules', auto_teardown: document.getElementById('cb-teardown').checked};
+  if (mode === 'custom') {
+    const config = getCustomConfig();
+    body.architecture = config.architecture;
+    body.posture = config.posture;
+    body.selected_packs = config.packs;
+  } else if (mode === 'preset') {
+    body.scenario_id = document.getElementById('sel-scenario').value;
+    if (!body.scenario_id || isSealedScenarioId(body.scenario_id)) {
+      addLog({type: 'error', message: 'Choisissez un scénario public déployable pour cet audit.'});
+      return;
+    }
+    if (selectedScenarioMetadata()?.deployment_supported === false) {
+      addLog({type: 'error', message: 'Ce scénario ne possède pas de déploiement pris en charge.'});
+      return;
+    }
+  } else {
+    addLog({type: 'error', message: 'Choisissez un scénario ou une architecture personnalisée.'});
+    return;
+  }
+  for (const [id, field] of [['inp-rules-max-calls', 'max_tool_calls'], ['inp-rules-duration', 'max_duration_s']]) {
+    const element = document.getElementById(id);
+    if (!element.checkValidity() || !Number.isSafeInteger(Number(element.value)) || Number(element.value) <= 0) {
+      addLog({type: 'error', message: 'Les limites de contrôles doivent être des entiers positifs.'});
+      return;
+    }
+    body[field] = Number(element.value);
+  }
+  const response = await adminFetch('/api/pipeline/start', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({detail: response.statusText}));
+    addLog({type: 'error', message: _formatErrDetail(error.detail)});
+    return;
+  }
+  activeRunId = null;
+  nodeVulns = {}; nodeAuditResults = {}; nodeHosts = {};
+  resetNodeColors(); clearPhasePills(); clearLog(); setCost(0);
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').style.display = 'block';
+  lockRunnerChoice(true);
   startSSE();
 }
 
@@ -1825,9 +1910,18 @@ function startSSE(resume = false) {
 }
 
 function handleEvent(ev) {
+  if (ev.runner_kind === 'rules' && ev.run_dir &&
+      (ev.type === 'pipeline_start' || ev.type === 'pipeline_done' ||
+       (ev.type === 'phase_done' && [3, 4].includes(ev.phase)))) {
+    const runId = ev.run_dir.split('/').pop();
+    if (!activeRunId || activeRunId === runId) {
+      activeRunId = runId;
+      loadRulesAuditResults(ev.run_dir);
+    }
+  }
   const t = ev.type;
   addLog(ev);
-  if (activeExecutionKind !== 'lance' && (t === 'tool_call' || t === 'tool_result')) {
+  if (!isGraphRunner(activeExecutionKind) && (t === 'tool_call' || t === 'tool_result')) {
     setRunnerActivity('Exécution en cours', `${t === 'tool_call' ? 'Outil en cours' : 'Outil terminé'} : ${ev.name || 'outil'}`);
   }
 
@@ -1907,7 +2001,7 @@ function handleEvent(ev) {
     stopBtn.disabled = false;
     stopBtn.textContent = 'Arrêter';
     if (eventSource) { eventSource.close(); eventSource = null; }
-    if (activeExecutionKind !== 'lance' && document.getElementById('simple-stage-title').textContent === 'Exécution en cours') {
+    if (!isGraphRunner(activeExecutionKind) && document.getElementById('simple-stage-title').textContent === 'Exécution en cours') {
       const completed = ev.status === 'completed';
       setRunnerActivity(completed ? 'Exécution terminée' : 'Exécution interrompue', completed ? 'Résumé disponible dans l’historique' : `Statut : ${ev.status || 'indisponible'}`);
       document.getElementById('runner-activity').classList.toggle('failed', !completed);
@@ -1991,7 +2085,7 @@ function handleEvent(ev) {
     }
   }
 
-  else if (activeExecutionKind === 'lance' && t === 'tool_result' && ev.name === 'nmap_scan') {
+  else if (isGraphRunner(activeExecutionKind) && t === 'tool_result' && ev.name === 'nmap_scan') {
     const parsed = parseNmapResult(ev.result || '');
     let newNodesAdded = false;
     Object.entries(parsed).forEach(([ip, info]) => {
@@ -2023,7 +2117,7 @@ function handleEvent(ev) {
   }
 
   // Vuln sub-agent done — extract vulns from deliverable name pattern
-  else if (t === 'phase_done' && ev.phase === 3) {
+  else if (t === 'phase_done' && ev.phase === 3 && ev.runner_kind !== 'rules') {
     // Fetch vuln analysis deliverable to color nodes
     fetchVulnResults(ev.run_dir);
   }
@@ -2078,6 +2172,48 @@ async function fetchVulnResults(runIdOrDir) {
     // Refresh accessible table with updated severity states
     if (cy) _updateTopologyTable(cy.nodes().map(n => n.data()));
   } catch(e) { console.warn('fetchVulnResults failed', e); }
+}
+
+let rulesGraphRequest = 0;
+async function loadRulesAuditResults(runIdOrDir) {
+  if (!runIdOrDir) return;
+  const runId = runIdOrDir.split('/').pop();
+  const request = ++rulesGraphRequest;
+  const view = await fetchJSON(`/api/runs/${encodeURIComponent(runId)}/audit-results`);
+  if (request !== rulesGraphRequest) return;
+  if (!view || view.schema_version !== 1 || !view.available) {
+    nodeVulns = {}; nodeAuditResults = {}; nodeHosts = {};
+    if (cy) cy.elements().remove();
+    const loading = document.getElementById('cy-loading');
+    if (loading) {
+      loading.textContent = 'Topologie de cet audit en attente ou indisponible';
+      loading.style.display = 'flex';
+    }
+    return;
+  }
+  await loadTopology(null, view.topology);
+  if (request !== rulesGraphRequest) return;
+  for (const device of view.devices || []) {
+    nodeAuditResults[device.device_id] = device;
+    nodeVulns[device.device_id] = device.findings || [];
+  }
+  activateSecurityMode();
+  const order = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
+  for (const [id, device] of Object.entries(nodeAuditResults)) {
+    const worst = order.find(severity => device.findings.some(finding => finding.severity === severity));
+    if (worst) colorNodeBySeverity(id, worst);
+  }
+  if (cy) {
+    cy.nodes().forEach(node => {
+      const device = nodeAuditResults[node.id()];
+      if (!device) return;
+      node.data('auditStatus', device.analysis_status);
+      node.data('auditConfirmed', device.confirmed_count);
+      const incomplete = device.analysis_status === 'incomplete' || device.verification_status === 'incomplete';
+      node.data('label', `${node.id()}\n${incomplete ? 'Contrôles incomplets' : device.analysis_status === 'not_targeted' ? 'Sans IP · non ciblé' : device.analysis_status === 'completed' ? `${device.findings.length} détection(s) · ${device.confirmed_count} confirmée(s)` : 'En attente'}`);
+    });
+    _updateTopologyTable(cy.nodes().map(node => node.data()));
+  }
 }
 
 // ── Run history ────────────────────────────────────────────────────────────
@@ -2193,17 +2329,17 @@ function _renderRunItem(r) {
   const ts  = r.id.replace('_', ' ').replace(/_/g, ':');
   const sealed = isSealedRun(r);
   const kind = runnerKind(r.runner_kind);
-  const simple = kind !== 'lance';
+  const simple = !isGraphRunner(kind);
   const scnLabel = simple ? (r.script_id === 'smoke-v1' ? 'Démo hors ligne' : r.target_network || 'Réseau direct')
     : sealed ? `${r.scenario || 'Évaluation'} · scellé` : (r.scenario || 'Lab physique');
   const scn = `<span class="run-badge ${r.scenario ? 'done' : ''}">${escapeHtml(scnLabel)}</span>`;
-  const kindBadge = simple ? `<span class="run-badge runner-kind-badge">${escapeHtml(RUNNER_LABELS[kind])}</span>` : '';
+  const kindBadge = kind !== 'lance' ? `<span class="run-badge runner-kind-badge">${escapeHtml(RUNNER_LABELS[kind])}</span>` : '';
   const cost = !sealed && r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
   const eid = escapeHtml(r.id);
   const inCmp = !simple && _compareSet.has(r.id);
   const actions = sealed
     ? '<span style="color:var(--muted);font-size:10px">agrégats uniquement</span>'
-    : `${simple ? '' : `<button class="run-compare ${inCmp ? 'active' : ''}" onclick="event.stopPropagation(); toggleCompare('${eid}')" title="Ajouter à la comparaison">+ cmp</button>`}
+    : `${kind !== 'lance' ? '' : `<button class="run-compare ${inCmp ? 'active' : ''}" onclick="event.stopPropagation(); toggleCompare('${eid}')" title="Ajouter à la comparaison">+ cmp</button>`}
        <button class="run-download" onclick="event.stopPropagation(); downloadRun('${eid}')">zip</button>`;
   return `
     <div class="run-item ${r.id === activeRunId ? 'active' : ''} ${inCmp ? 'compare-active' : ''}" data-id="${eid}"
@@ -2278,6 +2414,7 @@ async function loadRuns() {
 }
 
 async function viewRun(runId) {
+  ++rulesGraphRequest;
   activeRunId = runId;
 
   // Highlight active run
@@ -2289,7 +2426,7 @@ async function viewRun(runId) {
   if (!run) return;
   activeRunFiles = Array.isArray(run.files) ? run.files : [];
   const kind = runnerKind(run.runner_kind);
-  const simple = kind !== 'lance';
+  const simple = !isGraphRunner(kind);
   if (!document.getElementById('btn-start').disabled) {
     // Browsing history must not rewrite the next launch mode or its target.
     setRunnerCanvas(kind);
@@ -2300,8 +2437,8 @@ async function viewRun(runId) {
   activeRunIsSealed = sealed;
   const eRunId = escapeHtml(runId);
   const scenarioId = run.scenario ? run.scenario.replace(/^S/i, '') : null;
-  const hasScore = !simple && run.scenario && run.files.includes('03_vuln_analysis.json');
-  const reportFile = simple ? (run.files.includes('run_summary.md') ? 'run_summary.md' : null)
+  const hasScore = kind === 'lance' && run.scenario && run.files.includes('03_vuln_analysis.json');
+  const reportFile = (simple || kind === 'rules') ? (run.files.includes('run_summary.md') ? 'run_summary.md' : null)
                    : run.files.includes('06_report.md') ? '06_report.md'
                    : run.files.includes('05_report.md') ? '05_report.md' : null;
 
@@ -2313,6 +2450,9 @@ async function viewRun(runId) {
   } else if (sealed) {
     showSealedTopologyPlaceholder();
     document.getElementById('sel-scenario').value = '';
+  } else if (kind === 'rules') {
+    await loadRulesAuditResults(runId);
+    document.getElementById('sel-scenario').value = scenarioId || '';
   } else {
     resetNodeColors();
     nodeVulns = {};
@@ -2332,7 +2472,7 @@ async function viewRun(runId) {
 
   // Fetch score + report in parallel (both can be slow)
   const [score, reportData] = await Promise.all([
-    (!simple && (sealed || hasScore)) ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
+    (kind === 'lance' && (sealed || hasScore)) ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
     (!sealed && reportFile) ? fetchJSON(`/api/runs/${eRunId}/${reportFile}`) : Promise.resolve(null),
   ]);
 
@@ -2428,19 +2568,19 @@ async function viewRun(runId) {
   } else if (reportFile && reportData && reportData.content) {
     reportPanel.innerHTML = `<div class="md-render">${renderMarkdown(reportData.content)}</div>`;
   } else {
-    reportPanel.innerHTML = simple
+    reportPanel.innerHTML = simple || kind === 'rules'
       ? '<div style="color:var(--muted);font-size:11px;padding:4px 0">Aucun résumé disponible pour ce run.</div>'
       : '<div style="color:var(--muted);font-size:11px;padding:4px 0">Rapport (phase 6) non généré pour ce run.</div>';
   }
 
   // Load vuln data to color graph nodes
-  if (!simple && !sealed && run.files.includes('03_vuln_analysis.json')) {
+  if (kind === 'lance' && !sealed && run.files.includes('03_vuln_analysis.json')) {
     await fetchVulnResults(runId);
   }
 
   // Ledger observations do not depend on the model saving its declaration.
   // The server distinguishes an unavailable journal from zero accesses.
-  if (!simple && !sealed) {
+  if (kind === 'lance' && !sealed) {
     await loadIntrusionOverlay(runId);
   }
 }
@@ -3325,7 +3465,7 @@ function addLog(ev) {
   else if (t === 'lab_acquired') text = 'Laboratoire disponible — exécution autorisée.';
   else if (t === 'pipeline_start') text = `Pipeline démarré — ${ev.device_count} devices, ${ev.cve_count} CVEs`;
   else if (t === 'pipeline_done') {
-    if (ev.runner_kind && ev.runner_kind !== 'lance') {
+    if (ev.runner_kind && !isGraphRunner(ev.runner_kind)) {
       text = `Exécution terminée — ${ev.status || 'statut indisponible'}`;
     } else {
       const cost = typeof ev.total_cost_usd === 'number' && Number.isFinite(ev.total_cost_usd)
@@ -3499,7 +3639,7 @@ async function pollStatus() {
   // — UI state —
   document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').style.display = 'block';
-  if (kind !== 'lance') {
+  if (!isGraphRunner(kind)) {
     const started = (status.recent_events || []).find(ev => ev.type === 'runner_started');
     setRunnerActivity('Exécution en cours', 'Connexion au journal…', started?.target_network || 'Réseau direct');
     document.getElementById('runner-activity').classList.add('running');
@@ -3511,7 +3651,7 @@ async function pollStatus() {
   }
 
   // — Phase pills —
-  if (kind === 'lance') {
+  if (isGraphRunner(kind)) {
     for (const p of (status.phases_done || [])) {
       setPhasePill(p.phase, 'done');
     }
@@ -3519,7 +3659,7 @@ async function pollStatus() {
   }
 
   // — Device progress chips (phase 3) —
-  if (kind === 'lance' && status.current_devices && status.current_devices.length > 0) {
+  if (isGraphRunner(kind) && status.current_devices && status.current_devices.length > 0) {
     for (const dev of status.current_devices) {
       _deviceProgress[dev] = status.devices_done.includes(dev) ? 'done' : 'running';
     }
@@ -3527,7 +3667,10 @@ async function pollStatus() {
   }
 
   // — Sync scenario dropdown & topology —
-  if (kind === 'lance' && status.scenario_id) {
+  if (kind === 'rules' && status.run_dir) {
+    activeRunId = status.run_dir.split('/').pop();
+    await loadRulesAuditResults(status.run_dir);
+  } else if (isGraphRunner(kind) && status.scenario_id) {
     if (isSealedScenarioId(status.scenario_id)) {
       document.getElementById('sel-scenario').value = '';
       showSealedTopologyPlaceholder();

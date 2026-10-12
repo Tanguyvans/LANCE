@@ -106,11 +106,19 @@ class Pipeline(
         max_duration_s: float | None = None,
     ):
         from src.agent.audit_experiment import validate_configuration
+        self.rules_scenario_audit = (
+            decision_policy == "rules" and experiment_scope is None
+            and (scenario_id is not None or custom_config is not None)
+        )
+        if self.rules_scenario_audit and (blind or phase_models or target_network is not None
+                                         or execution_context is not None or dry_run):
+            raise ValueError("Scenario rules audits use the public scenario topology and no model overrides")
         self.audit_inventory = validate_configuration(
             decision_policy=decision_policy, experiment_scope=experiment_scope,
             inventory=audit_inventory, execution_profile=execution_profile,
             phases=phases, max_tool_calls=max_tool_calls, max_duration_s=max_duration_s,
             max_cost_usd=max_cost_usd,
+            scenario_rules=self.rules_scenario_audit,
             incompatible=bool(scenario_id is not None or custom_config is not None or blind
                               or execution_context is not None or phase_models or dry_run
                               or benchmark_split is not None or target_network is not None),
@@ -138,7 +146,7 @@ class Pipeline(
         self.requested_phases = (
             None if phases is None else sorted({int(phase) for phase in phases})
         )
-        self.phases = [3, 4] if experiment_scope else runtime._expand_phase_selection(self.requested_phases)
+        self.phases = [3, 4] if experiment_scope or self.rules_scenario_audit else runtime._expand_phase_selection(self.requested_phases)
         self.scenario_id = scenario_id
         self.execution_context = execution_context
         self.benchmark_split = benchmark_split or getattr(execution_context, "split", None)
@@ -155,7 +163,7 @@ class Pipeline(
         # Benchmark runs must not change the CVE knowledge source on a cache
         # miss. Development runs without a benchmark split keep live lookup.
         self.cve_lookup_policy = (
-            "cache_only" if self.benchmark_split != "unassigned" or experiment_scope else "live_on_miss"
+            "cache_only" if self.benchmark_split != "unassigned" or experiment_scope or self.rules_scenario_audit else "live_on_miss"
         )
         self.manage_scenario = bool(manage_scenario)
         self._generated_deployment: runtime.GeneratedScenarioDeployment | runtime.ManualScenarioDeployment | None = None
@@ -524,6 +532,12 @@ class Pipeline(
             "tool_policy": self.scenario_tool_policy,
             "scenario_lab_config": self.scenario_lab_config,
         }
+        if self.rules_scenario_audit:
+            from src.agent.rules_audit import public_topology
+            topology = public_topology(self.run_context.graph.scenario_topology or {})
+            if not any(node.get("ip") for node in topology["nodes"]):
+                raise ValueError("The selected scenario has no public device topology")
+            (self.run_dir / "audit_topology.json").write_text(json.dumps(topology), encoding="utf-8")
 
         # Build compact edge list from whatever topology is available
         _st = self.run_context.graph.scenario_topology
@@ -577,7 +591,7 @@ class Pipeline(
             ),
             "runtime_unavailable_tools": self.runtime_unavailable_tools,
             "oracle_access": False,
-            "episodic_memory_enabled": self.benchmark_split == "unassigned" and not self.experiment_scope,
+            "episodic_memory_enabled": self.decision_policy == "llm" and self.benchmark_split == "unassigned" and not self.experiment_scope,
             "requested_phases": (
                 self.requested_phases
                 if self.requested_phases is not None else [1, 2, 3, 4, 5, 6]
@@ -603,6 +617,10 @@ class Pipeline(
                 "workers": 1,
                 "analysis_limits": self.experiment_analysis_limits,
             })
+        if self.rules_scenario_audit:
+            from src.agent.audit_experiment import RULES_VERSION
+            run_meta.update({"runner_kind": "rules", "decision_policy": "rules",
+                             "audit_scope": "scenario-analysis-verification", "rules_version": RULES_VERSION})
         contract_hash = getattr(self.execution_context, "contract_hash", None)
         if not contract_hash and self.execution_context is not None:
             try:
@@ -633,11 +651,13 @@ class Pipeline(
         # In blind mode, we deploy the scenario but hide the topology — the agent
         # must discover targets itself, so scenario_context stays empty.
         if self.scenario_id is not None:
-            if not self.blind and not self.sealed:
+            if not self.blind and not self.sealed and not self.rules_scenario_audit:
                 scenario_context = self._load_scenario_context(self.scenario_id)
                 if scenario_context:
                     self.context["scenario_context"] = scenario_context
                     print(f"  Benchmark scenario: S{self.scenario_id} — {scenario_context.splitlines()[0]}")
+            elif self.rules_scenario_audit:
+                print(f"  Benchmark scenario: S{self.scenario_id} — audit par règles depuis la topologie publique")
             else:
                 print(f"  Benchmark scenario: S{self.scenario_id} (BLIND — topology hidden, discovery on {self.target_network})")
 
@@ -665,6 +685,10 @@ class Pipeline(
                 if not deploy_ok:
                     self._termination = "failed"
                     return {}
+            if self.rules_scenario_audit:
+                # The action/time limits cover audit probes, after deployment.
+                self._run_started = time.monotonic()
+                self._update_run_meta({"audit_started_at": datetime.now().astimezone().isoformat()})
 
         # Get agents sorted by phase
         agents = sorted(runtime.AGENTS.values(), key=lambda a: a.phase)
@@ -819,7 +843,7 @@ class Pipeline(
 
         # All benchmark runs are independent trials, including public dev/test.
         # Never feed their findings into the persistent episodic memory.
-        if self.benchmark_split == "unassigned" and not self.experiment_scope:
+        if self.decision_policy == "llm" and self.benchmark_split == "unassigned" and not self.experiment_scope:
             try:
                 from src.agent.knowledge.ingest import ingest_run_findings
                 ingested = ingest_run_findings(self.run_dir, self.provider.model)
@@ -848,6 +872,10 @@ class Pipeline(
     ) -> bool:
         """Require an actual artifact, even when the producer was skipped."""
         for prereq_name in config.prerequisites:
+            if self.rules_scenario_audit and config.phase == 3 and prereq_name == "recon":
+                if not (self.run_context.graph.scenario_topology or {}).get("nodes"):
+                    return False
+                continue
             if self.experiment_scope and config.phase == 3 and prereq_name == "recon":
                 if self.audit_inventory is None:
                     return False
@@ -877,7 +905,7 @@ class Pipeline(
             data = json.loads(path.read_text(encoding="utf-8"))
             # 03_vuln_analysis.json style
             if "vulnerabilities" in data:
-                if self.experiment_scope and config.phase == 4:
+                if (self.experiment_scope or self.rules_scenario_audit) and config.phase == 4:
                     return isinstance(data["vulnerabilities"], list)
                 return len(data["vulnerabilities"]) > 0
             # 04_exploitation.json style. Phase 5 is a reconciliation stage:

@@ -438,8 +438,9 @@ class LanceRunner:
 
     runner_kind = "lance"
 
-    def __init__(self, pipeline):
+    def __init__(self, pipeline, kind="lance"):
         self.pipeline = pipeline
+        self.runner_kind = kind
 
     def __getattr__(self, name):
         return getattr(self.pipeline, name)
@@ -448,7 +449,7 @@ class LanceRunner:
         updater = getattr(self.pipeline, "_update_run_meta", None)
         if callable(updater):
             try:
-                updater({"runner_kind": "lance"})
+                updater({"runner_kind": self.runner_kind})
             except Exception:
                 log.warning("Could not tag LANCE run metadata", exc_info=True)
 
@@ -458,6 +459,19 @@ class LanceRunner:
             return self.pipeline.run(stream_callback=stream_callback, stop_event=stop_event)
         finally:
             self._tag()
+            if self.runner_kind == "rules":
+                from src.agent.rules_audit import write_summary
+                try:
+                    write_summary(self.pipeline.run_dir)
+                except Exception:
+                    # A derived summary must never replace the audit's failure.
+                    log.exception("Could not write the rules audit summary")
+                    updater = getattr(self.pipeline, "_update_run_meta", None)
+                    if callable(updater):
+                        try:
+                            updater({"rules_summary_status": "failed"})
+                        except Exception:
+                            log.exception("Could not record rules summary failure")
 
 
 @contextmanager
@@ -487,9 +501,19 @@ def make_runner(
     execution_profile="auto", script_id=None, output_dir=None, **pipeline_kwargs,
 ):
     """Build one execution strategy; simple baselines require explicit scope."""
-    if kind == "lance":
+    if kind in {"lance", "rules"}:
         if script_id is not None:
             raise ValueError("script_id applies only to scripted runs")
+        if kind == "rules":
+            if provider is not None or target_network is not None or max_cost_usd is not None:
+                raise ValueError("Rules audits require a scenario and no model or direct network")
+            if scenario_id is None and not pipeline_kwargs.get("custom_config"):
+                raise ValueError("Rules audits require a selected scenario or architecture")
+            pipeline_kwargs["decision_policy"] = "rules"
+            pipeline_kwargs["phases"] = [3, 4]
+            execution_profile = "full"
+            max_tool_calls = 200 if max_tool_calls is None else max_tool_calls
+            max_duration_s = 600 if max_duration_s is None else max_duration_s
         from src.agent.pipeline import Pipeline
         pipeline = Pipeline(
             provider=provider, scenario_id=scenario_id,
@@ -498,7 +522,7 @@ def make_runner(
             execution_profile=execution_profile, output_dir=output_dir,
             **pipeline_kwargs,
         )
-        return LanceRunner(pipeline)
+        return LanceRunner(pipeline, kind)
     if kind not in {"vanilla", "scripted"}:
         raise ValueError(f"Unknown runner kind: {kind!r}")
     if scenario_id is not None or pipeline_kwargs:

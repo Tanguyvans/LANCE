@@ -120,3 +120,10 @@ manuel, l'expiration de l'historique et l'indépendance des opérations. Il exer
 la route SSE via le client HTTP de test et le code JavaScript du dashboard avec
 Node.js, sans modèle ni laboratoire. Le contrat du suivi partagé est décrit
 dans le [guide des instances](../docs/guides/development-instances.md#plusieurs-lecteurs-dun-même-run).
+
+`test_scenario_rules_audit.py` vérifie les audits applicatifs par règles : contrat
+API sans modèle, déploiement avant les sondes, preuves par équipement, métriques
+sans appel LLM et exclusion des comparaisons benchmark. Les playbooks et sondes
+sont simulés ; aucun audit réel n'est lancé. `test_rules_audit_ui.py` exerce le
+JavaScript du dashboard avec Node.js pour le choix du mode, les requêtes sans
+modèle, le graphe et les diagnostics, sans serveur ni accès réseau.
