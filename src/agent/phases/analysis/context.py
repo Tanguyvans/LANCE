@@ -14,6 +14,7 @@ from src.agent.execution_profiles import ExecutionProfile
 from src.agent.provider import LLMProvider
 from src.agent.registry import AgentConfig
 from src.agent.phases.contracts import PhaseStatus
+from src.agent.core.graph_context import GraphContext, current_graph_context
 
 
 EventCallback = Callable[[dict], None]
@@ -44,6 +45,7 @@ class AnalysisContext:
     profile: ExecutionProfile
     services: AnalysisServices
     variables: Mapping[str, object]
+    graph: GraphContext = field(default_factory=current_graph_context)
     compact_local: bool = False
     local_moe: bool = False
     dry_run: bool = False

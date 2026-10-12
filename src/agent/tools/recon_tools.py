@@ -146,9 +146,10 @@ def arp_scan(**kwargs) -> str:
 
     log = logging.getLogger(__name__)
     try:
-        from src.agent.tools.graph_tools import _scenario_topology
+        from src.agent.core.graph_context import current_graph_context
+        topology = current_graph_context().scenario_topology
         # Ensure we have a string here
-        subnet = str(_scenario_topology.get("subnet", "192.168.88.0")).rsplit(".", 1)[0] if _scenario_topology else "192.168.88"
+        subnet = str(topology.get("subnet", "192.168.88.0")).rsplit(".", 1)[0] if topology else "192.168.88"
     except Exception:
         subnet = "192.168.88"
 

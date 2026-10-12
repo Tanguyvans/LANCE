@@ -5,12 +5,14 @@ import logging
 from src.agent.core import runtime
 from src.agent.core.executor import EvidenceWriteError
 from src.agent.cost_tracker import BudgetExceeded
+from src.agent.core.graph_context import graph_bound
 from src.agent.phases.analysis.context import AnalysisContext, ScanResult
 from src.agent.phases.analysis.supplemental import supplement_scans
 
 log = logging.getLogger(__name__)
 
 
+@graph_bound
 def scan_phase(context: AnalysisContext) -> ScanResult:
     surface_error = None
     try:

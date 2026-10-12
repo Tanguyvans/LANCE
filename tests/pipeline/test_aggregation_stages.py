@@ -85,7 +85,7 @@ def test_core_aggregates_from_explicit_context_without_pipeline_or_graph(context
     before = source.read_bytes()
     monkeypatch.setattr(runtime, "get_attack_surface", forbid_ambient)
     monkeypatch.setattr(runtime, "available_tool_names", forbid_ambient)
-    monkeypatch.setattr(graph_tools, "_scenario_topology", {"broken": "ambient graph"})
+    monkeypatch.setattr(graph_tools.current_graph_context(), "scenario_topology", {"broken": "ambient graph"})
 
     result = aggregate(context)
 
@@ -202,7 +202,7 @@ def test_snapshot_reads_graph_once_and_excludes_oracle_fields(tmp_path, monkeypa
     }
     calls = []
     monkeypatch.setattr(runtime, "get_attack_surface", lambda: calls.append(1) or json.dumps(surface))
-    monkeypatch.setattr(graph_tools, "_scenario_topology", topology)
+    monkeypatch.setattr(graph_tools.current_graph_context(), "scenario_topology", topology)
 
     context = capture_context(tmp_path)
     snapshot = deepcopy(context)
@@ -244,7 +244,7 @@ def test_concurrent_explicit_contexts_keep_provenance_and_ids_separate(tmp_path,
         contexts.append(AggregationContext(run_dir=run_dir, tool_names=frozenset({"http_request"})))
         write_candidates(run_dir, [finding(endpoint=f"/{label}", evidence_ref=f"proof-{label}")])
     monkeypatch.setattr(runtime, "get_attack_surface", forbid_ambient)
-    monkeypatch.setattr(graph_tools, "_scenario_topology", {"broken": "ambient graph"})
+    monkeypatch.setattr(graph_tools.current_graph_context(), "scenario_topology", {"broken": "ambient graph"})
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         results = list(executor.map(aggregate, contexts))

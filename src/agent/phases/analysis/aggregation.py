@@ -1,5 +1,6 @@
 """Phase 3 aggregation: capture, load, normalize, project, then write."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 
 from collections.abc import Callable
 from copy import deepcopy
@@ -42,7 +43,7 @@ def capture_context(
         if isinstance(node, dict) else deepcopy(node)
         for node in nodes
     ]
-    topology = graph_tools._scenario_topology
+    topology = graph_tools.current_graph_context().scenario_topology
     if topology is not None:
         topology = {
             "edges": [
@@ -143,6 +144,7 @@ def aggregate(context: AggregationContext) -> AggregationResult:
 
 class FindingAggregation:
     """Phase-2.5 adapter; the aggregation stages receive explicit inputs."""
+    @graph_bound
     def _aggregate_device_vulns(
         self, config: runtime.AgentConfig,
         stream_callback: Callable[[dict], None] | None = None,

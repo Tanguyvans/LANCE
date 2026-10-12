@@ -2,8 +2,11 @@
 
 `src.agent.pipeline.Pipeline` reste le point d'entrée de l'API, du CLI et des
 benchmarks. Il initialise le run, résout le profil de chaque modèle, vérifie
-les prérequis et garantit la finalisation. `registry.run_phase` appelle un seul
-`run(context, config, stream_callback)` par phase, pour les deux profils. Sa table
+les prérequis et garantit la finalisation. `registry.run_phase` construit un
+`PhaseContext`, puis appelle `run(context)` par phase, pour les deux profils.
+Ce contexte expose la configuration, le profil, les variables capturées, le
+fournisseur, le suivi de coût, l'arrêt et les services d'exécution nécessaires.
+Les entrées de phase ne reçoivent plus directement `Pipeline`. Sa table
 référence directement les six modules : aucun chemin d'import n'est construit
 dynamiquement et il n'y a pas de système de plugins à maintenir.
 
@@ -15,10 +18,13 @@ agent/
 │   ├── runner.py               # Boucle modèle/outils, transactions, événements
 │   ├── lifecycle.py            # Préparation, déploiement, nettoyage
 │   ├── runtime.py              # Dépendances d'infrastructure et catalogue d'outils
+│   ├── run_context.py          # Dossier et graphe appartenant au run
+│   ├── graph_context.py        # État du graphe et liaison dans les workers
 │   ├── probes.py               # Sondes protocolaires communes aux phases 4 et 5
 │   └── memo.py                 # Contrôles structurels des mémos Markdown
 └── phases/
     ├── registry.py             # Routage par numéro de phase, pas par profil
+    ├── context.py              # Entrées explicites et services des phases
     ├── graph/                  # Phase 1 : run.py, compact.py, recovery.py
     ├── recon/                  # Phase 2 : run.py, compact.py
     ├── analysis/               # Phase 3 : contexte, scan, appareils, sondes, agrégation
@@ -65,7 +71,9 @@ les fichiers produits et la reprise des fiches.
 `analysis/run.py` construit un `AnalysisContext` au début de la phase, après
 l'application d'un éventuel changement de modèle. Il capture le fournisseur,
 le profil, le dossier de run, les variables de prompt et les politiques.
-L'exécution suit trois étapes explicites :
+Le contexte contient également le graphe du run. Les prompts d'appareil,
+scanners, agrégateurs et workers utilisent ce graphe, y compris lorsque
+l'exécution passe dans un autre thread. L'exécution suit trois étapes explicites :
 
 1. `scan.scan_phase` produit les observations et les erreurs de scanner.
    `supplemental.py` conserve les sondes mTLS, OTA et cloud dérivées de preuves
@@ -81,8 +89,10 @@ L'exécution suit trois étapes explicites :
    référencés ne sont pas des certifications ; le livrable principal n'est inclus
    dans ce résultat que si sa validation réussit.
 
-Une agrégation valide conserve le statut partiel si un appareil, le scanner ou
-l'inventaire a échoué. Une validation invalide donne un échec. Les budgets,
+Une agrégation valide conserve le statut partiel si une analyse d'appareil ou
+l'inventaire a échoué, ou si des erreurs scanner n'ont laissé aucune analyse.
+Une erreur scanner récupérée reste dans l'artefact de diagnostic sans dégrader
+à elle seule le verdict du run. Une validation invalide donne un échec. Les budgets,
 arrêts et erreurs d'archivage restent des interruptions propagées ; ils ne
 deviennent pas des résultats partiels réussis. Le suivi de coût du worker est
 fermé même lors d'une interruption.
@@ -244,18 +254,53 @@ et valeurs malformées sont ignorées sans perdre les observations valides voisi
 Ce contrôle porte sur les empreintes déclarées par les services du laboratoire ;
 il ne démontre pas la possession de la clé privée correspondante.
 
+## Graphe et frontières propres au run
+
+Chaque `Pipeline` crée un `RunContext` avec son dossier et un `GraphContext`
+distinct. Ce dernier possède la topologie déclarée ou découverte, le backend,
+les observations CVE/risque, le graphe pondéré et son dernier delta. Charger,
+réinitialiser ou modifier le graphe du run B ne modifie pas celui du run A.
+
+La liaison par `ContextVar` fournit ce graphe aux outils existants sans changer
+leurs arguments exposés au modèle. Le cycle de vie et les services de phase
+lient le contexte ; chaque outil et les workers des phases 3/4 capturent aussi
+le propriétaire explicitement. Ils ne dépendent donc pas de la propagation
+implicite des variables de contexte vers les threads. Une liaison imbriquée ou
+en échec restaure toujours le contexte précédent.
+
+Un appel Python autonome aux outils de graphe conserve sa session de
+compatibilité. Pour lire le graphe d'un run en dehors de son exécution, le lier
+explicitement :
+
+```python
+from src.agent.core.graph_context import bind_graph_context
+from src.agent.tools.graph_tools import get_device_info
+
+with bind_graph_context(pipeline.run_context.graph):
+    observation = get_device_info("device-id")
+```
+
+La topologie doit avoir été chargée auparavant, comme pendant la préparation
+normale du pipeline. Les phases peuvent également recevoir directement un
+`PhaseContext` et des `PhaseServices` fournis par l'appelant. L'adaptation des
+anciens appels `run(pipeline, config, callback)` reste disponible ; les statuts,
+événements, noms de livrables et profils conservent leurs contrats.
+
 ## Limites conservées explicitement
 
-Les autres phases et plusieurs services de phase 3 restent des mixins utilisant
-l'état du même `Pipeline`. La phase 3 rend ses dépendances visibles et ses étapes
+Les méthodes de compatibilité et plusieurs services restent des mixins utilisant
+l'état du même `Pipeline`. Les entrées des six phases ont désormais un contexte
+explicite ; leurs services d'exécution peuvent encore appeler ce moteur.
+La phase 3 rend ses dépendances visibles et ses étapes
 testables avec un contexte explicite, mais les transactions, récupérations
 et validations CVE locales utilisent encore des callbacks liés au moteur.
 Ce contexte est construit pour une invocation de phase ; modifier le moteur
 pendant cette invocation n'est pas pris en charge. Le runner coordonne encore
 certaines adaptations des autres phases. Les livrables et
-validateurs utilisent désormais un dossier explicite par run ; d'autres outils
-conservent des états globaux, notamment le contexte de graphe.
-Ce ne sont pas six moteurs autonomes, ni une garantie de runs complets concurrents.
+validateurs utilisent un dossier explicite par run ; le graphe est lui aussi
+propre au run. Cela ne rend pas les six phases entièrement autonomes et ne
+garantit pas l'exécution simultanée de scénarios sur le laboratoire partagé.
+Les réservations du laboratoire et les verrous des fournisseurs restent en place.
 
 La source CVE appartient au run (`cve_lookup_policy`) et le filtre de connaissances
 à la configuration de la phase. La frontière d'exécution des outils les lie pour

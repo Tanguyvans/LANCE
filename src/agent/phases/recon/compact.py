@@ -1,5 +1,6 @@
 """Recon phase: compact adaptations."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 from collections.abc import Callable
 import logging
 from src.agent.core import runtime
@@ -11,6 +12,7 @@ log = logging.getLogger(__name__)
 class CompactReconPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
+    @graph_bound
     def _finalize_compact_recon_markdown(self, content: str) -> str:
         """Bind compact local Recon facts to the deterministic evidence ledger.
 
@@ -45,8 +47,8 @@ class CompactReconPhase:
         )
 
         try:
-            from src.agent.tools.graph_tools import _scenario_topology
-            declared_nodes = (_scenario_topology or {}).get("nodes", [])
+            from src.agent.core.graph_context import current_graph_context
+            declared_nodes = (current_graph_context().scenario_topology or {}).get("nodes", [])
         except Exception:
             declared_nodes = []
         unreachable_count = sum(

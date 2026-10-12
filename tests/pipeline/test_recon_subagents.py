@@ -68,7 +68,7 @@ def _topology(count):
 def test_subagents_eligible_keeps_special_modes_on_single_agent(monkeypatch):
     import src.agent.tools.graph_tools as graph_tools
 
-    monkeypatch.setattr(graph_tools, "_scenario_topology", _topology(8))
+    monkeypatch.setattr(graph_tools.current_graph_context(), "scenario_topology", _topology(8))
     # More than one batch of coverage: fan-out is worth the orchestration.
     assert subagents_eligible(_eligible_pipeline(), None) is True
     assert subagents_eligible(_eligible_pipeline(dry_run=True), None) is False
@@ -85,10 +85,10 @@ def test_subagents_eligible_stays_single_agent_within_one_batch(monkeypatch):
 
     # A plan that fits in a single batch (default 6): the generalist keeps
     # it, since one batch agent plus orchestration buys no context benefit.
-    monkeypatch.setattr(graph_tools, "_scenario_topology", _topology(2))
+    monkeypatch.setattr(graph_tools.current_graph_context(), "scenario_topology", _topology(2))
     assert subagents_eligible(_eligible_pipeline(), None) is False
     # Blind mode (no declared topology) cannot be split upfront either.
-    monkeypatch.setattr(graph_tools, "_scenario_topology", None)
+    monkeypatch.setattr(graph_tools.current_graph_context(), "scenario_topology", None)
     assert subagents_eligible(_eligible_pipeline(), None) is False
 
 

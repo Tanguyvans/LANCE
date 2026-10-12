@@ -17,6 +17,7 @@ from src.agent.tools.skill_tools import skill_tool_context
 from src.agent.registry import AGENTS
 from src.agent.cost_tracker import BudgetExceeded
 from src.agent.tools.outcomes import tool_execution_failed
+from src.agent.core.graph_context import bind_graph_callable, graph_for
 
 
 class EvidenceWriteError(RuntimeError):
@@ -133,5 +134,6 @@ def wrap_tool(run, tool: dict, *, phase=None, agent=None, decision_source=None, 
         return result
 
     observation_local = threading.local()
-    execute.last_observation = lambda: getattr(observation_local, "last", None)
-    return {**tool, "function": execute}
+    scoped_execute = bind_graph_callable(graph_for(run), execute)
+    scoped_execute.last_observation = lambda: getattr(observation_local, "last", None)
+    return {**tool, "function": scoped_execute}

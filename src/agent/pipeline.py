@@ -13,6 +13,8 @@ from uuid import uuid4
 from src.agent.phases.intrusion.compact import CompactIntrusionPhase
 from src.agent.core import runtime
 from src.agent.phases.registry import run_phase
+from src.agent.core.run_context import RunContext
+from src.agent.core.graph_context import graph_bound
 from src.agent.phases.graph.run import GraphPhase
 from src.agent.phases.graph.compact import CompactGraphPhase
 from src.agent.phases.graph.recovery import GraphRecoveryPhase
@@ -228,8 +230,10 @@ class Pipeline(
             except FileExistsError:
                 self.run_dir = output_root / f"{timestamp}_{uuid4().hex[:12]}"
         self.git_commit = runtime._get_git_commit()
+        self.run_context = RunContext(self.run_dir)
 
     @serialized_lab
+    @graph_bound
     def run(
         self,
         stream_callback: Callable[[dict], None] | None = None,
@@ -465,6 +469,7 @@ class Pipeline(
         except Exception as exc:
             log.warning("DB run persistence failed (non-fatal): %s", exc)
 
+    @graph_bound
     def _execute_run(
         self,
         stream_callback: Callable[[dict], None] | None = None,
@@ -497,7 +502,7 @@ class Pipeline(
         elif self.scenario_id is not None:
             from src.agent.tools.graph_tools import load_scenario_topology
             lab = load_scenario_topology(self.scenario_id)
-            from src.agent.tools.graph_tools import _scenario_topology as _st_post
+            _st_post = self.run_context.graph.scenario_topology
             _subnets = (_st_post or {}).get("subnets", [runtime.BENCHMARK_SUBNET])
             target_subnet = " ".join(_subnets) if len(_subnets) > 1 else (_subnets[0] if _subnets else runtime.BENCHMARK_SUBNET)
             # Initialize weighted attack graph for disbalance computation
@@ -521,7 +526,8 @@ class Pipeline(
         }
 
         # Build compact edge list from whatever topology is available
-        from src.agent.tools.graph_tools import _scenario_topology as _st, _backend as _bk
+        _st = self.run_context.graph.scenario_topology
+        _bk = self.run_context.graph.backend
         if _st is not None:
             edges = _st.get("edges", [])
             self.context["network_topology_edges"] = "\n".join(

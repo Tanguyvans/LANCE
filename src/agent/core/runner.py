@@ -1,5 +1,6 @@
 """Model/tool execution, deliverable transactions and event forwarding."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -248,6 +249,7 @@ class AgentRunner:
             wrapped.append({**tool, "function": transactional_save})
         return wrapped
 
+    @graph_bound
     def _run_agent(self, config: runtime.AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> str:
         """Run a single agent phase."""
         if config.phase == 3 and config.deterministic_aggregation:

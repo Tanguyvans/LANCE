@@ -22,6 +22,7 @@ as the source of truth.  A failed batch degrades to
 missing, instead of failing the whole phase.
 """
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 
 import json
 import logging
@@ -55,6 +56,7 @@ def devices_per_batch() -> int:
     return value if value > 0 else RECON_DEVICES_PER_BATCH
 
 
+@graph_bound
 def subagents_eligible(pipeline, config) -> bool:
     """Single-agent recon stays for modes the split path does not cover.
 
@@ -75,7 +77,8 @@ def subagents_eligible(pipeline, config) -> bool:
     if getattr(pipeline, "target_network", None):
         return False
     from src.agent.phases.recon.run import ReconPhase
-    from src.agent.tools.graph_tools import _scenario_topology as topology
+    from src.agent.core.graph_context import current_graph_context
+    topology = current_graph_context().scenario_topology
     nodes = (topology or {}).get("nodes", []) or []
     return len(ReconPhase._recon_scan_plan(nodes)) > devices_per_batch()
 
@@ -319,6 +322,7 @@ def _synthesize_batch_receipt(
     return True
 
 
+@graph_bound
 def run_recon_subagents(pipeline, config, tools: list[dict], stream_callback=None) -> str | None:
     """Sweep, per-batch coverage agents, then deterministic merge.
 
@@ -327,7 +331,7 @@ def run_recon_subagents(pipeline, config, tools: list[dict], stream_callback=Non
     """
     from src.agent.tools import graph_tools
 
-    topology = graph_tools._scenario_topology or {}
+    topology = graph_tools.current_graph_context().scenario_topology or {}
     nodes = topology.get("nodes", []) if isinstance(topology, dict) else []
     plan_rows = pipeline._recon_scan_plan(nodes)
     if not plan_rows:

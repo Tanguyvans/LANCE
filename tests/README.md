@@ -7,6 +7,14 @@ GPU sont regroupés dans [model_training/tests/](../model_training/tests/).
 Ne pas confondre ces tests logiciels avec les
 [scénarios d’évaluation du benchmark](../docs/benchmark/v1/scenarios.md).
 
+`test_run_graph_context.py` vérifie les graphes distincts de deux runs,
+les réinitialisations et mutations pondérées, les outils et prompts exécutés
+dans des threads, la restauration après exception et les entrées des six phases
+avec des contextes et services explicites. Les identifiants d'appareils peuvent
+être identiques sans mélanger leurs adresses ou journaux. Les fixtures de graphe
+des tests de reconnaissance appartiennent au run testé. Ces tests n'exécutent
+ni laboratoire, ni réseau, ni modèle.
+
 `test_archived_campaign_summary.py` vérifie la restitution hors ligne des
 statuts, diagnostics Phase 3 dont `scanner_errors` (valeur enregistrée et
 présence de la clé), scores manquants, avertissements et empreintes, ainsi que

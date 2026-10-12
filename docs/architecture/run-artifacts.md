@@ -4,7 +4,9 @@
 
 Créer un run B ne doit jamais rediriger les lectures, écritures ou validations
 du run A. Le pipeline reste unique, avec les mêmes dossiers par phase.
-Cette correction n'ajoute ni gestionnaire global de contexte ni nouvelle classe.
+`RunContext` regroupe aujourd'hui le dossier et le graphe du run ; les
+[frontières de phase et de graphe](../../src/agent/phases/README.md#graphe-et-frontières-propres-au-run)
+décrivent leur isolation et les adaptateurs de compatibilité.
 
 Trois règles suffisent :
 

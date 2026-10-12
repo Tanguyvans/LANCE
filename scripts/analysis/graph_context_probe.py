@@ -30,7 +30,7 @@ def main() -> None:
     second = json.loads(graph.get_network_topology())
     assert first["target_network"] == "192.0.2.0/24"
     assert second["target_network"] == "198.51.100.0/24"
-    assert graph._discovery_mode["target_network"] != "192.0.2.0/24"
+    assert graph.current_graph_context().discovery_mode["target_network"] != "192.0.2.0/24"
     graph._reset_graph_context()
     with patch.object(graph, "load_lab_context") as fallback:
         graph._ensure_loaded()

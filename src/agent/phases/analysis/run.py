@@ -1,5 +1,6 @@
 """Analysis phase: common execution and evidence handling."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound, graph_for
 from collections.abc import Callable
 import json
 import os
@@ -658,6 +659,7 @@ class AnalysisPhase:
         finally:
             self.tracker.end_phase()
 
+    @graph_bound
     def _run_phase3(self, config, stream_callback=None) -> AnalysisExecutionResult:
         """Compatibility entry for custom LLM aggregators and device tests."""
         self._phase3_execution_status = None
@@ -676,7 +678,7 @@ def build_context(run, config, stream_callback=None) -> AnalysisContext:
     explicit context. Its lifetime is one phase invocation.
     """
     return AnalysisContext(
-        run_dir=run.run_dir, config=config, provider=run.provider,
+        run_dir=run.run_dir, config=config, provider=run.provider, graph=graph_for(run),
         tracker=run.tracker, profile=run.execution_profile,
         services=AnalysisServices(
             wrap_tool=run._wrap_tool,
@@ -705,6 +707,7 @@ def build_context(run, config, stream_callback=None) -> AnalysisContext:
     )
 
 
+@graph_bound
 def run_execution(context: AnalysisContext) -> AnalysisExecutionResult:
     save_execution_status(context)
     if context.config.has_device_agents:
@@ -732,6 +735,7 @@ def _consumption(context: AnalysisContext) -> PhaseConsumption:
     )
 
 
+@graph_bound
 def aggregate_phase(
     context: AnalysisContext, execution: AnalysisExecutionResult,
 ) -> PhaseResult:
@@ -804,15 +808,19 @@ def execute(context: AnalysisContext) -> PhaseResult:
     return result
 
 
-def run(run, config, stream_callback=None) -> PhaseResult | str:
+@graph_bound
+def run(context, config=None, stream_callback=None) -> PhaseResult | str:
+    from src.agent.phases.context import phase_context
+    context = phase_context(context, config, stream_callback)
+    config = context.config
     # Custom legacy configurations can still ask for a model master aggregator.
-    if not config.deterministic_aggregation and run.decision_policy != "rules":
-        return run._run_agent(config, stream_callback)
-    run._phase3_execution_status = None
-    result = execute(build_context(run, config, stream_callback))
+    if not config.deterministic_aggregation and context.decision_policy != "rules":
+        return context.services.execute(config, context.emit)
+    context.services.record_analysis_status(None)
+    result = execute(context.analysis)
     # execute() already applied run_verdict in aggregate_phase: only work
     # left undone degrades here.
-    run._phase3_execution_status = (
+    context.services.record_analysis_status(
         result.status.value if result.status is PhaseStatus.WORKER_ERRORS else None
     )
     return result

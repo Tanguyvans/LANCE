@@ -1,5 +1,6 @@
 """Graph phase: common execution and evidence handling."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 import json
 
 
@@ -162,5 +163,8 @@ class GraphPhase:
         return projection
 
 
-def run(context, config, stream_callback=None):
-    return context._run_agent(config, stream_callback)
+@graph_bound
+def run(context, config=None, stream_callback=None):
+    from src.agent.phases.context import phase_context
+    explicit = phase_context(context, config, stream_callback)
+    return explicit.services.execute(explicit.config, explicit.emit)

@@ -1,5 +1,6 @@
 """Verification phase: common execution and evidence handling."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound, bind_graph_callable, graph_for
 from collections.abc import Callable
 from pathlib import Path
 import json
@@ -33,6 +34,7 @@ log = logging.getLogger(__name__)
 class VerificationPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
+    @graph_bound
     def _run_exploit_agents(
         self,
         config: runtime.AgentConfig,
@@ -496,7 +498,7 @@ class VerificationPhase:
             max_workers = 1
         pool = ThreadPoolExecutor(max_workers=max(1, min(len(exploit_tasks), max_workers)))
         futures = [
-            pool.submit(_run_with_stagger, item)
+            pool.submit(bind_graph_callable(graph_for(self), _run_with_stagger), item)
             for item in enumerate(exploit_tasks)
         ]
         pending = set(futures)
@@ -536,6 +538,7 @@ class VerificationPhase:
         # 3. Deterministic aggregation
         self._aggregate_exploit_results()
 
+    @graph_bound
     def _collect_new_hosts(self) -> list[dict]:
         """Collect Phase 4 host references absent from the known public surface.
 
@@ -739,5 +742,8 @@ class VerificationPhase:
         return entry
 
 
-def run(context, config, stream_callback=None):
-    return context._run_agent(config, stream_callback)
+@graph_bound
+def run(context, config=None, stream_callback=None):
+    from src.agent.phases.context import phase_context
+    explicit = phase_context(context, config, stream_callback)
+    return explicit.services.execute(explicit.config, explicit.emit)

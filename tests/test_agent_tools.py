@@ -463,7 +463,7 @@ class TestGraphTools:
         }
         assert names == expected
 
-    @patch("src.agent.tools.graph_tools._backend")
+    @patch("src.agent.core.graph_context._standalone_graph.backend")
     def test_get_network_topology(self, mock_backend):
         """Test that get_network_topology returns valid JSON."""
         from src.agent.tools.graph_tools import get_network_topology
@@ -471,8 +471,8 @@ class TestGraphTools:
             "nodes": [{"id": "test", "name": "Test"}],
             "edges": [],
         }
-        # Patch _backend at module level
-        with patch("src.agent.tools.graph_tools._backend", mock_backend):
+        # Direct calls use the standalone session's explicit graph context.
+        with patch("src.agent.core.graph_context._standalone_graph.backend", mock_backend):
             result = json.loads(get_network_topology())
             assert "nodes" in result
             assert "edges" in result
@@ -483,19 +483,19 @@ class TestGraphTools:
         import src.agent.tools.graph_tools as graph_tools
 
         for name in (
-            "_backend", "_infra", "_cve_reports", "_risk_scores", "_attack_report",
-            "_scenario_topology", "_discovery_mode", "_weighted_graph",
-            "_last_disbalance_report",
+            "backend", "infra", "cve_reports", "risk_scores", "attack_report",
+            "scenario_topology", "discovery_mode", "weighted_graph",
+            "last_disbalance_report",
         ):
-            monkeypatch.setattr(graph_tools, name, getattr(graph_tools, name))
+            monkeypatch.setattr(graph_tools.current_graph_context(), name, getattr(graph_tools.current_graph_context(), name))
         monkeypatch.setattr(
-            graph_tools, "_discovery_mode", {"target_network": "192.0.2.0/24"}
+            graph_tools.current_graph_context(), "discovery_mode", {"target_network": "192.0.2.0/24"}
         )
         monkeypatch.setattr(
-            graph_tools, "_scenario_topology", {"nodes": [{"id": "old-run"}]}
+            graph_tools.current_graph_context(), "scenario_topology", {"nodes": [{"id": "old-run"}]}
         )
-        monkeypatch.setattr(graph_tools, "_weighted_graph", object())
-        monkeypatch.setattr(graph_tools, "_last_disbalance_report", {"epicenter": "old-run"})
+        monkeypatch.setattr(graph_tools.current_graph_context(), "weighted_graph", object())
+        monkeypatch.setattr(graph_tools.current_graph_context(), "last_disbalance_report", {"epicenter": "old-run"})
 
         with (
             patch.object(
@@ -514,10 +514,10 @@ class TestGraphTools:
             backend.return_value.get_graph_stats.return_value = {}
             graph_tools.load_lab_context()
 
-        assert graph_tools._discovery_mode is None
-        assert graph_tools._scenario_topology is None
-        assert graph_tools._weighted_graph is None
-        assert graph_tools._last_disbalance_report is None
+        assert graph_tools.current_graph_context().discovery_mode is None
+        assert graph_tools.current_graph_context().scenario_topology is None
+        assert graph_tools.current_graph_context().weighted_graph is None
+        assert graph_tools.current_graph_context().last_disbalance_report is None
 
     @pytest.mark.parametrize("case", ["scenario_missing", "topology_missing", "topology_unset"])
     def test_invalid_scenario_never_falls_back_to_the_physical_lab(self, tmp_path, monkeypatch, case):
@@ -540,23 +540,23 @@ class TestGraphTools:
         import src.agent.tools.graph_tools as graph_tools
 
         for name in (
-            "_backend", "_infra", "_cve_reports", "_risk_scores", "_attack_report",
-            "_scenario_topology", "_discovery_mode", "_weighted_graph",
-            "_last_disbalance_report",
+            "backend", "infra", "cve_reports", "risk_scores", "attack_report",
+            "scenario_topology", "discovery_mode", "weighted_graph",
+            "last_disbalance_report",
         ):
-            monkeypatch.setattr(graph_tools, name, getattr(graph_tools, name))
+            monkeypatch.setattr(graph_tools.current_graph_context(), name, getattr(graph_tools.current_graph_context(), name))
         monkeypatch.setattr(
-            graph_tools, "_scenario_topology", {"nodes": [{"id": "old-run"}]}
+            graph_tools.current_graph_context(), "scenario_topology", {"nodes": [{"id": "old-run"}]}
         )
-        monkeypatch.setattr(graph_tools, "_weighted_graph", object())
-        monkeypatch.setattr(graph_tools, "_last_disbalance_report", {"epicenter": "old-run"})
+        monkeypatch.setattr(graph_tools.current_graph_context(), "weighted_graph", object())
+        monkeypatch.setattr(graph_tools.current_graph_context(), "last_disbalance_report", {"epicenter": "old-run"})
 
         graph_tools.load_discovery_context("198.51.100.0/24")
 
-        assert graph_tools._scenario_topology is None
-        assert graph_tools._weighted_graph is None
-        assert graph_tools._last_disbalance_report is None
-        assert graph_tools._discovery_mode == {"target_network": "198.51.100.0/24"}
+        assert graph_tools.current_graph_context().scenario_topology is None
+        assert graph_tools.current_graph_context().weighted_graph is None
+        assert graph_tools.current_graph_context().last_disbalance_report is None
+        assert graph_tools.current_graph_context().discovery_mode == {"target_network": "198.51.100.0/24"}
 
 
 # ------------------------------------------------------------------

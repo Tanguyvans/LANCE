@@ -1,5 +1,6 @@
 """Intrusion phase: common execution and evidence handling."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 import json
 import logging
 import re
@@ -553,6 +554,7 @@ class IntrusionPhase:
             "chains": chains,
         }
 
+    @graph_bound
     def _generate_intrusion_context(self) -> None:
         """Pre-generate 05_intrusion_context.json for the intrusion agent.
 
@@ -965,5 +967,8 @@ class IntrusionPhase:
             "hops": 0,
         })
 
-def run(context, config, stream_callback=None):
-    return context._run_agent(config, stream_callback)
+@graph_bound
+def run(context, config=None, stream_callback=None):
+    from src.agent.phases.context import phase_context
+    explicit = phase_context(context, config, stream_callback)
+    return explicit.services.execute(explicit.config, explicit.emit)

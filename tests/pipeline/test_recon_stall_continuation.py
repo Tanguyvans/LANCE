@@ -34,7 +34,6 @@ def test_full_recon_continues_actions_after_text_without_lowering_coverage(outpu
 
     nodes = [{"id": "a", "ip": "192.0.2.1", "role": "router"},
              {"id": "b", "ip": "192.0.2.2", "role": "router"}]
-    monkeypatch.setattr(graph_tools, "_scenario_topology", {"nodes": nodes})
     provider = LLMProvider.__new__(LLMProvider)
     provider.provider = "ollama-umons"
     provider.model = "qwen3.8:27b"
@@ -43,6 +42,7 @@ def test_full_recon_continues_actions_after_text_without_lowering_coverage(outpu
     provider.client.base_url = "http://offline.invalid"
     provider.client.with_options.return_value = provider.client
     pipeline = Pipeline(provider=provider, execution_profile="full")
+    monkeypatch.setattr(pipeline.run_context.graph, "scenario_topology", {"nodes": nodes})
     pipeline.context = {"target_subnet": "192.0.2.0/24"}
     pipeline._stop_event = threading.Event()
     scans = []

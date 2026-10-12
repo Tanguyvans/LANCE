@@ -1,5 +1,6 @@
 """Recon phase: common execution and evidence handling."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 from collections.abc import Callable
 import ipaddress
 import json
@@ -42,6 +43,7 @@ def expand_port_spec(spec: str) -> set[int]:
 class ReconPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
+    @graph_bound
     def _build_recon_evidence_projection(self) -> dict:
         """Project raw Recon tool evidence into a compact, lossless-sidecar ledger."""
         devices: dict[str, dict] = {}
@@ -139,8 +141,8 @@ class ReconPhase:
                         row["failures"].append(str(payload.get("stderr") or "scan failed"))
 
         try:
-            from src.agent.tools.graph_tools import _scenario_topology
-            nodes = (_scenario_topology or {}).get("nodes", [])
+            from src.agent.core.graph_context import current_graph_context
+            nodes = (current_graph_context().scenario_topology or {}).get("nodes", [])
             names = {str(node.get("ip")): node.get("id", "") for node in nodes}
         except Exception:
             names = {}
@@ -218,6 +220,7 @@ class ReconPhase:
             return False
         return isinstance(result, dict) and not result.get("error") and self._validator(config.validator)(config.deliverable_file)[0]
 
+    @graph_bound
     def _reconcile_phase2_attack_surface(self, projection: dict | None = None) -> dict:
         """Promote Phase 2 service observations into the Phase 3 scenario graph.
 
@@ -239,9 +242,9 @@ class ReconPhase:
         if not isinstance(projection, dict):
             return {"status": "invalid_projection"}
 
-        from src.agent.tools.graph_tools import _scenario_topology
+        from src.agent.core.graph_context import current_graph_context
 
-        topology = _scenario_topology or {}
+        topology = current_graph_context().scenario_topology or {}
         nodes = topology.get("nodes", [])
         if not isinstance(nodes, list):
             return {"status": "missing_topology"}
@@ -461,6 +464,7 @@ class ReconPhase:
         )
         return "\n".join(lines)
 
+    @graph_bound
     def _apply_recon_tool_contract(
         self, tools: list[dict], nodes: list | None = None,
         require_baseline: bool = True,
@@ -487,7 +491,8 @@ class ReconPhase:
         allowed_names = runtime.RECON_READ_ONLY_TOOL_NAMES | supporting_names
         selected = [tool for tool in tools if tool["name"] in allowed_names]
 
-        from src.agent.tools.graph_tools import _scenario_topology as topology
+        from src.agent.core.graph_context import current_graph_context
+        topology = current_graph_context().scenario_topology
 
         if nodes is None:
             nodes = (topology or {}).get("nodes", [])
@@ -1137,5 +1142,8 @@ class ReconPhase:
         log.info("Topology inference complete: %d edges, saved to %s", len(edges_data), edges_path)
 
 
-def run(context, config, stream_callback=None):
-    return context._run_agent(config, stream_callback)
+@graph_bound
+def run(context, config=None, stream_callback=None):
+    from src.agent.phases.context import phase_context
+    explicit = phase_context(context, config, stream_callback)
+    return explicit.services.execute(explicit.config, explicit.emit)

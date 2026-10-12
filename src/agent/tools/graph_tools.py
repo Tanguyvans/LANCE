@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.agent.core.graph_context import current_graph_context
+
 import json
 import logging
 import ipaddress
@@ -28,40 +30,12 @@ log = logging.getLogger(__name__)
 INFRA_YAML = Path("infrastructure/nato_lab.yaml")
 CPE_YAML = Path("infrastructure/cpe_mapping.yaml")
 
-# Cached state (populated by load_lab_context)
-_backend = None
-_infra = None
-_cve_reports = None
-_risk_scores = None
-_attack_report = None
-
-# Scenario override — set by load_scenario_topology() when a benchmark is active
-_scenario_topology: dict | None = None
-
-# Discovery mode — set by load_discovery_context() when no pre-defined topology
-_discovery_mode: dict | None = None  # {"target_network": "192.168.1.0/24"}
-
-# Weighted attack graph — for local disbalance computation
-_weighted_graph: WeightedAttackGraph | None = None
-# Last computed graph delta report
-_last_disbalance_report: dict | None = None
+# State is held in the GraphContext bound to this run.
 
 
 def _reset_graph_context() -> None:
-    """Clear all process-global graph state before loading a new run context."""
-    global _backend, _infra, _cve_reports, _risk_scores, _attack_report
-    global _scenario_topology, _discovery_mode
-    global _weighted_graph, _last_disbalance_report
-
-    _backend = None
-    _infra = None
-    _cve_reports = None
-    _risk_scores = None
-    _attack_report = None
-    _scenario_topology = None
-    _discovery_mode = None
-    _weighted_graph = None
-    _last_disbalance_report = None
+    """Clear only the graph context currently bound to this operation."""
+    current_graph_context().reset()
 
 
 def load_discovery_context(target_network: str) -> dict:
@@ -70,9 +44,9 @@ def load_discovery_context(target_network: str) -> dict:
     The agent starts with an empty graph and builds it from active recon results.
     Returns a minimal context dict so the pipeline can start without a YAML topology.
     """
-    global _discovery_mode
+    state = current_graph_context()
     _reset_graph_context()
-    _discovery_mode = {"target_network": target_network}
+    state.discovery_mode = {"target_network": target_network}
     return {
         "device_count": 0,
         "link_count": 0,
@@ -86,21 +60,21 @@ def load_lab_context() -> dict:
 
     Returns a summary dict suitable for injection into the system prompt.
     """
-    global _backend, _infra, _cve_reports, _risk_scores, _attack_report
+    state = current_graph_context()
 
     _reset_graph_context()
-    _infra = load_yaml(INFRA_YAML)
-    _backend = build_graph(INFRA_YAML)
-    _cve_reports = scan_all_devices(_infra, load_cpe_mapping(CPE_YAML))
-    _risk_scores = score_all_devices(_backend, _cve_reports)
-    _attack_report = analyze_attack_paths(_backend, _cve_reports)
+    state.infra = load_yaml(INFRA_YAML)
+    state.backend = build_graph(INFRA_YAML)
+    state.cve_reports = scan_all_devices(state.infra, load_cpe_mapping(CPE_YAML))
+    state.risk_scores = score_all_devices(state.backend, state.cve_reports)
+    state.attack_report = analyze_attack_paths(state.backend, state.cve_reports)
 
     return {
-        "stats": _backend.get_graph_stats(),
-        "device_count": len(_infra.devices),
-        "link_count": len(_infra.links),
-        "cve_count": sum(len(r.cves) for r in _cve_reports),
-        "top_risk": _risk_scores[0].device_id if _risk_scores else None,
+        "stats": state.backend.get_graph_stats(),
+        "device_count": len(state.infra.devices),
+        "link_count": len(state.infra.links),
+        "cve_count": sum(len(r.cves) for r in state.cve_reports),
+        "top_risk": state.risk_scores[0].device_id if state.risk_scores else None,
     }
 
 
@@ -122,7 +96,7 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
     to the evaluator-side oracle, not to the worker.
     Missing scenario data is an error; it must never select another lab.
     """
-    global _scenario_topology
+    state = current_graph_context()
     _reset_graph_context()
 
     sid = str(scenario_id)
@@ -213,7 +187,7 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
             subnets = ["192.168.100.0/24"]
     subnet = subnets[0]
 
-    _scenario_topology = {
+    state.scenario_topology = {
         "scenario_id": scenario_id,
         "scenario_name": scenario.get("name", f"S{sid}"),
         "subnet": subnet,
@@ -246,28 +220,29 @@ def get_network_neighbors(device_id: str) -> dict:
     """Return upstream/downstream neighbors for a device.
 
     Works in all three pipeline modes:
-    - Scenario mode: derived from _scenario_topology edges + node_index
+    - Scenario mode: derived from the context's topology edges + node_index
     - Lab mode: derived from NetworkX backend neighbors
-    - Discovery mode: derived from _discovery_mode["discovered_hosts"] if populated
+    - Discovery mode: derived from the context's discovered hosts if populated
       by update_discovery_hosts() after Phase 3a scanner runs.
 
     Returns {"upstream": [...], "downstream": [...], "role": str}
     where role is one of ENTRY_POINT | PIVOT | TARGET.
     """
+    state = current_graph_context()
     upstream: list[dict] = []
     downstream: list[dict] = []
 
-    if _scenario_topology is not None:
-        node_index = _scenario_topology["node_index"]
-        for e in _scenario_topology.get("edges", []):
+    if state.scenario_topology is not None:
+        node_index = state.scenario_topology["node_index"]
+        for e in state.scenario_topology.get("edges", []):
             if e["target"] == device_id and e["source"] in node_index:
                 upstream.append(node_index[e["source"]])
             if e["source"] == device_id and e["target"] in node_index:
                 downstream.append(node_index[e["target"]])
 
-    elif _backend is not None:
+    elif state.backend is not None:
         try:
-            raw = _backend.get_neighbors(device_id)
+            raw = state.backend.get_neighbors(device_id)
             # Backend returns list[str] (device IDs) — convert to minimal dicts
             if isinstance(raw, list):
                 downstream = [
@@ -277,9 +252,9 @@ def get_network_neighbors(device_id: str) -> dict:
         except Exception:
             pass
 
-    elif _discovery_mode is not None and "discovered_hosts" in _discovery_mode:
+    elif state.discovery_mode is not None and "discovered_hosts" in state.discovery_mode:
         # Flat discovery topology: every other discovered host is a potential downstream
-        hosts = _discovery_mode["discovered_hosts"]
+        hosts = state.discovery_mode["discovered_hosts"]
         downstream = [h for h in hosts if h.get("id") != device_id]
 
     role = _compute_node_role(upstream, downstream)
@@ -296,35 +271,35 @@ def update_discovery_hosts(hosts: list[dict]) -> None:
 
     hosts: list of {"id": str, "ip": str, "role": str, "services": [...]}
     """
-    global _discovery_mode, _weighted_graph, _last_disbalance_report
-    if _discovery_mode is not None:
-        old_hosts = _discovery_mode.get("discovered_hosts", [])
+    state = current_graph_context()
+    if state.discovery_mode is not None:
+        old_hosts = state.discovery_mode.get("discovered_hosts", [])
         old_ids = {h.get("id") for h in old_hosts}
-        _discovery_mode["discovered_hosts"] = hosts
+        state.discovery_mode["discovered_hosts"] = hosts
 
         # Detect new hosts for disbalance computation
         new_hosts = [h for h in hosts if h.get("id") not in old_ids]
-        if new_hosts and _weighted_graph is not None:
+        if new_hosts and state.weighted_graph is not None:
             mutation_data = {"new_hosts": new_hosts}
             epicenter = identify_epicenter("discovery", mutation_data)
             if epicenter:
                 # Update graph edges for new hosts
                 for h in new_hosts:
-                    _weighted_graph.add_node(
+                    state.weighted_graph.add_node(
                         h["id"], role=h.get("role", ""), ip=h.get("ip", ""),
                     )
                     # Add edges from existing hosts to new host
                     for existing in old_hosts:
-                        _weighted_graph.set_edge_weight(
+                        state.weighted_graph.set_edge_weight(
                             existing["id"], h["id"], 0.1,
                         )
-                        _weighted_graph.set_edge_weight(
+                        state.weighted_graph.set_edge_weight(
                             h["id"], existing["id"], 0.1,
                         )
 
                 # Compute cone of impact
                 affected = compute_graph_disbalance(
-                    _weighted_graph, epicenter,
+                    state.weighted_graph, epicenter,
                 )
                 edges_mod = [
                     {
@@ -337,11 +312,11 @@ def update_discovery_hosts(hosts: list[dict]) -> None:
                     for existing in old_hosts
                     for h in new_hosts
                 ]
-                _last_disbalance_report = build_graph_delta_report(
+                state.last_disbalance_report = build_graph_delta_report(
                     affected, edges_mod, "update_discovery_hosts",
                 )
                 # Update snapshot for next iteration
-                _weighted_graph.snapshot_distances()
+                state.weighted_graph.snapshot_distances()
                 log.info(
                     "Discovery disbalance: %d affected nodes from epicenter %s",
                     len(affected), epicenter,
@@ -349,7 +324,8 @@ def update_discovery_hosts(hosts: list[dict]) -> None:
 
 
 def _ensure_loaded():
-    if _scenario_topology is None and _backend is None and _discovery_mode is None:
+    state = current_graph_context()
+    if state.scenario_topology is None and state.backend is None and state.discovery_mode is None:
         load_lab_context()
 
 
@@ -360,11 +336,12 @@ def get_network_topology() -> str:
     Nodes are summarized to save LLM context tokens.
     Use get_device_info(id) to get full details for a specific device.
     """
+    state = current_graph_context()
     _ensure_loaded()
-    if _discovery_mode is not None:
+    if state.discovery_mode is not None:
         return json.dumps({
             "mode": "discovery",
-            "target_network": _discovery_mode["target_network"],
+            "target_network": state.discovery_mode["target_network"],
             "note": "No pre-defined topology. Use nmap_scan to discover hosts on the target network.",
         }, ensure_ascii=False)
         
@@ -372,29 +349,30 @@ def get_network_topology() -> str:
         # Only keep critical topological attributes, drop heavy 'services'/'vulnerabilities'
         return [{"id": n.get("id"), "ip": n.get("ip"), "type": n.get("type"), "role": n.get("role")} for n in nodes]
 
-    if _scenario_topology is not None:
+    if state.scenario_topology is not None:
         return json.dumps({
-            "scenario": _scenario_topology["scenario_name"],
-            "subnet": _scenario_topology["subnet"],
-            "nodes": _summarize_nodes(_scenario_topology["nodes"]),
-            "edges": _scenario_topology["edges"],
+            "scenario": state.scenario_topology["scenario_name"],
+            "subnet": state.scenario_topology["subnet"],
+            "nodes": _summarize_nodes(state.scenario_topology["nodes"]),
+            "edges": state.scenario_topology["edges"],
         }, ensure_ascii=False)
         
-    backend_dict = _backend.to_dict()
+    backend_dict = state.backend.to_dict()
     backend_dict["nodes"] = _summarize_nodes(backend_dict.get("nodes", []))
     return json.dumps(backend_dict, ensure_ascii=False, default=str)
 
 
 def get_device_info(device_id: str) -> str:
     """Return detailed info for a specific device."""
+    state = current_graph_context()
     _ensure_loaded()
-    if _scenario_topology is not None:
-        node = _scenario_topology["node_index"].get(device_id)
+    if state.scenario_topology is not None:
+        node = state.scenario_topology["node_index"].get(device_id)
         if node:
             return json.dumps(node, ensure_ascii=False)
         return json.dumps({"error": f"Device '{device_id}' not found in scenario"})
-    if _discovery_mode is not None:
-        for host in _discovery_mode.get("discovered_hosts", []):
+    if state.discovery_mode is not None:
+        for host in state.discovery_mode.get("discovered_hosts", []):
             if host.get("id") == device_id or host.get("ip") == device_id:
                 return json.dumps(host, ensure_ascii=False)
         return json.dumps({
@@ -402,11 +380,11 @@ def get_device_info(device_id: str) -> str:
             "mode": "discovery",
             "note": "Host not yet discovered — run nmap_scan on the target network.",
         })
-    if _backend is None:
+    if state.backend is None:
         return json.dumps({"error": "No topology loaded"})
     try:
-        device = _backend.get_device(device_id)
-        neighbors = _backend.get_neighbors(device_id)
+        device = state.backend.get_device(device_id)
+        neighbors = state.backend.get_neighbors(device_id)
         device["neighbors"] = neighbors
         return json.dumps(device, ensure_ascii=False, default=str)
     except KeyError:
@@ -415,64 +393,67 @@ def get_device_info(device_id: str) -> str:
 
 def get_attack_surface() -> str:
     """Return devices that expose services (have open ports)."""
+    state = current_graph_context()
     _ensure_loaded()
-    if _discovery_mode is not None:
-        hosts = _discovery_mode.get("discovered_hosts")
+    if state.discovery_mode is not None:
+        hosts = state.discovery_mode.get("discovered_hosts")
         if hosts:
             return json.dumps(hosts, ensure_ascii=False)
         return json.dumps({
             "note": "Discovery mode — run nmap_scan first to identify the attack surface.",
-            "target_network": _discovery_mode["target_network"],
+            "target_network": state.discovery_mode["target_network"],
         }, ensure_ascii=False)
-    if _scenario_topology is not None:
+    if state.scenario_topology is not None:
         # Scenario topologies may intentionally use public/custom roles whose
         # services are not known until Phase 2 reconnaissance. Keep every
         # declared host with an address in the Phase 3 surface so a missing
         # role-to-service mapping cannot silently starve later phases.
         exposed = [
-            n for n in _scenario_topology["nodes"]
+            n for n in state.scenario_topology["nodes"]
             if n.get("ip") or n.get("services")
         ]
         return json.dumps(exposed, ensure_ascii=False)
-    return json.dumps(_backend.get_attack_surface(), ensure_ascii=False, default=str)
+    return json.dumps(state.backend.get_attack_surface(), ensure_ascii=False, default=str)
 
 
 def get_attack_paths() -> str:
     """Return the attack path analysis report."""
+    state = current_graph_context()
     _ensure_loaded()
-    if _discovery_mode is not None:
+    if state.discovery_mode is not None:
         return json.dumps({
             "note": "Discovery mode — attack paths will be inferred from nmap and vulnerability findings.",
-            "target_network": _discovery_mode["target_network"],
+            "target_network": state.discovery_mode["target_network"],
         }, ensure_ascii=False)
-    if _scenario_topology is not None:
+    if state.scenario_topology is not None:
         return json.dumps({
             "note": "Attack paths not pre-computed for benchmark scenarios — discover via active recon.",
-            "subnet": _scenario_topology["subnet"],
-            "nodes": [n["id"] for n in _scenario_topology["nodes"]],
+            "subnet": state.scenario_topology["subnet"],
+            "nodes": [n["id"] for n in state.scenario_topology["nodes"]],
         }, ensure_ascii=False)
     report = {
-        "summary": _attack_report.summary,
-        "critical_paths": [asdict(p) for p in _attack_report.critical_paths],
-        "pivot_nodes": _attack_report.pivot_nodes,
+        "summary": state.attack_report.summary,
+        "critical_paths": [asdict(p) for p in state.attack_report.critical_paths],
+        "pivot_nodes": state.attack_report.pivot_nodes,
     }
     return json.dumps(report, ensure_ascii=False, default=str)
 
 
 def get_risk_scores() -> str:
     """Return risk scores for all devices, sorted by risk (descending)."""
+    state = current_graph_context()
     _ensure_loaded()
-    if _discovery_mode is not None:
+    if state.discovery_mode is not None:
         return json.dumps({
             "note": "Discovery mode — risk scores will be computed after nmap and CVE analysis.",
-            "target_network": _discovery_mode["target_network"],
+            "target_network": state.discovery_mode["target_network"],
         }, ensure_ascii=False)
-    if _scenario_topology is not None:
+    if state.scenario_topology is not None:
         return json.dumps({
             "note": "Risk scores not pre-computed for benchmark scenarios — discover vulnerabilities via active recon.",
-            "devices": [{"id": n["id"], "ip": n["ip"], "role": n["role"]} for n in _scenario_topology["nodes"]],
+            "devices": [{"id": n["id"], "ip": n["ip"], "role": n["role"]} for n in state.scenario_topology["nodes"]],
         }, ensure_ascii=False)
-    scores = [asdict(s) for s in _risk_scores]
+    scores = [asdict(s) for s in state.risk_scores]
     return json.dumps(scores, ensure_ascii=False, default=str)
 
 
@@ -485,15 +466,15 @@ def init_weighted_graph(target_node: str | None = None) -> None:
     Should be called after topology is loaded (scenario or discovery mode)
     and before any mutations occur.
     """
-    global _weighted_graph
+    state = current_graph_context()
     nodes: list[dict] = []
     edges: list[dict] = []
 
-    if _scenario_topology is not None:
-        nodes = _scenario_topology.get("nodes", [])
-        edges = _scenario_topology.get("edges", [])
-    elif _discovery_mode is not None:
-        hosts = _discovery_mode.get("discovered_hosts", [])
+    if state.scenario_topology is not None:
+        nodes = state.scenario_topology.get("nodes", [])
+        edges = state.scenario_topology.get("edges", [])
+    elif state.discovery_mode is not None:
+        hosts = state.discovery_mode.get("discovered_hosts", [])
         nodes = [{"id": h["id"], "ip": h.get("ip", ""),
                   "role": h.get("role", ""), "services": h.get("services", [])}
                  for h in hosts]
@@ -502,13 +483,13 @@ def init_weighted_graph(target_node: str | None = None) -> None:
             for n2 in nodes[i + 1:]:
                 edges.append({"source": n1["id"], "target": n2["id"]})
                 edges.append({"source": n2["id"], "target": n1["id"]})
-    elif _backend is not None:
-        topo = _backend.to_dict()
+    elif state.backend is not None:
+        topo = state.backend.to_dict()
         nodes = topo.get("nodes", [])
         edges = topo.get("edges", [])
 
     if nodes:
-        _weighted_graph = build_weighted_attack_graph(nodes, edges, target_node)
+        state.weighted_graph = build_weighted_attack_graph(nodes, edges, target_node)
         log.info("Weighted attack graph initialized: %d nodes", len(nodes))
     else:
         log.warning("No topology available to initialize weighted graph")
@@ -527,8 +508,8 @@ def trigger_disbalance_on_exploit(
 
     Returns the graph_delta report, or None if no weighted graph is available.
     """
-    global _weighted_graph, _last_disbalance_report
-    if _weighted_graph is None:
+    state = current_graph_context()
+    if state.weighted_graph is None:
         log.warning("No weighted graph — cannot compute exploit disbalance")
         return None
 
@@ -545,9 +526,9 @@ def trigger_disbalance_on_exploit(
     # Update edge weights: all edges TO the compromised node get weight = 1.0
     # (free traversal since node is now under attacker control)
     edges_modified: list[dict] = []
-    for pred in _weighted_graph.predecessors(epicenter):
-        old_weight = _weighted_graph.get_edge_weight(pred, epicenter)
-        _weighted_graph.set_edge_weight(pred, epicenter, 1.0)
+    for pred in state.weighted_graph.predecessors(epicenter):
+        old_weight = state.weighted_graph.get_edge_weight(pred, epicenter)
+        state.weighted_graph.set_edge_weight(pred, epicenter, 1.0)
         edges_modified.append({
             "from": pred,
             "to": epicenter,
@@ -557,17 +538,17 @@ def trigger_disbalance_on_exploit(
         })
 
     # Compute cone of impact
-    affected = compute_graph_disbalance(_weighted_graph, epicenter)
-    _last_disbalance_report = build_graph_delta_report(
+    affected = compute_graph_disbalance(state.weighted_graph, epicenter)
+    state.last_disbalance_report = build_graph_delta_report(
         affected, edges_modified, vuln_type or "exploitation",
     )
     # Update snapshot for next iteration
-    _weighted_graph.snapshot_distances()
+    state.weighted_graph.snapshot_distances()
     log.info(
         "Exploit disbalance: %d affected nodes from epicenter %s",
         len(affected), epicenter,
     )
-    return _last_disbalance_report
+    return state.last_disbalance_report
 
 
 def get_graph_disbalance() -> str:
@@ -576,8 +557,9 @@ def get_graph_disbalance() -> str:
     Shows which nodes were affected by the most recent graph mutation
     (discovery or exploitation) and their local disbalance scores.
     """
-    if _last_disbalance_report is not None:
-        return json.dumps(_last_disbalance_report, ensure_ascii=False)
+    state = current_graph_context()
+    if state.last_disbalance_report is not None:
+        return json.dumps(state.last_disbalance_report, ensure_ascii=False)
     return json.dumps({
         "status": "no_data",
         "message": "No graph mutation has been detected yet. "

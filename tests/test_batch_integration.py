@@ -80,8 +80,8 @@ def real_run_metadata(tmp_path, monkeypatch):
         "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": "none",
     })
     monkeypatch.setattr(runtime, "init_weighted_graph", lambda: None)
-    monkeypatch.setattr(graph_tools, "_scenario_topology", None)
-    monkeypatch.setattr(graph_tools, "_backend", None)
+    monkeypatch.setattr(graph_tools.current_graph_context(), "scenario_topology", None)
+    monkeypatch.setattr(graph_tools.current_graph_context(), "backend", None)
     monkeypatch.setattr(pipeline_module, "run_phase", lambda *_: "completed")
 
     run = pipeline_module.Pipeline(

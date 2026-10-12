@@ -1,5 +1,6 @@
 """Phase 6: independently resumable cards followed by deterministic assembly."""
 from __future__ import annotations
+from src.agent.core.graph_context import graph_bound
 from collections.abc import Callable
 import logging
 import time
@@ -240,5 +241,8 @@ class ReportPhase:
         return status
 
 
-def run(context, config, stream_callback=None):
-    return context._run_local_report_phase(config, stream_callback)
+@graph_bound
+def run(context, config=None, stream_callback=None):
+    from src.agent.phases.context import phase_context
+    explicit = phase_context(context, config, stream_callback)
+    return explicit.services.execute(explicit.config, explicit.emit)

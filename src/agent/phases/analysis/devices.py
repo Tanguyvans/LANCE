@@ -9,6 +9,7 @@ from src.agent.core import runtime
 from src.agent.core.memo import _looks_unusable_model_memo
 from src.agent.core.executor import EvidenceWriteError
 from src.agent.cost_tracker import BudgetExceeded
+from src.agent.core.graph_context import graph_bound, bind_graph_callable
 from src.agent.phases.analysis import block_recovery
 from src.agent.phases.analysis.evidence import bound_scan_evidence
 from src.agent.phases.analysis.prompts import ROLE_SPECIFIC_RULES
@@ -116,6 +117,7 @@ def prepare_analysis(context: AnalysisContext) -> AnalysisSetup:
     return AnalysisSetup(analysis_tools, phase4_tool_catalog, phase3_timeout_s)
 
 
+@graph_bound
 def build_device_prompt(context: AnalysisContext, scan: ScanResult, device: dict) -> DevicePrompt:
     scanner_results = scan.observations
     device_id = device["id"]
@@ -498,5 +500,5 @@ def analyze_devices(context: AnalysisContext, scan: ScanResult) -> DeviceAnalysi
 
     # Workers own only their device outcome; the coordinator builds accounting.
     with ThreadPoolExecutor(max_workers=worker_count) as pool:
-        outcomes = tuple(pool.map(worker, enumerate(scan.devices)))
+        outcomes = tuple(pool.map(bind_graph_callable(context.graph, worker), enumerate(scan.devices)))
     return DeviceAnalysisResult(outcomes, worker_count)
