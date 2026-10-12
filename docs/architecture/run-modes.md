@@ -150,6 +150,14 @@ une seule fois, avec la même cible et le même port. Les deux tentatives resten
 archivées et comptabilisées ; seule une nouvelle observation SSH réussie permet
 de retirer ce timeout des erreurs non résolues de l'équipement.
 
+La politique `shared-scanner-bounded-verification-v5` choisit, pour un contrôle
+d'identifiants SSH, le premier couple explicitement indiqué dans le constat et
+appartenant à la liste finie `ssh-weak-credentials-v1` (par exemple `ubnt:ubnt`
+pour le NVR). Sans indication reconnue, elle conserve le contrôle `admin:admin`.
+Le texte du constat ne devient jamais une commande ni un identifiant arbitraire.
+La destination et le port restent ceux du constat ; seule une connexion observée
+et attribuée à cette destination peut confirmer le résultat.
+
 ```json
 {"runner_kind":"rules","scenario_id":"1","max_tool_calls":200,"max_duration_s":600,"auto_teardown":true}
 ```
@@ -168,6 +176,15 @@ contrôles de preuve communs depuis les traces d'outils : une étiquette CONFIRM
 dans un rapport ne suffit pas. Les erreurs et contrôles en attente restent
 distincts d'une analyse effectuée sans détection. Les nœuds sans adresse IP
 restent sur le graphe, avec la mention « non ciblé ».
+
+Les diagnostics `execution_errors` de phase 4 sont aussi projetés par équipement.
+Une détection sans preuve, avec une erreur d'exécution persistante, affiche
+« Erreur de vérification · contrôle incomplet » ; le nœud, sa fiche et le tableau
+signalent « Contrôles incomplets » et le nombre d'erreurs de vérification.
+Une vérification négative sans erreur conserve « Non confirmée ». Les diagnostics
+d'une tentative reprise restent archivés, mais ne rendent pas incomplet un contrôle
+dont les traces prouvent finalement la confirmation. Une analyse terminée avec
+vérification encore en attente ne présente pas les contrôles comme complets.
 
 Le graphe affiche les détections et confirmations ; cliquer sur un équipement
 montre ses résultats. Le journal suit le déploiement et les phases. L'historique

@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from src.agent.core import runtime
 from src.agent.core.graph_context import current_graph_context
 from src.agent.pipeline import Pipeline
-from src.agent.rules_audit import device_results
+from src.agent.rules_audit import device_results, write_summary
 from src.agent.run_modes import make_runner
 from src.api.routes import pipeline as route
 
@@ -132,6 +132,46 @@ def test_confirmation_label_without_tool_evidence_stays_indeterminate(tmp_path):
     view = device_results(tmp_path)
     assert view["devices"][0]["confirmed_count"] == 0
     assert view["devices"][0]["verification_status"] == "incomplete"
+
+
+@pytest.mark.parametrize('count,diagnostics,proved,expected', [
+    (0, [], False, 'not_confirmed'),
+    (1, [], False, 'error'),
+    (0, [{'stage': 'rules_probe', 'kind': 'tool_error'}], False, 'error'),
+    (1, [{'stage': 'rules_probe', 'kind': 'transient_error'}], True, 'confirmed'),
+])
+def test_device_projection_keeps_execution_errors_separate_from_proof(tmp_path, count, diagnostics, proved, expected):
+    files = {
+        'audit_topology.json': {'nodes': [{'id': 'nvr', 'ip': '192.0.2.17'}, {'id': 'other', 'ip': '192.0.2.18'}]},
+        '03_phase3_status.json': {'status': 'completed', 'scanner_errors': []},
+        '03_device_nvr.json': {}, '03_device_other.json': {},
+        '03_vuln_analysis.json': {'vulnerabilities': [{'id': 'V1', 'device_id': 'nvr', 'device_ip': '192.0.2.17',
+            'type': 'default_credentials', 'service': 'ssh', 'port': 22}]},
+        '04_exploitation.json': {'tests': [{'vuln_id': 'V1', 'status': 'CONFIRMED',
+            'execution_error_count': count, 'execution_errors': diagnostics}]},
+        'run_meta.json': {'status': 'partial' if expected == 'error' else 'completed'},
+    }
+    for name, value in files.items():
+        (tmp_path / name).write_text(json.dumps(value))
+    record = {'vuln_id': 'V1', 'tool': 'ssh_login',
+              'args': {'command_string': "sshpass -p ubnt ssh -p 22 ubnt@192.0.2.17 'id'"},
+              'result': {'return_code': 0 if proved else 5,
+                         'stdout': 'uid=1000(ubnt)' if proved else '', 'stderr': '' if proved else 'Permission denied'}}
+    (tmp_path / 'tool_calls.jsonl').write_text(json.dumps(record) + '\n')
+    view = device_results(tmp_path)
+    nvr, other = view['devices']
+    assert nvr['findings'][0]['verification'] == expected
+    assert nvr['confirmed_count'] == int(proved)
+    assert nvr['verification_status'] == ('incomplete' if expected == 'error' else 'completed')
+    assert nvr['verification_error_count'] == int(expected == 'error')
+    assert other['analysis_status'] == other['verification_status'] == 'completed'
+    assert other['verification_error_count'] == 0
+    if diagnostics:
+        assert nvr['findings'][0]['execution_errors'] == diagnostics
+    write_summary(tmp_path)
+    summary = (tmp_path / 'run_summary.md').read_text()
+    assert 'Erreurs de vérification' in summary
+    assert f"| nvr | 192.0.2.17 | completed | {nvr['verification_status']} |" in summary
 
 
 def test_api_exposes_rules_results_and_excludes_them_from_benchmark(tmp_path, monkeypatch):

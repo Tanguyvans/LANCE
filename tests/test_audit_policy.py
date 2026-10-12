@@ -270,6 +270,48 @@ def test_unavailable_scanner_rule_cannot_certify_control(tmp_path, inventory, of
     assert evaluate(run.run_dir, truth_file(tmp_path)).specificity is None
 
 
+@pytest.mark.parametrize("succeeds", [True, False])
+def test_rules_nvr_uses_hinted_credential_and_preserves_probe_errors(tmp_path, inventory, offline_tools, monkeypatch, succeeds):
+    from src.agent.phases.verification import rules
+    from src.agent.evidence.credentials import ssh_request
+    from src.agent.rules_audit import device_results
+
+    inventory['devices'][0].update(id='nvr', services=[{'name': 'ssh', 'port': 2222}])
+    run = make_run(tmp_path, inventory)
+    run.context['target_subnet'] = inventory['target_network']
+    finding = {'id': 'V1', 'device_id': 'nvr', 'device_ip': '192.0.2.10',
+               'type': 'default_credentials', 'service': 'ssh', 'port': 2222,
+               'severity': 'HIGH', 'details': 'SSH default credentials must be tested (ubnt:ubnt)'}
+    (run.run_dir / '03_vuln_analysis.json').write_text(json.dumps({'vulnerabilities': [finding]}))
+    (run.run_dir / 'audit_topology.json').write_text(json.dumps({'nodes': [{'id': 'nvr', 'ip': '192.0.2.10'}]}))
+    (run.run_dir / '03_phase3_status.json').write_text(json.dumps({'status': 'completed'}))
+    (run.run_dir / '03_device_nvr.json').write_text('{}')
+    calls = []
+
+    def probe(**args):
+        calls.append(args)
+        assert ssh_request({'tool': 'ssh_login', 'args': args}) == {
+            'host': '192.0.2.10', 'port': 2222, 'user': 'ubnt', 'password': 'ubnt'}
+        return json.dumps({'return_code': 0 if succeeds else 5,
+                           'stdout': 'uid=1000(ubnt) gid=1000(ubnt)' if succeeds else '',
+                           'stderr': '' if succeeds else 'Permission denied, please try again.'})
+
+    tool = run._wrap_tool({'name': 'ssh_login', 'function': probe}, phase=4)
+    monkeypatch.setattr(run, '_resolve_tools', lambda _: [tool])
+    rules.verify(run, AGENTS['exploitation'])
+    test = json.loads((run.run_dir / '04_exploitation.json').read_text())['tests'][0]
+    assert len(calls) == 1
+    assert (test['status'] == 'CONFIRMED') is succeeds
+    assert test['verification_attempted'] is True
+    assert test['execution_error_count'] == (0 if succeeds else 1)
+    assert run._phase4_execution_status == ('completed' if succeeds else 'executed_with_worker_errors')
+    device = device_results(run.run_dir)['devices'][0]
+    assert device['analysis_status'] == 'completed'
+    assert device['verification_status'] == ('completed' if succeeds else 'incomplete')
+    assert device['verification_error_count'] == (0 if succeeds else 1)
+    assert device['findings'][0]['verification'] == ('confirmed' if succeeds else 'error')
+
+
 @pytest.mark.parametrize("case, expected_calls, confirmed", [
     ("retry", 2, True), ("adapter_timeout", 2, True), ("process_timeout", 2, True),
     ("structured_fallback", 2, True), ("retry_and_fallback", 3, True),

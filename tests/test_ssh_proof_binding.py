@@ -6,9 +6,31 @@ import pytest
 
 from src.agent.evidence.capabilities import access_supported
 from src.agent.phases.verification.run import VerificationPhase
+from src.agent.phases.verification.contract import _phase4_verification_plan
+from src.agent.evidence.credentials import ssh_request
 from src.agent.phases.report.rendering import pregenerate_report_sections
 from src.benchmark.evaluator import _semantic_output_supports_finding
 from tests.test_proof_contract import test_pipeline_and_final_score_share_observed_proof_rules as check_funnel
+
+
+@pytest.mark.parametrize("compact", [False, True])
+@pytest.mark.parametrize("hints,user,password", [
+    ({"details": "SSH default credentials must be tested (ubnt:ubnt)"}, "ubnt", "ubnt"),
+    ({"details": "Test root:root, admin:admin"}, "root", "root"),
+    ({"technique": "Test SSH with pi:raspberry"}, "pi", "raspberry"),
+    ({}, "admin", "admin"),
+    ({"details": "alice:unique-password"}, "admin", "admin"),
+    ({"details": "notubnt:ubntsuffix"}, "admin", "admin"),
+    ({"details": "ubnt:ubnt; $(touch /tmp/unwanted)"}, "ubnt", "ubnt"),
+    ({"details": ["ubnt:ubnt"], "technique": None}, "admin", "admin"),
+])
+def test_ssh_plan_selects_only_explicit_policy_pairs_and_keeps_destination(compact, hints, user, password):
+    plan = _phase4_verification_plan({"type": "default_credentials", "service": "ssh",
+        "device_ip": "192.0.2.17", "port": 2222, **hints}, compact=compact)
+    request = ssh_request({"tool": plan["tool"], "args": plan["args_hint"]})
+    assert request == {"host": "192.0.2.17", "port": 2222, "user": user, "password": password}
+    assert plan["args_hint"]["command_string"].endswith(" 'id'")
+    assert "touch" not in plan["args_hint"]["command_string"]
 
 
 @pytest.mark.parametrize("compact", [False, True])

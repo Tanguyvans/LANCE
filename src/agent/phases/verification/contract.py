@@ -15,6 +15,7 @@ from src.agent.exploit_evidence import (
     synthesize_exploit_result as _synthesize_exploit_result,
 )
 from src.agent.evidence.records import has_authentication
+from src.agent.evidence.credentials import weak_ssh_probe_credential
 from src.agent.evidence.mqtt import normalize_mqtt_port
 from src.agent.evidence.mqtt_ws import mqtt_ws_claim_path, mqtt_ws_claim_topic
 
@@ -368,8 +369,9 @@ def _phase4_verification_plan(
                 "success_condition": "SNMP response to the public community read probe",
             }
         if service == "ssh" or port == 22:
+            user, password = weak_ssh_probe_credential(vuln)
             return {"tool": "ssh_login", "target": ip, "port": port or 22,
-                    "args_hint": {"command_string": f"sshpass -p admin ssh -p {port or 22} -o StrictHostKeyChecking=no admin@{ip} 'id'"},
+                    "args_hint": {"command_string": f"sshpass -p {password} ssh -p {port or 22} -o StrictHostKeyChecking=no {user}@{ip} 'id'"},
                     "success_condition": (
                         "Observed SSH authentication to the claimed host/port with an "
                         "explicit pair covered by ssh-weak-credentials-v1. A successful "

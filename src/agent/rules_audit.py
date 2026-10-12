@@ -55,7 +55,8 @@ def device_results(run_dir: Path) -> dict:
     failed = {item.get("device_id") for item in _items(status, "devices_failed") if isinstance(item, dict)}
     scanner_errors = _items(status, "scanner_errors")
     unassigned_errors = [item for item in scanner_errors if not isinstance(item, dict)]
-    tested = {item.get("vuln_id") or item.get("id") for item in _items(verification, "tests") if isinstance(item, dict)}
+    tested = {item.get("vuln_id") or item.get("id"): item
+              for item in _items(verification, "tests") if isinstance(item, dict)}
     devices = []
     for node in topology.get("nodes", []):
         identifier = node["id"]
@@ -75,14 +76,30 @@ def device_results(run_dir: Path) -> dict:
             finding = {key: candidate[key] for key in ("id", "type", "severity", "service", "port", "details", "cve_ids") if key in candidate}
             finding["verification"] = "not_run"
             if candidate.get("id") in tested:
+                test = tested[candidate["id"]]
                 result = synthesize_exploit_result(candidate, _tool_records_for_vuln(run_dir, candidate["id"]), compact=False)
                 finding["verification"] = {"EXPLOITED": "confirmed", "FAILED": "not_confirmed"}.get(result.get("status"), "error")
                 finding["evidence"] = result.get("evidence", "")
+                diagnostics = [{key: item[key] for key in ("stage", "kind", "reason", "exception_type") if key in item}
+                               for item in _items(test, "execution_errors") if isinstance(item, dict)]
+                recorded_count = test.get("execution_error_count", 0)
+                error_count = max(len(diagnostics), recorded_count if type(recorded_count) is int and recorded_count > 0 else 0)
+                if diagnostics or error_count:
+                    finding["execution_errors"] = diagnostics
+                    finding["execution_error_count"] = error_count
+                    # A recovered probe with independent proof stays confirmed.
+                    # A failed operation without proof is an incomplete control,
+                    # not merely a clean negative verification.
+                    if finding["verification"] != "confirmed":
+                        finding["verification"] = "error"
+            if finding["verification"] == "error":
+                finding["execution_error_count"] = max(1, finding.get("execution_error_count", 0))
             findings.append(finding)
         devices.append({"device_id": identifier, "device_ip": node.get("ip"),
                         "analysis_status": state, "findings": findings,
                         "confirmed_count": sum(item["verification"] == "confirmed" for item in findings),
                         "scanner_error_count": len(errors),
+                        "verification_error_count": sum(item.get("execution_error_count", 0) for item in findings if item["verification"] == "error"),
                         "verification_status": (
                             "incomplete" if any(item["verification"] == "error" for item in findings) else
                             "pending" if not verification or any(item["verification"] == "not_run" for item in findings) else "completed"
@@ -95,10 +112,10 @@ def device_results(run_dir: Path) -> dict:
 def write_summary(run_dir: Path) -> None:
     view = device_results(run_dir)
     lines = ["# Audit par règles", "", f"Statut : {view['run_status']}", "", "Analyse et vérification sans LLM, depuis la topologie publique du scénario.", "",
-             "| Équipement | IP | Analyse | Détectées | Confirmées par les preuves | Erreurs de scan |",
-             "| --- | --- | --- | ---: | ---: | ---: |"]
+             "| Équipement | IP | Analyse | Vérification | Détectées | Confirmées par les preuves | Erreurs de scan | Erreurs de vérification |",
+             "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |"]
     for device in view["devices"]:
         name = str(device["device_id"]).replace("|", "\\|").replace("\n", " ")
-        lines.append(f"| {name} | {device['device_ip']} | {device['analysis_status']} | {len(device['findings'])} | {device['confirmed_count']} | {device['scanner_error_count']} |")
+        lines.append(f"| {name} | {device['device_ip']} | {device['analysis_status']} | {device['verification_status']} | {len(device['findings'])} | {device['confirmed_count']} | {device['scanner_error_count']} | {device['verification_error_count']} |")
     lines.extend(["", "Une absence de détection ne garantit pas l'absence de vulnérabilité. Les contrôles incomplets restent signalés."])
     (run_dir / "run_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

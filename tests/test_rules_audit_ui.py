@@ -106,3 +106,44 @@ await waiting;
 """)
     assert all("auditStatus" not in node for node in view["nodes"])
     assert view["title"] == "Lancer le pentest"
+
+
+def test_verification_error_is_visible_on_node_table_and_finding_after_successful_analysis():
+    projection = {'schema_version': 1, 'available': True, 'topology': {'nodes': [], 'edges': []}, 'devices': [
+        {'device_id': 'web', 'analysis_status': 'completed', 'verification_status': 'incomplete',
+         'confirmed_count': 0, 'scanner_error_count': 0, 'verification_error_count': 1,
+         'findings': [{'id': 'V1', 'type': 'default_credentials', 'severity': 'HIGH', 'service': 'ssh', 'port': 22,
+                       'verification': 'error', 'evidence': 'SSH authentication refused',
+                       'execution_errors': [{'kind': 'tool_error', 'reason': '<script>untrusted()</script>'}]}]},
+        {'device_id': 'other', 'analysis_status': 'completed', 'verification_status': 'completed',
+         'confirmed_count': 0, 'scanner_error_count': 0, 'verification_error_count': 0,
+         'findings': [{'id': 'V2', 'type': 'missing_header', 'severity': 'LOW', 'verification': 'not_confirmed'}]},
+    ]}
+    view = dashboard("await loadRulesAuditResults('run');showNodeDetail({id:'web',services:[]});", projection)
+    assert view['nodes'][0]['auditStatus'] == 'incomplete'
+    assert 'Contrôles incomplets' in view['nodes'][0]['label']
+    assert '1 erreur(s) de vérification' in view['nodes'][0]['label']
+    assert '1 erreur(s) de vérification' in view['table']
+    assert 'Contrôles incomplets' in view['detail']
+    assert 'Erreur de vérification · contrôle incomplet' in view['detail']
+    assert 'SSH authentication refused' in view['detail']
+    assert '&lt;script&gt;untrusted()&lt;/script&gt;' in view['detail']
+    assert '<script>' not in view['detail']
+    assert 'Analyse et vérification effectuées' not in view['detail']
+    assert view['nodes'][1]['auditStatus'] == 'completed'
+    assert 'Contrôles incomplets' not in view['nodes'][1]['label']
+    clean = dashboard("await loadRulesAuditResults('run');showNodeDetail({id:'other',services:[]});", projection)
+    assert 'Non confirmée' in clean['detail'] and 'Erreur de vérification' not in clean['detail']
+
+
+def test_pending_verification_does_not_claim_controls_completed():
+    projection = {'schema_version': 1, 'available': True, 'topology': {'nodes': [], 'edges': []}, 'devices': [
+        {'device_id': 'web', 'analysis_status': 'completed', 'verification_status': 'pending',
+         'confirmed_count': 0, 'scanner_error_count': 0, 'verification_error_count': 0, 'findings': []},
+    ]}
+    view = dashboard("await loadRulesAuditResults('run');showNodeDetail({id:'web',services:[]});", projection)
+    assert view['nodes'][0]['auditStatus'] == 'pending'
+    assert 'Contrôles en attente' in view['nodes'][0]['label']
+    assert 'Contrôles en attente' in view['table']
+    assert 'Contrôles en attente' in view['detail']
+    assert 'Analyse et vérification effectuées' not in view['detail']

@@ -149,3 +149,9 @@ sans appel LLM et exclusion des comparaisons benchmark. Les playbooks et sondes
 sont simulés ; aucun audit réel n'est lancé. `test_rules_audit_ui.py` exerce le
 JavaScript du dashboard avec Node.js pour le choix du mode, les requêtes sans
 modèle, le graphe et les diagnostics, sans serveur ni accès réseau.
+Les régressions NVR vérifient aussi le choix borné des identifiants SSH indiqués
+dans le constat, la destination et le port, puis les preuves et erreurs de la
+vraie phase 4 avec une sonde simulée. La projection conserve les erreurs par
+équipement sans dégrader une confirmation après reprise ; les tests d'interface
+contrôlent le nœud, le tableau, la fiche, l'échappement des diagnostics et la
+distinction entre erreur, résultat négatif et vérification en attente.

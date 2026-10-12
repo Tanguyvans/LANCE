@@ -1032,6 +1032,24 @@ function initGraphInteractions() {
   cy.on('tap', evt => { if (evt.target === cy) hideDetail(); });
 }
 
+function rulesAuditState(audit) {
+  if (audit.analysis_status === 'not_targeted') return 'not_targeted';
+  if (audit.analysis_status === 'incomplete' || audit.verification_status === 'incomplete' ||
+      audit.scanner_error_count > 0 || audit.verification_error_count > 0) return 'incomplete';
+  return audit.analysis_status === 'completed' && audit.verification_status === 'completed' ? 'completed' : 'pending';
+}
+
+function rulesAuditSummary(audit, multiline = false) {
+  const state = rulesAuditState(audit);
+  if (state === 'completed') return `${audit.findings.length} détection(s) · ${audit.confirmed_count} confirmée(s)`;
+  if (state === 'not_targeted') return 'Sans IP · non ciblé';
+  if (state === 'pending') return 'Contrôles en attente';
+  const errors = [];
+  if (audit.scanner_error_count) errors.push(`${audit.scanner_error_count} erreur(s) de scan`);
+  if (audit.verification_error_count) errors.push(`${audit.verification_error_count} erreur(s) de vérification`);
+  return ['Contrôles incomplets', ...errors].join(multiline ? '\n' : ' · ');
+}
+
 function _updateTopologyTable(nodes) {
   const tbody = document.getElementById('topology-tbody');
   if (!tbody) return;
@@ -1046,10 +1064,7 @@ function _updateTopologyTable(nodes) {
       <td>${escapeHtml(n.ip || '—')}</td>
       <td>${escapeHtml(n.type || '—')}</td>
       <td><span class="sev ${badgeClass}">${escapeHtml(audit
-        ? audit.analysis_status === 'incomplete' || audit.verification_status === 'incomplete' ? 'Contrôles incomplets'
-          : audit.analysis_status === 'pending' ? 'En attente'
-          : audit.analysis_status === 'not_targeted' ? 'Sans IP · non ciblé'
-          : `${audit.findings.length} détection(s) · ${audit.confirmed_count} confirmée(s)`
+        ? rulesAuditSummary(audit)
         : worst)}</span></td>
     </tr>`;
   }).join('');
@@ -1405,7 +1420,8 @@ function showNodeDetail(data) {
   const vulns = nodeVulns[data.id] || [];
   const hostInfo = nodeHosts[data.ip] || null;
   const audit = nodeAuditResults[data.id];
-  const verificationLabels = {confirmed: 'Confirmée par les preuves', not_confirmed: 'Non confirmée', error: 'Contrôle indéterminé', not_run: 'Vérification en attente'};
+  const verificationLabels = {confirmed: 'Confirmée par les preuves', not_confirmed: 'Non confirmée', error: 'Erreur de vérification · contrôle incomplet', not_run: 'Vérification en attente'};
+  const diagnosticLabels = {tool_error: 'La sonde a échoué.', transient_error: 'La sonde reste indisponible après la reprise autorisée.', tool_refused: 'La sonde a été refusée.', unsupported: 'Aucune sonde disponible pour ce contrôle.'};
 
   const sevSummary = vulns.length
     ? Object.entries(
@@ -1427,6 +1443,8 @@ function showNodeDetail(data) {
       <strong>${escapeHtml(v.type)}</strong> — ${escapeHtml(v.service || '')}${v.port ? ':'+escapeHtml(String(v.port)) : ''}
       <div style="color:var(--muted);margin-top:3px;font-size:10px">${escapeHtml(v.details || '')}</div>
       ${v.verification ? `<div class="audit-verification ${escapeHtml(v.verification)}">${escapeHtml(verificationLabels[v.verification] || 'Indéterminée')}</div>` : ''}
+      ${v.verification === 'error' ? `<div class="audit-verification error">${escapeHtml(v.evidence || 'Aucune preuve exploitable pour ce contrôle.')}
+        ${(v.execution_errors || []).map(error => `<div>${escapeHtml(error.reason || diagnosticLabels[error.kind] || 'Erreur pendant la vérification.')}${error.exception_type ? ` (${escapeHtml(error.exception_type)})` : ''}</div>`).join('')}</div>` : ''}
       ${v.cve_ids?.length ? `<div style="color:#58a6ff;font-size:10px;margin-top:2px">${v.cve_ids.map(escapeHtml).join(', ')}</div>` : ''}
     </div>
   `).join('');
@@ -1438,9 +1456,10 @@ function showNodeDetail(data) {
     </h2>
     <div class="detail-row"><span class="detail-key">IP</span><span class="detail-val">${escapeHtml(data.ip||'—')}</span></div>
     ${audit ? `<div class="detail-section"><h3>Audit par règles</h3>
-      <div>${escapeHtml({completed: 'Analyse effectuée', incomplete: 'Contrôles incomplets', pending: 'Analyse en attente', not_targeted: 'Sans adresse IP · non ciblé'}[audit.analysis_status] || 'État indisponible')}</div>
+      <div class="audit-verification ${rulesAuditState(audit) === 'incomplete' ? 'error' : ''}">${escapeHtml({completed: 'Analyse et vérification effectuées', incomplete: 'Contrôles incomplets', pending: 'Contrôles en attente', not_targeted: 'Sans adresse IP · non ciblé'}[rulesAuditState(audit)] || 'État indisponible')}</div>
       <div>${audit.findings.length} détection(s) · ${audit.confirmed_count} confirmation(s) par les preuves</div>
-      ${audit.scanner_error_count ? `<div>${audit.scanner_error_count} erreur(s) de scan</div>` : ''}</div>` : ''}
+      ${audit.scanner_error_count ? `<div class="audit-verification error">${audit.scanner_error_count} erreur(s) de scan</div>` : ''}
+      ${audit.verification_error_count ? `<div class="audit-verification error">${audit.verification_error_count} erreur(s) de vérification</div>` : ''}</div>` : ''}
     ${hostInfo?.hostname ? `<div class="detail-row"><span class="detail-key">Hostname</span><span class="detail-val">${escapeHtml(hostInfo.hostname)}</span></div>` : ''}
     ${hostInfo?.os ? `<div class="detail-row"><span class="detail-key">OS</span><span class="detail-val">${escapeHtml(hostInfo.os)}</span></div>` : ''}
 
@@ -2209,10 +2228,9 @@ async function loadRulesAuditResults(runIdOrDir) {
     cy.nodes().forEach(node => {
       const device = nodeAuditResults[node.id()];
       if (!device) return;
-      node.data('auditStatus', device.analysis_status);
+      node.data('auditStatus', rulesAuditState(device));
       node.data('auditConfirmed', device.confirmed_count);
-      const incomplete = device.analysis_status === 'incomplete' || device.verification_status === 'incomplete';
-      node.data('label', `${node.id()}\n${incomplete ? 'Contrôles incomplets' : device.analysis_status === 'not_targeted' ? 'Sans IP · non ciblé' : device.analysis_status === 'completed' ? `${device.findings.length} détection(s) · ${device.confirmed_count} confirmée(s)` : 'En attente'}`);
+      node.data('label', `${node.id()}\n${rulesAuditSummary(device, true)}`);
     });
     _updateTopologyTable(cy.nodes().map(node => node.data()));
   }

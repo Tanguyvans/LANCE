@@ -20,6 +20,32 @@ SSH_WEAK_CREDENTIALS = frozenset({
     ("test", "test"),
     ("user", "user"),
 })
+
+
+def weak_ssh_probe_credential(finding: dict[str, Any]) -> tuple[str, str]:
+    """Prefer an explicitly hinted weak pair, never arbitrary narrative values.
+
+    Only finite policy pairs can become probe arguments. Older findings without
+    a recognized hint retain the historical admin/admin probe. The hint selects
+    a test; only an observed login can establish a credential finding.
+    """
+    for field in ("details", "technique"):
+        text = finding.get(field)
+        if not isinstance(text, str):
+            continue
+        matches = []
+        for user, password in sorted(SSH_WEAK_CREDENTIALS):
+            if not password:
+                continue
+            match = re.search(r"(?<![\w.-])" + re.escape(f"{user}:{password}") + r"(?![\w.-])", text)
+            if match:
+                matches.append((match.start(), user, password))
+        if matches:
+            _, user, password = min(matches)
+            return user, password
+    return "admin", "admin"
+
+
 _TOKEN = r"(?:'[^']*'|\"[^\"]*\"|[^\s]+)"
 _SAFE_SSH_OPTIONS = frozenset({
     "StrictHostKeyChecking", "UserKnownHostsFile", "ConnectTimeout",
