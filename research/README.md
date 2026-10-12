@@ -89,6 +89,32 @@ exemple `benchmarks/experiments/` ; la recherche les référence. Les artefacts
 volumineux restent dans le stockage prévu pour les runs, avec un identifiant ou
 une empreinte permettant de retrouver les preuves, pas une copie dans ce dossier.
 
+## Cycle de vie des dossiers
+
+Dans `research/`, on ajoute et on révise ; on ne supprime pas en silence.
+Chaque dossier porte un statut explicite, dans son README et dans l'index
+ci-dessus, pour qu'on s'y retrouve sans ouvrir les dossiers un par un :
+
+| Statut | Sens | Conduite |
+| --- | --- | --- |
+| **Actif** | Question ouverte, travail en cours | Réviser le dossier ; mettre à jour la date de dernière révision dans son README |
+| **Conclu** | Question répondue, y compris par un résultat négatif ou indéterminé | Figer ; ne corriger que les erreurs, en le datant |
+| **Remplacé / archivé** | Un dossier plus récent supersède celui-ci | Écrire « archivé, remplacé par → [successeur] » en tête du README et dans l'index ; conserver le dossier et ses sources |
+
+Règles associées :
+
+- La date du dossier (`AAAA-MM-JJ-`) est sa **date de début** et ne change
+  jamais ; la fraîcheur se lit à la date de dernière révision du README.
+- Un dossier trop vieux n'est ni mis à jour par réflexe ni supprimé : soit
+  il est conclu, soit il est marqué remplacé avec son successeur. Mettre à
+  jour un dossier archivé seulement pour corriger une erreur factuelle.
+- La suppression n'est admise que pour un doublon créé par erreur ou un
+  contenu repris intégralement ailleurs avec lien ; le commit qui supprime
+  doit le dire et pointer le remplaçant.
+- Les dossiers d'**objectifs de projet** (cibles de soumission, plans,
+  critères de décision) ne vivent pas dans `research/` : ils vont dans
+  `objectifs/` à la racine et pointent vers l'étude concernée.
+
 ## Format de lecture : LaTeX et PDF
 
 Toute nouvelle étude ou révision de fond doit fournir un **document LaTeX éditable
