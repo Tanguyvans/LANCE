@@ -1,0 +1,150 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\frenchsetup{SmallCapsFigTabCaptions=false}
+\usepackage{lmodern,microtype}
+\usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
+\usepackage{amsmath}
+\usepackage{graphicx,booktabs,array,tabularx,float}
+\usepackage{xcolor,tikz}
+\usepackage{enumitem,titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=sfigBlue,pdfauthor={Projet LANCE},pdftitle={Etat des lieux plateforme LANCE et feuille de route AsiaCCS 2027},pdflang={fr-FR}}
+\urlstyle{same}
+\setlength{\parindent}{1.2em}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{2em}
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+\setlist{nosep,leftmargin=5mm,topsep=3pt}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\?\do\&\do\=\do\:\do\,}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\code}[1]{{\small\ttfamily\path{#1}}}
+\titleformat{\section}{\Large\bfseries}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.7em}{}
+\titlespacing*{\section}{0pt}{16pt}{7pt}
+\titlespacing*{\subsection}{0pt}{11pt}{5pt}
+\pagestyle{plain}
+\setcounter{tocdepth}{2}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\definecolor{sfigInk}{HTML}{1F242C}
+\definecolor{sfigMuted}{HTML}{5C626C}
+\definecolor{sfigLine}{HTML}{D9DEE5}
+\definecolor{sfigBlue}{HTML}{1D5C96}
+\definecolor{sfigBlueFill}{HTML}{EFF6FC}
+\definecolor{sfigRoseFill}{HTML}{FDF0F4}
+\tikzset{
+  sfig diagram/.style={>=Latex, node distance=8mm and 9mm, every node/.style={font=\sffamily\footnotesize,text=sfigInk}},
+  gbar/.style={draw=sfigLine, fill=sfigBlueFill, rounded corners=2pt, line width=0.55pt, align=center, inner sep=4pt},
+  gmil/.style={draw=sfigBlue, fill=white, rounded corners=2pt, line width=0.7pt, align=center, inner sep=4pt}
+}
+
+\title{\'Etat des lieux de la plateforme LANCE\\et feuille de route vers AsiaCCS 2027\\[4pt]
+\large Architecture \`a changer, objectifs plateforme et m\'etriques comportementales}
+\author{Projet LANCE}
+\date{Derni\`ere r\'evision : 2026-10-12 22:11 (Europe/Brussels, UTC+02:00)\\
+Statut : \'etat des lieux et propositions --- aucun r\'esultat exp\'erimental nouveau}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Ce rapport consolide trois analyses men\'ees en parall\`ele le 2026-10-12 (architecture, objectifs plateforme, m\'etriques) en vue de la soumission vis\'ee \`a AsiaCCS 2027 (round 2, 2026-12-11). Il \'etablit ce qui, dans l'architecture actuelle, doit changer pour rendre la contribution centrale prouvable, les objectifs mesurables que la plateforme doit atteindre, et les m\'etriques comportementales \`a montrer au-del\`a des scores agr\'eg\'es. Six chantiers sont jug\'es indispensables avant soumission, dont deux bloquants pour la preuve : le split par famille de packs et l'inf\'erence statistique appari\'ee, aujourd'hui absente. Aucun run de campagne n'ayant encore \'et\'e ex\'ecut\'e, ce document ne rapporte aucune performance ; les efforts sont des estimations \`a confirmer.
+\end{abstract}
+
+\tableofcontents
+
+\section{Objectif et p\'erim\`etre}
+
+Ce document r\'epond \`a trois questions, dans l'ordre o\`u elles conditionnent la soumission : (1) en quoi l'architecture doit-elle changer pour que l'\'ecart entre la politique \`a r\`egles D1 (\code{rules}) et la politique \`a mod\`ele A1 (\code{llm}) soit \emph{prouvable} ; (2) quels objectifs la plateforme doit-elle atteindre, avec quels crit\`eres mesurables ; (3) quelles m\'etriques \emph{comportementales} montrer dans le papier, au-del\`a des meilleurs scores. La cible, les exigences de la conf\'erence et les crit\`eres de d\'ecision sont fix\'es dans le dossier d'objectifs du projet (\code{objectifs/asiaccs-2027/}) ; les hypoth\`eses H0--H3 et le protocole appari\'e sont ceux de la proposition compagne de ce dossier (\code{proposition-conditions.tex}). Ce rapport ne les recopient pas : il dit ce qui manque pour les ex\'ecuter.
+
+Statut des sources : les affirmations d'impl\'ementation proviennent d'une inspection du code et des documentations du d\'ep\^ot \`a la date de r\'evision, avec chemins cit\'es. Deux des trois analyses parall\`eles se sont d\'eclar\'ees partielles ; leurs propositions sont donc pr\'esent\'ees comme \textbf{\`a confirmer sur le code avant impl\'ementation}, non comme des constats clos. Aucune exp\'erience n'a \'et\'e ex\'ecut\'ee pour ce rapport.
+
+\emph{D\'efinitions minimales (autonomie de lecture).} Seul le s\'electeur de d\'ecision change entre les bras, le reste du pipeline (outils, inventaire, validateur) est identique : D1 suit des r\`egles \'ecrites, A1 laisse le mod\`ele r\'eviser ses d\'ecisions d'apr\`es les observations, A0 ex\'ecute un plan de mod\`ele fig\'e avant l'ex\'ecution, sans r\'evision. Le seuil $\delta$ est l'\'ecart minimal jug\'e utile, fix\'e avant le test. Un canari est un marqueur unique gliss\'e dans chaque instance pour d\'etecter une fuite du corpus de test. Les exp\'eriences sont E1 (carte des \'ecarts par condition), E2 (adaptation : A0 fig\'e contre A1, pentes sous bruit, hypoth\`ese H2 de d\'egradation diff\'erentielle) et E3 (co\^ut de l'avantage). Les packs \code{f11} (autorisation d'API) et \code{f20} (chemins r\'eseau de pivot tenus \`a l'\'ecart) sont deux familles de failles du catalogue.
+
+\section{Architecture : ce qui doit changer}
+\label{sec:archi}
+
+Le tableau~\ref{tab:archi} classe les \'ecarts par n\'ecessit\'e pour la soumission. Les efforts (S : moins d'un jour ; M : plusieurs jours \`a une semaine ; L : une \`a deux semaines) sont des estimations d'ordre de grandeur, pas des engagements.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}p{48mm}p{16mm}Y@{}}
+\toprule
+\textbf{Changement propos\'e} & \textbf{Effort} & \textbf{Justification et livrable} \\
+\midrule
+Split par famille de packs gel\'e avant tout test, canari unique par instance, journal d'acc\`es & M & Le catalogue actuel (\code{benchmarks/catalog.yaml})$^\dagger$ r\'epartit S1--S19 en \code{dev-public} et S20--S29 en \code{test-public} par sc\'enario ; une m\^eme famille peut donc fuiter des deux c\^ot\'es. Livrable : correspondance famille $\rightarrow$ dev/test v\'erifi\'ee sans recouvrement. \\
+Inf\'erence appari\'ee : intervalle de confiance \`a 95~\% de $\Delta$ par famille, correction de Holm, r\'esultats par famille & M & Le comparateur signale aujourd'hui \code{uncertainty.available=false} et la campagne reste descriptive (moyennes d'\'ecarts). Sans inf\'erence, le crit\`ere de d\'ecision de la proposition est inapplicable et la contribution centrale non prouvable. \\
+Gel et ex\'ecution du pilote (12 paires, 24 runs) & S + ex\'ec. & Le manifeste de campagne (\code{benchmarks/experiments/policy-comparison/})$^\dagger$ est mod\'elis\'e mais non gel\'e : configuration vide, \code{run_dir} nuls, aucun run ex\'ecut\'e. Le pilote valide la mesure et calibre le seuil $\delta$ ; il ne produit pas le r\'esultat du papier. \\
+Bras A0 (plan de mod\`ele fig\'e) et second mod\`ele dans le panneau de politiques & M & L'exp\'erience d'adaptation E2 exige A0 contre A1 \`a pr\'efixe identique ; le panneau minimal exige D1 plus au moins deux mod\`eles. Les champs de traitement et de paire existent d\'ej\`a dans le comparateur ; les politiques elles-m\^emes restent \`a \'etendre, avec ordre randomis\'e par blocs et au moins trois graines. \\
+Variantes minimales d\'eployables : pack logique \code{f11} et chemins tenus \`a l'\'ecart \code{f20} & L & Parmi 22 d\'efinitions de packs, ce sont les deux strates qui conditionnent la nouveaut\'e et les failles logiques. Chaque variante exige la correspondance sp\'ecification $\leftrightarrow$ services d\'eploy\'es $\leftrightarrow$ sondes $\leftrightarrow$ v\'erit\'e terrain ; une alt\'eration seulement pr\'evue invalide la strate. \\
+Artefact anonymis\'e portable (extrait \'emul\'e d'une famille, hors Proxmox/NATO) & L (t\^ot) & L'appendice Open Science est obligatoire \`a AsiaCCS, avec lien anonymis\'e accessible pendant la revue. Aucun mode \'emul\'e portable n'existe aujourd'hui. Livrable : extrait minimal reproductible plus justification explicite du reste non partageable. \\
+\bottomrule
+\end{tabularx}
+\caption{Changements d'architecture propos\'es avant soumission, par n\'ecessit\'e. Propositions issues des analyses du 2026-10-12, \`a confirmer sur le code ; efforts estim\'es. $^\dagger$ Fait rev\'erifi\'e par lecture directe le 2026-10-12.}
+\label{tab:archi}
+\end{table}
+
+Ce qui est d\'ej\`a en place et \`a conserver : le s\'electeur de modes (\code{src/agent/run_modes.py}) isole la politique de d\'ecision ; le comparateur (\code{src/benchmark/compare_policies.py}) produit les \'ecarts appari\'es, conserve les scores par bras, refuse les valeurs manquantes remplac\'ees par z\'ero et \'emets des motifs d'incomparabilit\'e explicites ; le journal d'ex\'ecution relie chaque appel d'outil \`a sa source de d\'ecision. Le pipeline six phases est l'instrument de mesure ; il n'est pas \`a reconstruire.
+
+\section{Objectifs plateforme \`a atteindre}
+\label{sec:objectifs}
+
+Trois objectifs, formul\'es en crit\`eres mesurables, portent les contributions candidates du papier. Chacun dit ce qui le r\'efute ou l'invalide.
+
+\begin{description}[style=nextline,leftmargin=10mm]
+\item[C1 --- Benchmark tenu \`a l'\'ecart.] Corpus gel\'e par famille, canaris par instance, variantes d\'eploy\'ees et v\'erifi\'ees. Crit\`ere : aucune famille de test pr\'esente dans les r\`egles, prompts ou exemples ; journal d'acc\`es complet ; quatre contr\^oles n\'egatifs propres (sc\'enario sans faille, preuves invalides rejet\'ees des deux c\^ot\'es, leurre \`a motif connu non exploitable, canari non r\'egurgit\'e). Un contr\^ole en \'echec invalide le lot.
+\item[C2 --- Carte des \'ecarts.] \'Ecart appari\'e A1$-$D1 en vrais positifs confirm\'es par le contrat strict-v3 (confirmation par traces d'ex\'ecution v\'erifi\'ees, jamais par \'etiquette de rapport), par condition exp\'erimentale. Succ\`es : borne inf\'erieure de l'intervalle \`a 95~\% sup\'erieure \`a $\delta$ apr\`es correction de Holm dans au moins une condition pr\'edite. Une carte vide mais born\'ee (intervalles \'etroits autour de z\'ero) reste un r\'esultat publiable repositionn\'e.
+\item[C3 --- Co\^ut de l'avantage.] Sur les m\^emes runs : co\^ut par vrai positif confirm\'e, temps par jalon, variance inter-graines (au moins trois graines, jamais moyenn\'ee en silence), grille de prix gel\'ee avant le test. Un avantage \`a plus de trois fois le co\^ut des r\`egles borne la revendication \`a un usage semi-autonome.
+\end{description}
+
+S'y ajoute l'exp\'erience d'adaptation E2 (A0 fig\'e contre A1 adaptatif, pentes de d\'egradation sous bruit par bras) et le rappel que le pilote de 24 runs valide la mesure et calibre $\delta$ et la puissance ; aucun de ses chiffres n'entre dans les tableaux du papier.
+
+La figure~\ref{fig:route} place ces chantiers sur la fen\^etre disponible jusqu'\`a la d\'ecision du 2026-11-16.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[sfig diagram]
+\node[gbar, text width=38mm] (a) {12--26 oct.\\Pilote 24 runs gel\'e\\et ex\'ecut\'e};
+\node[gbar, text width=38mm, right=of a] (b) {27 oct.--9 nov.\\Variantes f11/f20\\Panel et graines gel\'es};
+\node[gbar, text width=38mm, right=of b] (c) {10--16 nov.\\Analyse appari\'ee\\IC 95~\%, Holm, co\^ut};
+\node[gmil, text width=38mm, below=of c] (d) {16 nov. 2026\\D\'ecision \'ecrite\\soumettre / repositionner};
+\draw[->, draw=sfigMuted] (a) -- (b);
+\draw[->, draw=sfigMuted] (b) -- (c);
+\draw[->, draw=sfigMuted] (c) -- (d);
+\node[gbar, text width=38mm, left=of d] (e) {D\`es semaine 1, en parall\`ele\\Artefact anonymis\'e\\(risque desk-reject)};
+\draw[->, draw=sfigMuted, dashed] (e) -- (d);
+\end{tikzpicture}
+\caption{Feuille de route propos\'ee jusqu'\`a la d\'ecision du 2026-11-16. Calendrier de travail, pas un r\'esultat ; les crit\`eres de la d\'ecision sont ceux du dossier d'objectifs.}
+\label{fig:route}
+\end{figure}
+
+\section{M\'etriques comportementales : au-del\`a des scores}
+\label{sec:metriques}
+
+Un score agr\'eg\'e (F1 final) cache exactement ce que le papier cherche \`a \'etablir : \emph{comment} chaque politique se comporte quand le monde r\'esiste. Trois familles de m\'etriques sont \`a montrer.
+
+\textbf{D\'ej\`a instrument\'ees, \`a conserver.} L'entonnoir par stade (candidats, filtr\'es, confirm\'es ; vrais/faux positifs et n\'egatifs, pr\'ecision, rappel, F1, preuves invalides), la sp\'ecificit\'e dont celle des contr\^oles n\'egatifs, le co\^ut total (jetons, tours, appels et erreurs d'outils), la dur\'ee murale et le co\^ut par vrai positif confirm\'e existent dans le comparateur. Les ratios \`a d\'enominateur nul restent ind\'efinis et visibles, jamais remplac\'es par z\'ero.
+
+\textbf{\`A instrumenter (trous actuels).} Taux de rejet de preuve par bras (la politique propose-t-elle des constats que strict-v3 refuse ?) ; taux de runs \'evaluables et causes terminales par bras ; temps au premier vrai positif confirm\'e et temps par jalon ; pentes $S(n)$ de d\'egradation quand le nombre $n$ de leurres augmente, \emph{par bras} (c'est la mesure directe de l'adaptation, hypoth\`ese H2) ; variance inter-graines rapport\'ee en distribution ; compteur de canaris r\'egurgit\'es. La grille de jalons (analyse $\rightarrow$ v\'erification $\rightarrow$ preuve $\rightarrow$ acc\`es, cr\'edit 0--1) est \`a geler avant le test, avec le garde-fou suivant : un gain en jalons sans gain en vrais positifs confirm\'es vaut inflation de progression, pas avantage.
+
+\textbf{Comparabilit\'e comme m\'etrique.} Chaque paire doit journaliser pourquoi elle est comparable ou non (inventaire, source CVE, m\'emoire, versions de preuve) ; seuls la politique, le fournisseur et le mod\`ele peuvent diff\'erer. Aucun \'ecart n'est \'emis pour une paire non comparable. Une revue aveugle des preuves, sans colonne de politique, compl\`ete le dispositif.
+
+Ces m\'etriques servent la lecture comportementale recherch\'ee : deux politiques \`a F1 \'egal peuvent diff\'erer par le temps au premier succ\`es, la fragilit\'e sous bruit, le taux de preuves rejet\'ees et le co\^ut marginal du dernier vrai positif --- c'est cette diff\'erence, si elle existe, qui constitue le r\'esultat.
+
+\section{Ce qu'il faut explicitement ne pas faire}
+
+Trois garde-fous bornent le p\'erim\`etre. \emph{Port\'ee} : pas de nouveau syst\`eme (l'instrument suffit), pas de double soumission simultan\'ee, pistes bonus (mod\`ele \`a m\'elange d'experts comme second sujet, phases 2 et 5, g\'en\'eration proc\'edurale compl\`ete, sc\'enarios \`a impasses) hors chemin critique tant que E1--E3 ne sont pas boucl\'ees. \emph{M\'ethode} : ne jamais affaiblir volontairement la r\'ef\'erence \`a r\`egles, ne pas recalibrer $\delta$ apr\`es observation du test, ne pas interpr\'eter un lot dont un contr\^ole n\'egatif a \'echou\'e, ne pas reformuler apr\`es coup un r\'esultat nul ou trivial. \emph{Revendications} : les modes \code{vanilla} et \code{scripted} ne produisent pas de scores de benchmark ; aucune r\'eduction du travail humain n'est inf\'er\'ee sans \'etude d\'edi\'ee avec auditeurs.
+
+\section{Limites et points non r\'esolus}
+\label{sec:limites}
+
+Aucun run de campagne n'a \'et\'e ex\'ecut\'e : la puissance r\'eelle et la valeur de $\delta$ restent non calibr\'ees. L'ind\'ependance historique du split actuel S20--S29 n'est pas v\'erifi\'ee, ce qui motive le split par famille sans le rendre acquis. Le mode \'emul\'e portable hors laboratoire NATO n'existe pas ; sa faisabilit\'e et l'\'ecart tol\'erable avec le laboratoire Proxmox sont \`a prouver sur une famille. Le panneau de mod\`eles (second mod\`ele, \'eventuel mod\`ele \`a m\'elange d'experts) et le bras A0 restent \`a geler avant le 2026-11-09. Enfin, deux des trois analyses consolid\'ees ici se d\'eclaraient partielles : chaque changement du tableau~\ref{tab:archi} doit \^etre confirm\'e sur le code avant impl\'ementation.
+
+\section{Conclusion}
+
+La plateforme est, pour l'essentiel, d\'ej\`a l'instrument qu'il faut ; ce qui manque se concentre en deux prouves (split par famille, inf\'erence appari\'ee), une ex\'ecution (le pilote), et un artefact partageable. La d\'ecision du 2026-11-16, prise sur les crit\`eres \'ecrits du dossier d'objectifs, dira si ces \'el\'ements suffisent \`a soumettre \`a AsiaCCS le 2026-12-11, \`a repositionner le papier en mesure \`a r\'esultat n\'egatif, ou \`a diff\'erer vers un workshop puis une version \'elargie. La prochaine action est le gel du pilote, pas une fonctionnalit\'e nouvelle.
+
+\end{document}

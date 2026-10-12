@@ -3,15 +3,16 @@
 ## Question et périmètre
 
 Ce dossier fixe l'objectif de soumission du programme
-[agent contre automatisation](../2026-09-27-agent-vs-automation/README.md) :
+[agent contre automatisation](../../research/2026-09-27-agent-vs-automation/README.md) :
 **soumettre un papier à ACM AsiaCCS 2027 (round 2) au plus tard le
 11 décembre 2026**, sur la question « sous quelles conditions un agent LLM
 dépasse-t-il une automatisation à règles, à outils, preuves et budgets
 identiques ? ».
 
-C'est un dossier de **pilotage scientifique** : cible, exigences de la
-conférence, contributions à prouver, critères de décision. Il ne contient
-ni résultats ni copie de la proposition de recherche. L'avancement
+C'est un dossier d'**objectifs de projet** (hors `research/`) : cible,
+exigences de la conférence, contributions à prouver, critères de décision.
+Il ne contient ni résultats ni copie de la proposition de recherche, qui
+reste dans l'étude `research/` liée ci-dessous. L'avancement
 opérationnel (runs prévus, exécutés, échoués, coûts) se suit dans le
 [manifeste de campagne](../../benchmarks/experiments/policy-comparison/README.md),
 qui reste la source de vérité de l'exécution.
@@ -53,11 +54,11 @@ nouveau.
   contributions candidates, expériences E1-E3, pistes bonus, rétroplanning,
   critères de décision et risques.
 - Proposition scientifique :
-  [PDF](../2026-09-27-agent-vs-automation/proposition-conditions.pdf) ·
-  [LaTeX](../2026-09-27-agent-vs-automation/proposition-conditions.tex)
+  [PDF](../../research/2026-09-27-agent-vs-automation/proposition-conditions.pdf) ·
+  [LaTeX](../../research/2026-09-27-agent-vs-automation/proposition-conditions.tex)
   (révision 2026-10-12 21:25, Europe/Brussels, UTC+02:00).
 - Protocole et comparateurs :
-  [protocol.md](../2026-09-27-agent-vs-automation/protocol.md),
+  [protocol.md](../../research/2026-09-27-agent-vs-automation/protocol.md),
   [guide CLI D1/A1](../../docs/benchmark/agent-vs-automation-cli.md).
 - Suivi d'exécution :
   [manifeste de campagne](../../benchmarks/experiments/policy-comparison/README.md).

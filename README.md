@@ -34,6 +34,10 @@ The [D1/A1 CLI guide](docs/benchmark/agent-vs-automation-cli.md) documents the
 first implementation: analysis and verification from a shared public inventory,
 with a no-LLM policy and a separate paired comparator.
 
+Current submission objective: [AsiaCCS 2027](objectifs/asiaccs-2027/README.md)
+(round 2, 11 December 2026) — target, proven-contribution requirements and the
+16 November 2026 go/no-go decision criteria.
+
 ## Quick Start
 
 Use **Python 3.12**, the version validated by the test workflow.
