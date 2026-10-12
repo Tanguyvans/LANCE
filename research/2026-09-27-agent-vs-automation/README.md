@@ -98,6 +98,7 @@ identifient des variantes du protocole, pas des scores.
 
 - **[Rapport principal — PDF](report.pdf)** : synthèse des trois axes, comparaisons, règles de décision et limites ; révision horodatée ci-dessus.
 - **[Source LaTeX éditable](report.tex)** : document autonome, avec figures TikZ et bibliographie intégrées ; support des prochaines retouches.
+- **[Proposition de recentrage — PDF](proposition-conditions.pdf)** · [LaTeX](proposition-conditions.tex) : question conditionnelle « sous quelles conditions A1 dépasse-t-il D1 ? », six conditions, hypothèses H0–H3 falsifiables, protocole apparié et critères d'arrêt/poursuite. **Dernière révision : 2026-10-12 21:25 (Europe/Brussels, UTC+02:00). Statut : protocole proposé, aucun résultat expérimental nouveau.** Recherche multi-agents (littérature, protocole, deux contre-revues) du 2026-10-12 ; relecture indépendante du PDF final consignée ci-dessous.
 - [Protocole scientifique](protocol.md) : hypothèses, comparateurs, mesures et limites.
 - [État de l'art ciblé](state-of-the-art.md) : références primaires, périmètre de lecture et implications méthodologiques.
 - [Plan d'implémentation et suivi](implementation-plan.md) : lots logiciels, validations rapportées et travail restant.
@@ -140,9 +141,27 @@ rendu. Cette relecture ne constitue pas une nouvelle validation expérimentale.
 - [Guide de campagne](../../docs/benchmark/agent-vs-automation-campaign.md).
 - [Manifestes et revue des preuves](../../benchmarks/experiments/policy-comparison/README.md).
 
+## Relecture de la proposition du 12 octobre 2026
+
+Proposition relue le 2026-10-12 par un sous-agent relecteur distinct de l'auteur,
+sur la source LaTeX et les 8 pages du PDF rendu (vérification visuelle des pages,
+figure 1 et tableau 1 inclus). Verdict initial : bloquant sur la définition de
+strict-v3 à première occurrence et sur la cohérence des critères H0/H1/H2 ;
+mineur sur les citations, un chiffre Fang et le placement du tableau 1.
+Corrections appliquées puis PDF recompilé (8 pages, citations résolues) :
+définitions ajoutées en section 1, critère de décision unique (borne inférieure
+de l'intervalle à 95 % supérieure à delta après Holm), H2 réécrite en pentes par
+bras, citations dans le corps, entrée Cybench ajoutée comme non relue,
+tableau 1 en placement fixe. Cette relecture ne constitue ni validation
+logicielle ni validation expérimentale.
+
 ## Points ouverts
 
 Préparer et valider les conditions du pilote, fixer les seuils à partir du
 développement et établir les résultats par une campagne explicitement autorisée.
 L'indépendance du test et les variantes réellement déployables restent des
 conditions à vérifier. Suivre le protocole et le plan liés ci-dessus pour le détail.
+La proposition de recentrage ci-dessus ajoute : split par famille (et non par
+scénario), génération procédurale de variantes déployables avec canaris, seuil
+delta à calibrer sur le pilote, et décision d'extension aux phases 2 et 5
+subordonnée à un écart en vrais positifs confirmés.

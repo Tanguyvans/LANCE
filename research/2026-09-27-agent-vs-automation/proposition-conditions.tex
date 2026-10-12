@@ -1,0 +1,218 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\frenchsetup{SmallCapsFigTabCaptions=false}
+\usepackage{lmodern,microtype}
+\usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
+\usepackage{amsmath}
+\usepackage{graphicx,booktabs,array,tabularx,float}
+\usepackage{xcolor,tikz}
+\usepackage{enumitem,titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=sfigBlue,pdfauthor={Projet LANCE},pdftitle={Sous quelles conditions un agent LLM depasse-t-il une automatisation a regles ? Proposition LANCE},pdflang={fr-FR}}
+\urlstyle{same}
+\setlength{\parindent}{1.2em}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{2em}
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+\setlist{nosep,leftmargin=5mm,topsep=3pt}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\?\do\&\do\=\do\:\do\,}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\code}[1]{{\small\ttfamily\path{#1}}}
+\titleformat{\section}{\Large\bfseries}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.7em}{}
+\titlespacing*{\section}{0pt}{16pt}{7pt}
+\titlespacing*{\subsection}{0pt}{11pt}{5pt}
+\pagestyle{plain}
+\setcounter{tocdepth}{2}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\definecolor{sfigInk}{HTML}{1F242C}
+\definecolor{sfigMuted}{HTML}{5C626C}
+\definecolor{sfigLine}{HTML}{D9DEE5}
+\definecolor{sfigBlue}{HTML}{1D5C96}
+\definecolor{sfigBlueFill}{HTML}{EFF6FC}
+\definecolor{sfigRoseFill}{HTML}{FDF0F4}
+\tikzset{
+  sfig diagram/.style={>=Latex, node distance=9mm and 11mm, every node/.style={font=\sffamily\small,text=sfigInk}},
+  box/.style={draw=sfigLine, fill=white, rounded corners=2pt, line width=0.55pt, align=center, inner sep=5pt, text width=32mm},
+  boxblue/.style={box, fill=sfigBlueFill},
+  boxrose/.style={box, fill=sfigRoseFill},
+  arr/.style={->, line width=0.6pt, draw=sfigMuted}
+}
+
+\title{Sous quelles conditions un agent LLM\\d\'epasse-t-il une automatisation \`a r\`egles ?\\[4pt]
+\large Proposition de recentrage du programme agent contre automatisation de LANCE}
+\author{Projet LANCE}
+\date{Derni\`ere r\'evision : 2026-10-12 21:25 (Europe/Brussels, UTC+02:00)\\
+Statut : protocole propos\'e --- aucun r\'esultat exp\'erimental nouveau}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+La comparaison actuelle oppose une automatisation conditionnelle sans mod\`ele de langage (D1, politique \code{rules}) \`a un agent adaptatif avec mod\`ele (A1, politique \code{llm}) sur les phases d'analyse et de v\'erification, \`a outils, observations initiales et contrat de preuve communs. Aucun gain du mod\`ele n'est encore d\'emontr\'e en laboratoire. Ce document propose de remplacer la question globale \og le mod\`ele bat-il les r\`egles ? \fg{} par une question conditionnelle et falsifiable : sous quelles conditions mesurables l'\'ecart A1$-$D1 devient-il positif, \`a budget et preuves identiques ? Il d\'efinit six conditions candidates (nouveaut\'e, variation de surface, bruit et leurres, profondeur de cha\^inage, failles logiques, protocole inconnu), quatre hypoth\`eses avec crit\`eres de r\'efutation, un protocole appari\'e avec contr\^oles n\'egatifs et familles tenues \`a l'\'ecart, ainsi que des crit\`eres d'arr\^et et de poursuite. La contribution revendiqu\'ee n'est pas une sup\'eriorit\'e g\'en\'erale du mod\`ele, mais une carte des conditions d'\'ecart \`a budget \'egal, y compris si elle est vide.
+\end{abstract}
+
+\tableofcontents
+
+\section{Objectif et p\'erim\`etre}
+
+\subsection{Question refram\'ee}
+
+\textbf{Question propos\'ee.} \`A outils, inventaire public, contrat de preuve (strict-v3), sc\'enario et plafonds de ressources identiques, sous quelles conditions pr\'e-enregistr\'ees la politique A1 obtient-elle un \'ecart positif et reproductible sur la politique D1, mesur\'e d'abord en vrais positifs confirm\'es par les preuves, et \`a quel co\^ut par vrai positif confirm\'e ?
+
+\emph{D\'efinitions \`a premi\`ere occurrence.} Le contrat \code{strict-v3} est l'\'evaluateur commun du projet : un constat ne compte comme vrai positif confirm\'e (TP confirm\'e) que si les traces d'ex\'ecution archiv\'ees satisfont les contr\^oles communs de cible, d'endpoint et de contenu ; une \'etiquette \og confirm\'e \fg{} dans un rapport ne suffit pas, et une d\'etection sans preuve vaut non-confirmation (voir \code{docs/benchmark/agent-vs-automation-cli.md}). D1 d\'esigne la politique \code{rules} (automatisation conditionnelle sans mod\`ele) et A1 la politique \code{llm} (agent adaptatif avec mod\`ele), toutes deux d\'efinies dans ce dossier.
+
+Cette formulation corrige trois faiblesses de la question globale. Premi\`erement, elle s\'epare la \emph{d\'ecouverte} d'une faille de son \emph{exploitation} et de sa \emph{v\'erification} : la litt\'erature montre que ces capacit\'es divergent fortement (section~\ref{sec:faits}). Deuxi\`emement, elle impose l'\'egalisation du p\'erim\`etre, du temps, de la charge de sondage et du co\^ut, sans laquelle un \'ecart peut refl\'eter un budget plut\^ot qu'une politique. Troisi\`emement, elle ne pr\'esuppose ni nouveaut\'e IoT ni sup\'eriorit\'e du mod\`ele : l'\'ecart nul partout est un r\'esultat admissible et publiable comme borne.
+
+Le p\'erim\`etre imm\'ediat reste les phases 3 (analyse) et 4 (v\'erification), seules couvertes par le comparateur D1/A1 existant. L'extension \`a la reconnaissance (phase 2) et \`a l'intrusion (phase 5), o\`u la planification adaptative pourrait davantage compter, est une question ult\'erieure explicite, non une hypoth\`ese acquise.
+
+\subsection{Ce que ce document n'est pas}
+
+Ce texte est un \textbf{protocole propos\'e}. Il ne rapporte aucun run de laboratoire, aucun score nouveau et aucune validation exp\'erimentale. Les faits de code cit\'es proviennent d'une lecture du d\'ep\^ot \`a la date de r\'evision ; les faits externes proviennent de sources primaires list\'ees en r\'ef\'erences, avec leurs limites de transposition. Les m\'ecanismes avanc\'es pour expliquer un \'ecart \'eventuel sont des \textbf{hypoth\`eses}, distingu\'ees comme telles.
+
+\section{M\'ethode de la pr\'esente \'etude}
+\label{sec:methode}
+
+La proposition a \'et\'e construite en trois temps. (1) Une revue cibl\'ee de sources primaires sur l'\'evaluation des agents de test d'intrusion et les limites des scanners, recherch\'ees le 2026-10-12 ; seules les sources effectivement ouvertes sont cit\'ees comme lues, les autres sont marqu\'ees non relues. (2) Un audit du d\'ep\^ot LANCE portant sur les modes d'ex\'ecution (\code{src/agent/run_modes.py}), l'audit par r\`egles (\code{src/agent/rules_audit.py}), le comparateur de politiques (\code{src/benchmark/compare_policies.py}), les alt\'erations de sc\'enarios (\code{src/benchmark/scenario_alterations.py}) et le protocole existant de ce dossier (\code{protocol.md}). (3) Deux contre-revues ind\'ependantes, l'une m\'ethodologique (contamination, budgets, puissance, oracle), l'autre orient\'ee comit\'e de programme (nouveaut\'e, contribution, risque de r\'esultat trivial) ; leurs objections retenues sont int\'egr\'ees au corps du texte, notamment aux sections~\ref{sec:hypotheses} et~\ref{sec:limites}, et non rel\'egu\'ees en annexe.
+
+Limite de m\'ethode \`a d\'eclarer : l'audit de code multi-agents n'a pas produit de v\'erification exhaustive sign\'ee ; les affirmations d'impl\'ementation ci-dessous ont \'et\'e rev\'erifi\'ees par lecture directe des fichiers cit\'es, mais aucune nouveaut\'e d'impl\'ementation de LANCE n'est revendiqu\'ee sur cette base.
+
+\section{Faits sourc\'es et point de d\'epart}
+\label{sec:faits}
+
+\subsection{Litt\'erature primaire (lue, avec limites)}
+
+\textbf{Exploitation guid\'ee contre d\'ecouverte.} Fang et al. (arXiv:2404.08144v2, 17 avril 2024, article lu) \'evaluent 15 vuln\'erabilit\'es \emph{one-day} r\'eelles : avec la description CVE fournie, leur agent GPT-4 exploite 87~\% de ces 15 vuln\'erabilit\'es en \emph{pass@5} \cite{fang2024}, contre 0~\% pour GPT-3.5, huit mod\`eles ouverts, ZAP et Metasploit ; sans description, le taux tombe \`a 7~\%. Lecture retenue : la valeur d\'emontr\'ee est le cha\^inage d'exploitation en plusieurs \'etapes \`a partir d'une sp\'ecification, pas la d\'ecouverte autonome. Limites : $n=15$, t\^aches web et Python uniquement, \emph{pass@5} optimiste, et comparaison asym\'etrique --- un scanner d\'etecte sans exploiter, ce qui ne le rend pas comparable \`a un taux d'exploitation.
+
+\textbf{Autonomie limit\'ee sans humain.} Gioacchini et al. \cite{autopenbench} (arXiv:2410.03225v2, EMNLP Industry 2025, article lu) proposent AutoPenBench, 33 t\^aches conteneuris\'ees : l'agent autonome atteint 21~\% de r\'eussite, l'agent assist\'e par un humain 64~\%. Lecture retenue : l'autonomie compl\`ete est aujourd'hui insuffisante ; mesurer des jalons partiels est plus informatif qu'un succ\`es binaire. Limites : services conteneuris\'es classiques, sans protocoles IoT (MQTT, CoAP), sans h\'et\'erog\'en\'eit\'e de micrologiciels ni contrainte de s\^uret\'e physique.
+
+\textbf{Organisation de l'agent.} Deng et al. \cite{pentestgpt} (PentestGPT, USENIX Security 2024, article lu) s\'eparent raisonnement global, g\'en\'eration d'op\'erations et analyse des sorties pour limiter la perte de contexte ; l'ablation sans module de raisonnement produit la plus forte d\'egradation rapport\'ee. Lecture retenue : le \emph{scaffold} (architecture d'agent) est un facteur confondant majeur --- comparer \og LLM contre r\`egles \fg{} sans geler le scaffold attribue au mod\`ele ce qui peut revenir \`a l'orchestration.
+
+\textbf{Failles logiques et validation.} La feuille OWASP \emph{Business Logic Security} \cite{owaspbl} (consult\'ee le 2026-10-12) \'etablit que les scanners g\'en\'eriques manquent les failles de logique m\'etier faute de conna\^itre les r\`egles de l'application (propri\'et\'e par objet et par \'etat, transitions de processus en plusieurs \'etapes, conditions de course). XBOW \cite{xbow2025} (blog du 24 juin 2025 et billet GPT-5 du 15 ao\^ut 2025, lus) rapporte un testeur autonome class\'e premier du classement am\'ericain HackerOne et l'usage de \emph{validateurs} automatis\'es confirmant chaque faille avant soumission. Lecture retenue : la distinction \og puis-je ? / devrais-je ? \fg{} par r\^ole et par contexte est le m\'ecanisme candidat pour les failles d'autorisation. Limites : source fournisseur, web uniquement, aucun taux ind\'ependant de faux positifs ou de faux n\'egatifs, validateur parfois lui-m\^eme un mod\`ele donc non d\'eterministe.
+
+\textbf{Non relu en primaire \`a ce stade.} Cybench \cite{cybench} (40 t\^aches CTF) n'est connu ici que par la critique qu'en fait Gioacchini et al. \cite{autopenbench} (\S 1 : t\^aches ludifi\'ees, indices int\'egr\'es, service unique, sans trafic actif). Cette critique \'emane d'un concurrent et ne doit pas \^etre cit\'ee comme un fait \'etabli avant lecture directe. Le banc CTF de NYU \cite{nyuctf} (200 d\'efis CSAW valid\'es) est cit\'e \`a titre de contexte m\'ethodologique, sans appui normatif.
+
+\textbf{Inconnu structurant.} Aucune source primaire relue ne compare un agent LLM \`a un scanner d\'eterministe \`a p\'erim\`etre, temps et co\^ut \'egaux sur un parc IoT r\'eel (micrologiciels, protocoles embarqu\'es, contraintes de s\^uret\'e). La transposition du web et des conteneurs vers l'IoT est donc une hypoth\`ese \`a tester, pas un appui.
+
+\subsection{Point de d\'epart dans LANCE (faits de code v\'erifi\'es)}
+
+Le d\'ep\^ot s\'epare d\'ej\`a quatre modes d'ex\'ecution (\code{docs/architecture/run-modes.md}) : \code{lance} (pipeline six phases avec mod\`ele), \code{rules} (d\'eploiement puis phases 3--4 d\'eterministes, sans fournisseur ni mod\`ele), \code{vanilla} (boucle mod\`ele--outils born\'ee sur un CIDR explicite, deux sondes Nmap structur\'ees) et \code{scripted} (proc\'edures versionn\'ees \code{smoke-v1} hors ligne et \code{discovery-v1}). Le comparateur exp\'erimental D1/A1 impose le m\^eme inventaire public, le profil \code{full}, les phases [3, 4], un seul travailleur, des budgets obligatoires, et r\'e\'evalue les deux bras avec le m\^eme \'evaluateur strict-v3 ; il conserve les \'ecarts A1$-$D1 et refuse de remplacer une valeur indisponible par z\'ero (\code{docs/benchmark/agent-vs-automation-cli.md}).
+
+Deux limites sont document\'ees dans le d\'ep\^ot lui-m\^eme et motivent ce recentrage. D'une part, les r\`egles r\'eutilis\'ees \og contiennent des connaissances publiques propres aux simulateurs : chemins, identifiants de test, versions de micrologiciels et r\^oles API/PKI/OTA/cloud \fg{} ; la comparaison actuelle \og ne constitue donc pas un test ind\'ependant de g\'en\'eralisation \fg{}. D'autre part, le catalogue compte 29 sc\'enarios (S1--S29, r\'epartis \code{dev-public}/\code{test-public}) et 22 d\'efinitions de packs (\code{f0}--\code{f21} plus une cha\^ine manuelle) : un split par sc\'enario laisse les m\^emes familles des deux c\^ot\'es, donc une fuite par famille reste possible. Enfin, \code{scenario_alterations.py} d\'eclare des transformations (\code{rotate_ports}, \code{service_availability}, \code{tool_output_profile}, \code{failure_mode}) dont le protocole existant pr\'evient qu'elles peuvent n'exister qu'en aper\c cu : une variation non d\'eploy\'ee r\'eellement n'est pas une exp\'erience d'adaptation.
+
+La figure~\ref{fig:archi} r\'esume le principe \`a conserver : seule la politique de d\'ecision change entre les bras.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[sfig diagram]
+\node[boxblue] (obs) {Observations\\partag\'ees\\(scanner, inventaire)};
+\node[box, right=of obs] (d1) {Politique D1\\r\`egles (\code{rules})};
+\node[boxrose, below=of d1] (a1) {Politique A1\\mod\`ele (\code{llm})};
+\node[boxblue, right=of d1] (verif) {V\'erification\\contrat strict-v3\\(identique)};
+\node[box, right=of verif] (met) {M\'etriques appari\'ees\\$\Delta = $ A1 $-$ D1};
+\draw[arr] (obs) -- (d1);
+\draw[arr] (obs) |- (a1);
+\draw[arr] (d1) -- (verif);
+\draw[arr] (a1) -| (verif);
+\draw[arr] (verif) -- (met);
+\end{tikzpicture}
+\caption{Principe d'attribution \`a conserver. Les deux bras partagent observations, outils et contrat de preuve ; seule la politique de d\'ecision diff\`ere. Tout \'ecart d'outil, de budget ou de validateur entre bras invalide l'attribution au mod\`ele. Sch\'ema de proposition, pas un r\'esultat.}
+\label{fig:archi}
+\end{figure}
+
+\section{Taxonomie des conditions d'\'ecart attendu}
+\label{sec:taxonomie}
+
+Chaque condition est une variable ind\'ependante \`a niveaux pr\'e-enregistr\'es, associ\'ee \`a un m\'ecanisme explicite et \`a une observation qui le r\'efuterait. Le tableau~\ref{tab:conditions} les r\'esume ; aucun niveau ne doit \^etre construit en affaiblissant volontairement D1 (r\`egle retir\'ee, parseur brid\'e) : la condition agit sur le monde audité, pas sur la comp\'etence de la r\'ef\'erence.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}p{27mm}p{38mm}Y@{}}
+\toprule
+\textbf{Condition (niveaux)} & \textbf{M\'ecanisme candidat} & \textbf{Manipulation / garde-fou} \\
+\midrule
+(a) Nouveaut\'e de famille (en distribution / proche / famille tenue \`a l'\'ecart) & G\'en\'eralisation s\'emantique du mod\`ele contre absence de signature c\^ot\'e r\`egles & Split par famille de packs, jamais par sc\'enario ; famille de test absente des r\`egles, prompts et exemples \\
+(b) Variation de surface (identique / renommages, ports, banni\`eres, ordre permut\'es) & Invariance s\'emantique contre fragilit\'e des motifs textuels & S\'emantique de faille constante ; \emph{manipulation check} : la variation ne doit pas changer la difficult\'e intrins\`eque, sinon strate distincte \\
+(c) Bruit et leurres (0 / quelques / nombreux services et h\^otes leurres) & Tri contextuel du mod\`ele, ou au contraire faux positifs accrus & Leurres \`a motif connu mais non exploitables ; sp\'ecificit\'e mesur\'ee, pas seulement le rappel \\
+(d) Profondeur de cha\^inage (1 \`a 4 jalons, 0 \`a 2 impasses) & Planification et r\'evision multi-\'etapes (par ex. identifiants par d\'efaut $\rightarrow$ interface web $\rightarrow$ MQTT) & Cha\^ines g\'en\'er\'ees avec branches mortes ; jalons interm\'ediaires not\'es, succ\`es final non binaire seul \\
+(e) Failles logiques, d'\'etat et d'autorisation (r\`egle connue / r\`egle absente ou incompl\`ete) & Raisonnement \og puis-je / devrais-je \fg{} par r\^ole, objet et \'etat & Politique m\'etier fournie ou non de fa\c con \'egale aux deux bras ; jamais d'indice priv\'e dans l'entr\'ee publique \\
+(f) Protocole inconnu (connu / document\'e non vu / variante propri\'etaire) & Lecture de documentation et interpr\'etation de sorties ambigu\"es & Documentation \'egalement accessible aux deux bras ; les r\`egles peuvent l'exploiter par extraction, sans signature pr\'e-\'ecrite de la faille \\
+\bottomrule
+\end{tabularx}
+\caption{Conditions candidates d'\'ecart A1$-$D1. Hypoth\`eses de m\'ecanisme \`a tester ; aucune n'est un r\'esultat. Le contre-domaine o\`u D1 est attendu gagnant (faille \`a signature connue, contr\^ole r\'ep\'etable \`a grande \'echelle, preuve d\'eterministe exig\'ee) fait partie du plan comme strate de contr\^ole.}
+\label{tab:conditions}
+\end{table}
+
+Trois pr\'ecisions s'imposent. D'abord, la variation de surface (b) n'est un test d'adaptation que si l'information utile reste \'egalement lisible par les deux syst\`emes : une transformation que seul le parseur de D1 ne sait pas lire mesure un \'ecart de parseurs, pas de politiques ; le protocole existant de ce dossier le souligne d\'ej\`a et nous le reprenons comme crit\`ere d'invalidation. Ensuite, le bruit (c) est \`a double tranchant : l'hypoth\`ese inverse (le mod\`ele, plus cr\'edule face \`a un leurre plausible, produit davantage de faux positifs) doit \^etre pr\'e-enregistr\'ee au m\^eme titre. Enfin, le cha\^inage (d) ne d\'emontre un pivot que si l'origine, l'acc\`es et la transition r\'eseau sont attest\'es ; \`a d\'efaut, seuls les jalons v\'erifi\'es sont rapport\'es, sans revendiquer de pivot causal.
+
+\section{Hypoth\`eses falsifiables}
+\label{sec:hypotheses}
+
+Soit $\Delta$ l'\'ecart appari\'e A1$-$D1 sur le taux de vrais positifs confirm\'es par strict-v3 (TP confirm\'es), \`a sc\'enario, graine de g\'en\'eration et plafonds identiques, et $\delta$ un gain minimal utile fix\'e avant le test sur les donn\'ees de d\'eveloppement (valeur de travail : 5 points, \`a recalibrer sur le pilote, jamais apr\`es observation du test).
+
+\begin{description}[style=nextline,leftmargin=12mm]
+\item[H0 (nulle conditionnelle).] Pour toute condition de la section~\ref{sec:taxonomie}, $\Delta \le \delta$. Crit\`ere de d\'ecision unique, pr\'e-enregistr\'e : H0 est rejet\'ee pour une condition si la borne inf\'erieure de l'intervalle de confiance appari\'e \`a 95~\% de $\Delta$ (apr\`es correction de Holm) d\'epasse $\delta$ --- et non simplement 0. Le m\^eme crit\`ere vaut pour H1 et pour la poursuite (section~\ref{sec:criteres}).
+\item[H1 (avantage conditionnel).] Le crit\`ere ci-dessus est satisfait uniquement si nouveaut\'e \'elev\'ee (a, famille tenue \`a l'\'ecart) ou faille logique sans r\`egle (e) ou protocole inconnu (f) ; il n'est satisfait ni en distribution ni en simple variation de surface. R\'efut\'ee dans deux cas sym\'etriques : crit\`ere satisfait en distribution (gain g\'en\'erique non pr\'edit, \`a r\'eexpliquer) ou crit\`ere satisfait nulle part (pas d'avantage du mod\`ele).
+\item[H2 (r\'esilience diff\'erentielle).] Soient $S_{A1}(n)$ et $S_{D1}(n)$ les taux de TP confirm\'es de chaque bras quand le nombre $n$ de leurres augmente (conditions b et c). H2 pr\'edit que la pente de $S_{A1}$ est moins n\'egative que celle de $S_{D1}$ (A1 se d\'egrade moins en valeur absolue, par bras). R\'efut\'ee si les deux pentes sont \'egales, ou si la pente de A1 est plus n\'egative, ou si la sp\'ecificit\'e de A1 chute avec $n$ (faux positifs en hausse) m\^eme \`a rappel constant.
+\item[H3 (co\^ut de l'avantage).] Tout gain de A1 co\^ute plus de trois fois le co\^ut de D1 par TP confirm\'e (jetons, appels d'outils et temps mural convertis selon une grille de prix gel\'ee). R\'efut\'ee si le ratio est $\le 3$ \`a gain \'egal. Un gain r\'eel mais au-del\`a du ratio borne la viabilit\'e \`a un usage semi-autonome, sans invalider H1.
+\end{description}
+
+Garde-fou m\'etrique commun : un gain en jalons partiels sans gain en TP confirm\'es vaut inflation de progression, pas avantage ; l'hypoth\`ese correspondante est alors rejet\'ee. Ce garde-fou r\'epond directement \`a l'enseignement d'AutoPenBench (progression interm\'ediaire \'elev\'ee, succ\`es complet faible).
+
+\section{Protocole appari\'e propos\'e}
+\label{sec:protocole}
+
+\subsection{Bras, \'egalisation et gel}
+
+Bras principaux D1 et A1 sur les phases 3--4, m\^eme inventaire public valid\'e par l'op\'erateur, m\^emes outils et versions, m\^eme validateur strict-v3, m\^eme \'etat initial de laboratoire restaur\'e entre les bras, ordre randomis\'e par blocs, au moins trois graines de g\'en\'eration du mod\`ele par configuration (la variance inter-graines est rapport\'ee, jamais moyenn\'ee en silence). Bras d'ablation secondaires, sans pr\'etention confirmatoire : mod\`ele sans outil (borne d'interpr\'etation pure) et D1 augment\'e d'un oracle de surface (borne de parseur). Avant tout test : gel des r\`egles, prompts, comp\'etences, outils, budgets et du code (empreinte des ressources du run, pas le seul SHA Git), journal d'acc\`es au corpus de test, lecture unique du test.
+
+Les budgets sont \'egalis\'es en \emph{plafonds} comparables, pas en unit\'es identiques : temps mural maximal commun incluant les d\'ecisions du mod\`ele, charge de sondage commune (appels, cibles, d\'ebit --- un appel Nmap encapsulant de nombreuses sondes, le seul nombre d'appels ne suffit pas), et plafond mon\'etaire propre \`a chaque fournisseur converti en co\^ut par TP confirm\'e selon une grille gel\'ee. Z\'ero jeton ne signifie pas z\'ero co\^ut : le calcul et le temps de D1 sont compt\'es.
+
+\subsection{Corpus, puissance et anti-contamination}
+
+Le split se fait \textbf{par famille de packs} ($f^\star$ jamais pr\'esente en d\'eveloppement, dans les r\`egles ni dans les prompts), pas par sc\'enario : des variantes d'un m\^eme sc\'enario restent apparent\'ees. Les 29 sc\'enarios existants ne suffisent pas \`a la puissance ; la g\'en\'eration proc\'edurale de variantes par famille (nouveaux identifiants, secrets, topologies, canaris uniques par instance) fournit l'effectif, avec une cible explicite : un intervalle de confiance \`a 95~\% de $\Delta$ excluant 0 dans la condition test\'ee, dimensionn\'e sur la variabilit\'e du pilote. Chaque variante d\'eploy\'ee exige une correspondance v\'erifi\'ee entre sp\'ecification, services r\'eellement d\'eploy\'es, sondes et v\'erit\'e terrain ; une alt\'eration seulement pr\'evue par \code{scenario_alterations.py} mais non d\'eploy\'ee invalide la strate. Analyse : appariement par instance, puis m\'eta-r\'egression $\Delta \sim \text{conditions} + (1|\text{famille})$, correction de Holm sur les tests confirmatoires, r\'esultats par famille publi\'es avec leurs intervalles.
+
+\subsection{Mesures}
+
+Primaires : TP confirm\'es strict-v3 (juge aveugle sur le statut confirm\'e, binaire), sp\'ecificit\'e $\mathrm{TN}/(\mathrm{TN}+\mathrm{FP})$ sur n\'egatifs et leurres, score de jalons (cr\'edit partiel 0--1 par \'etape analyse $\rightarrow$ v\'erification $\rightarrow$ preuve $\rightarrow$ acc\`es, grille gel\'ee avant le test). Secondaires : co\^ut par TP confirm\'e, temps par jalon, taux de rejet de preuve, taux de runs \'evaluables et causes terminales, variance inter-graines. Les ratios \`a d\'enominateur nul restent ind\'efinis et visibles ; aucune valeur manquante n'est remplac\'ee par z\'ero, conform\'ement au comparateur existant.
+
+\subsection{Contr\^oles n\'egatifs et invalidation de lot}
+
+Quatre contr\^oles accompagnent chaque campagne : (a) sc\'enario sans faille (sp\'ecificit\'e pure) ; (b) preuves tronqu\'ees ou invalides, que strict-v3 doit rejeter des deux c\^ot\'es ; (c) leurre \`a motif de famille connue mais non exploitable ; (d) canari unique par instance, dont la r\'egurgitation signale une fuite. Un lot est \textbf{invalid\'e}, et non interpr\'et\'e, si un contr\^ole produit un TP confirm\'e, si un canari est r\'egurgit\'e, si le \emph{manipulation check} de la condition (b) \'echoue, ou si les performances en famille tenue \`a l'\'ecart \'egalent celles en d\'eveloppement sans explication (soup\c con de contamination).
+
+\section{Crit\`eres d'arr\^et, de poursuite et r\'esultats publiables}
+\label{sec:criteres}
+
+\textbf{Arr\^et ou invalidation} : \'echec d'un contr\^ole n\'egatif, canari r\'egurgit\'e, effet qui dispara\^it apr\`es correction de Holm ou qui est domin\'e par l'effet famille (une seule famille porte l'\'ecart). \textbf{Poursuite} (extension aux phases 2 et 5, ou campagne \'elargie) seulement si le crit\`ere de d\'ecision de H0/H1 (borne inf\'erieure de l'intervalle \`a 95~\% de $\Delta$ sup\'erieure \`a $\delta$, apr\`es Holm) est satisfait en TP confirm\'es --- pas seulement en jalons --- dans au moins une condition pr\'edite par H1, co\^ut par TP document\'e (H3) et variance inter-graines rapport\'ee.
+
+Tous les r\'esultats suivants sont publiables comme tels, sans reformulation : $\Delta \le \delta$ partout (r\'efute l'avantage conditionnel et borne l'autonomie, coh\'erent avec les 21~\% autonomes d'AutoPenBench) ; $\Delta > \delta$ en distribution (r\'efute la th\'eorie conditionnelle, gain g\'en\'erique \`a r\'eexpliquer avant toute revendication) ; fragilit\'e de A1 sous bruit (r\'efute H2) ; gain r\'eel \`a plus de trois fois le co\^ut par TP (viabilit\'e limit\'ee au semi-autonome). La contribution revendiqu\'ee est la \textbf{carte des conditions d'\'ecart \`a budget \'egal} --- y compris vide --- et le protocole qui la rend cr\'edible, pas une sup\'eriorit\'e g\'en\'erale du mod\`ele ni un nouvel agent.
+
+\section{Int\'egration dans LANCE : points d'appui et travail requis}
+\label{sec:integration}
+
+Points d'appui v\'erifi\'es : le s\'electeur de modes (\code{run_modes.py}) isole d\'ej\`a la politique du reste du pipeline ; le comparateur (\code{compare_policies.py}) produit les \'ecarts appari\'es, conserve les scores par bras et exporte les motifs d'incomparabilit\'e ; l'audit applicatif par r\`egles affiche les r\'esultats par \'equipement sans fabriquer de score. Travail requis, par ordre : (1) un manifeste de campagne versionn\'e portant famille, variante, r\'ep\'etition, ordre, budgets, empreintes d'environnement et causes d'\'echec (le protocole existant en propose le sch\'ema, aucun nouveau drapeau n'est suppos\'e) ; (2) la g\'en\'eration proc\'edurale de variantes d\'eployables avec v\'erification sp\'ecification--d\'eploiement--v\'erit\'e terrain, au-del\`a des aper\c cus d'alt\'eration ; (3) le split par famille et le gel document\'e (r\`egles, prompts, corpus canaris) ; (4) les jalons horodat\'es et le co\^ut par TP dans la comparaison, en r\'eutilisant le journal d'ex\'ecution existant ; (5) seulement ensuite, la d\'ecision d'extension aux phases 2 et 5 selon les crit\`eres de la section~\ref{sec:criteres}. Le pipeline six phases \og produit \fg{} est gel\'e comme infrastructure pendant ce programme ; il n'est plus l'objet d'\'etude.
+
+\section{Discussion et limites}
+\label{sec:limites}
+
+Limites externes : les preuves relues sont web et conteneurs ; aucun parc IoT r\'eel, aucun protocole embarqu\'e contraint, aucune exigence de s\^uret\'e physique n'y est mesur\'e. XBOW est une source fournisseur sans taux ind\'ependant ; Cybench reste non relu en primaire. Limites internes : puissance limit\'ee sans g\'en\'eration de variantes, multiplicit\'e des six conditions (d'o\`u Holm et pr\'e-enregistrement), confusion possible entre mod\`ele et scaffold (d'o\`u le gel et les ablations), co\^ut du mod\`ele pouvant masquer un faible gain, et risque trivial sym\'etrique --- le mod\`ele perd partout (H0 tient, r\'esultat n\'egatif publiable) ou gagne partout (H1 r\'efut\'ee, m\'ecanisme \`a r\'eexpliquer). Aucune r\'eduction du travail humain n'est inf\'er\'ee des jetons ou de l'absence d'intervention ; elle exigerait une \'etude d\'edi\'ee avec auditeurs. Les exp\'eriences restent dans le p\'erim\`etre d'audit autoris\'e du projet (laboratoire NATO) ; ce protocole n'autorise par lui-m\^eme aucun run.
+
+\section{Conclusion et prochaines \'etapes}
+
+La question globale \og le mod\`ele bat-il les r\`egles ? \fg{} est remplac\'ee par une question conditionnelle, appari\'ee et falsifiable, dont chaque issue --- y compris l'absence d'\'ecart --- produit une conclusion utilisable. Prochaines \'etapes, sans ex\'ecution implicite : (1) valider ce cadrage et le seuil $\delta$ sur le pilote de d\'eveloppement existant (24 ex\'ecutions D1/A1 du mod\`ele de campagne de ce dossier, \code{benchmarks/experiments/policy-comparison/}, repris au \code{protocol.md} de ce dossier) ; (2) impl\'ementer le manifeste de campagne et le split par famille ; (3) prouver la g\'en\'eration de variantes d\'eployables sur une famille ; (4) geler, puis seulement lancer la campagne confirmatoire. Toute conclusion retenue \`a l'issue de la campagne mettra \`a jour la documentation de r\'ef\'erence du benchmark avec son p\'erim\`etre et ses limites, en lien vers la pr\'esente \'etude.
+
+\begin{thebibliography}{9}\small
+\bibitem{fang2024} R.~Fang, R.~Bindu, A.~Gupta, Q.~Zhan et D.~Kang, \emph{LLM Agents can Autonomously Exploit One-day Vulnerabilities}, arXiv:2404.08144v2, 17 avril 2024. Article lu le 2026-10-12 ; $n=15$, web/Python, \emph{pass@5}.
+\bibitem{autopenbench} L.~Gioacchini et al., \emph{AutoPenBench: Benchmarking Generative Agents for Penetration Testing}, arXiv:2410.03225v2, EMNLP Industry 2025. Article lu le 2026-10-12 ; 33 t\^aches conteneuris\'ees.
+\bibitem{pentestgpt} G.~Deng et al., \emph{PentestGPT: Evaluating and Harnessing Large Language Models for Automated Penetration Testing}, USENIX Security 2024. Article lu le 2026-10-12.
+\bibitem{owaspbl} OWASP, \emph{Business Logic Security Cheat Sheet}, cheatsheetseries.owasp.org. Consult\'e le 2026-10-12 ; date de version non affich\'ee sur la page lue.
+\bibitem{xbow2025} N.~Waisman (XBOW), \emph{Top-1: How XBOW did it}, xbow.com, 24 juin 2025 ; O.~de Moor et A.~Ziegler, \emph{XBOW Unleashes GPT-5's Hidden Hacking Power}, 15 ao\^ut 2025. Lus le 2026-10-12 ; source fournisseur, web uniquement.
+\bibitem{nyuctf} M.~Shao et al., \emph{NYU CTF Bench: A Scalable Open-Source Benchmark Dataset for Evaluating LLMs in Offensive Security}, arXiv:2406.05590v3, 2024. Connu par son r\'esum\'e et sa description de m\'ethode ; non utilis\'e comme appui normatif ici.
+\bibitem{cybench} A.~Zhang et al., \emph{Cybench: A Framework for Evaluating Cybersecurity Capabilities and Risks of Language Models}, ICLR 2025. Non relu en primaire \`a ce stade ; connu uniquement par la critique de \cite{autopenbench}, \`a confirmer avant tout usage normatif.
+\end{thebibliography}
+
+\end{document}
