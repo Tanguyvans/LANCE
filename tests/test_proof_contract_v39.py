@@ -108,5 +108,6 @@ def test_save_only_is_absence_but_inconclusive_output_is_failed():
 
 def test_telnet_outcome_requires_structured_received_bytes():
     finding = {"type": "insecure_protocol", "service": "telnet", "port": 23}
-    assert _tool_call_outcome({"tool": "telnet_connect", "result": json.dumps({"connected": True, "received_bytes": 0, "timed_out": True})}, finding) is False
-    assert _tool_call_outcome({"tool": "telnet_connect", "result": json.dumps({"connected": True, "received_bytes": 8, "received_ascii": "uid=1"})}, finding) is True
+    args = {"host": "192.0.2.1", "port": 23}
+    assert _tool_call_outcome({"tool": "telnet_connect", "args": args, "result": json.dumps({"connected": True, "received_bytes": 0, "timed_out": True})}, finding) is False
+    assert _tool_call_outcome({"tool": "telnet_connect", "args": args, "result": json.dumps({"connected": True, "received_bytes": 8, "received_ascii": "uid=1"})}, finding) is True

@@ -167,3 +167,8 @@ périodique est désactivé à la demande de Tanguy le 5 octobre 2026. Les proch
 runs doivent répondre à un défaut nommé dans les cas `failed`/`partial`, sans
 répétition d'une campagne identique. Le lot correctif déjà lancé et son archivage
 continuent ; le rapport historique conserve son gel à 11:32.
+
+
+### Rapports itératifs des corrections
+
+Les bilans séparés du lot initial (Run1) et de la campagne corrective (Run2), ainsi que les dates de révision et l’état de QA courant, sont suivis dans le [README de l’étude des corrections](../2026-10-05-corrections-lance/README.md). Le rapport initial et ses scores historiques restent inchangés.

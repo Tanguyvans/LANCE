@@ -87,6 +87,13 @@ arrêts et erreurs d'archivage restent des interruptions propagées ; ils ne
 deviennent pas des résultats partiels réussis. Le suivi de coût du worker est
 fermé même lors d'une interruption.
 
+La découverte complémentaire après phase 4 applique les mêmes CIDR autorisés,
+budgets et journalisation aux scanners et aux analystes. Les IP malformées ou
+hors périmètre sont ignorées, y compris en mode réseau découvert ; un arrêt
+interrompt le suivi avant le prochain appel modèle. Chaque observation scanner
+possède une référence dans `tool_calls.jsonl`, et le suivi de coût de l'analyste
+est fermé même si le fournisseur échoue.
+
 `03_phase3_status.json` décrit le scan et les analyses par appareil ; le résultat
 de validation de l'agrégat reste porté par le statut de phase. La registry et le
 runner de compatibilité traduisent le résultat structuré vers les chaînes déjà
@@ -161,6 +168,16 @@ réseau ; les traces originales restent disponibles. Sans signal de fin accepté
 les observations sont conservées mais la campagne reste incomplète. Les arrêts,
 budgets et journaux invalides ne sont pas convertis en succès.
 
+Les adaptations compactes utilisent également `evidence.capabilities.access_supported`
+pour la synthèse, la couverture et la collecte après accès. Pour les identifiants
+HTTP, un refus anonyme 401/403 suivi d'une réponse authentifiée 2xx est nécessaire ;
+une erreur serveur ou une redirection ne suffit pas. Les identifiants Telnet
+sont transmis comme paramètres d'un programme constant, sans interpolation dans
+le code shell local ; Redis reçoit des trames RESP sur stdin, sans shell, en
+conservant espaces et retours à la ligne dans le mot de passe. Un prompt Telnet
+ou un PONG Redis après un AUTH refusé ne
+certifie pas une authentification.
+
 Un identifiant récupéré sans protocole déclaré porte `service: null` (jamais un
 protocole deviné ni la chaîne `"None"`) ; les services connus sont conservés
 tels quels et les valeurs malformées restent refusées. La découverte
@@ -209,6 +226,14 @@ liste. Le snapshot est local à cette agrégation ; sa capture dépend encore du
 contexte global de graphe. Les étapes de normalisation et de projection modifient
 les copies de travail et le registre de décisions reçus, sans modifier les
 fichiers d'entrée ni les valeurs originales conservées dans `raw_finding`.
+
+Le validateur d'appareil et le registre de candidats partagent les contrôles de
+types de `finding_schema.py`. Un candidat historique mal typé est marqué
+`rejected_malformed` avec son motif et sa valeur brute ; il ne bloque pas ses
+voisins valides. Les champs manquants restent soumis à la normalisation et aux
+règles sémantiques. Les expositions HTTP du scanner sont regroupées par origine
+observée : schéma et port, notamment HTTPS sur 8443, restent ceux de la requête
+et sont conservés jusqu'au plan de vérification.
 
 La promotion PKI exige une même empreinte SHA-256 sur au moins deux appareils
 ayant des identifiants et des adresses IP distincts. Les requêtes répétées, lignes

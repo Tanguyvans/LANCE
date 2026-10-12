@@ -9,6 +9,7 @@ import re
 from urllib.parse import urlsplit
 
 from src.agent.finding_identity import finding_identity_key
+from src.agent.finding_schema import finding_structure_issue
 from src.agent.tools.deliverable import _extract_json
 from src.agent.phases.analysis.aggregation_context import AggregationContext, AggregationInputs
 from src.agent.phases.analysis.mqtt_grouping import load_authoritative_mqtt_observations
@@ -39,9 +40,10 @@ class CandidateRegistry:
                 "canonical_finding_id": None,
             }
             self.records.append(record)
-            if not isinstance(raw, dict):
+            issue = finding_structure_issue(raw)
+            if issue:
                 record["decision"] = "rejected_malformed"
-                record["decision_reason"] = "finding is not an object"
+                record["decision_reason"] = issue
                 continue
             working = json.loads(json.dumps(raw, ensure_ascii=False, default=str))
             working["_candidate_id"] = candidate_id

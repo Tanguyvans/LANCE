@@ -171,3 +171,181 @@ glyphe manquant détecté ; pagination 9/10/10 et 72 destinations de sommaire
 conservées. Les liens locaux des PDF sont valides et les six figures TikZ restent
 inchangées. Cette retouche ne renouvelle pas les constats ni les résultats de
 validation logicielle du 29 septembre ; aucun test applicatif n'a été relancé.
+
+## Relecture indépendante du 1er octobre 2026
+
+**Version finale des rapports : 2026-10-01 10:23 (Europe/Brussels, UTC+02:00).**
+Auteur des corrections : Codex, agent principal. Relecteurs distincts : les
+sous-agents Codex `review_clarity` (texte et cohérence) et `review_figures`
+(rendu visuel). La relecture porte sur les quatre rapports courants et leurs
+README ; les notes détaillées ont servi à retrouver la provenance. Les notes
+complémentaires et archives n'ont pas toutes été relues ni rendues ; le Word
+historique IoMT reste inchangé. Aucune revue Muse n'a été exécutée à cette étape.
+
+### Corrections retenues
+
+- Définition de D1/A1 dès le résumé du rapport principal, vocabulaire de mesure
+  et repères de lecture ; pilote expliqué comme 12 paires et 24 exécutions prévues.
+- Distinction entre hypothèses proposées par l'agent et vérité terrain utilisée
+  après l'audit ; aucune réponse attendue n'est ajoutée à l'entrée publique.
+- Contexte : conversation indépendante par invocation de boucle outils, avec
+  historique repris entre requêtes ; R1 identifié comme dispositif expérimental
+  à outils de lecture communs ; observation archivée distincte de preuve validée.
+- Benchmark : légende explicite et pourcentages des catégories du graphique,
+  colonnes de tableaux alignées à gauche ; figures et tableaux placés à des
+  frontières de paragraphes ; bibliographie et sommaire corrigés.
+- IoMT : première version LaTeX/PDF depuis la proposition historique, avec
+  périmètre simulé, distinctions passif/actif, F1 conforme au contrat courant,
+  limites cliniques et faisabilité encore ouverte. Lecture ciblée des sections
+  de sécurité HTTP/DICOM d'Orthanc et du profil DICOM PS3.15 2026d B.12.
+
+### Vérifications obtenues
+
+La relecture initiale a inspecté les 29 pages des trois anciens PDF. Après
+correction et ajout du rapport IoMT, les 38 pages intermédiaires ont été vues ;
+les dernières corrections de bibliographie ont ramené le total à **37 pages**.
+Les pages affectées et les quatre couvertures finales ont été revérifiées par
+le relecteur visuel. Toutes les remarques signalées de compréhension et de rendu
+ont été résolues dans ce périmètre. Les sources ont été relues une seconde fois.
+
+Les quatre sources finales compilent dans l'éditeur LaTeX intégré de Codex.
+Les PDF sur disque sont exportés par l'installation TeX existante (`latexmk` et
+`pdflatex`), puis rendus par `pdftoppm` à 1 400 pixels sur le plus grand côté.
+Aucun fichier de compilation n'est conservé dans les dossiers d'étude.
+Les exports ne signalent ni débordement `Overfull`, ni glyphe manquant, ni
+référence ou citation indéfinie. L'avertissement historique de motifs de césure
+français non préchargés reste présent ; les pages rendues ont été inspectées.
+
+Les **86 destinations de sections et sous-sections enregistrées dans les
+sommaires sources** existent et correspondent à leur numéro de page PDF,
+vérifiées avec `pypdf`. Certaines sous-sections sont masquées dans les sommaires
+affichés de niveau 1. Les liens Markdown locaux modifiés et `git diff --check`
+sont vérifiés. Aucun test du runtime ni run de laboratoire n'a été lancé pour
+cette révision documentaire ; les 381 tests historiques ci-dessus ne sont pas
+réétiquetés comme une nouvelle validation.
+
+### PDF finaux relus
+
+| Dossier | Pages | SHA-256 du PDF |
+| --- | ---: | --- |
+| 2026-09-27-agent-vs-automation | 10 | `43146eff137ee7bc423220fddc5a13691e0822f66652827def733bbe7b16e435` |
+| 2026-09-29-benchmark-coverage | 10 | `264ff783388916288c78b0981277c0bf9582fc50debab2c78f5aef5391976512` |
+| 2026-09-29-context-scalability | 11 | `edd203a47988dcb46b9517bbbd3ae0f462ca2e46c65339b81d4154374834082d` |
+| 2026-09-29-iomt | 6 | `8b8a7dbab1ddeca34c4728e092f50b350a788815f1db305ec286fcbdb3d5e069` |
+
+Les empreintes identifient les exports de cette relecture. Les sources éditables
+restent les `report.tex` correspondants ; les dates d'étude et des observations
+historiques restent distinctes de l'horodatage de révision documentaire.
+
+<a id="relecture-sans-llm-2026-10-07"></a>
+
+## Contre-relecture indépendante du 7 octobre 2026 : méthodes sans LLM
+
+**Périmètre : approfondissement de recherche et protocoles proposés.** Les
+résultats et tests historiques ci-dessus restent inchangés et attribués à leurs
+dates. Trois agents ont rédigé les rapports spécialisés : `sans_llm_outils`,
+`sans_llm_raisonnement` et `sans_llm_experiences`. Codex `/root` a rédigé la
+synthèse. Deux nouveaux agents distincts des auteurs ont assuré une contre-revue
+scientifique et l'inspection des PDF ; ils n'ont pas modifié les textes relus.
+
+### Versions et périmètres effectivement relus
+
+Tous les instants ci-dessous sont le **7 octobre 2026, Europe/Brussels,
+UTC+02:00**. Les auteurs ont inspecté tous leurs rendus ; les relecteurs ont
+aussi rendu les PDF et inspecté toutes les pages, après correction.
+
+| Document | Révision finale | Pages finales | Relecteur indépendant | Recontrôle final terminé |
+| --- | --- | ---: | --- | --- |
+| `sans-llm-outils.tex/pdf` | 14:27 | 9 | `/root/sans_llm_relecture_methodes` | 14:32 |
+| `sans-llm-raisonnement.tex/pdf` | 14:28 | 9 | `/root/sans_llm_relecture_methodes` | 14:34 |
+| `sans-llm-experiences.tex/pdf` | 14:43 | 9 | `/root/sans_llm_relecture_experiences` | 14:45 |
+| `sans-llm.tex/pdf` | 14:44 | 8 | `/root/sans_llm_relecture_experiences` | 14:46 |
+
+La première revue des méthodes a couvert sources LaTeX et registres complets,
+et les 17 pages initiales (8 outils, 9 raisonnement), à 14:24. Le relecteur a
+contre-vérifié certains passages primaires : NIST SP 800-115 résumé exécutif
+et section 2 ; guide CycloneDX, date/édition, pedigree et complétude ; Cedar,
+conditions de mesure et limites de la traduction concordante. Il ne prétend
+pas avoir reproduit ces sources ni revérifié intégralement chaque référence.
+
+La première revue expérimentale a couvert source, registre et neuf pages du
+rapport révisé à 14:22, à 14:40. Le relecteur a ensuite relu les corrections et
+inspecté les neuf pages du PDF révisé à 14:43, puis la source et les huit pages
+de la synthèse à 14:44. Les rendus indépendants utilisent `pdftoppm` à 110 dpi
+et `view_image` ; la simple extraction du texte n'a pas servi de verdict visuel.
+Les 35 pages finales sont donc couvertes par une inspection indépendante.
+
+### Objections scientifiques et corrections retenues
+
+Les réserves suivantes ont modifié le protocole ; ce ne sont pas des résultats
+de benchmark. Les localisations initiales désignent les versions antérieures
+aux corrections et peuvent changer dans les PDF finaux.
+
+| Réserve | Localisation initiale et gravité | Conséquence et correction vérifiée |
+| --- | --- | --- |
+| R1 — D1 existant / nouveau lecteur | Raisonnement, p. 1 et 3 ; majeure | Ne pas présenter un nouveau moteur de dossiers comme le D1 actuel phases 3–4. Le lecteur à règles est un adaptateur hors ligne proposé. |
+| R2 — référence dite forte sans acceptation | Outils §5 ; raisonnement §6 ; moyenne | Une victoire sur des règles sous-conçues serait peu informative. Porte d'acceptation sur développement : critères, contextes, négatifs proches, inconnus, justifications, effort humain, gel et versionnement avant test. |
+| R3 — mêmes avis ≠ mêmes connaissances | Outils §4.5 ; moyenne | Le préentraînement peut expliquer le gain. Limite déclarée, noms/avis fictifs cohérents proposés ; date récente et absence de web ne certifient pas un raisonnement pur. |
+| R4 — branches enregistrées ≠ rejeu cohérent | Outils §5 ; moyenne | Si l'état dépend de l'historique, les réponses contrefactuelles peuvent être invalides. Restreindre aux lectures sans effet et indépendantes de l'historique, ou à des histoires fournies cohérentes ; sinon hors couverture. |
+| R5 — rappel limité aux candidats LANCE | Outils §6 ; moyenne | L'univers doit être indépendant du collecteur et inclure ses omissions. Séparer rappel d'état, rappel conditionnel aux pièces observables et couverture. |
+| R6 — sauts de page systématiques | Raisonnement, source ; mineure | Sept sauts forcés supprimés conformément aux conventions ; nouvelle pagination entièrement inspectée. |
+| RE1 — oracle et dénominateurs | Expériences §4 / métriques, p. 4 ; majeure | Séparer état réel et suffisance des preuves accessibles. Publier les deux rappels ; conserver non-observables, abstentions, incomplets et échecs dans les totaux et la couverture. |
+| RE2 — matrice normative assimilée à une fuite | Expérience d'autorisation, p. 6 ; majeure | La politique sujet–ressource–action est une entrée légitime commune. Seule l'étiquette privée par dossier ou la conclusion attendue fuit l'oracle. |
+| RE3 — divergences des rapports exclues | Expérience humaine, p. 7 ; majeure | Les dossiers sources et contraintes restent communs. Omissions et inventions des rapports générés sont des erreurs mesurées et conservées avec leur coût ; ne pas suspendre le test à cause d'elles. |
+| RE4 — F1 sain toujours indéfini | Expérience cas sains, p. 5 ; moyenne | Via 2TP/(2TP+FP+FN), F1 vaut zéro si FP>0 ; dénominateur nul dépend de la convention. Préférer taux de fausses alertes/spécificité et publier leurs dénominateurs. |
+| RE5 — échec du parseur retiré | Expérience de variations, p. 6 ; moyenne | La perte d'information invalide le contraste sémantique normalisé. Dans la strate brute, l'échec de parsing reste un résultat mesuré. |
+| RE6 — expériences confondues avec familles indépendantes | Synthèse, tableau des tests / §6.2 ; moyenne | Colonne renommée « Expérience ». Une famille d'origine dépend du générateur, de l'implémentation, du service ou de la structure partagés ; ses variantes ne sont pas indépendantes. |
+
+La réserve sur l'attribution « examen, entretien, test » au NIST a été
+contre-vérifiée : SP 800-115 l'étaye effectivement ; aucune correction arbitraire
+de source n'a été imposée. Les deux relecteurs recommandent une référence à
+règles compétente, les expériences routine/cas sains puis les variations sur le
+même corpus. Les droits et jointures deviennent prioritaires seulement si les
+pièces et la difficulté contextuelle le justifient ; la restitution humaine
+reste une expérience distincte. Firmware, apprentissage classique, NetPlumber
+et vérification de configuration restent conditionnés par les artefacts et la
+question, sans conclusion empirique défavorable à ces méthodes.
+
+### Vérifications documentaires et limites
+
+Compilation des quatre sources avec `latexmk`/`pdflatex`, rendus complets et
+recontrôles finaux terminés. Aucun défaut bloquant de compréhension ou de rendu
+ne reste dans le périmètre relu. Les références et destinations des liens
+internes existent ; les liens vers les rapports et registres locaux sont
+vérifiés. Les registres JSON sont valides et distinguent les sections réellement
+lues des documents non parcourus intégralement. Le registre consolidé dénombre
+29 lectures pour 27 URL primaires distinctes ; ce n'est ni un nombre d'articles
+ni une revue systématique. Les statuts d'auteur contenus dans les registres
+spécialisés décrivent leur instant de production ; le présent journal consigne
+la contre-relecture postérieure.
+
+Les compilations finales ne présentent pas de débordement `Overfull` ni de
+référence indéfinie. L'avertissement de motifs de césure française non
+préchargés demeure ; aucun défaut correspondant n'a été observé dans les
+rendus. Les contrôles ciblés de blancs et de marqueurs des nouveaux fichiers
+passent. Le `git diff --check` global reste en échec sur les conflits déjà
+présents, notamment dans la documentation du benchmark et le code ; cette
+recherche ne les résout pas. Les sources historiques, le code et les guides
+inspectés ont été préservés ; l'index, le README et ce journal sont complétés.
+
+Aucun test applicatif, appel LLM expérimental, run de laboratoire ou déploiement
+n'a été exécuté. Le corpus éligible, l'oracle indépendant, la compétence réelle
+des comparateurs, l'indépendance des familles, les seuils, effectifs, coûts et
+compatibilités restent à valider. Les verdicts des relecteurs acceptent la
+recherche et les protocoles proposés ; ils n'établissent aucun gain, absence
+de gain ou équivalence expérimentale.
+
+### Empreintes finales des PDF inspectés
+
+| PDF | SHA-256 |
+| --- | --- |
+| `sans-llm.pdf` | `42ecf817a9741655de78957670eb0da88087cec14bfecbc5e48649fa53d40c60` |
+| `sans-llm-outils.pdf` | `d8dcc4d4364a1297fbfe45420276703a68fad5263f679538da8fd9d7256886bd` |
+| `sans-llm-raisonnement.pdf` | `cf412d714a0c4f50d79efa5713e9a628a5d667d067b3f76685fda3cff60a9f72` |
+| `sans-llm-experiences.pdf` | `05738cb827891ffe8528df09c8d7af4a478a560f9baaec46679def4ac30b9a61` |
+
+Sources LaTeX finales contrôlées : synthèse
+`1670e7286ad54e027eecc32217618018b5784b7685d8d09c8e459f5ab018b507`, outils
+`64c346e3fd1b8731068a08629a8b121e9647a8ca2635ca230f5f0d1af44c1b0b`, raisonnement
+`15ff0fce557e13c1632b5d7898226024d4ded3539cd723be754005e4c137a104`, expériences
+`a9f15d2c7634c42b21ede6b1bcf2318652f82633094cd4117c545ee6b41d34f4`.

@@ -37,8 +37,8 @@ def test_compact_phase4_protocol_contract_rejects_open_port_only():
         "tool": "tcp_send",
         "args": compact_plan["args_hint"],
         "result": json.dumps({
-            "received_bytes": 4,
-            "received_hex": "03000016",
+            "received_bytes": 22,
+            "received_hex": "0300001611d00001000200c1020100c2020102c0010a",
             "return_code": 0,
         }),
     }]

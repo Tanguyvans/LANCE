@@ -1,0 +1,361 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern,microtype}
+\usepackage[margin=24mm]{geometry}
+\usepackage{booktabs,tabularx,array,longtable}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=black,
+  pdftitle={Comparer des méthodes de gestion des preuves pour LANCE},
+  pdfauthor={Étude LANCE, rédaction assistée par Codex}}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+\clubpenalty=10000 \widowpenalty=10000
+\setlist{nosep,leftmargin=*}
+\setcounter{tocdepth}{1}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\revision}{2026-10-07 13:52 (Europe/Brussels, UTC+02:00)}
+\newcommand{\fichier}[1]{\nolinkurl{#1}}
+\title{Comparer des méthodes de gestion des preuves pour LANCE\\
+  \large Protocole hors ligne à observations communes}
+\author{Étude LANCE --- rédaction assistée par Codex}
+\date{Dernière révision : \revision\\
+  \small Statut : protocole proposé ; aucune expérience exécutée}
+\begin{document}
+\maketitle
+\begin{abstract}
+Une approche d'audit devient scientifiquement intéressante si son apport peut
+être isolé et réfuté. Nous proposons de comparer la gestion et l'interprétation
+de preuves déjà enregistrées, sans nouvelle interaction avec un système.
+La comparaison sépare origine de l'observation, attribution à une déclaration,
+soutien à la propriété annoncée et information manquante. Une référence à
+règles, un index relationnel de preuves et une relecture sémantique bornée
+reçoivent les mêmes dossiers. Le protocole prévoit des cas sains ou corrigés,
+des contradictions, une référence indépendante, un test réservé par famille et
+une comptabilité de tous les essais. Il complète la recherche agent contre
+automatisation sans démontrer un gain d'exploration, d'audit terrain ou de temps
+humain. Les seuils utiles et la taille du test restent à déterminer avant le gel.
+\end{abstract}
+\tableofcontents
+
+\section{Question et méthode de cette étude}
+\label{sec:scope}
+\textbf{Question.} À observations identiques, une représentation relationnelle
+et une relecture explicite des contradictions améliorent-elles l'attribution,
+la prudence et la traçabilité des déclarations d'un audit de l'Internet des objets
+(IoT), à coût mesuré ? Un modèle de langage (LLM) est une variante de lecteur,
+pas une source de preuve sur l'état du système.
+
+L'étude existante compare D1, automatisation conditionnelle à règles, et A1,
+agent adaptatif utilisant un LLM. Son hypothèse H4 prévoit déjà une comparaison
+d'interpréteurs sur observations communes~\cite{local-policy}. Notre extension
+porte sur des \emph{déclarations précises} : bonne ressource, bonne propriété,
+preuve contraire, fraîcheur et abstention. Elle isole la représentation et la
+relecture des preuves ; elle ne constitue pas une nouvelle démonstration de H4.
+
+\textbf{Méthode documentaire.} Lecture statique des index, du protocole D1/A1,
+des études de couverture, des guides d'évaluation et de campagne, et des fichiers
+\fichier{src/benchmark/metric_contract.py} et \fichier{src/benchmark/funnel.py}.
+La copie consultée le 7 octobre 2026 contient des conflits de fusion. Sa tête Git
+est \fichier{a8dbeb9404f0cad960d61e42f02a1d70ca143a59}.
+La tête ne décrit donc pas seule les fichiers lus. Aucun code applicatif n'est
+modifié ou exécuté, aucun run de laboratoire n'est relancé. Les sources primaires
+externes sont consultées le même jour ; leurs résumés et notices servent à
+motiver les précautions, sans reproduction de leurs expériences.
+
+\section{Constats et hypothèses à départager}
+\textbf{Constats documentaires.} Le guide distingue une preuve d'origine
+traçable d'une preuve soutenant la propriété et le périmètre exacts. Un listing
+ne prouve pas le contenu sensible d'un fichier ; un résultat manquant n'est pas
+un score nul~\cite{local-evaluation}. Le contrat lu présente des marqueurs de
+conflit entre \fichier{strict-v3.16/evidence-v15} et
+\fichier{strict-v3.15/evidence-v14}. Cette revue n'établit aucune version
+exécutable courante. Les études antérieures ont relevé des limites de contrôles
+sains et de validation ; ces constats ne donnent pas leur fréquence dans un
+nouveau corpus~\cite{local-coverage}.
+
+\textbf{Hypothèses proposées.} Un index relationnel pourrait réduire les
+erreurs de liaison, les doublons ou le temps de recherche des sources. Un second
+lecteur pourrait repérer des preuves contraires ou des conclusions dépassant
+l'observation. Il pourrait aussi créer des faux positifs, refuser trop de cas ou
+ajouter un coût sans bénéfice. À règles identiques et informations équivalentes,
+\emph{aucun changement de verdict n'est nécessairement attendu} : une meilleure
+auditabilité à verdicts identiques est une conclusion possible, à mesurer.
+
+Le National Institute of Standards and Technology (NIST) décrit la préparation
+des évaluations, l'analyse des constats et les
+limites des techniques~\cite{nist}. Cette portée justifie de préparer un contrat
+de mesure avant l'expérience, sans certifier notre protocole. Les travaux sur
+la fuite de données motivent une séparation explicite entre développement et
+test~\cite{leakage}. Ces applications à LANCE sont nos choix méthodologiques.
+
+\section{Protocole proposé : dossiers et comparateurs}
+\subsection{Deux références distinctes}
+L'unité de décision est une déclaration atomique $q$ : cible, service,
+ressource, identité ou contexte d'autorisation, propriété annoncée et période
+concernée. Une déclaration comme « ce contenu est accessible hors autorisation »
+doit identifier le contenu et le contexte ; « le service répond » ne suffit pas.
+Chaque dossier contient les observations archivées figées, leurs métadonnées,
+les déclarations à examiner et une politique de preuve publique. Le caractère
+natif ou transformé est explicite, notamment le filtrage et la troncature déjà
+appliqués avant archivage. Une portion absente de l'archive n'est pas réputée
+disponible ; une référence au journal ne garantit pas une capture native complète.
+
+Un opérateur distinct prépare deux références cachées aux comparateurs :
+\begin{enumerate}
+\item \textbf{État de référence $T(q)$} : propriété vraie, fausse ou inconnue,
+établie depuis la configuration et les artefacts indépendants disponibles.
+\item \textbf{Soutien du dossier $S(q)$} : étayé, réfuté ou insuffisant, selon
+les observations accessibles et les obligations fixées. Une propriété vraie
+peut rester insuffisamment documentée ; un délai dépassé ne la réfute pas.
+\end{enumerate}
+Deux lecteurs qualifiés annotent indépendamment les dossiers, sans connaître
+le comparateur. L'état $T(q)$ est masqué aux annotateurs de $S(q)$ lors de leur
+première annotation et jusqu'au gel des jugements de soutien. Leur annotation
+et l'arbitrage de $S$ utilisent uniquement le dossier accessible et les
+obligations publiques, sans inférer le soutien depuis l'état réel connu.
+Ils conservent références, motifs et désaccords ; un troisième
+arbitre sans effacer les avis. L'oracle est cette référence contrôlée, pas le
+verdict du validateur utilisé par LANCE. Une origine authentique prouve d'où
+vient une observation ; elle ne prouve pas son interprétation.
+
+\subsection{Comparaison à politique de preuve constante}
+Les variantes du tableau~\ref{tab:arms} n'ouvrent aucun outil réseau et ne
+créent aucune observation. Toutes reçoivent les mêmes déclarations, données,
+obligations de preuve et budgets préenregistrés. Le graphe est un index typé
+reliant observations, déclarations, ressources et obligations ; une relation
+signifie « à examiner », jamais « vrai par construction ».
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}p{15mm}YY@{}}
+\toprule
+Variante & Méthode proposée & Contraste interprétable\\
+\midrule
+E0 & Dossier normalisé, index ordinaire, règles documentées fortes ; motifs et
+références conservés. & Référence pratique : aucune faiblesse introduite pour
+favoriser les autres variantes.\\
+E1 & Relations explicites entre preuves, déclarations et obligations ; mêmes
+règles, même accès aux données qu'E0. & E1 contre E0 : représentation, attribution
+et auditabilité, sans ajout de connaissances métier.\\
+E2 & E1 avec relecture sémantique LLM bornée : proposition de verdict et recherche
+de contradictions, avec références. & E2 contre E1 : apport exploratoire du lecteur.
+La sortie du modèle reste une proposition évaluée.\\
+\bottomrule
+\end{tabularx}
+\caption{Comparateurs hors ligne proposés, sans implémentation ni gain établi.
+Les codes E0 à E2 identifient uniquement ces variantes.}
+\label{tab:arms}
+\end{table}
+
+Une sortie contient le verdict proposé, les références effectivement utilisées,
+les obligations satisfaites ou manquantes et les contradictions. Les contrôles
+de provenance, de format et de périmètre sont communs. Le modèle ne peut pas
+accorder une acceptation opérationnelle : toute proposition demeure soumise aux
+règles communes et à la revue de référence. On conserve les verdicts avant et
+après ce filtre, pour mesurer également une proposition incorrecte refusée.
+Si E1 ajoute une obligation absente d'E0, l'expérience compare des politiques
+différentes ; elle est étiquetée séparément. La même information doit rester
+consultable par E0 : le graphe ne peut pas recevoir une preuve supplémentaire.
+
+\subsection{Corpus équilibré en difficultés, puis test réservé}
+Le développement utilise des observations existantes admissibles et des
+dossiers synthétiques signalés. Leur état de référence et leur disponibilité
+doivent être vérifiés avant inclusion. La sélection est gelée avant les résultats,
+y compris les critères d'exclusion. Le tableau~\ref{tab:cases} définit les strates.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{32mm}Y@{}}
+\toprule
+Strate & Question contrôlée\\
+\midrule
+États opposés & Cas mal configuré et contre-exemple sain ou corrigé, mêmes
+fonctions utiles ; le label ne doit pas être révélé par le nom du dossier.\\
+Mauvaise attribution & Preuve valide pour une autre ressource, une autre cible
+ou un autre contexte ; pas de transfert silencieux entre déclarations.\\
+Information manquante & Corps tronqué, observation absente, contexte
+d'autorisation inconnu ; distinguer insuffisance et réfutation.\\
+Ambiguïté et contradiction & Contenu public ressemblant à un secret, observations
+incompatibles ou anciennes ; respecter les dates et la portée de chaque preuve.\\
+Duplication et volume & Doublons, ordre variable et éléments hors sujet ;
+préserver la même information sémantique et signaler toute perte de compression.\\
+\bottomrule
+\end{tabularx}
+\caption{Difficultés expérimentales proposées ; aucune fréquence terrain supposée.}
+\label{tab:cases}
+\end{table}
+
+La partition se fait par \emph{famille d'origine} : même scénario générateur,
+même mécanisme et variantes apparentées restent dans un même groupe. Des graines
+ou noms différents ne créent pas une indépendance. Le manifeste décrit les
+relations entre familles techniques ; si elles restent trop proches, l'inférence
+porte seulement sur ce corpus. Les cas du test réservé, leurs labels, le corrigé
+et les notes d'annotation ne servent jamais à ajuster règles, prompts ou budgets.
+
+Un contrôle de fuite vérifie les fichiers effectivement accessibles aux lecteurs,
+retire les métadonnées révélatrices et compare les décisions avant/après
+renommage neutre à sémantique conservée. Une déclaration explicitement privée,
+placée uniquement dans l'oracle, ne doit pas apparaître dans une justification.
+Des révélations fortuites, similarités textuelles ou changements inexpliqués sont
+investigués ; ces contrôles peuvent détecter une fuite, pas prouver son absence
+dans les données de préentraînement. Aucun secret réel n'est nécessaire.
+
+\section{Mesures, analyse et reproductibilité}
+\subsection{Dénominateurs et abstention}
+L'analyse porte d'abord sur $S(q)$, pas sur la détection exhaustive des failles.
+Pour chaque variante, soit $Q$ le nombre de déclarations de référence, $J$ le
+nombre de décisions lisibles, et $A$ le nombre de propositions « étayé ».
+Une décision « insuffisant » est une abstention conservée. Les règles suivantes
+s'appliquent par strate, puis par famille ; un dénominateur nul donne
+\emph{indéfini}, une donnée absente donne \emph{indisponible}, jamais un zéro inventé.
+Une référence est comptée une fois par couple déclaration--observation ;
+les répétitions d'une même citation ne gagnent aucun crédit.
+
+\begin{itemize}
+\item \textbf{Complétude} : $J/Q$. Les erreurs, délais dépassés et sorties
+illisibles restent dans $Q$, avec leurs issues séparées.
+\item \textbf{Précision d'étayage} : nombre de propositions étayées correctes
+selon $S$, divisé par $A$. \textbf{Rappel d'étayage} : ce même nombre, divisé
+par le nombre de déclarations dont $S=\text{étayé}$.
+\item \textbf{Confirmation abusive} : nombre de propositions « étayé » dont
+$S=\text{réfuté ou insuffisant}$, divisé par le nombre de déclarations de ces
+deux classes. Publier aussi le compte brut et chaque classe séparément.
+\item \textbf{Couverture décidée} : nombre de sorties « étayé ou réfuté »,
+divisé par $Q$. \textbf{Erreur parmi décisions} : décisions étayées ou réfutées
+incorrectes, divisées par leur nombre. La courbe erreur-couverture reste
+exploratoire ; aucun score de confiance LLM n'est réputé calibré~\cite{selective}.
+\item \textbf{Attribution valide} : références liant correctement origine,
+cible, ressource, contexte et période, divisées par toutes les références
+émises. \textbf{Pertinence} : références soutenant ou contredisant effectivement
+$q$, divisées par toutes les références émises ; compter les références invalides.
+\item \textbf{Contradictions retrouvées} : paires contradictoires pertinentes
+signalées, divisées par les paires annotées dans l'oracle ; publier aussi la
+précision, paires pertinentes signalées divisées par toutes celles signalées.
+\end{itemize}
+
+Le contraste principal E1 contre E0 est le taux d'attribution valide, avec
+confirmation abusive comme garde-fou. Une baisse de couverture ou de complétude
+ne peut disparaître derrière une meilleure précision. Si les sorties ne citent
+rien, l'attribution est indéfinie, sans crédit positif. Publier également la part
+de déclarations avec justification complète : déclaration correctement jugée,
+sources pertinentes citées et obligations manquantes correctement indiquées,
+divisées par $Q$. Le F1 de détection, moyenne harmonique de précision et rappel,
+conserve son contrat dans le benchmark et ne
+remplace pas ces mesures. Les propriétés $T$ inconnues restent signalées ; aucune
+précision terrain n'est inférée depuis une référence d'état incomplète.
+
+\subsection{Tous les essais, puis différences appariées}
+Le manifeste déclare chaque dossier, variante et répétition avant exécution.
+Le taux d'essais évaluables a pour dénominateur tous les essais prévus.
+Publier issues, temps écoulé, appels au modèle, tokens et consommations
+observées, y compris les essais interrompus, les reprises et les secours.
+Le coût total reste inconnu si une consommation manque. Séparer coût facturé,
+estimation tarifaire datée, calcul local et heures de développement.
+Le budget égal et le coût réel sont deux informations différentes.
+
+On apparie les variantes sur le même dossier, puis agrège les répétitions et
+dossiers au niveau de la famille avant de comparer. Chaque famille reçoit
+le même poids dans le résumé principal ; comptes cumulés et tailles restent
+visibles séparément. Le petit pilote produit des écarts descriptifs et une revue
+des erreurs. Il ne justifie pas une puissance statistique. Avant le test réservé,
+fixer l'effet minimal utile, les marges admissibles sur les garde-fous et la taille
+du corpus à partir du pilote, puis geler ces choix. L'analyse confirmatoire
+prévoit des intervalles appariés au niveau des familles, si leur nombre et leurs
+relations permettent une estimation fiable ; les répétitions du modèle ne sont
+pas autant de familles indépendantes. Les contrastes multiples restent
+secondaires ou font l'objet d'une correction annoncée~\cite{demsar}.
+
+\subsection{Ablations et dossier de reproduction}
+Pour attribuer un effet, retirer séparément le graphe, la recherche de
+contradictions, la relecture LLM et la compression ; conserver obligations,
+information accessible et budgets constants. Ajouter une variante où les
+obligations nouvelles sont également données à E0 : elle distingue enrichissement
+de politique et effet de représentation. Une ablation modifiant l'information
+est annoncée comme étude de perte de données, pas comme isolement du raisonnement.
+
+Le faisceau reproductible contient manifeste et empreintes des dossiers,
+partition par famille, schéma des déclarations, politique de preuve et version,
+oracles séparés, annotations originales, arbitrages, règles, prompts, modèle
+et version accessible, paramètres, dépendances, sorties et registre de coûts.
+Le test réservé est conservé à part ; les métadonnées publiables sont nettoyées
+avant diffusion. Les outils de replay appartiendront à leur module propriétaire,
+pas au dossier du rapport. Leur écriture reste un travail ultérieur.
+
+\section{Déploiement progressif et limites}
+\textbf{Priorité 1 : contrat et corpus de développement.} Vérifier les deux
+oracles, couvrir les strates, établir une référence E0 forte et auditer les
+accès aux labels. Abandonner ou réparer l'expérience si l'état ou le soutien ne
+sont pas annotables, si les familles ne sont pas séparables ou si la fuite rend
+la comparaison invalide. Les seuils ne sont pas choisis après lecture du test.
+
+\textbf{Priorité 2 : pilote hors ligne E0/E1.} Mesurer attribution, refus,
+complétude, coûts et divergences. Si les verdicts sont équivalents et que le
+graphe n'améliore aucune dimension mesurée à coût acceptable, conserver E0.
+S'il aide seulement la traçabilité, rapporter ce bénéfice précis. Un défaut du
+validateur partagé est corrigé sur le développement avant un nouveau gel.
+
+\textbf{Priorité 3 : E2 et test réservé.} Lancer la relecture seulement si le
+corpus permet de juger les contradictions indépendamment. Écarter cette option
+si elle dégrade les garde-fous au-delà des marges préenregistrées, dépasse le
+budget ou n'apporte aucun effet utile établi. Une estimation compatible avec
+gain et perte conduit à une conclusion indéterminée, pas à une victoire.
+
+La sélection de traces existantes conditionne les conclusions aux observations
+déjà acquises ; elle ne mesure ni découverte ni nouvelles vérifications. Les
+dossiers synthétiques testent un comportement précis, sans fréquence terrain.
+Les erreurs des annotateurs et les connaissances des modèles restent des
+explications alternatives. Une amélioration de la sortie ne prouve pas une
+réduction du travail humain. Cette dernière exigerait une étude séparée avec
+auditeurs, tâches et ordre randomisés, temps actif, corrections et qualité
+contrôlée ; aucun temps humain n'est estimé depuis les tokens.
+
+\section{Conclusion}
+Le premier résultat recherché est un contraste reproductible sur la \emph{bonne
+preuve pour la bonne propriété}, avec possibilité explicite d'abstention.
+La représentation relationnelle et la relecture sont deux facteurs séparés ;
+leur ajout ne suffit pas à rendre l'approche meilleure. Ce protocole donne un
+ordre réalisable : référence forte et oracles, pilote commun, puis test réservé
+avec critères gelés. Aucun gain, seuil validé ou résultat terrain n'est acquis.
+
+\phantomsection
+\addcontentsline{toc}{section}{Références}
+\begin{thebibliography}{9}
+\small
+\bibitem{local-policy} LANCE. \emph{Agent / automatisation}, protocole du
+27 septembre 2026 et rapport révisé le 1er octobre ;
+\href{../2026-09-27-agent-vs-automation/protocol.md}{protocole local}.
+Lecture statique le 7 octobre 2026.
+\bibitem{local-evaluation} LANCE. \emph{V1 : évaluation et preuves} et
+\emph{Campagne D1/A1 : préparation, bilan et revue} ;
+\href{../../docs/benchmark/v1/evaluation.md}{contrat} et
+\href{../../docs/benchmark/agent-vs-automation-campaign.md}{guide de campagne}.
+Copie locale lue le 7 octobre 2026 ; conflits de version non résolus.
+\bibitem{local-coverage} LANCE. \emph{Couverture et validité du benchmark},
+étude du 29 septembre 2026, rapport révisé le 1er octobre ;
+\href{../2026-09-29-benchmark-coverage/README.md}{index de l'étude}.
+Lecture documentaire, sans réévaluation des runs.
+\bibitem{nist} NIST. \emph{Technical Guide to Information Security Testing
+and Assessment}, SP 800-115, septembre 2008.
+\href{https://www.nist.gov/publications/technical-guide-information-security-testing-and-assessment}{Notice officielle}.
+Portée de lecture : notice et résumé ; procédures non reproduites.
+\bibitem{leakage} S. Kapoor et A. Narayanan. \emph{Leakage and the
+Reproducibility Crisis in ML-based Science}, arXiv:2207.07048v1,
+14 juillet 2022.
+\href{https://arxiv.org/abs/2207.07048v1}{Résumé et version primaire}.
+Lecture limitée au résumé ; aucune garantie d'absence de fuite pour LANCE.
+\bibitem{selective} Y. Geifman et R. El-Yaniv. \emph{Selective Classification
+for Deep Neural Networks}, NeurIPS 30, 2017.
+\href{https://proceedings.neurips.cc/paper/2017/hash/4a8423d5e91fda00bb7e46540e2b0cf1-Abstract.html}{Résumé primaire}.
+Lecture du résumé ; les garanties étudiées ne sont pas transférées aux LLM.
+\bibitem{demsar} J. Demšar. \emph{Statistical Comparisons of Classifiers
+over Multiple Data Sets}, JMLR 7, p. 1--30, 2006.
+\href{https://jmlr.org/papers/v7/demsar06a.html}{Notice et résumé primaires}.
+Lecture limitée à la notice et au résumé ; adaptation au plan par familles
+proposée ici, non validée par cet article. Sources externes consultées le
+7 octobre 2026.
+\end{thebibliography}
+\end{document}

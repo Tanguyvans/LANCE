@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from src.agent.artifacts import resolve_run_artifact
+from src.agent.finding_schema import finding_structure_issue
 
 
 def validate_default(filename: str, *, output_dir: Path) -> tuple[bool, str]:
@@ -200,8 +201,9 @@ def validate_json_device_vulns(filename: str, *, output_dir: Path) -> tuple[bool
         return ok, msg
     data = json.loads(resolve_run_artifact(output_dir, filename).read_text(encoding="utf-8"))
     for index, finding in enumerate(data["vulnerabilities"]):
-        if not isinstance(finding, dict):
-            return False, f"'vulnerabilities[{index}]' must be an object"
+        issue = finding_structure_issue(finding)
+        if issue:
+            return False, f"'vulnerabilities[{index}]': {issue}"
     return True, "OK"
 
 

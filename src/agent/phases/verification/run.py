@@ -24,6 +24,7 @@ from src.agent.core import runtime
 from src.agent.report_evidence import verification_state
 from src.agent.core.executor import EvidenceWriteError, check_execution_limits
 from src.agent.cost_tracker import BudgetExceeded
+from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 
 
 log = logging.getLogger(__name__)
@@ -540,7 +541,7 @@ class VerificationPhase:
 
         Reads new_hosts_discovered from all Phase 4 exploit output files.
         Returns deduplicated list of {"ip": str, "open_ports": [...], "discovered_via": str}.
-        For scenario runs, only returns hosts within the scenario's expected subnets.
+        Only returns literal IPs inside the run's declared authorization CIDRs.
         """
         import ipaddress as _ip
 
@@ -564,40 +565,30 @@ class VerificationPhase:
             log.warning("Unable to read known hosts for discovery followup: %s", exc)
 
         new_hosts: list[dict] = []
-        for f in self.run_dir.glob("04_exploits/**/*.json"):
+        for f in sorted(self.run_dir.glob("04_exploits/**/*.json")):
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
+                if not isinstance(data, dict) or not isinstance(data.get("new_hosts_discovered", []), list):
+                    continue
                 for h in data.get("new_hosts_discovered", []):
-                    ip = h.get("ip", "").strip()
+                    if not isinstance(h, dict) or not isinstance(h.get("ip"), str):
+                        continue
                     try:
-                        ip = str(_ip.ip_address(ip))
+                        ip = str(_ip.ip_address(h["ip"].strip()))
                     except ValueError:
                         continue
-                    if ip not in seen_ips:
-                        seen_ips.add(ip)
-                        new_hosts.append(h)
-            except Exception:
-                pass
-
-        if new_hosts and self.scenario_id is not None:
-            from src.agent.tools.graph_tools import _scenario_topology
-            subnets = (_scenario_topology or {}).get("subnets", [])
-            if subnets:
-                try:
-                    nets = [_ip.ip_network(s, strict=False) for s in subnets]
-                    filtered = []
-                    for h in new_hosts:
-                        try:
-                            addr = _ip.ip_address(h["ip"])
-                            if any(addr in n for n in nets):
-                                filtered.append(h)
-                            else:
-                                log.info("Excluding out-of-scope discovered host %s (not in %s)", h["ip"], subnets)
-                        except ValueError:
-                            filtered.append(h)
-                    new_hosts = filtered
-                except Exception:
-                    pass
+                    if ip in seen_ips:
+                        continue
+                    refusal = _intrusion_scope_violation(
+                        "nmap_scan", {"target": ip}, self.context.get("target_subnet", ""),
+                    )
+                    if refusal:
+                        log.info("Excluding discovered host %s: %s", ip, refusal["error"])
+                        continue
+                    seen_ips.add(ip)
+                    new_hosts.append({**h, "ip": ip})
+            except (OSError, ValueError):
+                log.warning("Could not load discoveries from %s", f)
 
         if new_hosts:
             log.info("Phase 4 discovered %d new host(s): %s", len(new_hosts), [h["ip"] for h in new_hosts])

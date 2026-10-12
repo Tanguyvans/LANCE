@@ -5,9 +5,10 @@ revue des constats : 29 septembre 2026. Le plan initial du rapport reste
 archivé ; sa date d'origine n'est pas renseignée. Son classement à cette date
 n'a pas validé ses anciennes estimations.
 
-**Dernière révision du rapport : 2026-09-30 21:55
-(Europe/Brussels, UTC+02:00).** Ajout de l'heure de révision ; les constats et
-reproductions restent ceux de la revue du 29 septembre.
+**Dernière révision du rapport : 2026-10-01 10:23
+(Europe/Brussels, UTC+02:00).** Relecture de la clarté et du rendu : définitions, figures, tableaux et
+pagination corrigés. Les constats et reproductions restent ceux de la revue
+du 29 septembre 2026.
 
 ## Question et synthèse
 
@@ -17,7 +18,7 @@ tronquée avant archivage, croissance d'historique, projection sans récupérati
 et attribution des résultats au scanner ou au modèle. Cinq probes synthétiques
 reproduisent des pertes ; leur effet sur les scores réels reste à mesurer.
 
-Le rapport dispose déjà d'une rédaction par fiches et d'un assemblage
+Le rapport d'audit produit par la phase 6 dispose déjà d'une rédaction par fiches et d'un assemblage
 déterministe. Ce fonctionnement constitue le point de départ de l'étude.
 
 ## Documents et preuves
@@ -26,7 +27,7 @@ déterministe. Ce fonctionnement constitue le point de départ de l'étude.
 - **[Source LaTeX éditable](report.tex)** : schémas TikZ de l'état actuel et de la proposition, avec bibliographie intégrée.
 - [Analyse actuelle et sources](analysis.md) : faits du code, hypothèses, architecture proposée et ablations.
 - [Reproductions locales](../../benchmarks/experiments/research-review/README.md).
-- [Synthèse transversale](../2026-09-27-agent-vs-automation/research-review.md) et [validation](../2026-09-27-agent-vs-automation/validation.md).
+- [Synthèse transversale](../2026-09-27-agent-vs-automation/report.pdf) et [validation](../2026-09-27-agent-vs-automation/validation.md).
 
 Le rapport suit la [structure scientifique classique](../README.md#structure-scientifique-classique) :
 résumé, sommaire cliquable, méthode, constats, limites, conclusion et références.
@@ -35,6 +36,18 @@ Le [plan historique](plan.md) conserve les constats, estimations et propositions
 de l'époque. Il indique que les corrections ont été livrées sous une autre forme.
 Ses numéros de phase, noms de fonctions et commandes ne constituent pas une
 description de l'architecture actuelle ni une liste de tâches à exécuter.
+
+## Relecture du 1er octobre 2026
+
+**Clarté et rendu vérifiés sur la version du rapport horodatée 2026-10-01 10:23
+(Europe/Brussels, UTC+02:00).** Deux sous-agents distincts de l'auteur ont
+relu le texte (`review_clarity`) et inspecté les pages rendues (`review_figures`).
+Les remarques ont été corrigées, puis le texte et le PDF revérifiés. Aucune
+réserve bloquante de clarté ou de mise en page ne reste dans le périmètre relu.
+Les notes complémentaires et archives ne sont pas couvertes par ce verdict de
+rendu. Cette relecture ne constitue pas une nouvelle validation expérimentale.
+
+[Journal et empreintes des PDF relus](../2026-09-27-agent-vs-automation/validation.md#relecture-indépendante-du-1er-octobre-2026).
 
 ## Références actuelles et suite
 

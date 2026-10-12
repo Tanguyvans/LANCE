@@ -8,7 +8,7 @@ Le premier besoin est de fiabiliser ce que le benchmark mesure avant d'ajouter d
 
 Les règles d'attribution et les tests existants sont substantiels : appariement un-à-un, preuves relues, contrats versionnés, absence différente de zéro, séparation des splits et macro-moyennes. Il ne faut pas présenter ces acquis comme absents. Leur présence ne constitue toutefois pas une validation indépendante de l'oracle ou de toutes les propriétés déployées.
 
-Cette étude complète le [protocole agent / automatisation](../2026-09-27-agent-vs-automation/protocol.md). La [synthèse transversale](../2026-09-27-agent-vs-automation/research-review.md) relie les priorités des trois sujets.
+Cette étude complète le [protocole agent / automatisation](../2026-09-27-agent-vs-automation/protocol.md). La [synthèse transversale](../2026-09-27-agent-vs-automation/report.pdf) relie les priorités des trois sujets.
 
 ## Méthode et reproductibilité
 
@@ -73,7 +73,7 @@ Résultat observé : `verification_population=1`, `inconclusive=1`, `not_tested=
 
 **Proposition P0** : représenter indépendamment attribution, tentative effective, conclusion et incident ; une conclusion ambiguë n'est pas une tentative. Si toutes les entrées disent explicitement faux, tentative false ; si les entrées sont contradictoires ou l'attribution ambiguë, tentative unknown, taux disponible calculé selon convention explicite ou intervalle. Critère réfutable : aucun jeu d'entrées entièrement `verification_attempted:false` ne peut produire un numérateur positif. Ajouter cas doublons d'ID, résultat dupliqué, orphelin, contradictions et absence historique du champ. Ne pas modifier rétrospectivement les anciens contrats sans version.
 
-La couverture actuelle a de plus un dénominateur **candidats retenus**. Même corrigée, elle ne mesure pas les services oubliés, les familles inconnues ni les GT jamais proposées. Une politique peut avoir 100 % de tentative sur une très petite file. Conserver séparément découverte des actifs attendus (lorsque connue), services observés, GT proposées, GT retenues, candidats tentés, preuves admises, GT confirmées.
+La couverture actuelle a de plus un dénominateur **candidats retenus**. Même corrigée, elle ne mesure pas les services oubliés, les familles inconnues ni les GT jamais proposées. Une politique peut avoir 100 % de tentative sur une très petite file. Conserver séparément découverte des actifs attendus (lorsque connue), services observés, hypothèses proposées, GT retenues, candidats tentés, preuves admises, GT confirmées.
 
 ## 3. Contrôles négatifs : défaut d'attribution concret
 

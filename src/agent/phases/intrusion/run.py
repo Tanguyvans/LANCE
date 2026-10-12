@@ -8,6 +8,7 @@ from src.agent.phases.intrusion.compact import COMPACT_INTRUSION_FALLBACK_MAX_RO
 from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 from src.agent.phases.intrusion.evidence import finalize_synthesis
 from src.agent.phases.intrusion.observations import project_intrusion_observations
+from src.agent.evidence.capabilities import access_supported
 from src.agent.core import runtime
 
 log = logging.getLogger(__name__)
@@ -478,15 +479,7 @@ class IntrusionPhase:
                 ip = _target_from_tool(str(tool or ""), args)
                 if tool in {"try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and ip:
                     attempted.add(ip)
-                stdout = str(res.get("stdout") or res.get("output") or "") if isinstance(res, dict) else ""
-                authenticated = (
-                    isinstance(res, dict)
-                    and res.get("authenticated", True) is not False
-                    and (
-                        res.get("success") is True
-                        or (tool == "ssh_login" and (res.get("return_code") == 0 or re.search(r"\buid=\d+", stdout.casefold())))
-                    )
-                )
+                authenticated = access_supported(rec)
                 if tool in {"try_credential", "ssh_exec", "ssh_login"}:
                     supplied_credential = _credential_from_tool(str(tool), args)
                     if supplied_credential not in allowed_credentials:

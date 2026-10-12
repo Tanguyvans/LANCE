@@ -13,6 +13,7 @@ from src.agent.phases.intrusion.evidence import (
     set_diagnostic,
 )
 from src.agent.core import runtime
+from src.agent.evidence.capabilities import access_supported
 
 
 COMPACT_INTRUSION_COMPLETION_TOOL = "complete_intrusion_campaign"
@@ -597,22 +598,6 @@ class CompactIntrusionPhase:
                 return name, {"url": f"http://{ip}/"}
             return None
 
-        def _result_proves_access(name: str, raw_result: object) -> bool:
-            try:
-                payload = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
-            except (TypeError, ValueError, json.JSONDecodeError):
-                return False
-            if not isinstance(payload, dict):
-                return False
-            if name == "try_credential":
-                return payload.get("success") is True and payload.get("authenticated", True) is not False
-            if name in {"ssh_exec", "ssh_login"}:
-                if payload.get("success") is True or payload.get("return_code") == 0:
-                    return True
-                stdout = str(payload.get("stdout") or payload.get("output") or "").casefold()
-                return name == "ssh_login" and bool(re.search(r"\buid=\d+", stdout))
-            return False
-
         def _guard(name: str, original_fn):
             def guarded(**kwargs):
                 nonlocal action_calls, context_loaded
@@ -708,7 +693,9 @@ class CompactIntrusionPhase:
                         or payload.get("auth_required") is False
                     ):
                         anonymous_target_services.add((target, service))
-                if name in credential_action_tools and _result_proves_access(name, result):
+                if name in credential_action_tools and access_supported({
+                    "tool": name, "args": kwargs, "result": result,
+                }):
                     service = _action_service(name, kwargs)
                     if target and service:
                         successful_accesses.add((target, service))
@@ -1202,15 +1189,7 @@ class CompactIntrusionPhase:
                     result = {}
             if not isinstance(result, dict):
                 continue
-            stdout = str(result.get("stdout") or result.get("output") or "")
-            success = (
-                result.get("success") is True
-                or result.get("return_code") == 0
-                or (
-                    tool == "ssh_login"
-                    and bool(re.search(r"\buid=\d+", stdout))
-                )
-            )
+            success = access_supported(record)
             if tool in {"try_credential", "ssh_login"} and success:
                 ip = str(args.get("ip") or "").strip()
                 if tool == "ssh_login":
@@ -1446,15 +1425,7 @@ class CompactIntrusionPhase:
                     and service == target_specs.get(target)
                     and port_valid
                 ):
-                    try:
-                        payload = json.loads(record.get("result", "{}"))
-                    except (TypeError, ValueError, json.JSONDecodeError):
-                        payload = {}
-                    if isinstance(payload, dict) and (
-                        (tool == "try_credential" and payload.get("success") is True and payload.get("authenticated", True) is not False)
-                        or (tool in {"ssh_exec", "ssh_login"} and (payload.get("success") is True or payload.get("return_code") == 0))
-                        or (tool == "ssh_login" and re.search(r"\buid=\d+", str(payload.get("stdout") or payload.get("output") or "")))
-                    ):
+                    if access_supported(record):
                         successful_accesses.add((target, service))
                 if port_valid and tool in entry_probe_tools and (target, service) in entries:
                     seen_entries.add((target, service))

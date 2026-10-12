@@ -1,150 +1,103 @@
-# LLM UMONS : connexion, modèles et dépannage
+# Utiliser le LLM UMONS
 
-## Point d’entrée
+## 1. Se connecter et choisir un modèle
 
-Ce guide décrit l’accès utilisé par LANCE, le choix d’un modèle et les vérifications
-à faire si les appels échouent. Il concerne **nato / pve-nato**, pas le homelab personnel.
+1. Se connecter au réseau **Tailscale autorisé**.
+2. Ouvrir [Main](http://100.103.253.86:8501), [Dev 1](http://100.103.253.86:8502) ou [Dev 2](http://100.103.253.86:8503).
+3. Dans **Model global**, choisir un modèle du groupe **`ollama-umons`**.
+4. Si le mode **Multi-modèle** est actif, vérifier aussi les modèles de chaque phase.
 
-Configuration vérifiée en lecture seule le **1er octobre 2026** :
-
-| Élément | Valeur |
+| Réglage | Valeur |
 | --- | --- |
-| Fournisseur LANCE | `ollama-umons` |
-| Type | `local` (API compatible OpenAI) |
+| Fournisseur / type | `ollama-umons` / `local` |
 | URL de base | `http://100.76.206.65:11435/v1` |
-| Machine du point d’accès Tailscale | `pve-nato` (`100.76.206.65`) |
-| Serveur de l’application LANCE | `nato-master` (`100.103.253.86`) |
-| Modèle par défaut enregistré | `qwen3.8:27b` |
-| Autre modèle exposé lors de la vérification | `gemma4:26b-a4b-it-q4_K_M` |
+| Qwen | `qwen3.8:27b` |
+| Gemma | `gemma4:26b-a4b-it-q4_K_M` |
 
-Le navigateur communique avec LANCE ; **le serveur LANCE** appelle ensuite le
-point d’accès UMONS. Un test réussi depuis un ordinateur personnel ne prouve donc
-pas que l’accès fonctionne depuis nato-master. Les ports 8501/8502/8503 servent
-les interfaces LANCE ; le port 11435 sert l’API des modèles.
+Valeurs vérifiées le **1er octobre 2026**. Le catalogue ci-dessous fait foi si les modèles changent.
 
 Le relais SSH en aval de pve-nato a été identifié et rétabli le 4 octobre 2026 ;
 sa commande est conservée dans le dépannage ci-dessous. Aucun service de démarrage
 automatique n'a été identifié ni installé. L'administration de la machine GPU
 en aval reste à confirmer avec l'administrateur UMONS.
 
-## Choisir un modèle dans LANCE
+> **« Disponible » ne prouve pas que le serveur répond.** Le bouton d’actualisation recharge les modèles enregistrés dans LANCE ; il ne teste pas UMONS.
 
-1. Ouvrir l’instance voulue : [Main](http://100.103.253.86:8501),
-   [Dev 1](http://100.103.253.86:8502) ou [Dev 2](http://100.103.253.86:8503).
-2. Dans **Model global**, sélectionner le modèle du groupe `ollama-umons`.
-   Son libellé peut être lisible (« Qwen 3.8 27B — UMONS »), mais son identifiant
-   technique doit correspondre exactement à celui renvoyé par `/v1/models` :
-   ce catalogue fait foi, pas le libellé affiché.
-3. Si **Mode Multi-modèle (Expert)** est activé, vérifier également les choix
-   propres aux phases : ils peuvent remplacer le modèle global.
-4. Pour ajouter ou corriger une entrée, ouvrir **⚙️ Modèles**. Dans les providers,
-   vérifier le nom `ollama-umons`, le type `local` et l’URL ci-dessus. Ajouter le
-   modèle avec son identifiant exact, ce fournisseur, puis cocher **Activé**.
-   Les écritures nécessitent une authentification administrateur.
-   **Attention :** la clé saisie dans le gestionnaire n’est envoyée que pour
-   ajouter ou modifier un provider. Pour modifier les modèles dans l’interface,
-   il faut une [session administrateur valide](admin-session.md) dans ce navigateur ;
-   saisir cette clé ne crée pas la session. Il n’existe actuellement plus de
-   formulaire de connexion à cette session dans le dashboard. Sans session,
-   utiliser l’API avec `Authorization: Bearer <LANCE_ADMIN_TOKEN>` via un client
-   autorisé, ou demander à l’administrateur de configurer les entrées.
-5. Recharger les choix avec le bouton d’actualisation à côté du filtre de modèles.
+## 2. Tester la connexion
 
-**Actualiser relit le registre LANCE**, pas le catalogue distant Ollama.
-Le statut de disponibilité du sélecteur dépend de la configuration du fournisseur
-et de sa clé éventuelle ; ce n’est pas une sonde réseau. Une entrée peut rester
-sélectionnable pendant une panne. En particulier, sans `api_key_env` configuré
-pour `ollama-umons`, le sélecteur le considère disponible sans tester le serveur.
-Ajouter un modèle dans LANCE ne l’installe pas
-sur le serveur UMONS.
+Dans un terminal avec `curl` et accès Tailscale. Pour tester le trajet réellement utilisé par LANCE, exécuter aussi ces commandes **sur nato-master**.
 
-Les bases de Main, Dev 1 et Dev 2 sont séparées. Une modification du registre sur
-une instance ne se réplique pas automatiquement sur les autres ; voir les
-[instances de développement](development-instances.md).
+**Lister les modèles :**
 
-## Vérifier la connexion sans lancer d’audit
+```bash
+curl --fail-with-body --show-error --connect-timeout 5 --max-time 15 \
+  http://100.76.206.65:11435/v1/models
+```
 
-Commandes à exécuter dans un terminal avec accès au réseau Tailscale autorisé.
-Les exemples utilisent `curl` et `python3`. Pour vérifier le chemin réel de LANCE,
-les exécuter aussi **sur nato-master**, avec un compte SSH autorisé.
+Résultat attendu : un JSON contenant `data` et les identifiants des modèles.
 
-### 1. Vérifier le réseau et le catalogue distant
+**Tester une réponse de Qwen, sans lancer d’audit :**
+
+```bash
+curl --fail-with-body --show-error --no-buffer \
+  --connect-timeout 5 --max-time 180 \
+  http://100.76.206.65:11435/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  --data-binary '{
+    "model": "qwen3.8:27b",
+    "messages": [{"role": "user", "content": "Réponds uniquement OK."}],
+    "max_tokens": 128,
+    "stream": true
+  }'
+```
+
+- Résultat attendu : du texte dans `choices[].delta.content`, puis la fin du flux `data:`.
+- Pour tester Gemma : remplacer l’identifiant dans `model` par celui du catalogue.
+- Le premier appel peut charger le modèle et prendre plus de temps. Un catalogue accessible ne garantit pas une génération réussie.
+
+## 3. Si ça ne répond pas
+
+| Problème | Que faire ? |
+| --- | --- |
+| Connexion refusée ou expirée | Vérifier Tailscale, puis le relais sur **pve-nato** |
+| Modèle introuvable | Copier son identifiant exact depuis `/v1/models` |
+| Catalogue accessible, réponse bloquée | Faire vérifier la charge GPU, la file d’attente et les journaux du serveur |
+| Appel direct réussi, LANCE en erreur | Vérifier fournisseur, URL et modèles par phase ; consulter les événements du run |
 
 ```bash
 tailscale status
 tailscale ping 100.76.206.65
-
-UMONS_BASE='http://100.76.206.65:11435/v1'
-curl --fail-with-body --show-error --connect-timeout 5 --max-time 15 \
-  "$UMONS_BASE/models"
 ```
 
-Un résultat HTTP 200 contenant `data` confirme l’accès au catalogue. Pour afficher
-uniquement les identifiants :
+**Relais en panne :** passer de Qwen à Gemma sur ce même relais ne suffit pas. Choisir un autre fournisseur opérationnel et vérifier les choix par phase. Cela ne reprend pas automatiquement un run en échec.
 
-```bash
-curl --fail-with-body --silent --show-error --connect-timeout 5 --max-time 15 \
-  "$UMONS_BASE/models" \
-  | python3 -c 'import json,sys; print("\n".join(m["id"] for m in json.load(sys.stdin)["data"]))'
-```
+**Pour la remise en route du pont identifié, suivre le tunnel SSH dans le dépannage avancé ci-dessous. Le démarrage automatique reste à configurer.**
 
-### 2. Faire un petit appel de génération
+<details>
+<summary><strong>Administration — ajouter ou modifier un modèle</strong></summary>
 
-Ce test utilise le modèle et peut charger ses poids en mémoire ; il ne lance
-aucun audit. Copier un identifiant du catalogue, sans remplacer arbitrairement
-sa version ou sa quantification. Les variables `UMONS_BASE` et `UMONS_MODEL`
-doivent être définies dans le même terminal. Dans le bloc ci-dessous, Python
-construit le JSON et le transmet directement à `curl` ; copier le bloc entier.
+1. Ouvrir **⚙️ Modèles** sur l’instance concernée.
+2. Vérifier le provider et son URL avec le tableau en haut du guide.
+3. Ajouter l’identifiant exact du modèle, choisir `ollama-umons` et cocher **Activé**.
+4. Actualiser le sélecteur.
 
-```bash
-UMONS_MODEL='qwen3.8:27b'
-python3 - "$UMONS_MODEL" <<'PY' | curl --fail-with-body --show-error --no-buffer \
-  --connect-timeout 5 --max-time 180 \
-  "$UMONS_BASE/chat/completions" \
-  -H 'Content-Type: application/json' --data-binary @-
-import json, sys
-print(json.dumps({
-    'model': sys.argv[1],
-    'messages': [{'role': 'user', 'content': 'Réponds uniquement OK.'}],
-    'max_tokens': 128,
-    'stream': True,
-}))
-PY
-```
-
-La réponse arrive sous forme de lignes `data:`. Chercher du contenu dans
-`choices[].delta.content` puis la fin du flux. HTTP 200 ou un catalogue valide
-ne suffit pas à prouver qu’une génération a réussi. Le premier appel peut être
-plus lent après déchargement du modèle. Un dépassement de 180 secondes ne
-permet pas, à lui seul, de distinguer chargement lent, file d’attente et panne.
-
-Pour essayer Gemma, remplacer `UMONS_MODEL` par `gemma4:26b-a4b-it-q4_K_M`
-si cet identifiant figure toujours dans le catalogue, puis refaire le test.
-
-### 3. Comparer avec la configuration LANCE
-
-```bash
-LANCE_BASE='http://100.103.253.86:8501'  # 8502 pour Dev 1, 8503 pour Dev 2
-curl --fail-with-body --silent --show-error --max-time 15 "$LANCE_BASE/api/providers" \
-  | python3 -c 'import json,sys; print(json.dumps([p for p in json.load(sys.stdin)["providers"] if p["name"] == "ollama-umons"], indent=2))'
-curl --fail-with-body --show-error --max-time 15 "$LANCE_BASE/api/models?refresh=true"
-```
-
-Si la génération directe réussit mais pas LANCE, comparer l’URL, l’identifiant
-et le fournisseur sélectionnés, y compris ceux des phases. Consulter ensuite
-les événements du run et les journaux de l’instance concernée.
-
-## Si le point d’accès est indisponible
-
-| Symptôme | Vérification suivante |
+| À savoir | Conséquence |
 | --- | --- |
-| Tailscale ne voit pas pve-nato | Connexion au bon réseau, état de pve-nato et droits d’accès |
-| Connexion refusée sur 11435 | Processus qui écoute sur pve-nato (relais ou service, pas forcément Ollama), à identifier avec `ss` |
-| Connexion expirée | Routage, règles réseau, relais et accès à sa destination |
-| HTTP 404 sur `/v1/models` | URL/port du service et compatibilité OpenAI |
-| Modèle introuvable | Identifiant exact dans le catalogue, puis entrée du registre LANCE |
-| Catalogue accessible, génération bloquée | Charge GPU, modèle chargé, file d’attente et journaux en aval |
-| Appel direct réussi, LANCE en erreur | Configuration de l’instance et historique d’outils ; voir [compatibilité UMONS](provider-auth.md#dialogue-avec-les-outils) |
+| La clé du gestionnaire sert uniquement aux modifications de providers | Modifier les modèles exige une [session administrateur](admin-session.md) valide dans le navigateur, ou un client API autorisé avec un jeton Bearer |
+| Le dashboard n’a plus de formulaire de connexion à cette session | Saisir la clé du provider ne crée pas de session ; demander à l’administrateur si nécessaire |
+| Les registres Main / Dev 1 / Dev 2 sont séparés | Répéter les réglages sur les instances voulues |
+| Ajouter une entrée n’installe pas le modèle sur UMONS | L’administrateur doit le rendre disponible côté serveur |
+
+Voir les [fournisseurs](provider-auth.md) et les [instances de développement](development-instances.md).
+
+</details>
+
+<details>
+<summary><strong>Dépannage avancé — relais et serveur Ollama</strong></summary>
+
+**Trajet :** navigateur → LANCE sur `nato-master` (`100.103.253.86`) → point d’accès sur `pve-nato` (`100.76.206.65:11435`) → serveur UMONS à confirmer.
+
+Le tunnel SSH a été identifié et rétabli le 4 octobre 2026 (procédure ci-dessous). Son serveur de destination est en aval du cluster UMONS ; aucun accès d'administration au serveur GPU n'a été établi. Le homelab personnel est hors périmètre.
 
 ### Tunnel SSH identifié le 4 octobre 2026
 
@@ -183,9 +136,9 @@ recherche de noms effectuée. Une exploitation sans intervention demande une
 méthode d'authentification autorisée adaptée et un service supervisé ; ne pas
 placer un mot de passe dans une commande ou un fichier de service.
 
-### Sur pve-nato : identifier le relais avant de le relancer
+### Sur pve-nato, avec un compte administrateur autorisé
 
-Avec un accès SSH administrateur autorisé à **pve-nato** :
+Identifier la machine et le processus qui écoute :
 
 ```bash
 hostname
@@ -194,9 +147,9 @@ sudo ss -ltnp 'sport = :11435'
 systemctl list-units --all --type=service --no-pager | grep -Ei 'ollama|umons|tunnel|relay'
 ```
 
-Vérifier l’identité pve-nato et l’adresse `100.76.206.65` avant intervention.
-La recherche par nom n’est pas exhaustive : partir aussi du PID affiché par `ss`.
-Après identification du service réel, remplacer la valeur ci-dessous :
+Confirmer l’adresse `100.76.206.65`. La recherche par nom peut manquer un service : utiliser aussi le PID indiqué par `ss`.
+
+Remplacer le nom ci-dessous par **le service réellement identifié** :
 
 ```bash
 RELAY_SERVICE='REMPLACER_PAR_LE_SERVICE_IDENTIFIE.service'
@@ -205,23 +158,15 @@ sudo systemctl cat "$RELAY_SERVICE"
 sudo journalctl -u "$RELAY_SERVICE" -n 100 --no-pager
 ```
 
-Ces sorties peuvent contenir des détails de connexion : retirer tout secret
-avant de les partager. Ne pas créer un nouveau tunnel au hasard sur le même port.
-Si le service est bien celui du relais, sa configuration est correcte et aucune
-exécution ne l’utilise, l’administrateur peut le relancer :
+Retirer les secrets des sorties avant partage. Si la configuration est correcte et qu’aucune exécution n’utilise le relais, l’administrateur peut le relancer :
 
 ```bash
 sudo systemctl restart "$RELAY_SERVICE"
 ```
 
-Refaire ensuite le catalogue **et** la génération, idéalement depuis nato-master.
-Redémarrer LANCE ne répare pas un relais UMONS arrêté.
+Refaire ensuite les deux tests de connexion. Redémarrer LANCE ne répare pas le relais.
 
-### Sur la machine qui héberge réellement Ollama
-
-Ces commandes ne s’appliquent qu’après confirmation du serveur et de son mode
-d’installation. Un cluster peut utiliser un job GPU ou un conteneur plutôt
-qu’un service systemd ; ne pas lancer un second serveur pour contourner ce mode.
+### Sur le serveur Ollama confirmé
 
 ```bash
 ollama list    # modèles installés
@@ -229,33 +174,28 @@ ollama ps      # modèles chargés
 nvidia-smi     # si GPU NVIDIA et outil disponible
 ```
 
-Si Ollama est effectivement géré par le service Linux `ollama` :
+**Uniquement si l’installation utilise le service systemd `ollama` :**
 
 ```bash
 sudo systemctl status ollama --no-pager
 sudo journalctl -u ollama -n 100 --no-pager
-# Seulement après vérification des utilisateurs et des travaux en cours :
+# Après vérification qu’aucun travail en cours ne sera interrompu :
 sudo systemctl restart ollama
 ```
 
-Installer un modèle absent (`ollama pull <identifiant>`) relève de l’administrateur
-UMONS et consomme de l’espace ; changer le menu LANCE ne suffit pas. Changer de
-Qwen vers Gemma sur le même point d’accès ne contourne pas une panne du relais.
-Pour continuer pendant une panne, choisir un **autre fournisseur opérationnel**
-et contrôler les sélections par phase. Un run déjà en échec n’est pas repris
-automatiquement en changeant le modèle du formulaire.
+- Un cluster peut utiliser un job GPU ou un conteneur : respecter son mode d’exploitation.
+- Installer un modèle avec `ollama pull <identifiant>` relève de l’administrateur UMONS.
+- Pour une erreur liée aux outils, voir la [compatibilité UMONS](provider-auth.md#dialogue-avec-les-outils).
 
-## Limites et sources
+</details>
 
-La vérification du 1er octobre a confirmé le catalogue distant, le fournisseur
-enregistré sur Main et l’identité Tailscale du point d’accès. Elle n’a pas relancé
-le relais, changé un modèle, ni déclenché de génération ou d’audit. La procédure
-de redémarrage reste conditionnelle tant que le service réel n’est pas identifié.
+<details>
+<summary>Vérifications et sources</summary>
 
-Références officielles consultées le 1er octobre 2026 :
-[API compatible OpenAI](https://docs.ollama.com/api/openai-compatibility),
-[commandes Ollama](https://docs.ollama.com/cli),
-[configuration et exploitation](https://docs.ollama.com/faq).
-Contrats LANCE : `src/api/routes/providers.py`, `src/api/routes/models.py`,
-`src/static/app.js`, `src/agent/provider.py` et
-[authentification des fournisseurs](provider-auth.md).
+Le 1er octobre 2026 : catalogue distant, configuration du provider sur Main et identité Tailscale vérifiés en lecture seule. Aucun redémarrage, appel de génération ni audit effectué pendant la rédaction.
+
+Sources officielles consultées à cette date : [API compatible OpenAI](https://docs.ollama.com/api/openai-compatibility), [CLI Ollama](https://docs.ollama.com/cli), [exploitation](https://docs.ollama.com/faq).
+
+Code de référence : `src/api/routes/providers.py`, `src/api/routes/models.py`, `src/static/app.js` et `src/agent/provider.py`.
+
+</details>

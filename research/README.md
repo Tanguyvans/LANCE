@@ -8,10 +8,12 @@ présente les comportements implémentés, les contrats retenus et les procédur
 
 | Date du dossier | Étude | Question | Statut |
 | --- | --- | --- | --- |
-| 2026-09-27 | [Agent / automatisation](2026-09-27-agent-vs-automation/README.md) | Quel apport mesurable du LLM face à une automatisation à règles ? | Protocole proposé ; outils D1/A1 documentés ; résultats expérimentaux à établir |
+| 2026-10-07 | [Méthodes d'audit et architectures de preuve](2026-10-07-methodes-audit/README.md) | Quelles méthodes rendent les conclusions d'audit plus vérifiables à observations constantes ? | Exploration et protocole proposé ; quatre rapports LaTeX/PDF relus ; synthèse révisée le 2026-10-07 à 13:56 (Europe/Brussels, UTC+02:00), sans gain expérimental établi |
+| 2026-09-27 | [Agent / automatisation](2026-09-27-agent-vs-automation/README.md) | Quel apport mesurable du LLM face à une automatisation à règles ? | Protocole proposé ; D1/A1 documentés. [Recherche sans LLM et six expériences](2026-09-27-agent-vs-automation/README.md#methodes-sans-llm), synthèse révisée 2026-10-07 14:44 (Europe/Brussels, UTC+02:00) ; 35 pages relues par deux agents distincts des auteurs. Résultats expérimentaux à établir. |
 | 2026-09-29 | [Couverture du benchmark](2026-09-29-benchmark-coverage/README.md) | Que couvrent le corpus, les exécutions et les preuves admises ? | Diagnostic reproduit ; campagne réelle Qwen UMONS S1–S12 en cours depuis le 4 octobre 2026 |
 | 2026-09-29 | [Scalabilité du contexte](2026-09-29-context-scalability/README.md) | Comment conserver les preuves utiles dans le contexte des six phases ? | Nouvelle revue du pipeline ; plan historique du rapport conservé comme archive |
-| 2026-09-29 (classement) | [Spécialisation IoMT](2026-09-29-iomt/README.md) | Comment adapter et évaluer LANCE sur des réseaux médicaux simulés ? | Proposition de sujet de TFE ; début inconnu |
+| 2026-09-29 (classement) | [Spécialisation IoMT](2026-09-29-iomt/README.md) | Comment adapter et évaluer LANCE sur des réseaux médicaux simulés ? | Proposition de TFE revue en LaTeX/PDF ; début inconnu ; expérimentation à définir |
+| 2026-10-03 | [Organisation du code](2026-10-03-organisation-code/README.md) | Comment rendre responsabilités, dépendances et état de run explicites ? | Diagnostic statique reproduit ; plan de refactoring proposé, non implémenté |
 | 2026-10-05 | [Validation Qwen UMONS S1–S12](2026-10-05-benchmark-coverage/README.md) | Quels résultats et défauts les runs réels démontrent-ils ? | [Run1](2026-10-05-corrections-lance/run-01.tex), gel 2026-10-05 11:32 ; scores historiques préservés, corrections ultérieures séparées |
 | 2026-10-05 | [Diagnostic du pipeline, Run1 et Run2](2026-10-05-corrections-lance/README.md) | Que montrent les runs sélectionnés sur les erreurs de pipeline, puis séparément le lot initial et la campagne corrective ? | Diagnostic révisé 2026-10-06 10:34 ; QA source/PDF le 6 octobre 2026 à 10:41 par Codex et un relecteur indépendant ([validation](2026-10-05-corrections-lance/validation.md)). Inventaire : 2 done, 8 partial, 2 failed ; objectif S1–S12 non atteint. |
 
@@ -20,7 +22,7 @@ présente les comportements implémentés, les contrats retenus et les procédur
 Commencer par le [rapport principal en PDF](2026-09-27-agent-vs-automation/report.pdf)
 ([source LaTeX](2026-09-27-agent-vs-automation/report.tex)) : il relie couverture du
 benchmark, contexte et apport LLM, puis propose les comparaisons à réaliser.
-Les deux rapports spécialisés développent les constats et les protocoles :
+Les rapports spécialisés développent les constats et les protocoles ; la proposition IoMT dispose également de son rapport :
 
 - [Couverture et validité de l'évaluation — PDF](2026-09-29-benchmark-coverage/report.pdf) · [LaTeX](2026-09-29-benchmark-coverage/report.tex).
 - [Campagne Qwen UMONS S1–S12 — rapport intermédiaire PDF](2026-10-05-benchmark-coverage/validation-qwen-umons.pdf) · [LaTeX](2026-10-05-benchmark-coverage/validation-qwen-umons.tex). Révision : **2026-10-05 11:48 (Europe/Brussels, UTC+02:00)** ; gel à 11:32 : deux diagnostics S1 séparés, S1 commun et rapports S2–S11, échec S12 sans score ; 14 archives, 1 582 empreintes. Premier lot terminé, validations des 14 corrections lancées sur S12 puis S1–S11 après CI et déploiement vérifiés. Rédaction Muse, corrections et contrôle Codex ; campagne en développement.
@@ -28,15 +30,24 @@ Les deux rapports spécialisés développent les constats et les protocoles :
 - [Run1 — PDF](2026-10-05-corrections-lance/run-01.pdf) · [LaTeX](2026-10-05-corrections-lance/run-01.tex), révision 2026-10-05 23:38 ; résultats et scores historiques préservés.
 - [Run2 — PDF](2026-10-05-corrections-lance/run-02.pdf) · [LaTeX](2026-10-05-corrections-lance/run-02.tex), révision 2026-10-06 00:49 ; même campagne corrective, objectif S1–S12 non atteint.
 - [Conservation des preuves et contexte — PDF](2026-09-29-context-scalability/report.pdf) · [LaTeX](2026-09-29-context-scalability/report.tex).
+- [Proposition de spécialisation IoMT — PDF](2026-09-29-iomt/report.pdf) · [LaTeX](2026-09-29-iomt/report.tex).
+- [Organisation du code — PDF](2026-10-03-organisation-code/report.pdf) · [LaTeX](2026-10-03-organisation-code/report.tex) : analyse de la copie de travail du 3 octobre 2026, mesures reproductibles et ordre de refactoring proposé.
 
-Dernière révision des trois rapports : **2026-09-30 21:55
+Dernière révision des quatre rapports : **2026-10-01 10:23
 (Europe/Brussels, UTC+02:00)**. L'heure apparaît sur leur première page et dans
-leur README. Les constats, sources et reproductions restent ceux du 29 septembre
-2026 ; cette révision ajoute leur horodatage de présentation.
+leur README. La révision clarifie le vocabulaire, les figures et la pagination
+après relecture indépendante. Les constats et reproductions des trois études
+techniques restent ceux du 29 septembre 2026. La proposition IoMT a été revue
+le 1er octobre 2026 avec une lecture ciblée de sources DICOM et Orthanc ;
+aucune nouvelle expérience n'a été exécutée.
 Les rapports ont un titre centré, un résumé, une table des matières,
 des sections numérotées et des figures vectorielles modifiables dans les sources.
 Ces rapports contiennent un diagnostic logiciel et des expériences
 proposées ; ils ne rapportent pas de performance terrain ni de gain LLM démontré.
+
+Le rapport distinct sur l'organisation du code est révisé le **2026-10-03 12:12
+(Europe/Brussels, UTC+02:00)**. Il porte sur la copie de travail locale et
+propose une réorganisation progressive, sans changement applicatif ni run de laboratoire.
 
 ## Ouvrir ou poursuivre une recherche
 
@@ -150,7 +161,7 @@ facultative et ne remplace pas la table des matières.
 
 Ces règles sont maintenues **ici comme référence unique**. `AGENTS.md` contient
 un rappel et un lien ; les README des sujets servent à la navigation et au statut,
-sans recopier les conventions. Les trois `report.tex` liés dans l'index illustrent
+sans recopier les conventions. Les quatre `report.tex` liés dans l'index illustrent
 le format et restent autonomes pour l'éditeur LaTeX intégré.
 
 ### Compilation et vérification
@@ -166,6 +177,44 @@ et que les numéros correspondent au PDF final.
 Conserver la source et le PDF livrable ; ne pas ajouter les fichiers temporaires
 de compilation au dossier de recherche. Si compilation ou export indisponible,
 signaler précisément la limite et ne pas présenter un ancien PDF comme actualisé.
+
+### Relecture indépendante avant livraison
+
+Pour chaque nouvelle étude ou révision de fond, prévoir dès le départ un
+**relecteur distinct de l'auteur**. Dans un travail mené par des agents, confier
+cette tâche à un sous-agent dédié. La relecture porte sur la source et sur le
+**PDF final rendu**, en se plaçant du point de vue d'un lecteur qui ne connaît
+ni les échanges préparatoires ni les conventions internes du projet.
+
+Le relecteur vérifie trois aspects :
+
+- **Clarté** : question et conclusion compréhensibles, progression logique,
+  termes et sigles définis dès leur première occurrence, exemples lorsque
+  nécessaires. Les codes de variantes comme D1 et A1 doivent être accompagnés
+  de leur signification ; le lecteur ne doit pas devoir ouvrir un autre fichier
+  pour comprendre la comparaison.
+- **Figures et mise en page** : inspection visuelle de toutes les pages du PDF,
+  figures et tableaux lisibles à taille réelle, sans texte coupé, chevauchement,
+  flèche ambiguë ni légende manquante. Chaque figure doit avoir un message clair,
+  être expliquée dans le texte et rester cohérente avec celui-ci. Une compilation
+  réussie ou la seule lecture du LaTeX ne suffit pas à valider le rendu.
+- **Rigueur** : cohérence entre affirmations et preuves, distinction entre
+  propositions et résultats, sources traçables, limites explicites et absence
+  de conclusion plus forte que les observations disponibles.
+
+Le relecteur fournit des remarques localisées (page, figure ou section), leur
+conséquence pour le lecteur et une correction attendue. L'auteur corrige,
+recompile et fait vérifier les corrections sur le nouveau PDF ; tout changement
+de pagination impose une nouvelle inspection des pages affectées. Répéter cette
+boucle jusqu'à résolution des problèmes de compréhension et de rendu signalés.
+
+Consigner brièvement dans le README du sujet ou son journal de validation la
+date, la version relue, le relecteur, le périmètre effectivement inspecté et les
+éventuelles réserves. Réutiliser les fichiers existants, sans créer un rapport
+de relecture séparé par défaut. Si la relecture ou l'inspection visuelle n'a pas
+pu être réalisée, l'indiquer et conserver le statut « à relire » ; ne pas annoncer
+une validation inexistante. Cette relecture éditoriale et scientifique ne
+remplace ni les tests logiciels ni la validation expérimentale.
 
 ### Figures modifiables
 

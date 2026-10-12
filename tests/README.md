@@ -7,6 +7,13 @@ GPU sont regroupés dans [model_training/tests/](../model_training/tests/).
 Ne pas confondre ces tests logiciels avec les
 [scénarios d’évaluation du benchmark](../docs/benchmark/v1/scenarios.md).
 
+`test_archived_campaign_summary.py` vérifie la restitution hors ligne des
+statuts, diagnostics Phase 3 dont `scanner_errors` (valeur enregistrée et
+présence de la clé), scores manquants, avertissements et empreintes, ainsi que
+la préservation des fichiers d'entrée. Les cas synthétiques sont autonomes ; le cas utilisant
+les archives locales est ignoré lorsqu'elles sont absentes. Ces tests ne lancent
+aucun scénario ni appel réseau.
+
 Depuis la racine du dépôt :
 
 ```bash
@@ -78,6 +85,20 @@ sur le laboratoire réel.
 explicite, les preuves chargées avant la projection, la provenance MQTT et les
 identifiants repris d'un membre du groupe. Les tests existants d'agrégation,
 de sémantique, de planification et de reprise restent applicables aux adaptateurs.
+
+`test_service_proof_binding.py` vérifie l'attribution des preuves aux destinations
+réellement exécutées et les échanges bornés SNMP/CoAP/S7/ENIP, avec des réponses
+protocolées et des contrôles négatifs. `test_credential_execution_boundary.py`
+vérifie que les identifiants restent des données littérales dans les programmes
+locaux, avec des substituts de netcat sans réseau. `test_intrusion_access_consistency.py`
+compare les accès admis par l'outil, le livrable compact et la projection commune.
+
+`pipeline/test_discovery_followup_boundary.py` couvre les reprises de découverte :
+CIDR, arrêt, budget, journal brut, provenance et fermeture du suivi de coût.
+`pipeline/test_analysis_malformed_fields.py` vérifie le refus des champs mal typés
+et leur conservation sans perte des candidats valides. `pipeline/test_scanner_http_origin.py`
+vérifie les origines HTTP(S) depuis le scan jusqu'au ciblage de la phase 4. Ces
+tests utilisent des outils simulés et ne lancent pas de scénario de laboratoire.
 
 `pipeline/test_pki_identity_evidence.py` vérifie les empreintes PKI communes à
 deux appareils distincts, les doublons de requêtes et de topologie, les alias,

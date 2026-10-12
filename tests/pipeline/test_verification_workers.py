@@ -322,7 +322,10 @@ def test_followup_candidates_are_counted_without_claiming_they_were_scheduled(mo
 def test_discovery_followup_excludes_existing_hosts_but_keeps_new_hosts(
     mock_provider, output_dir, monkeypatch, surface_as_mapping,
 ):
-    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    pipeline = Pipeline(
+        provider=mock_provider, execution_profile="full", target_network="192.0.2.0/24",
+    )
+    pipeline.context["target_subnet"] = "192.0.2.0/24"
     nodes = [{"id": "invalid-address", "ip": "not-an-address"},
              {"id": "known-device", "ip": "192.0.2.10"},
              {"id": "known-ipv6", "ip": "2001:db8::1"}]

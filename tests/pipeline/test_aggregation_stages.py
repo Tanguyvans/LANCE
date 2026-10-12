@@ -226,9 +226,14 @@ def test_malformed_device_id_does_not_abort_other_findings(context, device_id):
     result = aggregate(context)
 
     assert result.raw["candidate_count"] == 2
-    assert len(result.canonical["vulnerabilities"]) == 2
+    assert len(result.canonical["vulnerabilities"]) == (2 if device_id is None else 1)
     assert any(item["endpoint"] == "/healthy" for item in result.canonical["vulnerabilities"])
-    assert any(item["device_id"] == device_id for item in result.canonical["vulnerabilities"])
+    if device_id is None:
+        assert any(item["device_id"] is None for item in result.canonical["vulnerabilities"])
+    else:
+        rejected = result.raw["candidates"][0]
+        assert rejected["raw_finding"]["device_id"] == device_id
+        assert rejected["decision"] == "rejected_malformed"
 
 
 def test_concurrent_explicit_contexts_keep_provenance_and_ids_separate(tmp_path, monkeypatch):

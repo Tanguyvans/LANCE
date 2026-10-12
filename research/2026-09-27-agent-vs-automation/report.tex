@@ -5,7 +5,7 @@
 \frenchsetup{SmallCapsFigTabCaptions=false}
 \usepackage{lmodern,microtype}
 \usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
-\usepackage{graphicx,booktabs,array,tabularx,longtable}
+\usepackage{graphicx,booktabs,array,tabularx,longtable,float}
 \usepackage{xcolor,tikz}
 \usepackage{enumitem,titlesec}
 \usepackage{hyperref}
@@ -134,12 +134,12 @@
   {\par\end{quote}}
 \title{\bfseries LANCE : mesurer l'apport des LLM\\[0.5em]\large\mdseries\itshape Couverture du benchmark, contexte du pipeline et protocole de comparaison}
 \author{Projet LANCE}
-\date{Dernière révision : 30 septembre 2026 à 21:55\\[0.15em]\small Europe/Brussels (UTC+02:00)\\[0.4em]\small Exploration et protocole proposés}
+\date{Dernière révision : 1er octobre 2026 à 10:23\\[0.15em]\small Europe/Brussels (UTC+02:00)\\[0.4em]\small Exploration et protocole proposés}
 \hypersetup{pdftitle={LANCE : mesurer l'apport des LLM}}
 \begin{document}
 \maketitle
 \begin{abstract}
-Cette étude examine dans quelles situations un modèle de langage améliore un audit IoT autorisé, à outils et budgets comparables à une automatisation conditionnelle. Une revue du code, des contrats et de sources primaires met en évidence trois difficultés : validité des mesures, conservation du contexte et attribution des succès au modèle. Le corpus définit 29 scénarios et 288 vulnérabilités attendues ; le contraste D1/A1 disponible reste borné aux phases 3--4 sur inventaire fourni. Huit probes synthétiques ont été rejouées et 381 tests ciblés réussissent, sans démontrer un gain en campagne. Le protocole proposé sépare interprétation, adaptation et restitution, conserve les échecs et les coûts, et prévoit des règles de décision avant le test. Un résultat négatif ou indéterminé reste admissible.
+Cette étude examine dans quelles situations un grand modèle de langage (LLM) améliore un audit autorisé de l'Internet des objets (IoT), à outils et budgets comparables à une automatisation conditionnelle. Une revue du code, des contrats et de sources primaires met en évidence trois difficultés : validité des mesures, conservation du contexte et attribution des succès au modèle. Le corpus définit 29 scénarios et 288 vulnérabilités attendues ; la comparaison entre règles sans LLM (D1) et agent avec LLM (A1) reste limitée aux phases 3--4, analyse et vérification, sur inventaire fourni. Huit tests diagnostiques synthétiques ont été rejoués et 381 tests ciblés réussissent, sans démontrer un gain en campagne. Le protocole proposé sépare interprétation, adaptation et restitution, conserve les échecs et les coûts, et prévoit des règles de décision avant le test. Un résultat négatif ou indéterminé reste admissible.
 \end{abstract}
 \clearpage
 
@@ -155,6 +155,30 @@ comparaison D1/A1 bornée. La prochaine étape consiste à rendre les mesures et
 l'attribution suffisamment fiables pour qu'un résultat positif, négatif ou
 indéterminé ait un sens. Le tableau~\ref{tab:axes} résume les trois études.
 
+\subsection{Repères de lecture}
+D1 désigne une automatisation conditionnelle sans LLM : des règles programmées
+choisissent les contrôles, leurs branchements et les reprises. A1 désigne un
+agent avec LLM qui peut réviser ses décisions après les réponses des outils.
+Ces codes identifient des variantes du protocole ; ce ne sont pas des scores.
+Le scanner est le composant commun qui collecte et interprète des observations
+réseau avant les décisions comparées.
+
+La vérité terrain (\emph{ground truth}, GT) décrit les propriétés attendues du
+scénario ; elle sert à l'évaluation et n'est pas fournie aux politiques.
+Un vrai positif (VP) est une propriété attendue correctement signalée avec les
+preuves exigées ; un faux positif (FP) est une alerte incorrecte.
+La précision mesure la part de prédictions correctes et le rappel la part des
+propriétés attendues retrouvées. Le F1 combine précision et rappel par leur
+moyenne harmonique. Un oracle désigne ici le validateur qui décide si une trace
+constitue une preuve suffisante ; un test diagnostique synthétique
+(\emph{probe}) examine ce comportement sur une entrée construite.
+
+Les profils \code{full} et \code{compact} sont des configurations d'exécution
+qui modifient aussi outils et budgets. La comparaison D1/A1 disponible impose
+\code{full} ; elle n'est donc pas une comparaison entre ces deux profils.
+Une ablation est une comparaison contrôlée où l'on retire ou modifie un seul
+composant pour mesurer sa contribution.
+
 \subsection{Méthode de la revue}
 La recherche combine inspection du code et des contrats, inventaire statique,
 probes synthétiques locales et revue ciblée de sources primaires. Les trois
@@ -163,8 +187,8 @@ limites sont détaillés en fin de rapport ; aucune campagne réseau n'est réal
 Le périmètre des sources et les portions effectivement lues figurent dans les
 références et les notes complémentaires.
 
-\begin{table}[htbp]\centering\small
-\noindent\begin{tabularx}{\linewidth}{@{}p{25mm}YY@{}}\toprule
+\begin{table}[H]\centering\small
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{25mm}YY@{}}\toprule
 Axe & Faits établis dans le périmètre inspecté & Question encore ouverte \\\midrule
 Benchmark & 29 scénarios ; 288 vulnérabilités attendues ; aucun scénario officiel entièrement sain. Défauts locaux de taux de tentative et d'admission de preuves. & Quelles propriétés sont réellement déployées, observées et prouvées ? Quelle fréquence d'erreur en campagne ? \\
 Contexte & Certaines sorties coupées avant archivage ; historique outils renvoyé sans budget d'entrée ; projections parfois sans récupération. & Quel effet sur les décisions, le rappel, la fiabilité et les ressources ? \\
@@ -187,13 +211,13 @@ Les corrections du logiciel décrites ci-dessous restent proposées.}
 \section{Ce que compare aujourd'hui D1/A1}
 \subsection{Un ajout au socle déterministe}
 Les deux politiques utilisent un inventaire public commun et le même scanner
-initial. D1 produit les findings par règles, puis suit des plans de vérification
+initial. D1 produit les constats candidats par règles, puis suit des plans de vérification
 avec une reprise transitoire et un complément HTTP bornés. A1 ajoute des
 micro-agents en phase 3 et des décisions modèle en phase 4. La figure~\ref{fig:paired}
 représente ce périmètre implémenté ; elle ne décrit pas encore un audit complet
 avec reconnaissance, intrusion et rédaction comparées.
 
-\begin{figure}[htbp]\centering
+\begin{figure}[H]\centering
 \begin{tikzpicture}[sfig diagram,x=0.94cm]
 \node[sfig input,text width=21mm] (inventory) at (0,0) {Inventaire\\public commun};
 \node[sfig neutral,text width=24mm] (scanner) at (3.2,0) {Scanner\\partagé};
@@ -245,17 +269,17 @@ historiques S1h/S4h ne s'ajoutent pas aux 29 scénarios officiels.
 
 Une tentative sur tous les candidats retenus ne signifie pas que tous les actifs,
 services ou failles ont été explorés. Conserver des populations distinctes :
-actifs attendus lorsque connus, services observés, GT proposées, candidats
+actifs attendus lorsque connus, services observés, candidats proposés puis
 retenus, candidats effectivement tentés, preuves admises et GT confirmées.
 Le score d'intrusion reste séparé du F1 d'audit.
 
 \subsection{Contre-exemples locaux et portée exacte}
-\begin{table}[htbp]\centering\small
-\noindent\begin{tabularx}{\linewidth}{@{}p{30mm}YY@{}}\toprule
+\begin{table}[H]\centering\small
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{30mm}YY@{}}\toprule
 Contre-exemple & Observation reproduite & Portée du constat \\\midrule
 Tentatives ambiguës & Un candidat, deux TIMEOUT marqués non tentés : taux de tentative 1,0. & Défaut du diagnostic d'entonnoir ; fréquence en campagne inconnue. \\
 Contrôle S18 & Une exposition avec jeton surprivilégié partage IP/type avec un contrôle exigeant le refus d'un autre jeton limité. & Contrôle déclaré violé avec le mauvais jeton ; aucune pénalité additionnelle directe démontrée sur le F1 principal. \\
-Oracle OTA & Une trace déclarant une signature valide est admise comme \code{EXPLOITED}, niveau 2. & Admission d'une observation insuffisante ; aucune signature cryptographique ni état serveur vérifié. \\
+Oracle de mise à jour distante (OTA) & Une trace déclarant une signature valide est admise comme \code{EXPLOITED}, niveau 2. & Admission d'une observation insuffisante ; aucune signature cryptographique ni état serveur vérifié. \\
 Oracle exécution & Une réponse d'aide contenant \code{uid=1000(user)} est admise au niveau 3. & Un exemple textuel est pris pour preuve ; le crédit dans le score complet n'est pas reproduit. \\\bottomrule
 \end{tabularx}
 \caption{Défauts et limites identifiés par inspection ou probes synthétiques, sans extrapolation à un taux d'erreur réel.}\label{tab:counterexamples}
@@ -310,8 +334,8 @@ permutations~\cite{lost}; elles ne valident aucun modèle actuel de LANCE.
 
 \section{Expériences proposées : isoler les contributions}
 \subsection{Politiques et mécanismes}
-\begin{table}[htbp]\centering\small
-\noindent\begin{tabularx}{\linewidth}{@{}p{15mm}YY@{}}\toprule
+\begin{table}[H]\centering\small
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{15mm}YY@{}}\toprule
 Politique & Décisions & Rôle expérimental \\\midrule
 D0 & Procédure fixe. & Référence simple secondaire. \\
 D1 & Règles, état partagé, branchements et reprises bornées. & Référence principale sans LLM ; premier incrément disponible. \\
@@ -322,8 +346,8 @@ D1-R & Même audit D1, rédaction LLM après clôture. & Étudier restitution et
 \caption{Les politiques proposées dépassent la comparaison logicielle actuellement disponible ; leur présence dans ce tableau n'atteste pas leur implémentation.}\label{tab:policies}
 \end{table}
 
-\begin{table}[htbp]\centering\small
-\noindent\begin{tabularx}{\linewidth}{@{}p{28mm}YY@{}}\toprule
+\begin{table}[H]\centering\small
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{28mm}YY@{}}\toprule
 Question & Contraste & Conclusion permise \\\midrule
 Interprétation & Règles / LLM sur dossiers identiques, collecte désactivée. & Qualité d'interprétation et fidélité des preuves. \\
 Audit borné & D1 / A1, mêmes inventaire, outils, état initial et plafonds. & Gain marginal au-dessus du socle partagé. \\
@@ -411,14 +435,17 @@ fournisseur ; l'égalité d'un nom et du hash source ne suffit pas.
 \section{Ordre de travail et décisions}
 La figure~\ref{fig:workplan} indique l'ordre proposé. Le pilote peut apprendre
 sur les phases 3--4 correctement vérifiables sans attendre une refonte complète
-ou la preuve de tous les pivots. Ses conclusions restent descriptives.
+ou la preuve de tous les pivots. Ses conclusions restent descriptives. Le pilote prévoit quatre conditions (S1, S14, S15 et un contrôle entièrement
+sain encore à préparer), trois répétitions et deux politiques :
+$4\times3\times2=24$ exécutions, soit 12 paires D1/A1.
+Aucun résultat de ces exécutions n'est rapporté ici.
 
-\begin{figure}[htbp]\centering
+\begin{figure}[H]\centering
 \begin{tikzpicture}[sfig diagram,x=0.94cm]
-\node[sfig focal,text width=24mm] (measure) at (0,0) {Mesures\\et oracles};
+\node[sfig focal,text width=24mm] (measure) at (0,0) {Mesures\\et validateurs};
 \node[sfig base,text width=24mm] (context) at (3.5,0) {Contexte\\observable};
 \node[sfig base,text width=24mm] (offline) at (7,0) {Contrastes\\hors ligne};
-\node[sfig base,text width=24mm] (pilot) at (10.5,0) {Pilote D1/A1\\24 essais prévus};
+\node[sfig base,text width=24mm] (pilot) at (10.5,0) {Pilote D1/A1\\12 paires prévues};
 \node[sfig output,text width=24mm] (test) at (14,0) {Test réservé\\et mécanismes};
 \draw[sfig primary flow] (measure) -- (context);
 \draw[sfig flow] (context) -- (offline);
@@ -433,7 +460,15 @@ Les décisions confrontent l'estimation et son incertitude aux marges fixées
 avant le test ; une moyenne favorable ne suffit pas.
 \par\end{samepage}
 
-\begin{table}[htbp]\centering\small
+Il reste à fixer avant le test : gain minimal utile, marges de faux positifs et
+fiabilité, budgets, règles de données manquantes, taille fixe, exclusions et
+analyses secondaires. Une absence de significativité ne prouve pas
+l'équivalence. Si l'utilité se situe dans la construction de règles, une autre
+expérience peut comparer humain seul et humain assisté pour la maintenance,
+puis exécuter le workflow déterministe ; ce n'est pas un gain d'agent à chaque audit.
+
+
+\begin{table}[H]\centering\small
 \noindent\begin{tabularx}{\linewidth}{@{}YY@{}}\toprule
 Résultat selon critères préfixés & Décision proposée \\\midrule
 Gain supérieur au minimum utile, FP/fiabilité/coût acceptables. & Conserver le LLM sur le périmètre établi ; rechercher ensuite le mécanisme. \\
@@ -446,16 +481,9 @@ Incertitude trop grande ou peu de familles. & Résultat indéterminé ; ajouter 
 \caption{Accepter une conclusion négative fait partie du protocole. Aucune marge numérique n'a encore été choisie.}\label{tab:decisions}
 \end{table}
 
-Il reste à fixer avant le test : gain minimal utile, marges de faux positifs et
-fiabilité, budgets, règles de données manquantes, taille fixe, exclusions et
-analyses secondaires. Une absence de significativité ne prouve pas
-l'équivalence. Si l'utilité se situe dans la construction de règles, une autre
-expérience peut comparer humain seul et humain assisté pour la maintenance,
-puis exécuter le workflow déterministe ; ce n'est pas un gain d'agent à chaque audit.
-
 \section{Validation disponible et limites de la revue}
-\begin{table}[htbp]\centering\small
-\noindent\begin{tabularx}{\linewidth}{@{}p{36mm}Y@{}}\toprule
+\begin{table}[H]\centering\small
+\noindent\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{36mm}Y@{}}\toprule
 Vérification & Résultat disponible au 29 septembre 2026 \\\midrule
 Inventaire statique & 29 SHA de vérités terrain concordants ; totaux du corpus vérifiés avec fusion des sidecars. \\
 Composition GT & 31 fichiers examinés, dont S1h/S4h ; 13 différences descriptives historiques acceptées et 18 correspondances strictes. Pas de validation \code{strict-all}. \\
@@ -503,9 +531,10 @@ ou retenir les règles si elles suffisent. Les coûts, échecs et incertitudes
 font partie de ce bilan. Les expériences proposées restent à exécuter.
 
 \par\end{samepage}
-\phantomsection
-\addcontentsline{toc}{section}{Références}
-\begin{thebibliography}{9}\small
+\begin{thebibliography}{9}
+\phantomsection\addcontentsline{toc}{section}{Références}
+\interlinepenalty=10000
+\small
 \bibitem{matter} S. Kapoor et al. \emph{AI Agents That Matter}. arXiv:2407.01502v1, 1 juillet 2024. Revue initiale : sections 2, 5, 6 et passages d'annexe lus ; tâches programmation/navigation, pas audit IoT. Consulté le 29 septembre 2026. \url{https://arxiv.org/html/2407.01502v1}.
 \bibitem{nuclei} ProjectDiscovery. \emph{Template Workflows Overview}. Documentation vivante, version/date de publication non précisées. Workflows conditionnels et contexte partagé lus ; consultation le 29 septembre 2026. \url{https://docs.projectdiscovery.io/templates/workflows/overview}.
 \bibitem{context} Anthropic Engineering. \emph{Effective context engineering for AI agents}, 29 septembre 2025. Corps principal, récupération, compaction et notes structurées lus ; recommandation fournisseur, pas expérimentation LANCE. Consulté le 29 septembre 2026. \url{https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents}.

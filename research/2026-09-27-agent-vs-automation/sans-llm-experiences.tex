@@ -1,0 +1,541 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern,microtype}
+\usepackage[margin=24mm]{geometry}
+\usepackage{booktabs,tabularx,array,amsmath,enumitem}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=black,
+ pdftitle={Mesurer la valeur marginale des LLM face à des audits simples},
+ pdfauthor={Étude LANCE, rédaction assistée par Codex}}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{2em}
+\clubpenalty=10000 \widowpenalty=10000
+\setlist{nosep,leftmargin=*}
+\setcounter{tocdepth}{1}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\fichier}[1]{\nolinkurl{#1}}
+\newcommand{\revision}{2026-10-07 14:43 (Europe/Brussels, UTC+02:00)}
+\title{Mesurer la valeur marginale des LLM\\face à des audits simples\\
+ \large Diagnostic de D1 et six expériences hors ligne pour LANCE}
+\author{Étude LANCE --- rédaction assistée par Codex}
+\date{Dernière révision : \revision\\
+ \small Statut : recherche exploratoire et protocoles proposés ; aucun résultat comparatif}
+\begin{document}
+\maketitle
+\begin{abstract}
+Le comité de thèse demande d'établir ce que des méthodes simples sans modèle
+de langage accomplissent déjà, puis de mesurer le bénéfice de l'ajout du modèle.
+Une lecture statique du dépôt montre un socle déterministe partagé et une
+référence D1 conditionnelle, limitée à l'analyse et à la vérification. Les autres
+comparateurs du protocole restent proposés ; les conflits de la copie locale
+empêchent de présumer une exécution actuellement valide. Six expériences sur
+observations et configurations fournies sont définies : routine, faible
+prévalence, autorisation, information répartie, variations équivalentes et
+restitution humaine. Elles séparent interprétation et collecte, comparent des
+références simples crédibles, prévoient un oracle indépendant et conservent les
+échecs. La décision peut être de garder les règles, d'utiliser le LLM seulement
+pour une tâche délimitée, ou de conclure à une incertitude. Aucune marge métier,
+taille d'échantillon ou performance n'est encore validée.
+\end{abstract}
+\tableofcontents
+
+\section{Question, périmètre et méthode}
+La question est : \textbf{pour quelles tâches le modèle apporte-t-il un gain
+utile au-delà d'une méthode simple correctement conçue, à quel coût et avec
+quelles erreurs ?} L'Internet des objets est abrégé IoT ; un modèle de langage
+est abrégé LLM. Un audit peut réussir grâce à des outils et règles communs :
+sa réussite absolue ne démontre pas une contribution du modèle.
+
+Cette étude prolonge le protocole du 27 septembre~\cite{local} et répond à la
+demande de comparateurs plus simples. Elle porte d'abord sur des dossiers
+enregistrés ou des configurations documentées, sans nouvelle action sur des
+systèmes. Les expériences sont des \emph{propositions}, non des résultats.
+Elles ne mesurent ni découverte autonome, ni réussite d'intrusion, ni couverture
+d'un réseau inconnu. Aucun audit de laboratoire ou appel au LLM applicatif
+n'a été exécuté pour cette recherche.
+
+La méthode associe lecture des index, des protocoles et des guides CLI/campagne,
+inspection des modules cités au tableau~\ref{tab:code}, et recherche
+méthodologique primaire ciblée. La tête Git consultée est
+\fichier{a8dbeb9404f0cad960d61e42f02a1d70ca143a59}, avec modifications locales
+et conflits : ce SHA ne suffit pas à identifier le contenu lu. Le fichier
+\fichier{sans-llm-experiences-sources.json} conserve les empreintes des
+modules inspectés et les périmètres de lecture des références externes, consultées
+le 7 octobre 2026. Les résultats historiques de tests mentionnés dans les guides
+n'ont pas été reproduits. Aucune importation applicative n'a été tentée.
+
+Les cinq références méthodologiques concernent l'attribution causale,
+l'indépendance des observations, l'équivalence, les oracles de test et la
+maintenance. La lecture est ciblée : sections précisées aux références,
+sans reproduction des articles. Le transfert de ces principes à LANCE est
+\emph{notre proposition} ; les sources ne valident aucun gain de LANCE.
+
+\section{Constats : ce que couvre réellement la référence D1}
+\subsection{Un socle réel, mais un périmètre restreint}
+D1 désigne l'automatisation conditionnelle sans LLM ; A1 désigne l'agent
+adaptatif avec LLM. Le contrat expérimental disponible fixe un inventaire
+public commun, le profil \texttt{full}, un worker et les phases 3--4 : analyse
+puis vérification. La reconnaissance et la rédaction ne font pas partie de
+ce contraste. En phase 3, les deux politiques utilisent d'abord le scanner
+déterministe ; D1 évite ensuite l'analyse par agents LLM. Les sources visibles
+étayent cette organisation, pas une qualité empirique des résultats.
+
+\begin{table}[htbp]
+\caption{Diagnostic statique de la copie consultée ; aucun taux de réussite n'est déduit.}
+\label{tab:code}
+\small
+\begin{tabularx}{\linewidth}{@{}p{.23\linewidth}Y Y@{}}
+\toprule
+Objet et fichier & Fait visible & Limite pour la comparaison \\
+\midrule
+Entrée et périmètre\newline\fichier{audit_experiment.py}
+& Valide l'inventaire public ; impose \texttt{full}, phases 3--4 et plafonds ; version D1 v2 (identifiant complet ci-dessous).
+& Texte public et rôle peuvent révéler une solution ; l'empreinte d'environnement reste déclarative. \\
+Phase 3\newline\fichier{analysis/scan.py}, \fichier{analysis/devices.py}
+& Scanner et suivis déterministes communs ; les agents d'analyse sont évités en \texttt{rules}.
+& L'apport d'A1 est un ajout au socle. Les observations finales d'A1 peuvent donc différer de celles de D1. \\
+Extraction\newline\fichier{scanner.py}, \fichier{analysis/aggregation_loading.py}
+& Extracteurs HTTP, MQTT, SSH, FTP, Redis, SNMP, CoAP, API/PKI/OTA/cloud/OT ; filtres de promotion selon profil et rôle.
+& Présence d'un extracteur $\neq$ couverture démontrée. Certaines règles dépendent des simulateurs et de rôles connus. \\
+Phase 4\newline\fichier{verification/rules.py}
+& Plan préexistant ; une reprise admissible et une lecture HTTP complémentaire au plus ; trois appels au maximum par candidat dans cette boucle.
+& Le plafond exclut les scans de phase 3. Un plan absent donne un cas non pris en charge, pas une conclusion saine. \\
+Comparaison\newline\fichier{compare_policies.py}, \fichier{policy_campaign.py}
+& Vérifie identité déclarée, artefacts et contrats ; conserve essais prévus et coûts observés, sépare paires admissibles.
+& Pas d'intervalle par famille ; coût LLM partiel ; égalité des déclarations $\neq$ état réel identique. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La version déclarée des règles est
+\fichier{shared-scanner-bounded-verification-v2}.
+En phase 4, D1 reprend une opération répétable après une erreur transitoire
+reconnue. Il peut remplacer une lecture HTTP insuffisante par une réponse
+structurée sur la même URL. Il s'arrête sur confirmation, refus, erreur non
+admissible ou preuve toujours insuffisante. Les verdicts utilisent le
+synthétiseur de preuve commun. D1 est donc plus qu'un script linéaire,
+mais ne représente pas toutes les méthodes classiques d'audit.
+
+\subsection{Ce qui ne doit pas être annoncé comme acquis}
+Des extracteurs couvrent déjà des autorisations API et des relations PKI.
+Ce constat interdit de supposer que toute combinaison d'informations nécessite
+un modèle. Il ne prouve pas que les cas nouveaux seront correctement traités.
+Il faut distinguer l'existence d'une règle, son déclenchement, la production
+d'un candidat, sa promotion et la preuve finale admise. La phase d'analyse
+locale contient aussi un helper de compatibilité CVE, mais le chemin inspecté
+de \fichier{analysis/scan.py} l'appelle sous condition \texttt{compact\_local}.
+Cela ne démontre pas sa couverture dans l'expérience imposant \texttt{full} ;
+il ne s'agit pas d'une preuve d'absence universelle de contrôle CVE.
+
+Les fichiers \fichier{src/benchmark/metric_contract.py},
+\fichier{src/agent/exploit_evidence.py} et
+\fichier{src/agent/phases/verification/run.py} contiennent des marqueurs de
+fusion. Les deux branches déclarent respectivement des contrats de mesure
+\texttt{strict-v3.16}/\texttt{strict-v3.15} et de preuve
+\texttt{evidence-v15}/\texttt{evidence-v14}. Aucun contrat unique n'est retenu
+ici. Une analyse syntaxique statique sous Python 3.11.9 échoue aux marqueurs
+de deux modules ; elle ne teste pas le runtime cible Python 3.12. Les
+validations historiques ne garantissent donc pas l'importabilité actuelle.
+La remise en état et les tests ciblés constituent une précondition d'une
+future expérience intégrée, pas un travail réalisé dans cette recherche.
+
+D0 (procédure fixe), A0 (plan LLM initial ensuite figé) et D1-R (D1 avec
+rédaction par LLM après clôture technique) sont documentés comme propositions.
+Le manifeste de 24 bras est une préparation, sans preuve de campagne réalisée.
+Les six expériences suivantes n'utilisent pas ces nombres comme effectif validé.
+
+\section{Comparateurs simples et attribution de l'effet}
+\subsection{Construire une référence crédible avant d'ajouter de la complexité}
+Le tableau~\ref{tab:arms} conserve les noms du protocole. Pour les expériences
+hors ligne, « interpréteur à règles » et « interpréteur LLM » sont des lecteurs
+de dossiers, pas des nouveaux noms pour D1 et A1. L'étude de méthodes d'audit
+du 7 octobre utilise séparément E0, E1 et E2 pour des représentations de preuves ;
+ces identifiants ne sont ni renommés, ni assimilés à D0/D1/A0/A1.
+
+\begin{table}[htbp]
+\caption{Ordre proposé des comparateurs ; les lecteurs hors ligne restent distincts des contrôleurs.}
+\label{tab:arms}
+\small
+\begin{tabularx}{\linewidth}{@{}p{.13\linewidth}Y Y@{}}
+\toprule
+Référence & Définition intelligible & Question et priorité \\
+\midrule
+D0 & Procédure fixe, sortie structurée et règles de constat prédéfinies. & Établir ce qui fonctionne sans adaptation ; référence secondaire. \\
+D1 & Règles conditionnelles, état observable, reprises bornées et arrêt explicite. & Référence principale. Renforcer les lacunes connues sur développement, sans voir l'oracle du test. \\
+Lecteurs & Même dossier normalisé, règles contre LLM, sans outil supplémentaire. & Premier contraste pour l'interprétation ; décrit séparément du pipeline interactif. \\
+D1-R & Mêmes résultats techniques D1, rapport rédigé par LLM après gel. & Expérience de restitution ; aucun gain de détection attribuable au rapport. \\
+A0/A1 & Plan LLM figé contre agent adaptatif. & Contraste ultérieur si le besoin de décision interactive est établi ; non testé ici. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La priorité est une table de règles et une normalisation commune, avec une
+matrice de couverture lisible : propriété, données requises, cas pris en charge,
+motif d'abstention et tests positifs/négatifs. Des jointures relationnelles
+simples ou une politique d'accès explicite sont ajoutées seulement si les
+cas exigent ces informations. Une règle dépendant de l'identifiant privé d'un
+scénario est inadmissible. Une règle métier publique accordée au LLM doit
+également être disponible au comparateur simple.
+
+Avant le gel, un relecteur différent des auteurs examine les lacunes réparables
+de D1 et les connaissances liées aux simulateurs. Archiver les heures de
+développement des règles, des parseurs, des prompts et de leurs essais. Le
+test final reste inaccessible à ces auteurs. Une comparaison avec un outil
+externe mesure ensuite l'utilité de systèmes complets ; des différences de
+couverture ou de collecte empêchent d'attribuer tout l'écart au LLM.
+
+\subsection{Trois effets à ne pas mélanger}
+La première question est l'interprétation : même information, même format
+accessible, même propriété attendue et même budget d'analyse ; seule la méthode
+de lecture change. La seconde concerne le choix d'observations dans une future
+expérience intégrée. La troisième est le travail humain de restitution.
+La distinction entre effet d'une intervention définie et association motive
+ces contrastes ; notre application au logiciel est une adaptation méthodologique
+de la discussion sur la randomisation de Hernán et Robins~\cite{hernan}.
+
+Un dossier construit uniquement à partir des candidats de LANCE manque les
+cas que le pipeline n'a jamais proposés. L'échantillonnage doit partir des
+propriétés et configurations indépendantes, puis inclure cas détectés,
+non détectés, sains et indéterminés. Quand des observations proviennent d'un
+run A1 historique, préciser leur provenance : une comparaison de lecteurs sur
+ces mêmes observations ne mesure plus l'avantage de leur collecte.
+
+\section{Protocole commun aux six expériences proposées}
+Les dossiers contiennent des observations expurgées de secrets réels et un
+contexte public documenté : rôle, ressource, politique, date et provenance.
+L'oracle privé conserve \textbf{deux étiquettes distinctes}. La première,
+$T_{\text{état}}$, décrit la propriété dans l'état de référence indépendant :
+« vrai », « faux » ou « inconnu ». La seconde, $T_{\text{preuve}}$, décrit
+ce que les observations du dossier permettent d'établir : « confirmable »,
+« réfutable » ou « insuffisant ». Une propriété vraie dans la configuration
+peut rester insuffisamment documentée ; une abstention est alors correcte
+pour le lecteur. Un conflit non résolu peut aussi empêcher une conclusion.
+Une information manquante n'efface jamais l'étiquette d'état connue.
+
+Barr et al. distinguent oracle partiel, vérité terrain et limites de justesse
+et de complétude~\cite{barr}. Pour LANCE, proposer un double contrôle :
+conformité du verdict à la propriété réellement configurée et adéquation de
+ses références aux observations disponibles. Deux annotateurs, distincts
+des auteurs des méthodes, travaillent avec identifiants de méthode masqués ;
+les désaccords sont conservés puis arbitrés. La consigne et les cas litigieux
+sont versionnés. Le validateur commun du pipeline est un facteur de symétrie,
+pas l'unique oracle indépendant.
+
+Chaque sortie comprend identifiant de propriété, verdict, références de
+preuves, contradictions, informations manquantes et motif d'abstention.
+Les références doivent pointer vers des observations fournies, pertinentes
+pour cette ressource, à cette date. Aucun score de confiance auto-déclaré
+ne remplace ce contrôle. Les métriques hors ligne sont nouvelles et doivent
+être documentées ; elles ne sont pas présentées comme le contrat courant
+\texttt{strict-v3}.
+
+Le rappel d'état utilise comme dénominateur tous les positifs connus
+indépendamment sélectionnés, même si leur dossier est incomplet. Il décrit la
+restitution de cette population, affectée par la couverture des observations.
+Le rappel conditionnel du lecteur utilise seulement les positifs connus dont
+la preuve est confirmable depuis le dossier. Une confirmation créditée exige
+un verdict juste et une référence de preuve adéquate. Publier les deux
+dénominateurs, la couverture documentaire,
+les abstentions et les erreurs : une abstention correcte sur preuve insuffisante
+reste visible dans le bilan global, sans être imputée à une faute d'interprétation.
+Les états inconnus et dossiers incomplets sont conservés avec leur statut.
+
+L'unité de décision est la propriété d'un dossier ; l'unité de généralisation
+est sa famille d'origine, définie par générateur, services et structures
+techniques partagés, plutôt que par identifiant de scénario. Les répétitions
+LLM sont imbriquées dans le dossier, les variations dans la famille. Fixer
+répartition développement/test par famille avant de concevoir règles et prompts.
+Un test réservé aux auteurs ne certifie pas l'absence de contamination du
+préentraînement lorsque le corpus d'origine est public. Le problème de pseudoréplication
+décrit par Lazic motive cette prudence~\cite{lazic} ; ses résultats biologiques
+ne sont pas des estimations de dépendance pour notre corpus. Une nouvelle
+graine ou copie JSON ne crée pas une famille indépendante.
+
+Les bras reçoivent exactement les mêmes octets utiles ou une normalisation
+équivalente vérifiée ; ordre d'exécution et de présentation sont équilibrés
+ou randomisés. Journaliser les coûts de toutes les tentatives, les erreurs de
+format, arrêts, exclusions et valeurs inconnues. L'absence de réseau dans une
+expérience hors ligne ne prouve aucune disponibilité des outils réels.
+Un budget total de temps/calcul est comparable ; les tokens servent uniquement
+à comptabiliser le bras qui utilise un modèle.
+
+\subsection{Fiche 1 --- Contrôles routiniers}
+\textbf{Question.} Une procédure fixe ou des règles conditionnelles suffisent-elles
+à distinguer une configuration conforme d'une non-conformité connue ?
+\textbf{Données et entrée.} Dossiers de développement documentant configurations
+de service et réponses déjà enregistrées ; propriétés stables, cas conformes,
+non conformes et réponses incomplètes, y compris cas absents des candidats LANCE.
+\textbf{Sortie et oracle.} Verdict et preuve minimale pour chaque propriété,
+contrôlés contre configuration et observations indépendamment annotées.
+
+\textbf{Comparateurs et contrôles.} Lecteur à règles fixes, lecteur conditionnel,
+puis lecteur LLM sur les mêmes dossiers ; sortie et normalisation communes.
+Un service simplement joignable ne constitue pas à lui seul une non-conformité.
+Les connaissances métier sont publiques et identiques.
+\textbf{Mesures et coûts.} Erreurs par propriété, précision et rappels d'état
+et conditionnel avec les dénominateurs définis ci-dessus, abstentions correctes,
+taux de preuves attribuées et temps/calcul,
+avec coût de construction des règles.
+\textbf{Arrêt et poursuite.} Suspendre le test si une différence de format ou
+de couverture explique le contraste. Poursuivre vers test réservé si les
+méthodes simples couvrent correctement les cas de développement ; rechercher
+alors leur éventuelle non-infériorité plutôt qu'une victoire imposée du LLM.
+
+\subsection{Fiche 2 --- Contrôles sains et faible prévalence}
+\textbf{Question.} Le LLM apporte-t-il des alertes utiles sans produire davantage
+de fausses alertes lorsque les non-conformités sont rares ?
+\textbf{Données et entrée.} Dossiers conformes validés et proches cas non conformes,
+à partir d'une population définie indépendamment des sorties des méthodes.
+Prévalences par strate fixées avant test ; aucune distribution synthétique
+ne représente automatiquement un déploiement réel.
+\textbf{Sortie et oracle.} Liste d'alertes et abstentions avec preuve ; oracle
+privé vérifiant l'état conforme et les contrôles effectivement observés.
+
+\textbf{Comparateurs et contrôles.} Lecteurs fixes, conditionnels et LLM ; même
+information. Ajouter réponses d'authentification refusée, contenu public
+inoffensif et observation manquante. Un dossier non analysé n'est pas un sain
+correctement reconnu.
+\textbf{Mesures et coûts.} Fausses alertes par dossier et par propriété,
+spécificité avec dénominateur explicite, valeur prédictive positive à la
+prévalence déclarée, rappels d'état et conditionnel des rares cas positifs,
+et temps de tri humain. Les fausses alertes et la spécificité sont les mesures
+principales des contrôles sains. Pour $F1=2TP/(2TP+FP+FN)$, une strate saine
+avec $FP>0$ donne zéro ; avec dénominateur nul, annoncer la convention choisie
+(valeur indéfinie dans ce protocole). Le silence universel est pénalisé sur
+les cas positifs.
+\textbf{Arrêt et poursuite.} Suspendre si les contrôles sains ne sont pas validés
+ou si l'extraction des cas dépend des alertes LANCE. Étendre seulement si la
+marge de fausses alertes préfixée peut être évaluée avec une précision utile.
+
+\subsection{Fiche 3 --- Autorisation contextuelle}
+\textbf{Question.} Une politique explicite permet-elle des conclusions aussi
+justes qu'une lecture LLM du contexte d'autorisation ?
+\textbf{Données et entrée.} Matrice publique sujet--ressource--action--tenant,
+configuration fournie et traces préexistantes de décisions d'accès. Des cas
+partagent la même réponse technique mais des politiques légitimes différentes.
+\textbf{Sortie et oracle.} Relation entre accès observé et accès attendu,
+preuve associant identité, ressource et politique ; statut indéterminé si
+l'identité ou la portée de la politique n'est pas connue.
+
+\textbf{Comparateurs et contrôles.} Règles conditionnelles avec table de politique,
+contre lecteur LLM recevant cette même table. D0 sert de repère, mais n'est
+pas le seul comparateur. Cas autorisé, refus conforme, accès contraire à la
+politique et identité absente sont présents ; les réponses HTTP seules ne
+déterminent pas le droit d'accès.
+\textbf{Mesures et coûts.} Classification de conformité, erreurs de liaison
+identité/ressource, abstention et coût d'encodage de la politique.
+\textbf{Arrêt et poursuite.} Suspendre si l'entrée publique contient l'étiquette
+privée de non-conformité. La matrice normative de droits est une entrée légitime
+et nécessaire aux deux bras ; sa présence n'est pas une fuite d'oracle.
+Généraliser uniquement à de nouvelles politiques réservées ; une victoire
+contre des règles privées du contexte ne serait pas un effet du modèle isolé.
+
+\subsection{Fiche 4 --- Information répartie et contradictions}
+\textbf{Question.} Le LLM relie-t-il mieux des observations et repère-t-il des
+contradictions au-delà de jointures simples ?
+\textbf{Données et entrée.} Dossiers avec plusieurs observations référencées,
+identifiants de ressource et temps ; cas cohérents, contradictoires, périmés
+et incomplets. L'oracle associe les observations à la propriété pertinente,
+sans se limiter aux conclusions déjà proposées par LANCE.
+\textbf{Sortie et oracle.} Verdict, liens de preuve, contradictions et manque
+d'information ; l'oracle distingue conflit réel, ressources différentes et
+changement d'état documenté.
+
+\textbf{Comparateurs et contrôles.} Règles conditionnelles sur un index tabulaire,
+puis, si besoin, jointures déterministes explicites ; lecteur LLM avec mêmes
+observations, clés, obligations et budget de lecture. Si un graphe est étudié,
+le contraste de représentation E0/E1 reste séparé de celui du lecteur.
+\textbf{Mesures et coûts.} Attribution valide, fausse fusion, contradictions
+repérées ou inventées, abstentions justifiées et temps/calcul ; coût de maintien
+des clés et des relations.
+\textbf{Arrêt et poursuite.} Suspendre si une méthode possède des obligations
+ou des observations supplémentaires. Garder l'index simple si les relations
+n'apportent aucun gain utile ; tester le lecteur LLM sur des compositions
+réservées seulement après une référence relationnelle crédible.
+
+\subsection{Fiche 5 --- Variations équivalentes}
+\textbf{Question.} La qualité résiste-t-elle à une présentation différente
+qui préserve les mêmes faits et la même propriété de sécurité ?
+\textbf{Données et entrée.} Paires original/variation, approuvées indépendamment :
+ordre des champs, libellés publics équivalents, répartition en fichiers ou
+formulations de politique. Préserver identifiants et références ou publier
+leur correspondance ; ne pas retirer une information à un seul bras.
+\textbf{Sortie et oracle.} Même verdict attendu et preuves correspondantes,
+avec conservation explicite des cas indéterminés.
+
+\textbf{Comparateurs et contrôles.} Lecteurs à règles et LLM sur observations
+structurées communes ; seconde strate brute seulement pour tester les parseurs.
+Le test métamorphique exprime une relation attendue entre deux exécutions~\cite{barr}.
+Il ne prouve pas qu'un verdict invariant est juste : les deux versions peuvent
+partager la même erreur.
+\textbf{Mesures et coûts.} Justesse absolue de chaque version, taux d'invariance,
+pertes de preuve et variation de l'écart LLM--règles par famille ; coûts de
+normalisation et de maintenance.
+\textbf{Arrêt et poursuite.} Exclure avec motif toute transformation ne préservant
+pas les faits. Dans la strate normalisée, une perte d'information due au parseur
+invalide le contraste sémantique ; suspendre ce contraste et corriger sa préparation.
+Dans la strate brute, l'échec de parsing reste un résultat de robustesse et
+son coût est conservé. Une réussite autorise une conclusion de robustesse aux
+transformations testées, pas de généralisation à de nouveaux protocoles.
+
+\subsection{Fiche 6 --- Rapport et temps humain}
+\textbf{Question.} D1-R réduit-il le travail d'un auditeur à résultats techniques
+constants, sans augmenter les erreurs ?
+\textbf{Données et entrée.} Dossiers techniques gelés, comprenant preuves,
+limites et conclusions ; rapports par gabarit D1 et rédaction LLM D1-R.
+Tâches d'auditeur : retrouver une preuve, corriger un constat, prioriser une
+remédiation documentée. Plusieurs dossiers de familles différentes sont utilisés.
+\textbf{Sortie et oracle.} Réponse finale de l'auditeur et corrections, évaluées
+contre les mêmes résultats techniques ; aucune modification des détections.
+
+\textbf{Comparateurs et contrôles.} Dossiers sources identiques et contraintes
+de production communes, notamment de longueur ; ordre équilibré, expérience des auditeurs consignée,
+affectation évitant qu'un lecteur revoie le même dossier avec l'autre rapport.
+Masquer l'origine des rapports autant que possible sans prétendre un aveugle
+parfait. Les effets auditeur et dossier restent distincts.
+\textbf{Mesures et coûts.} Temps actif, réussite des tâches, corrections, omission
+de réserves et affirmations inventées ; latence, consommation du modèle et
+temps de préparation/revue. Satisfaction seule ne suffit pas.
+\textbf{Arrêt et poursuite.} Suspendre si les dossiers sources ou les contraintes
+de production diffèrent, ou si le recrutement ne permet qu'un avis de l'auteur.
+Les omissions et affirmations inventées dans les rapports sont des erreurs
+mesurées et conservées dans le bilan, avec leurs coûts de revue et correction ;
+elles ne justifient pas l'exclusion d'un rapport. Cette tâche de lecture
+n'entraîne aucune décision sur un système réel. Conserver D1-R seulement si
+un gain humain utile est compatible avec les marges d'erreur ; le résultat
+concerne la restitution, indépendamment de la détection.
+
+\section{Mesures, décision et séquence réaliste}
+\subsection{Un effet utile, une équivalence ou une conclusion indéterminée}
+Fixer une métrique principale et une portée par expérience avant le test final.
+Publier aussi les nombres bruts, les contrôles sains, les erreurs de preuve,
+les abstentions et la fraction de dossiers évaluables. Choisir les marges à
+partir du besoin d'audit et du développement : gain minimal utile,
+dégradation acceptable, coût et temps humain. Ce rapport ne leur attribue
+aucune valeur numérique prétendument validée.
+
+Pour une métrique où une valeur élevée est meilleure, poser
+$\Delta=Q_{\mathrm{LLM}}-Q_{\text{règles}}$. Si la borne inférieure de
+l'intervalle dépasse la marge utile préfixée, le gain peut soutenir l'usage du
+modèle, sous contraintes d'erreurs et de coût. Pour soutenir la non-infériorité des règles, l'hypothèse
+est que $Q_{\text{règles}}-Q_{\mathrm{LLM}}$ reste au-dessus de la perte
+maximale tolérée négative. L'équivalence est bilatérale, autour de marges fixées
+avant test : l'intervalle approprié doit être entièrement compris entre ces
+marges. Une différence non significative ne démontre aucune de ces deux
+propriétés~\cite{lakens}. Le choix de l'estimateur et de l'intervalle doit
+respecter les familles et le type de mesure ; copier un test $t$ générique
+sur tous les constats dépendants serait insuffisant.
+
+Proposer une analyse appariée, avec agrégation répétition $\rightarrow$ dossier
+$\rightarrow$ famille et pondération des familles annoncée à l'avance.
+Si les familles sont trop peu nombreuses pour l'inférence visée, publier un
+bilan descriptif et une conclusion indéterminée. La taille du test devra être
+justifiée après le développement, à partir de la variabilité observée et de
+marges opérationnelles, avec analyse de précision ou simulation adaptée.
+Le manifeste historique n'est pas une analyse de puissance.
+
+Conserver toutes les tentatives dans le bilan opérationnel : échec de format,
+arrêt, budget dépassé ou dossier incomplet. Les métriques techniques manquantes
+restent inconnues, avec analyse de sensibilité prévue ; elles ne deviennent
+pas silencieusement zéro. Les conclusions tirées seulement des paires
+exploitables sont étiquetées conditionnelles. Les analyses secondaires et
+leurs éventuelles corrections de multiplicité sont déclarées avant le test.
+
+\subsection{Coût de construction, d'exploitation et de maintenance}
+Le comparateur actuel annonce un coût d'usage du LLM, sans mesurer toute
+l'infrastructure et le travail humain. Proposer le coût total explicite :
+\[
+ C(N,H)=C_{\text{construction}}+C_{\text{maintenance}}(H)
+       +\sum_{i=1}^{N}(C_{\text{calcul},i}+C_{\text{modèle},i}
+       +C_{\text{préparation/revue},i}).
+\]
+$N$ est le volume de dossiers ou d'audits et $H$ l'horizon déclaré. Les règles
+et les prompts ont tous deux un coût de maintenance ; un prix API nul ne
+signifie pas un coût nul. Présenter heures et montants séparément, avec taux
+et scénarios d'amortissement documentés. Sculley et al. motivent le suivi des
+dépendances, configurations et changements externes~\cite{sculley}, sans
+fournir un tarif ou une supériorité économique applicable à LANCE.
+
+\subsection{Ordre proposé et décisions possibles}
+La première livraison expérimentale serait le corpus annoté et un lecteur
+simple sur les fiches 1--2, puis le contraste de lecteurs sur observations
+identiques. Les fiches 3--4 ajoutent le contexte seulement quand il correspond
+à un besoin réel. La fiche 5 accompagne les comparaisons ; la fiche 6 nécessite
+une étude humaine distincte. Après gel, évaluer sur familles réservées sans
+retoucher règles et prompts sur les échecs du test. Une correction crée une
+nouvelle version et nécessite un nouveau test réservé.
+
+Trois décisions sont recevables : garder les règles sur les tâches où elles
+suffisent selon les marges retenues ; réserver le LLM à une tâche pour laquelle
+un gain utile est mesuré ; ou conserver le résultat « indéterminé » quand la
+preuve manque. Si le modèle n'aide que la rédaction, D1-R peut être utile
+sans bénéfice de décision technique. Si l'aide tient surtout au développement
+de nouvelles règles, une étude séparée humain seul/humain assisté devra mesurer
+ce bénéfice de construction, avec exécution finale déterministe.
+
+\section{Limites et conclusion}
+Cette recherche ne démontre aucune performance comparative. La lecture statique
+ne prouve ni importabilité actuelle, ni disponibilité des outils, ni validité
+des configurations réellement déployées. Les conflits sont conservés ; les
+sources externes et les archives historiques ne réparent pas cette limite.
+La comparaison de lecteurs ne permet pas d'inférer la valeur d'un contrôleur
+adaptatif complet. Les connaissances préentraînées du LLM restent un facteur
+inégalizable : le contraste mesure une méthode avec ses connaissances,
+pas le raisonnement pur.
+
+Les premiers tests doivent établir la force et les limites des méthodes
+simples sur des dossiers indépendamment sélectionnés, avant de chercher des
+cas favorables au modèle. Les six fiches rendent ce programme réfutable :
+besoin défini, même information, oracle indépendant, coût complet et règle de
+décision avant les résultats. Une conclusion négative ou conditionnelle peut
+donner une contribution de thèse : délimiter les tâches où une automatisation
+simple suffit et celles où un LLM apporte une valeur mesurée.
+
+\begin{thebibliography}{9}
+\interlinepenalty=10000
+\addcontentsline{toc}{section}{Références}
+\bibitem{local} LANCE. \emph{Agent / automatisation}, protocole du 27 septembre
+2026, suivi des 27--28 septembre, guides CLI/campagne et modules cités.
+Lecture statique le 7 octobre 2026 ; tests historiques non reproduits.
+\fichier{research/2026-09-27-agent-vs-automation/protocol.md},
+\fichier{docs/benchmark/agent-vs-automation-cli.md} et
+\fichier{docs/benchmark/agent-vs-automation-campaign.md}.
+
+\bibitem{hernan} M. A. Hernán, J. M. Robins. \emph{Causal Inference: What If}.
+2020 ; version PDF du 26 avril 2024. Section 2.1 « Randomization » : extrait
+indexé du PDF primaire consulté le 7 octobre 2026 ; fichier complet inaccessible
+dans l'outil, autres chapitres non exploités.
+\href{https://www.hsph.harvard.edu/miguel-hernan/wp-content/uploads/sites/1268/2024/04/hernanrobins_WhatIf_26apr24.pdf}{PDF primaire Harvard}.
+
+\bibitem{lazic} S. E. Lazic. \emph{The problem of pseudoreplication in
+neuroscientific studies: is it affecting your analysis?} BMC Neuroscience 11:5,
+14 janvier 2010, doi:10.1186/1471-2202-11-5. Résumé, Background et sections
+sur observations répétées/hiérarchiques lus le 7 octobre 2026 ; résultats de
+neuroscience non transférés quantitativement.
+\href{https://link.springer.com/article/10.1186/1471-2202-11-5}{Article éditeur}.
+
+\bibitem{lakens} D. Lakens. \emph{Equivalence Tests: A Practical Primer for
+t Tests, Correlations, and Meta-Analyses}. Social Psychological and Personality
+Science 8(4):355--362, 2017, doi:10.1177/1948550617697177. Version éditeur
+TU/e : Testing for Equivalence, Setting Equivalence Bounds et Discussion lus
+le 7 octobre 2026 ; aucune procédure statistique exécutée, adaptation aux
+mesures dépendantes de LANCE encore nécessaire.
+\href{https://pure.tue.nl/ws/portalfiles/portal/80918653/lakeequi2017.pdf}{PDF éditeur déposé à TU/e}.
+
+\bibitem{barr} E. T. Barr, M. Harman, P. McMinn, M. Shahbaz, S. Yoo.
+\emph{The Oracle Problem in Software Testing: A Survey}. IEEE TSE
+41(5):507--525, mai 2015, doi:10.1109/TSE.2014.2372785. Introduction,
+définitions, soundness/completeness lus dans le PDF UCL le 7 octobre 2026 ;
+techniques du corpus non reproduites. La métamorphie est présentée comme
+oracle partiel, sans validation d'une implémentation LANCE.
+\href{https://discovery.ucl.ac.uk/1471263/1/06963470.pdf}{PDF éditeur déposé à UCL}.
+
+\bibitem{sculley} D. Sculley et al. \emph{Hidden Technical Debt in Machine
+Learning Systems}. NIPS 28, 2015. Sections 3, 5--7 et 9 lues le 7 octobre 2026 ;
+discussion d'ingénierie sans mesure de coût spécifique LANCE.
+\href{https://proceedings.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf}{PDF des actes}.
+\end{thebibliography}
+\end{document}
