@@ -283,7 +283,7 @@ def _evaluate_single_run(pipeline: Any, req: StartRequest) -> dict[str, Any]:
         return event
 
     if req.runner_kind == "rules":
-        return finish("skipped", reason="Scenario rules audit; controlled policy comparison is a separate experiment")
+        return finish("not_applicable", reason="Benchmark scoring is not applicable to scenario rules audits")
     if scenario_id is None:
         return finish("skipped", reason="No benchmark scenario selected")
 
@@ -409,7 +409,8 @@ def _pipeline_thread(req: StartRequest):
                 "metrics": evaluation_event.get("metrics"),
             })
             if evaluation_event.get("reason"):
-                pending_pipeline_done["evaluation_error"] = evaluation_event["reason"]
+                reason_field = "evaluation_reason" if evaluation_event["status"] == "not_applicable" else "evaluation_error"
+                pending_pipeline_done[reason_field] = evaluation_event["reason"]
             release_pipeline_done = True
             callback(pending_pipeline_done)
 

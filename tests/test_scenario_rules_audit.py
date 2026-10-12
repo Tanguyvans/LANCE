@@ -186,6 +186,11 @@ def test_api_worker_selects_rules_without_constructing_provider(tmp_path, monkey
     assert captured["max_tool_calls"] == 200 and captured["max_duration_s"] == 600
     phase = next(event for event in events if event["type"] == "phase_done")
     assert phase["runner_kind"] == "rules" and phase["run_dir"] == str(tmp_path)
+    evaluation = next(event for event in events if event["type"] == "evaluation_done")
+    terminal = next(event for event in events if event["type"] == "pipeline_done")
+    assert evaluation["status"] == terminal["evaluation_status"] == "not_applicable"
+    assert terminal["status"] == "completed" and terminal["evaluation_reason"] == evaluation["reason"]
+    assert "evaluation_error" not in terminal
     assert events[-1]["type"] == "__done__"
 
 

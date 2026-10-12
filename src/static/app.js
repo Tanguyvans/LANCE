@@ -2016,6 +2016,8 @@ function handleEvent(ev) {
     if (ev.status === 'completed') {
       addLog({type:'info', message:formatAuditFinalSummary(ev)});
       addLog({type:'info', message:formatIntrusionDiagnostics(m)});
+    } else if (_evaluationNotApplicable(ev, ev.status)) {
+      addLog({type:'info', message:'Audit par règles — sans scoring benchmark.'});
     } else if (ev.status === 'skipped') {
       addLog({type:'warn', message:`Évaluation non calculée — ${ev.reason || 'ground truth indisponible'}`});
     } else {
@@ -3379,6 +3381,15 @@ function formatIntrusionDiagnostics(metrics) {
   return `Intrusion vérifiée — Cibles compromises=${targetSummary} · Chemins vérifiés=${pathSummary} · Transitions vérifiées=${hopSummary}`;
 }
 
+function _evaluationNotApplicable(event, status = event?.evaluation_status) {
+  if (status === 'not_applicable') return true;
+  // Recognize only the deliberate skip emitted by older rules servers. Other
+  // skipped/failed evaluations retain their diagnostics during a rolling update.
+  const reason = event?.evaluation_error || event?.evaluation_reason || event?.reason;
+  return status === 'skipped' && event?.runner_kind === 'rules' &&
+    reason === 'Scenario rules audit; controlled policy comparison is a separate experiment';
+}
+
 function _completionReservations(event) {
   const reservations = [];
   const intrusionLabels = {
@@ -3398,7 +3409,7 @@ function _completionReservations(event) {
   if (['partial', 'failed', 'blocked'].includes(reportStatus)) {
     reservations.push(event.phase6_cause === 'memo_truncated' ? 'Rapport partiel — note tronquée' : 'Rapport incomplet');
   }
-  if (evaluationStatus === 'skipped' || evaluationStatus === 'failed') {
+  if ((evaluationStatus === 'skipped' || evaluationStatus === 'failed') && !_evaluationNotApplicable(event)) {
     const reason = event.evaluation_error || event.evaluation_reason || event.reason;
     reservations.push(`Évaluation indisponible${reason ? ` (${String(reason)})` : ''}`);
   } else if (evaluationStatus === 'completed' && !_confirmedFunnelStage(metrics)) {

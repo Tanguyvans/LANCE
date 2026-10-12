@@ -210,3 +210,34 @@ def test_clean_and_deployment_only_completion_has_no_evaluation_reservation():
     ])
     assert results[0]["pipeline"] == "Exécution terminée"
     assert results[1]["pipeline"] == "Exécution terminée"
+
+
+@pytest.mark.parametrize("evaluation", [
+    {"evaluation_status": "not_applicable"},
+    {"evaluation_status": "skipped", "evaluation_error": "Scenario rules audit; controlled policy comparison is a separate experiment"},
+])
+def test_deliberately_disabled_rules_scoring_does_not_degrade_completed_audit(evaluation):
+    result = _run_node([{"event": {"runner_kind": "rules", "status": "completed", "metrics": None, **evaluation}}])[0]
+    assert result["pipeline"] == "Exécution terminée"
+
+
+@pytest.mark.parametrize("evaluation", [
+    {"evaluation_status": "failed", "evaluation_error": "Evaluator failed"},
+    {"evaluation_status": "skipped", "evaluation_error": "Missing evaluation artifact"},
+])
+def test_real_rules_evaluation_problem_remains_an_incident(evaluation):
+    result = _run_node([{"event": {"runner_kind": "rules", "status": "completed", **evaluation}}])[0]
+    assert "avec incidents techniques" in result["pipeline"]
+    assert "Évaluation indisponible" in result["pipeline"]
+
+
+@pytest.mark.parametrize("fields,label", [
+    ({"cleanup_status": "failed"}, "Nettoyage en échec"),
+    ({"usage_status": "incomplete"}, "Consommation incomplète"),
+    ({"metadata_status": "failed"}, "Métadonnées en échec"),
+])
+def test_non_applicable_rules_scoring_keeps_other_lifecycle_incidents(fields, label):
+    result = _run_node([{"event": {"runner_kind": "rules", "status": "completed",
+                                  "evaluation_status": "not_applicable", **fields}}])[0]
+    assert "avec incidents techniques" in result["pipeline"] and label in result["pipeline"]
+    assert "Évaluation indisponible" not in result["pipeline"]

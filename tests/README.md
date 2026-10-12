@@ -58,6 +58,13 @@ coûts des échecs, précontrôles et identités incompatibles, exports JSON/CSV
 ne mesurent pas les performances d'un modèle sur un laboratoire réel ; voir le
 [guide de comparaison](../docs/benchmark/agent-vs-automation-cli.md).
 
+`test_pipeline_evaluation.py`, `test_pipeline_summary_events.py` et
+`test_pipeline_summary_ui.py` vérifient aussi que le scoring `not_applicable`
+du mode par règles reste informatif, dans les métadonnées et le journal réel
+de l'interface. Les erreurs d'évaluation applicables, les audits en échec et les
+incidents de nettoyage restent visibles ; les anciens événements `rules` sont
+compatibles. Ces tests ne lancent aucun audit réseau.
+
 `test_tool_loader.py` vérifie aussi les sondes SSH sans test de débit et la
 conservation des diagnostics de connexion. `test_rules_ssh_observations.py`
 distingue les résultats de configuration retournés par `ssh-audit` (codes 2/3)

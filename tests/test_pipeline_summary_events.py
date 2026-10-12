@@ -55,7 +55,7 @@ def _evaluation(run_dir):
     return result
 
 
-def _api_events(tmp_path, monkeypatch, result, status="completed", *, connection_error=False):
+def _api_events(tmp_path, monkeypatch, result, status="completed", *, connection_error=False, runner_kind="lance"):
     from src.agent import pipeline as agent_pipeline
     from src.agent import provider as agent_provider
     from src.benchmark import evaluator
@@ -119,7 +119,9 @@ def _api_events(tmp_path, monkeypatch, result, status="completed", *, connection
     monkeypatch.setattr(agent_provider, "LLMProvider", Provider)
     monkeypatch.setattr(route, "resolve_ground_truth_path", lambda _: ground_truth)
     monkeypatch.setattr(evaluator, "evaluate", lambda *args, **kwargs: result)
-    route._pipeline_thread(route.StartRequest(model="offline-test", provider="local", scenario_id="1"))
+    request = (route.StartRequest(runner_kind="rules", scenario_id="1") if runner_kind == "rules"
+               else route.StartRequest(model="offline-test", provider="local", scenario_id="1"))
+    route._pipeline_thread(request)
     received = []
     while not events.empty():
         received.append(events.get_nowait())
@@ -159,7 +161,7 @@ const context = vm.createContext({
   document, console, getComputedStyle: () => ({getPropertyValue: () => ''}),
 });
 vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
-vm.runInContext('loadRuns = () => {}; setCost = () => {};', context);
+vm.runInContext('loadRuns = () => {}; setCost = () => {}; loadRulesAuditResults = () => {};', context);
 context.events = JSON.parse(fs.readFileSync(0, 'utf8'));
 vm.runInContext('events.forEach(handleEvent);', context);
 console.log(JSON.stringify(document.getElementById('log').children.map(line => ({
@@ -171,6 +173,41 @@ console.log(JSON.stringify(document.getElementById('log').children.map(line => (
         capture_output=True, text=True, check=True,
     )
     return json.loads(result.stdout)
+
+
+@pytest.mark.parametrize("status,label", [
+    ("completed", "Exécution terminée — Total : $1.2078"),
+    ("partial", "Pipeline partiel — Total : $1.2078"),
+    ("failed", "Pipeline en échec — Total : $1.2078"),
+])
+def test_rules_api_to_dashboard_treats_scoring_as_information(tmp_path, monkeypatch, status, label):
+    events = _api_events(tmp_path, monkeypatch, None, status=status, runner_kind="rules")
+    terminal = next(event for event in events if event["type"] == "pipeline_done")
+    assert terminal["evaluation_status"] == "not_applicable"
+    assert "evaluation_error" not in terminal
+    lines = _render_events(events)
+    scoring = next(line for line in lines if "sans scoring benchmark" in line["text"])
+    assert "info" in scoring["className"].split() and "log-failed" not in scoring["className"].split()
+    assert lines[-1]["text"] == label
+    assert all("Évaluation indisponible" not in line["text"] and "Évaluation non calculée" not in line["text"] for line in lines)
+
+
+def test_old_rules_skip_is_neutral_but_actual_evaluation_failure_remains_visible():
+    legacy_reason = "Scenario rules audit; controlled policy comparison is a separate experiment"
+    lines = _render_events([
+        {"type": "evaluation_done", "runner_kind": "rules", "status": "skipped", "reason": legacy_reason},
+        {"type": "pipeline_done", "runner_kind": "rules", "status": "completed",
+         "evaluation_status": "skipped", "evaluation_error": legacy_reason, "total_cost_usd": 0},
+    ])
+    assert "info" in lines[0]["className"].split() and "log-failed" not in lines[0]["className"].split()
+    assert lines[-1]["text"] == "Exécution terminée — Total : $0.0000"
+    failed = _render_events([
+        {"type": "evaluation_done", "runner_kind": "rules", "status": "failed", "reason": "Scoring crashed"},
+        {"type": "pipeline_done", "runner_kind": "rules", "status": "completed",
+         "evaluation_status": "failed", "evaluation_error": "Scoring crashed", "total_cost_usd": 0},
+    ])
+    assert "error" in failed[0]["className"].split() and "log-failed" in failed[0]["className"].split()
+    assert "avec incidents techniques" in failed[-1]["text"]
 
 
 def test_api_to_dashboard_uses_final_audit_and_separate_verified_intrusion(tmp_path, monkeypatch):

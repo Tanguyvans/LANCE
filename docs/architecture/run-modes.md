@@ -177,5 +177,11 @@ un résumé Markdown déterministe ainsi que les fichiers de preuve.
 Cet audit applicatif est distinct de l'expérience contrôlée D1/A1 sur inventaire
 public : il ne déclare pas d'identité expérimentale ou de paire comparable.
 Les runs `rules` ne sont pas ajoutés aux comparaisons benchmark de l'interface.
+Le scoring post-run porte le statut `not_applicable` dans les événements et
+métadonnées. Le journal l'affiche comme une information (« Audit par règles —
+sans scoring benchmark »), sans requalifier un audit réussi en incident technique.
+Les erreurs réelles du run, du nettoyage ou d'une évaluation applicable restent
+signalées. Le dashboard reconnaît aussi le motif explicite des anciens événements
+`rules` qui portaient encore `skipped`.
 La comparaison scientifique reste décrite dans le
 [guide D1/A1](../benchmark/agent-vs-automation-cli.md).

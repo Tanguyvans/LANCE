@@ -5,6 +5,8 @@ import json
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 import src.agent.batch as batch
 from src.api.routes import pipeline as pipeline_route
 from src.api.routes.pipeline import StartRequest, _evaluate_single_run
@@ -19,6 +21,16 @@ class _PipelineStub:
 
     def _update_run_meta(self, updates):
         self.meta_updates.append(updates)
+
+
+def test_rules_scoring_is_explicitly_not_applicable_and_never_reads_oracle(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline_route, "resolve_ground_truth_path", lambda *_: pytest.fail("Rules scoring read the oracle"))
+    pipeline = _PipelineStub(tmp_path)
+    event = _evaluate_single_run(pipeline, StartRequest(runner_kind="rules", scenario_id="1"))
+    assert event["status"] == "not_applicable" and event["metrics"] is None
+    assert json.loads((tmp_path / "evaluation_summary.json").read_text())["status"] == "not_applicable"
+    assert pipeline.meta_updates[-1]["evaluation"]["status"] == "not_applicable"
+    assert not (tmp_path / "evaluation.json").exists()
 
 
 def test_missing_generated_ground_truth_is_reported(tmp_path, monkeypatch):
