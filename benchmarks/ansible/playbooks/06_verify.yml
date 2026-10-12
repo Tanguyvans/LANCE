@@ -1036,6 +1036,30 @@
       failed_when: false
       changed_when: true
 
+    # Proxmox readiness does not establish reachability from the audit runner.
+    # Recreated routers reuse the IP but can have a different LAN MAC address.
+    # Invalidate only that router's cached neighbor, then require a real SSH
+    # banner on the controller's TCP path before auditing.
+    - name: "[router] Renouveler l'entrée ARP du routeur sur le runner d'audit"
+      ansible.builtin.command:
+        argv: [ip, neigh, flush, to, "{{ benchmark_gateway }}"]
+      delegate_to: localhost
+      register: router_runner_neighbor_refresh
+      changed_when: true
+
+    - name: "[router] Attendre la bannière SSH depuis le runner d'audit"
+      ansible.builtin.wait_for:
+        host: "{{ benchmark_gateway }}"
+        port: 22
+        search_regex: '^SSH-2\.0-'
+        state: started
+        timeout: 60
+        connect_timeout: 5
+        sleep: 2
+      delegate_to: localhost
+      register: router_runner_ssh_ready
+      changed_when: false
+
 
     # ════════════════════════════════════════════════════
     - name: Préparer les résultats des checks vulnérables

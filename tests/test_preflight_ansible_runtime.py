@@ -3,7 +3,9 @@ import copy
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
+import threading
 
 import pytest
 import yaml
@@ -19,6 +21,94 @@ REGISTERS = {
     "nodered_port_check": "nodered", "nodered_admin_check": "nodered_admin",
 }
 ROLES = ["mqtt_broker", "db_server", "ssh_server", "web_server", "db_server_v2", "modbus_server", "nodered_server"]
+
+
+@pytest.mark.parametrize("responses,refresh_code,expected", [
+    ([b"SSH-2.0-fixture\r\n"], 0, True),
+    ([b"", b"SSH-2.0-fixture\r\n"], 0, True),
+    ([b"HTTP/1.1 200 OK\r\n"], 0, False),
+    (None, 0, False),
+    ([b"SSH-2.0-fixture\r\n"], 1, False),
+], ids=["ssh_ready", "transient_connection", "wrong_protocol", "port_closed", "refresh_failed"])
+def test_router_readiness_uses_runner_tcp_banner_and_blocks_unready_audit(tmp_path, responses, refresh_code, expected):
+    executable = shutil.which("ansible-playbook")
+    if not executable:
+        if os.environ.get("CI"):
+            pytest.fail("CI must install ansible-core")
+        pytest.skip("ansible-playbook is not installed")
+    production = yaml.safe_load(VERIFY.read_text())[0]["tasks"]
+    task = copy.deepcopy(next(t for t in production
+        if t.get("register") == "router_runner_ssh_ready"))
+    refresh = copy.deepcopy(next(t for t in production
+        if t.get("register") == "router_runner_neighbor_refresh"))
+    assert production.index(refresh) < production.index(task)
+    # Exercise the real delegated command without altering any host's ARP
+    # cache. Its fixture records the exact target and can simulate failure.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    mock_ip = bin_dir / "ip"
+    mock_ip.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$LANCE_TEST_IP_LOG"\nexit "$LANCE_TEST_IP_RC"\n')
+    mock_ip.chmod(0o755)
+    ip_log = tmp_path / "ip-args"
+    refresh["environment"] = {"PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+        "LANCE_TEST_IP_LOG": str(ip_log), "LANCE_TEST_IP_RC": str(refresh_code)}
+    # An unreachable Proxmox host must never be contacted: this prerequisite
+    # must execute on the actual controller, using the selected gateway.
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    port = server.getsockname()[1]
+    stop = threading.Event()
+    connections = []
+    if responses is not None:
+        server.listen()
+        server.settimeout(0.1)
+        def serve():
+            while not stop.is_set():
+                try:
+                    client, _ = server.accept()
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+                with client:
+                    response = responses[min(len(connections), len(responses) - 1)]
+                    connections.append(response)
+                    client.sendall(response)
+        worker = threading.Thread(target=serve, daemon=True)
+        worker.start()
+    else:
+        server.close()
+    # Use an ephemeral fixture port and shorten only the production deadline.
+    task["ansible.builtin.wait_for"].update(port=port, timeout=4 if expected else 1, sleep=1)
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\n")
+    inventory = tmp_path / "inventory"
+    inventory.write_text("proxmox ansible_host=192.0.2.100 ansible_connection=ssh\n")
+    playbook = tmp_path / "router-ready.yml"
+    playbook.write_text(yaml.safe_dump([{
+        "hosts": "proxmox", "gather_facts": False,
+        "vars": {"benchmark_gateway": "127.0.0.1"}, "tasks": [refresh, task],
+    }], allow_unicode=True, sort_keys=False))
+    try:
+        result = subprocess.run([executable, "-i", str(inventory), str(playbook)],
+            cwd=tmp_path, env={**os.environ, "ANSIBLE_CONFIG": str(config),
+                "ANSIBLE_LOCAL_TEMP": str(tmp_path / "local"),
+                "ANSIBLE_REMOTE_TEMP": str(tmp_path / "remote"), "ANSIBLE_NOCOLOR": "1"},
+            capture_output=True, text=True, timeout=20)
+        assert (result.returncode == 0) is expected, result.stdout + result.stderr
+        assert "proxmox -> localhost" in result.stdout
+        assert ip_log.read_text().splitlines() == ["neigh", "flush", "to", "127.0.0.1"]
+        if refresh_code:
+            assert not connections  # Do not start the probe after a failed refresh.
+        elif responses is not None:
+            assert connections
+        if expected and len(responses) > 1:
+            assert len(connections) >= 2
+    finally:
+        stop.set()
+        server.close()
+        if responses is not None:
+            worker.join(timeout=2)
 
 
 def test_preflight_fact_tasks_with_real_ansible(tmp_path):

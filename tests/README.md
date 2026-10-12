@@ -73,6 +73,12 @@ des confirmations. Tous ces appels d'outils sont simulés.
 `test_scanner_ssh_retry.py` couvre la reprise unique après un timeout de connexion
 SSH, conditionnée à l'observation du même port TCP ouvert, la conservation des
 tentatives, les ports personnalisés et les échecs qui restent incomplets.
+`test_preflight_ansible_runtime.py` exécute aussi le contrôle SSH du routeur
+avec le vrai module Ansible et des sockets locales de test : bannière valide,
+connexion transitoire, mauvais protocole et port fermé. Le faux hôte Proxmox
+reste injoignable pour vérifier que la sonde utilise bien le contrôleur d'audit.
+Une commande `ip` simulée vérifie le renouvellement de la seule entrée ARP du
+routeur et le blocage avant sonde si cette commande échoue.
 
 `test_lab_lock.py` vérifie la réservation du laboratoire entre processus et son
 annulation sans opération réseau. `test_deployment_workflow.py` vérifie les

@@ -20,6 +20,16 @@ l’accès à Proxmox et les templates. La configuration machine relève du
 [guide Ansible](../../../benchmarks/ansible/README.md) et de ses playbooks ; les
 adresses et secrets ne doivent pas être recopiés dans cette documentation.
 Utiliser l’environnement Python 3.12 validé pour le dépôt.
+
+Après l'injection, `06_verify.yml` invalide sur le contrôleur l'entrée ARP de la
+seule IP du routeur, car sa recréation peut changer sa MAC en conservant son IP.
+Il attend ensuite une bannière SSH 2.0 depuis ce même contrôleur qui exécutera
+l'audit, avec un délai maximal de 60 secondes.
+Le contrôle TCP réalisé depuis Proxmox pendant le déploiement ne suffit pas à
+valider ce trajet. Un port fermé, une réponse d'un autre protocole, un filtrage
+persistant ou un échec du renouvellement ARP bloque la préparation ; les
+contrôles du scanner restent inchangés.
+
 La vérification MQTT sur WebSocket utilise `paho-mqtt` 2.x, déclaré dans
 `requirements.txt` : mettre à jour les dépendances avec le code. La sonde est
 anonyme et en lecture seule ; elle n’accepte pas les URL complètes ni les chemins
