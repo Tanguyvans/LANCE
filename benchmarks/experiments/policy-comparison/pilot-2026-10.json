@@ -7,14 +7,18 @@
     "max_tool_calls": 200,
     "max_duration_s": 600,
     "max_cost_usd": 2.0,
-    "execution_profile": "full"
+    "execution_profile": "full",
+    "resource_manifest_sha256": "64dd04f2c0dcfeeb5a1ad810a462d2367ab520b690d8ef9600570f3c764788b1",
+    "rules_version": "shared-scanner-bounded-verification-v5"
   },
   "decision": {
     "delta_points": 5,
     "criterion": "Reject H0 for a condition only if the lower bound of the paired 95% CI of delta (confirmed TP, strict-v3), after Holm correction, exceeds delta.",
     "order_seed": 20261012,
     "model_version_rule": "qwen3.8:27b pinned for this pilot; record the Ollama digest at preflight before the first run. A newer same-size Qwen may only enter as an additional panel arm in a later campaign, never as a mid-campaign replacement.",
-    "cost_convention": "Local model: report wall time, tool calls and tokens per confirmed TP; USD cost uses the provider price grid if any, otherwise cost is reported in time/tokens only (no invented price)."
+    "cost_convention": "Local model: report wall time, tool calls and tokens per confirmed TP; USD cost uses the provider price grid if any, otherwise cost is reported in time/tokens only (no invented price).",
+    "model_digest_sha256": "22130167c4c20e20c7b71454612966ca8e8171e9b3cc8ab6ce8aa6cbfec79643",
+    "model_digest_source": "Ollama /api/tags via pve-nato tunnel, releve le 2026-10-13"
   },
   "trials": [
     {
