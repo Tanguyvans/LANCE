@@ -1,0 +1,131 @@
+name: Pilot smoke pair (temporary)
+
+# Temporary single-pair execution (S1, repetition 1) of the D1/A1 pilot
+# from the nato-master runner. Delete with the codex/pilot-2026-10
+# branch once the pilot is done. Never run two instances concurrently:
+# the job holds the shared laboratory lock.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/pilot-2026-10]
+    paths: [.github/workflows/pilot-smoke.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-lab-nato-master
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, nato-master]
+    timeout-minutes: 120
+    env:
+      LANCE_LAB_LOCK: /var/lib/lance/lab.lock
+      LANCE_DEPLOYMENT_ROOT: /opt/nato-smartcity-iot/output/scenario_deployments
+    steps:
+      - name: Run S1 smoke pair under laboratory lock
+        shell: bash
+        run: |
+          set -uo pipefail
+          test "$RUNNER_NAME" = nato-master
+          exec 9>>/var/lib/lance/lab.lock
+          flock -x 9
+          cd /opt/nato-smartcity-iot
+          PY=venv/bin/python
+          OUT=output/pilot-smoke
+          mkdir -p "$OUT"
+
+          echo "== deploy S1 =="
+          (cd benchmarks/ansible && ./deploy.sh 1) > "$OUT/deploy1.log" 2>&1 || { tail -50 "$OUT/deploy1.log"; exit 1; }
+
+          echo "== build public inventory from deployed state =="
+          $PY - <<'PY'
+          import hashlib, json, pathlib, subprocess
+          import yaml
+          gt = yaml.safe_load(open("benchmarks/ground_truth/dev/scenario_1.yaml"))
+          topo = gt["topology"]
+          hosts = [(topo["router"]["name"], topo["router"]["ip"])] + \
+                  [(s["name"], s["ip"]) for s in topo["services"]]
+          devices = []
+          for name, ip in hosts:
+              scan = subprocess.run(["nmap", "-Pn", "-n", "--open", "-p-", "--min-rate", "2000",
+                                     "-oG", "-", ip], capture_output=True, text=True, timeout=300)
+              ports = []
+              for line in scan.stdout.splitlines():
+                  if "Ports:" in line:
+                      for field in line.split("Ports:")[1].split(","):
+                          bits = field.strip().split("/")
+                          if len(bits) > 2 and bits[1] == "open":
+                              ports.append({"name": "tcp-" + bits[0], "port": int(bits[0]), "protocol": "tcp"})
+              devices.append({"id": name, "ip": ip, "services": ports})
+          env_hash = hashlib.sha256(open("benchmarks/scenarios/dev/S1.yaml", "rb").read()).hexdigest()
+          inventory = {
+              "schema_version": 1,
+              "provenance": "Deployed S1 inventory scanned from nato-master after deploy.sh 1 (smoke pair)",
+              "target_network": "192.168.100.0/24",
+              "devices": devices,
+              "experiment": {
+                  "id": "lance-policy-pilot-2026-10",
+                  "family_id": "flat-network",
+                  "instance_id": "s1",
+                  "trial_id": "s1-r1",
+                  "environment_sha256": env_hash,
+              },
+          }
+          pathlib.Path("output/pilot-smoke/inventory-s1-r1.json").write_text(json.dumps(inventory, indent=2) + "\n")
+          print(json.dumps({"devices": len(devices), "ports": sum(len(d["services"]) for d in devices)}))
+          PY
+
+          echo "== preflight attestation (arm 1) =="
+          $PY -c "import json,datetime,pathlib; p=pathlib.Path('output/pilot-smoke/preflight-s1-r1-rules.json'); p.write_text(json.dumps({'status':'valid','arm':'rules','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'evidence':'deploy1.log + inventory-s1-r1.json in this artifact'}, indent=2)+'\n')"
+
+          echo "== arm 1: rules =="
+          $PY -m src.agent --decision-policy rules \
+            --experiment-scope analysis-verification \
+            --audit-inventory output/pilot-smoke/inventory-s1-r1.json \
+            --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
+            --max-cost-usd 2 > "$OUT/arm-rules.log" 2>&1 || true
+          tail -20 "$OUT/arm-rules.log"
+
+          echo "== restore initial state =="
+          (cd benchmarks/ansible && ./deploy.sh 1) > "$OUT/deploy2.log" 2>&1 || { tail -50 "$OUT/deploy2.log"; exit 1; }
+          $PY -c "import json,datetime,pathlib; p=pathlib.Path('output/pilot-smoke/preflight-s1-r1-llm.json'); p.write_text(json.dumps({'status':'valid','arm':'llm','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'evidence':'deploy2.log (fresh deploy.sh 1) + inventory-s1-r1.json in this artifact'}, indent=2)+'\n')"
+
+          echo "== arm 2: llm =="
+          $PY -m src.agent --decision-policy llm --provider ollama-umons --model qwen3.8:27b \
+            --experiment-scope analysis-verification \
+            --audit-inventory output/pilot-smoke/inventory-s1-r1.json \
+            --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
+            --max-cost-usd 2 > "$OUT/arm-llm.log" 2>&1 || true
+          tail -20 "$OUT/arm-llm.log"
+
+          echo "== locate run dirs and compare =="
+          RULES_DIR=$(ls -dt output/agent/*/ | head -2 | tail -1)
+          LLM_DIR=$(ls -dt output/agent/*/ | head -1)
+          echo "rules_dir=$RULES_DIR llm_dir=$LLM_DIR"
+          echo "$RULES_DIR" > "$OUT/rules_dir.txt"
+          echo "$LLM_DIR" > "$OUT/llm_dir.txt"
+          $PY -m src.benchmark.compare_policies \
+            --rules-run "$RULES_DIR" --llm-run "$LLM_DIR" \
+            --ground-truth benchmarks/ground_truth/dev/scenario_1.yaml \
+            --output "$OUT/comparison-s1-r1.json" || true
+          test -f "$OUT/comparison-s1-r1.json" && head -c 1500 "$OUT/comparison-s1-r1.json"
+
+          echo "== teardown =="
+          (cd benchmarks/ansible && ansible-playbook -i inventory.yml playbooks/99_teardown.yml) > "$OUT/teardown.log" 2>&1 || tail -20 "$OUT/teardown.log" || true
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-smoke-s1-r1
+          path: |
+            output/pilot-smoke/
+            output/agent/*/run_meta.json
+            output/agent/*/audit_inventory.json
+            output/agent/*/cost_summary.json
+          retention-days: 14
+          if-no-files-found: warn
