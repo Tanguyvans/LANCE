@@ -53,7 +53,7 @@ jobs:
           ls -dt /opt/nato-smartcity-iot/output/agent/*/ 2>/dev/null | head -5
           for d in $(ls -dt /opt/nato-smartcity-iot/output/agent/*/ 2>/dev/null | head -3); do
             echo "### $d"; ls "$d" | head -20
-            test -f "$d/run_meta.json" && head -c 600 "$d/run_meta.json"; echo
+            if [ -f "$d/run_meta.json" ]; then head -c 600 "$d/run_meta.json"; echo; fi
           done
           echo "--- rules arm diagnostic (timeout 120) ---"
           cd /opt/nato-smartcity-iot
