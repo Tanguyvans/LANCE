@@ -55,8 +55,8 @@ nouveau.
   contributions candidates, expériences E1-E3, pistes bonus, rétroplanning,
   critères de décision et risques.
 - Proposition scientifique :
-  [PDF](../../research/2026-09-27-agent-vs-automation/proposition-conditions.pdf) ·
-  [LaTeX](../../research/2026-09-27-agent-vs-automation/proposition-conditions.tex)
+  [PDF](../../research/2026-10-12-recentrage-corpus/proposition-conditions.pdf) ·
+  [LaTeX](../../research/2026-10-12-recentrage-corpus/proposition-conditions.tex)
   (révision 2026-10-12 21:25, Europe/Brussels, UTC+02:00).
 - Protocole et comparateurs :
   [protocol.md](../../research/2026-09-27-agent-vs-automation/protocol.md),

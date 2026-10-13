@@ -97,6 +97,6 @@ campagne, dont le set devra couvrir les conditions de la proposition
 
 Propositions détaillées et relues (grille dérivée, edge cases EC1-EC4,
 séquençage) : rapport de recherche
-[structuration du corpus (PDF)](../../research/2026-09-27-agent-vs-automation/structuration-corpus.pdf)
-([LaTeX](../../research/2026-09-27-agent-vs-automation/structuration-corpus.tex)),
+[structuration du corpus (PDF)](../../research/2026-10-12-recentrage-corpus/structuration-corpus.pdf)
+([LaTeX](../../research/2026-10-12-recentrage-corpus/structuration-corpus.tex)),
 révision 2026-10-12 23:05.

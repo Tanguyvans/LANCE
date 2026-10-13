@@ -45,7 +45,7 @@ travail futur. Aucune réduction du travail humain n'est revendiquée sans
 ## 3. Ce qui est à tester
 
 Reprise des hypothèses H0-H3 de la
-[proposition](../../research/2026-09-27-agent-vs-automation/proposition-conditions.tex).
+[proposition](../../research/2026-10-12-recentrage-corpus/proposition-conditions.tex).
 Critère de décision unique : borne inférieure de l'intervalle de confiance
 apparié à 95 % de l'écart (delta A1-D1 en vrais positifs confirmés strict-v3)
 supérieure au seuil delta pré-enregistré, après correction de Holm.
@@ -114,8 +114,8 @@ Critères de décision du 2026-11-16, écrits à l'avance :
 
 Trois analyses parallèles (architecture, objectifs plateforme, métriques
 comportementales) sont consolidées dans le rapport de recherche
-[état des lieux plateforme (PDF)](../../research/2026-09-27-agent-vs-automation/etat-des-lieux-plateforme.pdf)
-([LaTeX](../../research/2026-09-27-agent-vs-automation/etat-des-lieux-plateforme.tex)) :
+[état des lieux plateforme (PDF)](../../research/2026-10-12-recentrage-corpus/etat-des-lieux-plateforme.pdf)
+([LaTeX](../../research/2026-10-12-recentrage-corpus/etat-des-lieux-plateforme.tex)) :
 six chantiers avant soumission — dont deux bloquants pour la preuve (split
 par famille, inférence appariée IC 95 % + Holm) —, objectifs mesurables
 C1-C3 et métriques au-delà du F1 (rejets de preuve, temps au premier vrai
