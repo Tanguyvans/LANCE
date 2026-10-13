@@ -6,6 +6,9 @@ name: Pilot inspect (temporary)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/pilot-2026-10]
+    paths: [.github/workflows/pilot-inspect.yml]
 
 permissions:
   contents: read
