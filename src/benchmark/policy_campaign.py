@@ -16,6 +16,9 @@ import yaml
 from src.agent.audit_experiment import digest, positive_limit
 from src.benchmark.comparability import configuration_identity
 from src.benchmark.compare_policies import compare_runs
+from src.benchmark.inference import family_inference
+
+INFERENCE_METRICS = ("confirmed.recall", "confirmed.precision", "confirmed.f1", "specificity")
 
 POLICIES = ("rules", "llm")
 RESOURCES = ("total_cost_usd", "wall_clock_duration_s", "total_tool_calls")
@@ -249,14 +252,18 @@ def summarize_campaign(path: Path):
                 for key in (*QUALITY, *RESOURCES)
                 for values in [[d[key] for d in deltas if d.get(key) is not None]]
             }})
-        technical.append({"configuration_group": group, "configuration": group_configs[group], "families": family_rows})
+        technical.append({"configuration_group": group, "configuration": group_configs[group], "families": family_rows,
+                          "inference": family_inference(families, INFERENCE_METRICS)})
     return {
         "schema_version": "policy-campaign-v1", "campaign_id": campaign["campaign_id"],
         "manifest_sha256": digest(campaign), "declared_configuration": campaign["configuration"],
         "unfixed_configuration_fields": sorted(CONFIG_FIELDS - set(campaign["configuration"])),
         "planned_pairs": len(pairs), "eligible_pairs": sum(p["campaign_eligible"] for p in pairs),
         "operational": summaries, "technical_on_eligible_pairs": technical, "trials": rows, "pairs": pairs,
-        "uncertainty": {"available": False, "reason": "Descriptive pilot only; no independence or sample-size claim"},
+        "uncertainty": (
+            {"available": True, "reason": "Family-level bootstrap inference reported per configuration group"}
+            if any(g["inference"]["available"] for g in technical) else
+            {"available": False, "reason": "Descriptive pilot only; no independence or sample-size claim"}),
         "environment_scope": "Preflight/reset is operator-declared; its file is hashed but not independently certified",
         "cost_scope": "Observed LLM accounting, including failed trials; no infrastructure or human cost estimate",
     }
