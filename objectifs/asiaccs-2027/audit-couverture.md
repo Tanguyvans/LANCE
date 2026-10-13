@@ -94,3 +94,9 @@ campagne, dont le set devra couvrir les conditions de la proposition
 1. Geler le pilote sur S1 / S14 / S15 / S1h (manifeste réel, modèle figé).
 2. Concevoir le set de campagne à partir des cases vides (constats 2-3),
    pas en prolongeant le corpus existant.
+
+Propositions détaillées et relues (grille dérivée, edge cases EC1-EC4,
+séquençage) : rapport de recherche
+[structuration du corpus (PDF)](../../research/2026-09-27-agent-vs-automation/structuration-corpus.pdf)
+([LaTeX](../../research/2026-09-27-agent-vs-automation/structuration-corpus.tex)),
+révision 2026-10-12 23:05.

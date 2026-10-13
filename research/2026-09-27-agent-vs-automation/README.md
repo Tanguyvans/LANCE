@@ -100,6 +100,7 @@ identifient des variantes du protocole, pas des scores.
 
 - **[Rapport principal — PDF](report.pdf)** : synthèse des trois axes, comparaisons, règles de décision et limites ; révision horodatée ci-dessus.
 - **[Source LaTeX éditable](report.tex)** : document autonome, avec figures TikZ et bibliographie intégrées ; support des prochaines retouches.
+- **[Structuration du corpus — PDF](structuration-corpus.pdf)** · [LaTeX](structuration-corpus.tex) : grille d'étiquetage dérivée (index annexe, catalogue inchangé), edge cases déployables EC1-EC4 (EC5/EC6 différés), sets pilote/campagne et séquençage en trois horizons. **Dernière révision : 2026-10-12 23:05 (Europe/Brussels, UTC+02:00). Statut : propositions relues, aucun résultat expérimental nouveau.** Trois propositions et deux contre-revues du 2026-10-12.
 - **[État des lieux plateforme — PDF](etat-des-lieux-plateforme.pdf)** · [LaTeX](etat-des-lieux-plateforme.tex) : architecture à changer (6 chantiers), objectifs plateforme mesurables et métriques comportementales, feuille de route vers la décision du 2026-11-16. **Dernière révision : 2026-10-12 22:11 (Europe/Brussels, UTC+02:00). Statut : état des lieux et propositions, aucun résultat expérimental nouveau.** Consolidation de trois analyses parallèles du 2026-10-12 (architecture, objectifs, métriques).
 - **[Proposition de recentrage — PDF](proposition-conditions.pdf)** · [LaTeX](proposition-conditions.tex) : question conditionnelle « sous quelles conditions A1 dépasse-t-il D1 ? », six conditions, hypothèses H0–H3 falsifiables, protocole apparié et critères d'arrêt/poursuite. **Dernière révision : 2026-10-12 21:25 (Europe/Brussels, UTC+02:00). Statut : protocole proposé, aucun résultat expérimental nouveau.** Recherche multi-agents (littérature, protocole, deux contre-revues) du 2026-10-12 ; relecture indépendante du PDF final consignée ci-dessous.
 - [Protocole scientifique](protocol.md) : hypothèses, comparateurs, mesures et limites.
@@ -143,6 +144,15 @@ rendu. Cette relecture ne constitue pas une nouvelle validation expérimentale.
 - [Guide CLI D1/A1](../../docs/benchmark/agent-vs-automation-cli.md).
 - [Guide de campagne](../../docs/benchmark/agent-vs-automation-campaign.md).
 - [Manifestes et revue des preuves](../../benchmarks/experiments/policy-comparison/README.md).
+
+## Relecture de la structuration du corpus du 12 octobre 2026
+
+Rapport relu le 2026-10-12 par un sous-agent distinct (source + 5 pages PDF) :
+aucun bloquant, quatre mineurs corrigés puis recompilés (définitions H0-H3 et
+S4h ajoutées, maturité EC1/EC2 contre EC3/EC4 précisée, flèche directe
+Horizon 1 vers Horizon 2 supprimée au profit de la porte de décision,
+colonnes du tableau 1 élargies). Ne constitue ni validation logicielle ni
+validation expérimentale.
 
 ## Relecture de la proposition du 12 octobre 2026
 
