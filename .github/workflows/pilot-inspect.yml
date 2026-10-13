@@ -55,3 +55,8 @@ jobs:
             echo "### $d"; ls "$d" | head -20
             test -f "$d/run_meta.json" && head -c 600 "$d/run_meta.json"; echo
           done
+          echo "--- rules arm diagnostic (timeout 120) ---"
+          cd /opt/nato-smartcity-iot
+          timeout 120 venv/bin/python -u -m src.agent --decision-policy rules --experiment-scope analysis-verification --audit-inventory output/pilot-smoke/inventory-s1-r1.json --execution-profile full --max-tool-calls 200 --max-duration-s 600 --max-cost-usd 2 > /tmp/rules-diag.log 2>&1; echo "exit=$?"
+          tail -40 /tmp/rules-diag.log
+          ls -dt output/agent/*/ | head -2
