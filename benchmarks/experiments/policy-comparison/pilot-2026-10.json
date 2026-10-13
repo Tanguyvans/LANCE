@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "campaign_id": "lance-policy-pilot-2026-10",
+  "configuration": {
+    "provider": "ollama-umons",
+    "model": "qwen3.8:27b",
+    "max_tool_calls": 200,
+    "max_duration_s": 600,
+    "max_cost_usd": 2.0,
+    "execution_profile": "full"
+  },
+  "decision": {
+    "delta_points": 5,
+    "criterion": "Reject H0 for a condition only if the lower bound of the paired 95% CI of delta (confirmed TP, strict-v3), after Holm correction, exceeds delta.",
+    "order_seed": 20261012,
+    "model_version_rule": "qwen3.8:27b pinned for this pilot; record the Ollama digest at preflight before the first run. A newer same-size Qwen may only enter as an additional panel arm in a later campaign, never as a mid-campaign replacement.",
+    "cost_convention": "Local model: report wall time, tool calls and tokens per confirmed TP; USD cost uses the provider price grid if any, otherwise cost is reported in time/tokens only (no invented price)."
+  },
+  "trials": [
+    {
+      "trial_id": "s1-r1",
+      "family_id": "flat-network",
+      "instance_id": "s1",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_1.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s1-r2",
+      "family_id": "flat-network",
+      "instance_id": "s1",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_1.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s1-r3",
+      "family_id": "flat-network",
+      "instance_id": "s1",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_1.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s14-r1",
+      "family_id": "mixed-hardening",
+      "instance_id": "s14",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_14.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s14-r2",
+      "family_id": "mixed-hardening",
+      "instance_id": "s14",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_14.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s14-r3",
+      "family_id": "mixed-hardening",
+      "instance_id": "s14",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_14.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s15-r1",
+      "family_id": "tenant-isolation",
+      "instance_id": "s15",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_15.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s15-r2",
+      "family_id": "tenant-isolation",
+      "instance_id": "s15",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_15.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s15-r3",
+      "family_id": "tenant-isolation",
+      "instance_id": "s15",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_15.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s1h-r1",
+      "family_id": "flat-network-hardened",
+      "instance_id": "s1h",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_1h.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s1h-r2",
+      "family_id": "flat-network-hardened",
+      "instance_id": "s1h",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_1h.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s1h-r3",
+      "family_id": "flat-network-hardened",
+      "instance_id": "s1h",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_1h.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    }
+  ]
+}
