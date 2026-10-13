@@ -39,7 +39,7 @@ jobs:
           mkdir -p "$OUT"
 
           echo "== deploy S1 =="
-          (cd benchmarks/ansible && bash deploy.sh 1) > "$OUT/deploy1.log" 2>&1 || { tail -50 "$OUT/deploy1.log"; exit 1; }
+          (cd benchmarks/ansible && bash deploy.sh 1 --vault-pass-file /root/.vault_pass) > "$OUT/deploy1.log" 2>&1 || { tail -50 "$OUT/deploy1.log"; exit 1; }
 
           echo "== build public inventory from deployed state =="
           $PY - <<'PY'
@@ -91,7 +91,7 @@ jobs:
           tail -20 "$OUT/arm-rules.log"
 
           echo "== restore initial state =="
-          (cd benchmarks/ansible && bash deploy.sh 1) > "$OUT/deploy2.log" 2>&1 || { tail -50 "$OUT/deploy2.log"; exit 1; }
+          (cd benchmarks/ansible && bash deploy.sh 1 --vault-pass-file /root/.vault_pass) > "$OUT/deploy2.log" 2>&1 || { tail -50 "$OUT/deploy2.log"; exit 1; }
           $PY -c "import json,datetime,pathlib; p=pathlib.Path('output/pilot-smoke/preflight-s1-r1-llm.json'); p.write_text(json.dumps({'status':'valid','arm':'llm','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'evidence':'deploy2.log (fresh deploy.sh 1) + inventory-s1-r1.json in this artifact'}, indent=2)+'\n')"
 
           echo "== arm 2: llm =="
