@@ -61,3 +61,9 @@ jobs:
           timeout 120 venv/bin/python -u -m src.agent --decision-policy rules --experiment-scope analysis-verification --audit-inventory output/pilot-smoke/inventory-s1-r1.json --execution-profile full --max-tool-calls 200 --max-duration-s 600 --max-cost-usd 2 > /tmp/rules-diag.log 2>&1; echo "exit=$?"
           tail -40 /tmp/rules-diag.log
           ls -dt output/agent/*/ | head -2
+          echo "--- inventory content ---"
+          cat /opt/nato-smartcity-iot/output/pilot-smoke/inventory-s1-r1.json
+          echo "--- diag run files ---"
+          ls /opt/nato-smartcity-iot/output/agent/2026-10-13_211132/
+          echo "--- original smoke inventory build output ---"
+          grep -a "devices" /opt/nato-smartcity-iot/output/pilot-smoke/deploy1.log | tail -2
