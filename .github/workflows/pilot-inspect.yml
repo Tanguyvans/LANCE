@@ -43,6 +43,7 @@ jobs:
           /opt/nato-smartcity-iot/venv/bin/python -m src.agent --help 2>&1 | grep -E "decision-policy|audit-inventory" | head -4
           echo "--- ollama models (umons) ---"
           curl -fsS --max-time 10 http://100.76.206.65:11435/api/tags 2>/dev/null | head -c 300; echo
+          set +e
           echo "--- pilot-smoke logs (cancelled run) ---"
           ls -la /opt/nato-smartcity-iot/output/pilot-smoke/ 2>&1
           for f in deploy1.log deploy2.log arm-rules.log arm-llm.log; do
