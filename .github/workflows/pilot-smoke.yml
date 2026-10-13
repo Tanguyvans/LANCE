@@ -34,7 +34,8 @@ jobs:
           exec 9>>/var/lib/lance/lab.lock
           flock -x 9
           cd /opt/nato-smartcity-iot
-          PY=venv/bin/python
+          PY="venv/bin/python -u"
+          export PYTHONUNBUFFERED=1
           OUT=output/pilot-smoke
           mkdir -p "$OUT"
 
@@ -51,7 +52,7 @@ jobs:
                   [(s["name"], s["ip"]) for s in topo["services"]]
           devices = []
           for name, ip in hosts:
-              scan = subprocess.run(["nmap", "-Pn", "-n", "--open", "-p-", "--min-rate", "2000",
+              scan = subprocess.run(["nmap", "-Pn", "-n", "-sV", "--version-intensity", "2", "--open", "-p-", "--min-rate", "2000",
                                      "-oG", "-", ip], capture_output=True, text=True, timeout=300)
               ports = []
               for line in scan.stdout.splitlines():
@@ -59,7 +60,7 @@ jobs:
                       for field in line.split("Ports:")[1].split(","):
                           bits = field.strip().split("/")
                           if len(bits) > 2 and bits[1] == "open":
-                              ports.append({"name": "tcp-" + bits[0], "port": int(bits[0]), "protocol": "tcp"})
+                              ports.append({"name": bits[4] if len(bits) > 4 and bits[4] else "tcp-" + bits[0], "port": int(bits[0]), "protocol": "tcp"})
               devices.append({"id": name, "ip": ip, "services": ports})
           env_hash = hashlib.sha256(open("benchmarks/scenarios/dev/S1.yaml", "rb").read()).hexdigest()
           inventory = {
@@ -83,7 +84,8 @@ jobs:
           $PY -c "import json,datetime,pathlib; p=pathlib.Path('output/pilot-smoke/preflight-s1-r1-rules.json'); p.write_text(json.dumps({'status':'valid','arm':'rules','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'evidence':'deploy1.log + inventory-s1-r1.json in this artifact'}, indent=2)+'\n')"
 
           echo "== arm 1: rules =="
-          $PY -m src.agent --decision-policy rules \
+          touch "$OUT/.marker-rules"
+          timeout 1500 $PY -m src.agent --decision-policy rules \
             --experiment-scope analysis-verification \
             --audit-inventory output/pilot-smoke/inventory-s1-r1.json \
             --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
@@ -95,7 +97,8 @@ jobs:
           $PY -c "import json,datetime,pathlib; p=pathlib.Path('output/pilot-smoke/preflight-s1-r1-llm.json'); p.write_text(json.dumps({'status':'valid','arm':'llm','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'evidence':'deploy2.log (fresh deploy.sh 1) + inventory-s1-r1.json in this artifact'}, indent=2)+'\n')"
 
           echo "== arm 2: llm =="
-          $PY -m src.agent --decision-policy llm --provider ollama-umons --model qwen3.8:27b \
+          touch "$OUT/.marker-llm"
+          timeout 1500 $PY -m src.agent --decision-policy llm --provider ollama-umons --model qwen3.8:27b \
             --experiment-scope analysis-verification \
             --audit-inventory output/pilot-smoke/inventory-s1-r1.json \
             --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
@@ -103,8 +106,9 @@ jobs:
           tail -20 "$OUT/arm-llm.log"
 
           echo "== locate run dirs and compare =="
-          RULES_DIR=$(ls -dt output/agent/*/ | head -2 | tail -1)
-          LLM_DIR=$(ls -dt output/agent/*/ | head -1)
+          RULES_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -newer "$OUT/.marker-rules" ! -newer "$OUT/.marker-llm" | head -1)
+          LLM_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -newer "$OUT/.marker-llm" | head -1)
+          test -n "$RULES_DIR" && test -n "$LLM_DIR"
           echo "rules_dir=$RULES_DIR llm_dir=$LLM_DIR"
           echo "$RULES_DIR" > "$OUT/rules_dir.txt"
           echo "$LLM_DIR" > "$OUT/llm_dir.txt"
@@ -115,7 +119,7 @@ jobs:
           test -f "$OUT/comparison-s1-r1.json" && head -c 1500 "$OUT/comparison-s1-r1.json"
 
           echo "== teardown =="
-          (cd benchmarks/ansible && ansible-playbook -i inventory.yml playbooks/99_teardown.yml) > "$OUT/teardown.log" 2>&1 || tail -20 "$OUT/teardown.log" || true
+          (cd benchmarks/ansible && ansible-playbook -i inventory.yml playbooks/99_teardown.yml --extra-vars scenario_id=1) > "$OUT/teardown.log" 2>&1 || tail -20 "$OUT/teardown.log" || true
 
       - name: Upload smoke artifacts
         if: always()
@@ -123,9 +127,9 @@ jobs:
         with:
           name: pilot-smoke-s1-r1
           path: |
-            output/pilot-smoke/
-            output/agent/*/run_meta.json
-            output/agent/*/audit_inventory.json
-            output/agent/*/cost_summary.json
+            /opt/nato-smartcity-iot/output/pilot-smoke/
+            /opt/nato-smartcity-iot/output/agent/*/run_meta.json
+            /opt/nato-smartcity-iot/output/agent/*/audit_inventory.json
+            /opt/nato-smartcity-iot/output/agent/*/cost_summary.json
           retention-days: 14
           if-no-files-found: warn

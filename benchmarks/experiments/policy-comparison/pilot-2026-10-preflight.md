@@ -39,3 +39,22 @@ protocole interdit.
   être lancés depuis une session sur `nato-master` (ou un workflow
   temporaire équivalent, supprimé après usage), pas depuis le poste de
   développement.
+
+## Paire fumée S1 r1 — essais du 2026-10-13 (tous conservés, aucun interprété)
+
+- Run `38435392572` : échec `./deploy.sh: Permission denied` (avant déploiement).
+- Run `38435541026` : échec vault interactif EOF (avant déploiement).
+- Run `38435795041` : annulé à 120 min. Déploiement OK (1m50), inventaire OK,
+  puis bras `rules` sans sortie pendant ~117 min (run_dir créé vide, log 0 octet,
+  python bufferisé). Diagnostic borné (run `38452868852`, reprise de l'inventaire
+  fumée sur labo encore déployé) : le bras `rules` termine en <120 s mais avec
+  **0 service scanné par hôte** — l'inventaire fumée nommait les services
+  `tcp-<port>`, absents de `SERVICE_ALIASES` : le scanner déterministe ne
+  reconnaît aucune règle. Défaut de mécanique du workflow fumée (noms canoniques
+  nmap `-sV` requis), pas du manifeste. Artefacts du run annulé non téléversés :
+  chemins relatifs au workspace alors que le job travaille dans
+  `/opt/nato-smartcity-iot` (corrigé en chemins absolus).
+- Corrections mécanique uniquement (set, modèle, critère inchangés) :
+  noms de services canoniques `-sV`, `PYTHONUNBUFFERED=1`, `timeout 1500` par
+  bras, sélection des `run_dir` par marqueurs temporels, teardown
+  `--extra-vars scenario_id=1`, artefacts en chemins absolus.
