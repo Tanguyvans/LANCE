@@ -24,3 +24,18 @@ Relevé le 2026-10-13. Manifeste :
 Tant que ces trois points ne sont pas clos, aucun bras ne doit être
 lancé : un échec serait attribué au laboratoire a posteriori, ce que le
 protocole interdit.
+
+## Accès d'exécution (inventaire du 2026-10-13)
+
+- SSH depuis le poste de développement vers `nato-master`
+  (100.103.253.86) : clé d'hôte vérifiée (présente dans `known_hosts`),
+  mais authentification refusée pour tous les utilisateurs et clés
+  locales essayés (`Permission denied (publickey,password)`). Aucun
+  compte `nato-master` dans `~/.ssh/config`. Aucun accès forcé.
+- Voie d'exécution établie par l'usage du dépôt : le runner
+  `nato-master` lui-même (le workflow temporaire « S1 SSH diagnostic »
+  du 2026-10-12 y a exécuté des diagnostics SSH vers les équipements
+  avec un identifiant local au runner). Les bras du pilote doivent donc
+  être lancés depuis une session sur `nato-master` (ou un workflow
+  temporaire équivalent, supprimé après usage), pas depuis le poste de
+  développement.
