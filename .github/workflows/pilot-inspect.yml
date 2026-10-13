@@ -67,3 +67,7 @@ jobs:
           ls /opt/nato-smartcity-iot/output/agent/2026-10-13_211132/
           echo "--- original smoke inventory build output ---"
           grep -a "devices" /opt/nato-smartcity-iot/output/pilot-smoke/deploy1.log | tail -2
+          echo "--- full rules-diag log ---"
+          cat /tmp/rules-diag.log 2>/dev/null | head -80
+          echo "--- original run dir timed entries ---"
+          ls -la /opt/nato-smartcity-iot/output/agent/2026-10-13_190815/ 2>&1
