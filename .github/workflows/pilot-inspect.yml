@@ -1,0 +1,42 @@
+name: Pilot inspect (temporary)
+
+# Temporary read-only inspection of the nato-master runner environment
+# before any pilot arm is executed. Delete with the codex/pilot-2026-10
+# branch once the pilot is done.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-inspect-nato-master
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, nato-master]
+    timeout-minutes: 10
+    steps:
+      - name: Inspect runner environment (read-only)
+        shell: bash
+        run: |
+          set -uo pipefail
+          test "$RUNNER_NAME" = nato-master
+          ip -o -4 addr show | grep -q '100\.103\.253\.86/'
+          echo "host=$(hostname) uid=$(id -u)"
+          echo "--- lab lock / deployment root ---"
+          ls -la /var/lib/lance/ 2>&1 | head -5
+          ls /opt/nato-smartcity-iot/output/scenario_deployments 2>&1 | head -10
+          echo "--- checkouts ---"
+          for d in /opt/nato-smartcity-iot /opt/lance-dev-1 /opt/lance-dev-2; do
+            if [ -d "$d/.git" ]; then echo "$d HEAD=$(git -C "$d" rev-parse --short HEAD 2>/dev/null)"; fi
+            if [ -x "$d/venv/bin/python" ]; then echo "$d venv=ok"; fi
+          done
+          echo "--- pipeline status (main) ---"
+          curl -fsS --max-time 10 http://127.0.0.1:8501/api/pipeline/status | head -c 400; echo
+          echo "--- audit CLI present in main checkout ---"
+          /opt/nato-smartcity-iot/venv/bin/python -m src.agent --help 2>&1 | grep -E "decision-policy|audit-inventory" | head -4
+          echo "--- ollama models (umons) ---"
+          curl -fsS --max-time 10 http://100.76.206.65:11435/api/tags 2>/dev/null | head -c 300; echo
