@@ -522,6 +522,27 @@ def _compact_score(score: dict[str, Any] | None) -> dict[str, Any] | None:
     return compact
 
 
+def _experiment_scenario_id(run_dir: Path) -> str | None:
+    """Scenario of a CLI audit-inventory run, from its recorded experiment.
+
+    Such runs (e.g. the D1/A1 policy pilot) have no scenario_meta.json;
+    run_meta.experiment.instance_id carries the scenario instance ("s1").
+    """
+    try:
+        run_meta = _read_run_meta(run_dir)
+    except Exception:
+        return None
+    if not run_meta:
+        return None
+    experiment = run_meta.get("experiment")
+    if not isinstance(experiment, dict):
+        return None
+    instance = experiment.get("instance_id")
+    if not isinstance(instance, str) or not instance.strip():
+        return None
+    return _normalized_scenario_id(instance)
+
+
 def _detect_scenario(run_dir: Path) -> str | None:
     """Detect scenario ID from scenario_meta.json if present."""
     try:
@@ -531,7 +552,8 @@ def _detect_scenario(run_dir: Path) -> str | None:
             return f"S{_normalized_scenario_id(sid)}" if sid is not None else None
     except Exception:
         pass
-    return None
+    fallback = _experiment_scenario_id(run_dir)
+    return f"S{fallback}" if fallback is not None else None
 
 
 def _run_status(run_dir: Path) -> str:
@@ -621,12 +643,26 @@ def _benchmark_candidate(run_dir: Path) -> dict[str, Any] | None:
         metadata = _read_scenario_meta(run_dir)
     except Exception:
         return None
-    if metadata is None or metadata.get("scenario_id") is None:
+    if metadata is not None and metadata.get("scenario_id") is not None:
+        return {
+            "run_dir": run_dir,
+            "scenario": f"S{_normalized_scenario_id(metadata['scenario_id'])}",
+            "model": metadata.get("model"),
+            "sealed": _is_sealed_run(run_dir),
+        }
+    # CLI audit-inventory runs carry their scenario in the experiment
+    # recorded in run_meta instead of scenario_meta.json.
+    fallback = _experiment_scenario_id(run_dir)
+    if fallback is None:
         return None
+    try:
+        run_meta = _read_run_meta(run_dir) or {}
+    except Exception:
+        run_meta = {}
     return {
         "run_dir": run_dir,
-        "scenario": f"S{_normalized_scenario_id(metadata['scenario_id'])}",
-        "model": metadata.get("model"),
+        "scenario": f"S{fallback}",
+        "model": run_meta.get("model"),
         "sealed": _is_sealed_run(run_dir),
     }
 

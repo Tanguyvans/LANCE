@@ -653,3 +653,47 @@ class TestRunEndpoints:
                 "gt_severity": "high",
             }],
         }
+
+
+class TestAuditInventoryRunVisibility:
+    """CLI audit-inventory runs (pilot D1/A1) have no scenario_meta.json;
+    their scenario comes from run_meta.experiment.instance_id."""
+
+    def _make_audit_run(self, tmp_path):
+        run = tmp_path / "2026-10-14_105442"
+        run.mkdir()
+        (run / "run_meta.json").write_text(json.dumps({
+            "status": "completed",
+            "model": None,
+            "decision_policy": "rules",
+            "experiment_scope": "analysis-verification",
+            "experiment": {
+                "id": "lance-policy-pilot-2026-10",
+                "family_id": "flat-network",
+                "instance_id": "s1",
+                "trial_id": "s1-r1",
+                "environment_sha256": "a" * 64,
+            },
+        }))
+        return run
+
+    def test_audit_run_is_benchmark_candidate(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        run = self._make_audit_run(tmp_path)
+        candidate = runs._benchmark_candidate(run)
+        assert candidate is not None
+        assert candidate["scenario"] == "S1"
+
+    def test_audit_run_scenario_detected_in_listing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        self._make_audit_run(tmp_path)
+        assert list_runs()[0]["scenario"] == "S1"
+
+    def test_run_without_scenario_or_experiment_stays_excluded(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        run = tmp_path / "2026-10-14_120000"
+        run.mkdir()
+        (run / "run_meta.json").write_text(json.dumps({"status": "completed"}))
+        assert runs._benchmark_candidate(run) is None
