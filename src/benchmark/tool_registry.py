@@ -197,6 +197,21 @@ SERVICE_ALIASES: dict[str, str] = {
 }
 
 
+def service_matrix_key(service: object) -> str | None:
+    """Resolve a declared service name to its scanner matrix key.
+
+    nmap -sV marks uncertain identifications with a trailing "?"
+    ("telnet?") and tunnelled services with a pipe ("ssl|http");
+    both spellings denote the canonical service.
+    """
+    name = str(service).strip().casefold()
+    for candidate in (name, name.rstrip("?"), name.rstrip("?").replace("|", "/")):
+        key = SERVICE_ALIASES.get(candidate)
+        if key is not None:
+            return key
+    return None
+
+
 PHASES = ("recon", "verification", "intrusion")
 INTERNAL_TOOLS = frozenset({"save_deliverable", "read_deliverable", "complete_intrusion_campaign"})
 

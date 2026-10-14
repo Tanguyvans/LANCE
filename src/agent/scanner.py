@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
-from src.benchmark.tool_registry import SERVICE_ALIASES
+from src.benchmark.tool_registry import service_matrix_key
 from src.agent.cost_tracker import BudgetExceeded
 from src.agent.core.executor import EvidenceWriteError
 from src.agent.tools.outcomes import tool_execution_failed
@@ -521,7 +521,7 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
     for svc in device.get("services", []):
         svc_name = svc.get("name", "").lower()
         port = svc.get("port", 0)
-        matrix_key = SERVICE_ALIASES.get(svc_name)
+        matrix_key = service_matrix_key(svc_name)
         if not matrix_key or matrix_key not in SCAN_MATRIX:
             if diagnostics is not None:
                 diagnostics.append(f"{device_id}: no scanner rule for service {svc_name}")
