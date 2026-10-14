@@ -1,14 +1,15 @@
 name: Pilot smoke pair (temporary)
 
 # Temporary single-pair execution (S1, repetition 1) of the D1/A1 pilot
-# from the nato-master runner. Delete with the codex/pilot-2026-10
-# branch once the pilot is done. Never run two instances concurrently:
-# the job holds the shared laboratory lock.
+# from the nato-master runner, against the dev-1 instance checkout
+# (/opt/lance-dev-1, branch dev/1 — a branch the mini-PC pulls). Delete
+# this workflow once the pilot is done. Never run two instances
+# concurrently: the job holds the shared laboratory lock.
 
 on:
   workflow_dispatch:
   push:
-    branches: [codex/pilot-2026-10]
+    branches: [dev/1]
     paths: [.github/workflows/pilot-smoke.yml]
 
 permissions:
@@ -24,7 +25,7 @@ jobs:
     timeout-minutes: 120
     env:
       LANCE_LAB_LOCK: /var/lib/lance/lab.lock
-      LANCE_DEPLOYMENT_ROOT: /opt/nato-smartcity-iot/output/scenario_deployments
+      LANCE_DEPLOYMENT_ROOT: /opt/lance-dev-1/output/scenario_deployments
     steps:
       - name: Run S1 smoke pair under laboratory lock
         shell: bash
@@ -33,7 +34,7 @@ jobs:
           test "$RUNNER_NAME" = nato-master
           exec 9>>/var/lib/lance/lab.lock
           flock -x 9
-          cd /opt/nato-smartcity-iot
+          cd /opt/lance-dev-1
           PY="venv/bin/python -u"
           export PYTHONUNBUFFERED=1
           OUT=output/pilot-smoke
@@ -127,9 +128,9 @@ jobs:
         with:
           name: pilot-smoke-s1-r1
           path: |
-            /opt/nato-smartcity-iot/output/pilot-smoke/
-            /opt/nato-smartcity-iot/output/agent/*/run_meta.json
-            /opt/nato-smartcity-iot/output/agent/*/audit_inventory.json
-            /opt/nato-smartcity-iot/output/agent/*/cost_summary.json
+            /opt/lance-dev-1/output/pilot-smoke/
+            /opt/lance-dev-1/output/agent/*/run_meta.json
+            /opt/lance-dev-1/output/agent/*/audit_inventory.json
+            /opt/lance-dev-1/output/agent/*/cost_summary.json
           retention-days: 14
           if-no-files-found: warn

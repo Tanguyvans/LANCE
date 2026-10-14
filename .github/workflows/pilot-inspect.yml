@@ -1,13 +1,13 @@
 name: Pilot inspect (temporary)
 
 # Temporary read-only inspection of the nato-master runner environment
-# before any pilot arm is executed. Delete with the codex/pilot-2026-10
-# branch once the pilot is done.
+# before any pilot arm is executed. Lives on dev/1 (a branch the mini-PC
+# pulls, instance dev-1). Delete this workflow once the pilot is done.
 
 on:
   workflow_dispatch:
   push:
-    branches: [codex/pilot-2026-10]
+    branches: [dev/1]
     paths: [.github/workflows/pilot-inspect.yml]
 
 permissions:
