@@ -1,0 +1,39 @@
+name: Pilot teardown (temporary)
+
+# Temporary laboratory cleanup: tear down one pilot scenario with the
+# vault password file (the campaign workflow's final teardown in
+# earlier revisions omitted it and failed silently). Delete after use.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario_id:
+        description: 'Scenario id to tear down (1, 14, 15, 1h)'
+        required: true
+        default: '1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-lab-nato-master
+  cancel-in-progress: false
+
+jobs:
+  teardown:
+    runs-on: [self-hosted, nato-master]
+    timeout-minutes: 30
+    steps:
+      - name: Teardown scenario under laboratory lock
+        shell: bash
+        env:
+          SCENARIO_ID: ${{ inputs.scenario_id }}
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = nato-master
+          exec 9>>/var/lib/lance/lab.lock
+          flock -x 9
+          cd /opt/nato-smartcity-iot/benchmarks/ansible
+          ansible-playbook -i inventory.yml playbooks/99_teardown.yml \
+            --vault-password-file /root/.vault_pass \
+            --extra-vars "scenario_id=$SCENARIO_ID"
