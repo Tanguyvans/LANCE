@@ -40,9 +40,10 @@ def test_every_trial_resolves_to_existing_files():
     manifest = load_manifest(PILOT)
     root = PILOT.parents[3]
     assert len(manifest["trials"]) == 12
+    scenario_files = {"s1": "S1.yaml", "s14": "S14.yaml", "s15": "S15.yaml", "s1h": "S1h.yaml"}
     for trial in manifest["trials"]:
         gt = (PILOT.parent / trial["ground_truth"]).resolve()
         assert gt.is_file(), trial["trial_id"]
-        scenario = root / "benchmarks/scenarios/dev" / f"{trial['instance_id'].upper()}.yaml"
+        scenario = root / "benchmarks/scenarios/dev" / scenario_files[trial["instance_id"]]
         assert scenario.is_file(), trial["trial_id"]
         assert trial["order"] in (["rules", "llm"], ["llm", "rules"])
