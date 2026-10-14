@@ -118,3 +118,17 @@ pour le bras llm dès S1. Décision à prendre avant toute mesure des
 à documenter) ou traiter le dépassement comme résultat mesuré — le
 comparateur actuel écarte la paire au lieu de la scorer. Aucune
 extension aux autres paires tant que ce point n'est pas tranché.
+
+## Calibration budgets (2026-10-14, après fumées S1)
+
+Constat mesuré : à 600 s de budget total et 240 s par appareil, le
+bras llm ne peut pas terminer S1 (phase 3 série : 4 appareils,
+requêtes modèle de 20-65 s ; `s1-web` tué par la deadline appareil,
+puis budget global épuisé en phase 4, artefact `04_exploitation.json`
+jamais produit, paire écartée). Calibration du pilote, décidée avant
+toute mesure des 12 paires et appliquée à l'identique aux deux bras :
+`max_duration_s` 600 -> 1800 et nouveau champ manifeste
+`phase3_device_timeout_s` = 600 (env `LANCE_PHASE3_DEVICE_TIMEOUT_S`,
+défaut code 240 inchangé hors pilote). Les plafonds appels (200) et
+coût (2 USD) ne mordaient pas (94 appels, 0,49 USD observés) et sont
+inchangés, de même que le modèle, le set et le critère δ.

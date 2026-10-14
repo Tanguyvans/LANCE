@@ -27,6 +27,9 @@ QUALITY = ("confirmed.true_positives", "confirmed.false_positives", "confirmed.f
            "specificity", "negative_control_specificity", "negative_control_violations")
 CONFIG_FIELDS = {"provider", "model", "rules_version", "resource_manifest_sha256",
                  "max_tool_calls", "max_duration_s", "max_cost_usd", "execution_profile"}
+# Manifest-only calibration, applied by the runner via environment;
+# run_meta records the effective value inside analysis_limits instead.
+OPTIONAL_CONFIG_FIELDS = {"phase3_device_timeout_s"}
 
 
 def _number(value):
@@ -56,10 +59,10 @@ def load_manifest(path: Path):
     if not isinstance(data.get("campaign_id"), str) or not data["campaign_id"].strip():
         raise ValueError("campaign_id is required")
     configuration = data.get("configuration")
-    if not isinstance(configuration, dict) or set(configuration) - CONFIG_FIELDS:
+    if not isinstance(configuration, dict) or set(configuration) - CONFIG_FIELDS - OPTIONAL_CONFIG_FIELDS:
         raise ValueError("configuration must contain supported run metadata fields")
     for key, value in configuration.items():
-        if key in {"max_tool_calls", "max_duration_s", "max_cost_usd"}:
+        if key in {"max_tool_calls", "max_duration_s", "max_cost_usd", "phase3_device_timeout_s"}:
             positive_limit(value, key, integer=key == "max_tool_calls")
             if value is None and key != "max_cost_usd":
                 raise ValueError(f"{key} cannot be null")
