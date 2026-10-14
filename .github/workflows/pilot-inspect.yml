@@ -37,7 +37,7 @@ jobs:
           import stat
           import sys
           import tarfile
-          
+
           root = Path('/opt/nato-smartcity-iot')
           trial_id = 's14-r1'
           run_id, attempt = sys.argv[1:]
@@ -70,7 +70,7 @@ jobs:
                   assert member.size == record['size'] and member_digest == record['sha256'], 'Member mismatch'
                   seen.add(member.name)
           assert seen == set(expected), 'Manifest/archive member sets differ'
-          
+
           # Check that no existing source file predating the archive was omitted.
           source_roots = [(trial, 'trial')]
           for policy, relative in manifest['runs'].items():
@@ -88,7 +88,7 @@ jobs:
                       if name not in expected:
                           (later if source.stat().st_mtime_ns > archive.stat().st_mtime_ns else missing).append(name)
           assert not missing, f'{len(missing)} source files omitted from archive'
-          
+
           summaries = {}
           for policy, relative in manifest['runs'].items():
               if relative is None:
