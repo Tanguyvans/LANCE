@@ -1,88 +1,130 @@
 name: Pilot inspect (temporary)
 
-# Temporary read-only inspection of the nato-master runner environment
-# before any pilot arm is executed. Lives on dev/1 (a branch the mini-PC
-# pulls, instance dev-1). Delete this workflow once the pilot is done.
-
+# Temporary verification branch only: no audits, deployments or source writes.
 on:
   workflow_dispatch:
-  push:
-    branches: [dev/1]
-    paths: [.github/workflows/pilot-inspect.yml]
-
+    inputs:
+      campaign_run_id:
+        type: string
+        required: true
+      attempt:
+        type: string
+        default: '1'
 permissions:
   contents: read
-
 concurrency:
-  group: pilot-inspect-nato-master
+  group: pilot-evidence-verify-nato-master
   cancel-in-progress: false
-
 jobs:
   inspect:
     runs-on: [self-hosted, nato-master]
     timeout-minutes: 10
     steps:
-      - name: Inspect runner environment (read-only)
+      - name: Verify immutable S14 evidence on nato (read-only)
         shell: bash
+        env:
+          CAMPAIGN_RUN_ID: ${{ inputs.campaign_run_id }}
+          CAMPAIGN_ATTEMPT: ${{ inputs.attempt }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
           test "$RUNNER_NAME" = nato-master
           ip -o -4 addr show | grep -q '100\.103\.253\.86/'
-          echo "host=$(hostname) uid=$(id -u)"
-          echo "--- lab lock / deployment root ---"
-          ls -la /var/lib/lance/ 2>&1 | head -5
-          ls /opt/nato-smartcity-iot/output/scenario_deployments 2>&1 | head -10
-          echo "--- checkouts ---"
-          for d in /opt/nato-smartcity-iot /opt/lance-dev-1 /opt/lance-dev-2; do
-            if [ -d "$d/.git" ]; then echo "$d HEAD=$(git -C "$d" rev-parse --short HEAD 2>/dev/null)"; fi
-            if [ -x "$d/venv/bin/python" ]; then echo "$d venv=ok"; fi
-          done
-          echo "--- pipeline status (main) ---"
-          curl -fsS --max-time 10 http://127.0.0.1:8501/api/pipeline/status | head -c 400; echo
-          echo "--- dev-1 benchmark listing (8502) ---"
-          curl -fsS --max-time 10 "http://127.0.0.1:8502/api/runs/benchmark?compact=true&limit=6" | head -c 1500; echo
-          echo "--- recover s1-r1 comparison (dev-1, run dirs from campaign 38558691878) ---"
-          cd /opt/lance-dev-1 && venv/bin/python -u -m src.benchmark.compare_policies \
-            --rules-run output/agent/2026-10-14_134728 --llm-run output/agent/2026-10-14_135140 \
-            --ground-truth benchmarks/ground_truth/dev/scenario_1.yaml \
-            --output output/pilot-campaign/s1-r1/comparison-s1-r1.json || true
-          head -c 900 output/pilot-campaign/s1-r1/comparison-s1-r1.json; echo
-          cd /
-          echo "--- phase3 status of Oct 14 pilot runs (dev-1) ---"
-          for d in 2026-10-14_105442 2026-10-14_105622; do
-            echo "### $d"
-            cat "/opt/lance-dev-1/output/agent/$d/03_phase3_status.json" 2>&1 | head -c 1200; echo
-            ls "/opt/lance-dev-1/output/agent/$d/" 2>&1 | head -25
-          done
-          echo "--- audit CLI present in main checkout ---"
-          /opt/nato-smartcity-iot/venv/bin/python -m src.agent --help 2>&1 | grep -E "decision-policy|audit-inventory" | head -4
-          echo "--- ollama models (umons) ---"
-          curl -fsS --max-time 10 http://100.76.206.65:11435/api/tags 2>/dev/null | head -c 300; echo
-          set +e
-          echo "--- pilot-smoke logs (cancelled run) ---"
-          ls -la /opt/nato-smartcity-iot/output/pilot-smoke/ 2>&1
-          for f in deploy1.log deploy2.log arm-rules.log arm-llm.log; do
-            p=/opt/nato-smartcity-iot/output/pilot-smoke/$f
-            if [ -f "$p" ]; then echo "### tail $f"; tail -30 "$p"; fi
-          done
-          echo "--- agent run dirs (recent) ---"
-          ls -dt /opt/nato-smartcity-iot/output/agent/*/ 2>/dev/null | head -5
-          for d in $(ls -dt /opt/nato-smartcity-iot/output/agent/*/ 2>/dev/null | head -3); do
-            echo "### $d"; ls "$d" | head -20
-            if [ -f "$d/run_meta.json" ]; then head -c 600 "$d/run_meta.json"; echo; fi
-          done
-          echo "--- rules arm diagnostic (timeout 120) ---"
-          cd /opt/nato-smartcity-iot
-          timeout 120 venv/bin/python -u -m src.agent --decision-policy rules --experiment-scope analysis-verification --audit-inventory output/pilot-smoke/inventory-s1-r1.json --execution-profile full --max-tool-calls 200 --max-duration-s 600 --max-cost-usd 2 > /tmp/rules-diag.log 2>&1; echo "exit=$?"
-          tail -40 /tmp/rules-diag.log
-          ls -dt output/agent/*/ | head -2
-          echo "--- inventory content ---"
-          cat /opt/nato-smartcity-iot/output/pilot-smoke/inventory-s1-r1.json
-          echo "--- diag run files ---"
-          ls /opt/nato-smartcity-iot/output/agent/2026-10-13_211132/
-          echo "--- original smoke inventory build output ---"
-          grep -a "devices" /opt/nato-smartcity-iot/output/pilot-smoke/deploy1.log | tail -2
-          echo "--- full rules-diag log ---"
-          cat /tmp/rules-diag.log 2>/dev/null | head -80
-          echo "--- original run dir timed entries ---"
-          ls -la /opt/nato-smartcity-iot/output/agent/2026-10-13_190815/ 2>&1
+          curl -fsS --max-time 10 http://127.0.0.1:8501/api/environment
+          /opt/nato-smartcity-iot/venv/bin/python - "$CAMPAIGN_RUN_ID" "$CAMPAIGN_ATTEMPT" <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path, PurePosixPath
+          import stat
+          import sys
+          import tarfile
+          
+          root = Path('/opt/nato-smartcity-iot')
+          trial_id = 's14-r1'
+          run_id, attempt = sys.argv[1:]
+          assert run_id.isdecimal() and attempt.isdecimal()
+          trial = root / 'output/pilot-campaign' / trial_id / f'{run_id}-{attempt}'
+          destination = root / 'output/pilot-evidence' / trial_id / f'{run_id}-{attempt}'
+          archive = destination / 'evidence.tar.gz'
+          manifest_file = destination / 'evidence-manifest.json'
+          manifest = json.loads(manifest_file.read_text())
+          assert manifest['trial_id'] == trial_id
+          assert stat.S_IMODE(destination.stat().st_mode) == 0o700
+          assert stat.S_IMODE(archive.stat().st_mode) == 0o600
+          assert stat.S_IMODE(manifest_file.stat().st_mode) == 0o600
+          with archive.open('rb') as handle:
+              digest = hashlib.file_digest(handle, 'sha256').hexdigest()
+          assert digest == manifest['archive_sha256'], 'Archive SHA256 mismatch'
+          expected = manifest['files']
+          seen = set()
+          with tarfile.open(archive, 'r|gz') as bundle:
+              for member in bundle:
+                  path = PurePosixPath(member.name)
+                  assert not path.is_absolute() and '..' not in path.parts
+                  if member.isdir():
+                      continue
+                  assert member.isfile(), 'Non-regular archive member'
+                  assert member.name not in seen, 'Duplicate archive member'
+                  record = expected[member.name]
+                  with bundle.extractfile(member) as handle:
+                      member_digest = hashlib.file_digest(handle, 'sha256').hexdigest()
+                  assert member.size == record['size'] and member_digest == record['sha256'], 'Member mismatch'
+                  seen.add(member.name)
+          assert seen == set(expected), 'Manifest/archive member sets differ'
+          
+          # Check that no existing source file predating the archive was omitted.
+          source_roots = [(trial, 'trial')]
+          for policy, relative in manifest['runs'].items():
+              if relative:
+                  assert PurePosixPath(relative).parts[0] == 'runs'
+                  source_roots.append((root / 'output/agent' / Path(relative).name, relative))
+          missing = []
+          later = []
+          for directory, prefix in source_roots:
+              assert directory.is_dir()
+              for source in directory.rglob('*'):
+                  assert not source.is_symlink(), 'Source symlink'
+                  if source.is_file():
+                      name = f'{prefix}/{source.relative_to(directory).as_posix()}'
+                      if name not in expected:
+                          (later if source.stat().st_mtime_ns > archive.stat().st_mtime_ns else missing).append(name)
+          assert not missing, f'{len(missing)} source files omitted from archive'
+          
+          summaries = {}
+          for policy, relative in manifest['runs'].items():
+              if relative is None:
+                  summaries[policy] = {'present': False}
+                  continue
+              files = [name for name in expected if name.startswith(relative + '/')]
+              run = root / 'output/agent' / Path(relative).name
+              meta = json.loads((run / 'run_meta.json').read_text())
+              assert meta['decision_policy'] == policy
+              assert meta['experiment']['trial_id'] == trial_id
+              assert meta['experiment']['instance_id'] == 's14'
+              assert meta['resource_manifest_sha256'] == 'b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6'
+              assert meta['max_duration_s'] == 1800 and meta['max_tool_calls'] == 200 and meta['max_cost_usd'] == 2
+              assert meta['analysis_limits']['device_timeout_s'] == 600
+              if policy == 'llm':
+                  assert meta['model'] == 'qwen3.8:27b' and meta['provider'] == 'ollama-umons'
+              summaries[policy] = {
+                  'present': True, 'run': run.name, 'file_count': len(files),
+                  'tool_calls_archived': f'{relative}/tool_calls.jsonl' in expected,
+                  'inventory_archived': f'{relative}/audit_inventory.json' in expected,
+                  'cost_archived': f'{relative}/cost_summary.json' in expected,
+                  'status': meta.get('status'), 'evidence_integrity': meta.get('evidence_integrity'),
+                  'usage_status': meta.get('usage_status'), 'git_commit': meta.get('git_commit'),
+                  'resource_manifest_sha256': meta.get('resource_manifest_sha256'),
+              }
+          comparison = trial / f'comparison-{trial_id}.json'
+          comparison_data = json.loads(comparison.read_text()) if comparison.exists() else None
+          print(json.dumps({
+              'trial_id': trial_id, 'attempt': f'{run_id}-{attempt}',
+              'archive_path': str(archive), 'archive_bytes': archive.stat().st_size,
+              'archive_sha256': digest, 'archive_and_member_hashes_valid': True,
+              'archived_files': len(seen), 'source_files_missing': len(missing),
+              'source_files_added_after_archive': len(later), 'permissions_valid': True,
+              'arms': summaries,
+              'comparison_present': comparison_data is not None,
+              'comparable': comparison_data.get('comparable') if comparison_data else None,
+              'incomparability_reasons': comparison_data.get('incomparability_reasons') if comparison_data else None,
+          }, indent=2))
+          PY
