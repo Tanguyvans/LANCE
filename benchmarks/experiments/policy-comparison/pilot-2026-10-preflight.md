@@ -58,3 +58,19 @@ protocole interdit.
   noms de services canoniques `-sV`, `PYTHONUNBUFFERED=1`, `timeout 1500` par
   bras, sélection des `run_dir` par marqueurs temporels, teardown
   `--extra-vars scenario_id=1`, artefacts en chemins absolus.
+
+## Paire fumée S1 r1 — run `38453703944` (job success, paire incomparable)
+
+- Job terminé en succès, comparaison produite : `comparable: false`,
+  motifs explicites des deux bras : `run_meta.json` absent des `run_dir`
+  `2026-10-13_212054` (rules) et `2026-10-13_214706` (llm). Chaque bras a
+  été tué par son `timeout 1500` sans aucun log, run_dir créé vide.
+- Cause racine : double verrou. Le workflow exporte
+  `LANCE_LAB_LOCK=/var/lib/lance/lab.lock` et tient `flock -x` sur ce
+  fichier ; le pipeline (`src/benchmark/lab_lock.py:reserve_lab`, via
+  `@serialized_lab`) tente d'acquérir le même verrou sans deadline et
+  attend indéfiniment. Le diagnostic borné qui « réussissait » en <120 s
+  tournait sans cette variable d'environnement — d'où l'écart.
+- Correction mécanique uniquement : `env -u LANCE_LAB_LOCK` sur les deux
+  invocations d'agent (le `flock` du workflow reste l'unique sérialisation).
+  Set, modèle, critère inchangés. Essai conservé, non interprété.

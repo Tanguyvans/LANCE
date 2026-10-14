@@ -85,7 +85,7 @@ jobs:
 
           echo "== arm 1: rules =="
           touch "$OUT/.marker-rules"
-          timeout 1500 $PY -m src.agent --decision-policy rules \
+          timeout 1500 env -u LANCE_LAB_LOCK $PY -m src.agent --decision-policy rules \
             --experiment-scope analysis-verification \
             --audit-inventory output/pilot-smoke/inventory-s1-r1.json \
             --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
@@ -98,7 +98,7 @@ jobs:
 
           echo "== arm 2: llm =="
           touch "$OUT/.marker-llm"
-          timeout 1500 $PY -m src.agent --decision-policy llm --provider ollama-umons --model qwen3.8:27b \
+          timeout 1500 env -u LANCE_LAB_LOCK $PY -m src.agent --decision-policy llm --provider ollama-umons --model qwen3.8:27b \
             --experiment-scope analysis-verification \
             --audit-inventory output/pilot-smoke/inventory-s1-r1.json \
             --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
