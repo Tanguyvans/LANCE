@@ -39,6 +39,8 @@ jobs:
           export PYTHONUNBUFFERED=1
           OUT=output/pilot-smoke
           mkdir -p "$OUT"
+          git rev-parse HEAD > "$OUT/checkout_head.txt"
+          echo "measured checkout: $(cat "$OUT/checkout_head.txt")"
 
           echo "== deploy S1 =="
           (cd benchmarks/ansible && bash deploy.sh 1 --vault-pass-file /root/.vault_pass) > "$OUT/deploy1.log" 2>&1 || { tail -50 "$OUT/deploy1.log"; exit 1; }
