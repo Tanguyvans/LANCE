@@ -39,6 +39,8 @@ jobs:
           done
           echo "--- pipeline status (main) ---"
           curl -fsS --max-time 10 http://127.0.0.1:8501/api/pipeline/status | head -c 400; echo
+          echo "--- dev-1 benchmark listing (8502) ---"
+          curl -fsS --max-time 10 "http://127.0.0.1:8502/api/runs/benchmark?compact=true&limit=6" | head -c 1500; echo
           echo "--- audit CLI present in main checkout ---"
           /opt/nato-smartcity-iot/venv/bin/python -m src.agent --help 2>&1 | grep -E "decision-policy|audit-inventory" | head -4
           echo "--- ollama models (umons) ---"
