@@ -45,13 +45,17 @@ def deployment_overlay(repo_root: Path, scenario_id: str) -> dict:
             raise ValueError("S1h requires the supported S1 MQTT/web/SSH topology")
         for service in scenario["services"]:
             service["security_profile"] = "hardened"
+    # Extra vars replace these mappings in Ansible. Preserve the native
+    # catalogue so 03_deploy_scenario can detect another active scenario.
+    ranges[scenario_id] = ranges[topology_source]
+    scenarios[scenario_id] = scenario
     return {
         "scenario_id": scenario_id,
         "source_scenario_id": source,
         "pilot_topology_source_scenario_id": topology_source,
         "router_name": f"s{scenario_id}-router",
-        "benchmark_scenario_vmid_ranges": {scenario_id: ranges[topology_source]},
-        "benchmark_scenarios": {scenario_id: scenario},
+        "benchmark_scenario_vmid_ranges": ranges,
+        "benchmark_scenarios": scenarios,
     }
 
 

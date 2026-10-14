@@ -24,7 +24,7 @@ def test_deployment_overlay_matches_ground_truth(sid, base, count):
     plan = support.deployment_overlay(ROOT, sid)
     scenario = plan["benchmark_scenarios"][sid]
     truth = yaml.safe_load((ROOT / f"benchmarks/ground_truth/dev/scenario_{sid}.yaml").read_text())
-    assert plan["benchmark_scenario_vmid_ranges"] == {sid: base}
+    assert plan["benchmark_scenario_vmid_ranges"][sid] == base
     assert len(scenario["services"]) == count
     assert plan["router_name"] == truth["topology"]["router"]["name"]
     assert {(f"s{sid}-{s['name']}", s["ip"], base + s["vmid_offset"]) for s in scenario["services"]} == {
@@ -40,6 +40,16 @@ def test_s1h_activates_existing_hardening_and_negative_checks():
     assert scenario["router_vulns"] == []
     assert all(s["security_profile"] == "hardened" for s in scenario["services"])
     assert support.deployment_overlay(ROOT, "1")["benchmark_scenarios"]["1"]["router_vulns"] == ["telnet"]
+
+
+@pytest.mark.parametrize("sid", ["1", "14", "15", "1h"])
+def test_overlay_keeps_other_scenarios_visible_to_conflict_checks(sid):
+    plan = support.deployment_overlay(ROOT, sid)
+    assert plan["benchmark_scenario_vmid_ranges"]["1"] == 100
+    assert plan["benchmark_scenario_vmid_ranges"]["14"] == 300
+    assert plan["benchmark_scenario_vmid_ranges"]["15"] == 320
+    assert plan["benchmark_scenarios"]["1"]["router_vulns"] == ["telnet"]
+    assert set(plan["benchmark_scenario_vmid_ranges"]) <= set(plan["benchmark_scenarios"])
 
 
 def _attempt(tmp_path):
