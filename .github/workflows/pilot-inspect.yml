@@ -41,6 +41,13 @@ jobs:
           curl -fsS --max-time 10 http://127.0.0.1:8501/api/pipeline/status | head -c 400; echo
           echo "--- dev-1 benchmark listing (8502) ---"
           curl -fsS --max-time 10 "http://127.0.0.1:8502/api/runs/benchmark?compact=true&limit=6" | head -c 1500; echo
+          echo "--- recover s1-r1 comparison (dev-1, run dirs from campaign 38558691878) ---"
+          cd /opt/lance-dev-1 && venv/bin/python -u -m src.benchmark.compare_policies \
+            --rules-run output/agent/2026-10-14_134728 --llm-run output/agent/2026-10-14_135140 \
+            --ground-truth benchmarks/ground_truth/dev/scenario_1.yaml \
+            --output output/pilot-campaign/s1-r1/comparison-s1-r1.json || true
+          head -c 900 output/pilot-campaign/s1-r1/comparison-s1-r1.json; echo
+          cd /
           echo "--- phase3 status of Oct 14 pilot runs (dev-1) ---"
           for d in 2026-10-14_105442 2026-10-14_105622; do
             echo "### $d"

@@ -59,6 +59,7 @@ jobs:
           trial_id = sys.argv[1]
           manifest = json.loads(pathlib.Path("benchmarks/experiments/policy-comparison/pilot-2026-10.json").read_text())
           cfg = manifest["configuration"]
+          assert "phase3_device_timeout_s" in cfg, "stale checkout: deploy the campaign commit to this instance first"
           trial = next((t for t in manifest["trials"] if t["trial_id"] == trial_id), None)
           assert trial is not None, f"unknown trial {trial_id}"
           instance = trial["instance_id"]
@@ -157,8 +158,8 @@ jobs:
           run_arm "$ORDER2" 2
 
           echo "== locate run dirs and compare =="
-          FIRST_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -newer "$OUT/.marker-$ORDER1" ! -newer "$OUT/.marker-$ORDER2" | head -1)
-          SECOND_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -newer "$OUT/.marker-$ORDER2" | head -1)
+          FIRST_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -name '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*' -newer "$OUT/.marker-$ORDER1" ! -newer "$OUT/.marker-$ORDER2" | sort | head -1)
+          SECOND_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -name '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*' -newer "$OUT/.marker-$ORDER2" | sort | head -1)
           test -n "$FIRST_DIR" && test -n "$SECOND_DIR"
           if [ "$ORDER1" = "rules" ]; then RULES_DIR=$FIRST_DIR; LLM_DIR=$SECOND_DIR; else RULES_DIR=$SECOND_DIR; LLM_DIR=$FIRST_DIR; fi
           echo "rules_dir=$RULES_DIR llm_dir=$LLM_DIR"
