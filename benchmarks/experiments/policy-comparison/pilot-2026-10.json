@@ -9,7 +9,7 @@
     "phase3_device_timeout_s": 600,
     "max_cost_usd": 2.0,
     "execution_profile": "full",
-    "resource_manifest_sha256": "f96066bb89dcf53553444fd3f55e28bc247acd1a63bd1670988fbcaa2355e027",
+    "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
     "rules_version": "shared-scanner-bounded-verification-v5"
   },
   "decision": {

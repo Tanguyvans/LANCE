@@ -145,6 +145,8 @@ def _observe_arm(base, campaign, trial, policy, arm, evaluated):
         for key, value in campaign["configuration"].items():
             if policy == "rules" and key in {"model", "provider"}:
                 continue
+            if key in OPTIONAL_CONFIG_FIELDS:
+                continue
             if meta.get(key) != value:
                 identity_problems.append(f"Run differs from planned {key}")
     problems.extend(identity_problems)

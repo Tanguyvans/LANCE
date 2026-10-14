@@ -522,6 +522,18 @@ def test_campaign_rejects_ambiguous_manifest(tmp_path, change):
         load_manifest(path)
 
 
+def test_campaign_optional_device_timeout_is_not_a_run_identity_field(campaign_pair, tmp_path):
+    """phase3_device_timeout_s is manifest-only calibration (applied via
+    environment, recorded in run_meta analysis_limits); declaring it must
+    not mark every arm as configuration_mismatch."""
+    from src.benchmark.policy_campaign import summarize_campaign
+    manifest, path = campaign_pair
+    manifest["configuration"]["phase3_device_timeout_s"] = 600
+    path.write_text(json.dumps(manifest))
+    report = summarize_campaign(path)
+    assert report["eligible_pairs"] == 1
+
+
 @pytest.mark.parametrize("different_model", [False, True], ids=["same-configuration", "separate-models"])
 def test_campaign_groups_only_compatible_pairs(campaign_pair, tmp_path, inventory, different_model):
     from src.benchmark.policy_campaign import summarize_campaign

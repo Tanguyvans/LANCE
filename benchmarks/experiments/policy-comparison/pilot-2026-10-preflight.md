@@ -148,3 +148,19 @@ mur (sur 1800), 1,34 USD (sur 2), 1 189 300 tokens, 67 tours.
 Marge restante faible sur les deux plafonds temps/coût : à surveiller
 sur S14/S15, plus gros que S1. Essai de fumée : il prouve que
 l'instrument mesure ; il ne préjuge pas du verdict des 12 paires.
+
+## Gel de configuration campagne (2026-10-14, avant les 12 paires)
+
+Les essais `s1-r1` (dev-1, runs `2026-10-14_134728`/`135140`,
+comparaison récupérée `comparable: true`) et `s1-r2` (main, run
+campagne `38563382320`, `comparable: true`, rules 66,7 / llm 66,7)
+ont été exécutés sous le hash ressources `f96066bb…`. Un défaut du
+bilan (le champ manifeste `phase3_device_timeout_s`, appliqué par
+environnement, était comparé au `run_meta` où il n'existe pas) a été
+corrigé dans `policy_campaign.py` — ce qui change le hash
+(`b636f0a5…`). Pour que les 12 paires partagent une seule identité
+de configuration, le manifeste déclare désormais `b636f0a5…` et les
+deux essais ci-dessus sont conservés comme essais d'instrument,
+non comptés dans les 12 paires. Aucun changement de set, modèle,
+budgets ou critère. À partir d'ici, aucun changement dans `src/`
+pendant la campagne.
