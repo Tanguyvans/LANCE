@@ -108,8 +108,22 @@ jobs:
             tail -15 "$OUT/arm-$policy.log"
           }
 
+          # deploy.sh only supports legacy scenarios 1-7; extended
+          # scenarios (14, 15, 1h) deploy through the playbooks directly,
+          # like the pipeline lifecycle does.
+          deploy_scenario() {
+            log=$1
+            (cd benchmarks/ansible && \
+              ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml --vault-password-file /root/.vault_pass --extra-vars "scenario_id=$DEPLOY_ID" --extra-vars "source_scenario_id=$DEPLOY_ID" && \
+              ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml --vault-password-file /root/.vault_pass --extra-vars "scenario_id=$DEPLOY_ID" --extra-vars "source_scenario_id=$DEPLOY_ID" && \
+              ansible-playbook -i inventory.yml playbooks/05_populate_services.yml --vault-password-file /root/.vault_pass --extra-vars "scenario_id=$DEPLOY_ID" --extra-vars "source_scenario_id=$DEPLOY_ID") > "$log" 2>&1
+          }
+
+          echo "== pre-teardown (idempotent) =="
+          (cd benchmarks/ansible && ansible-playbook -i inventory.yml playbooks/99_teardown.yml --vault-password-file /root/.vault_pass --extra-vars "scenario_id=$DEPLOY_ID") > "$OUT/pre-teardown.log" 2>&1 || true
+
           echo "== deploy scenario $DEPLOY_ID =="
-          (cd benchmarks/ansible && bash deploy.sh "$DEPLOY_ID" --vault-pass-file /root/.vault_pass) > "$OUT/deploy1.log" 2>&1 || { tail -50 "$OUT/deploy1.log"; exit 1; }
+          deploy_scenario "$OUT/deploy1.log" || { tail -50 "$OUT/deploy1.log"; exit 1; }
 
           echo "== build public inventory from deployed state =="
           $PY - "$GT_FILE" "$SCEN_FILE" "$INSTANCE" "$FAMILY_ID" "$TRIAL_ID" "$OUT/inventory-$TRIAL_ID.json" <<'PY'
@@ -153,7 +167,7 @@ jobs:
           run_arm "$ORDER1" 1
 
           echo "== restore initial state =="
-          (cd benchmarks/ansible && bash deploy.sh "$DEPLOY_ID" --vault-pass-file /root/.vault_pass) > "$OUT/deploy2.log" 2>&1 || { tail -50 "$OUT/deploy2.log"; exit 1; }
+          deploy_scenario "$OUT/deploy2.log" || { tail -50 "$OUT/deploy2.log"; exit 1; }
           $PY -c "import json,datetime,pathlib; p=pathlib.Path('$OUT/preflight-$TRIAL_ID-$ORDER2.json'); p.write_text(json.dumps({'status':'valid','arm':'$ORDER2','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'evidence':'deploy2.log (fresh deploy) + inventory in this artifact'}, indent=2)+'\n')"
           run_arm "$ORDER2" 2
 
