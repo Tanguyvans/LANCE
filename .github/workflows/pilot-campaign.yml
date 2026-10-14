@@ -2,9 +2,10 @@ name: Pilot campaign pair (temporary)
 
 # Temporary paired-trial execution of the D1/A1 pilot
 # (benchmarks/experiments/policy-comparison/pilot-2026-10.json) from the
-# nato-master runner, against the dev-1 instance checkout
-# (/opt/lance-dev-1, branch dev/1). One trial per run; the job holds the
-# shared laboratory lock. Delete once the pilot is done.
+# nato-master runner, against the main instance checkout
+# (/opt/nato-smartcity-iot, branch main, UI port 8501) so deployments
+# and runs are visible in the usual interface. One trial per run; the
+# job holds the shared laboratory lock. Delete once the pilot is done.
 
 on:
   workflow_dispatch:
@@ -14,7 +15,7 @@ on:
         required: true
         default: s1-r1
   push:
-    branches: [dev/1]
+    branches: [main]
     paths:
       - .github/workflows/pilot-campaign.yml
       - benchmarks/experiments/policy-comparison/next-trial.txt
@@ -32,7 +33,7 @@ jobs:
     timeout-minutes: 150
     env:
       LANCE_LAB_LOCK: /var/lib/lance/lab.lock
-      LANCE_DEPLOYMENT_ROOT: /opt/lance-dev-1/output/scenario_deployments
+      LANCE_DEPLOYMENT_ROOT: /opt/nato-smartcity-iot/output/scenario_deployments
     steps:
       - name: Run one pilot trial under laboratory lock
         shell: bash
@@ -43,7 +44,7 @@ jobs:
           test "$RUNNER_NAME" = nato-master
           exec 9>>/var/lib/lance/lab.lock
           flock -x 9
-          cd /opt/lance-dev-1
+          cd /opt/nato-smartcity-iot
           PY="venv/bin/python -u"
           export PYTHONUNBUFFERED=1
 
@@ -62,13 +63,14 @@ jobs:
           assert trial is not None, f"unknown trial {trial_id}"
           instance = trial["instance_id"]
           deploy_id = instance[1:]  # s1 -> 1, s14 -> 14, s1h -> 1h
+          scen_name = {"s1": "S1", "s14": "S14", "s15": "S15", "s1h": "S1h"}[instance]
           values = {
               "TRIAL_ID": trial_id,
               "INSTANCE": instance,
               "DEPLOY_ID": deploy_id,
               "FAMILY_ID": trial["family_id"],
               "GT_FILE": str((pathlib.Path("benchmarks/experiments/policy-comparison") / trial["ground_truth"]).resolve()),
-              "SCEN_FILE": f"benchmarks/scenarios/dev/{instance.upper()}.yaml",
+              "SCEN_FILE": f"benchmarks/scenarios/dev/{scen_name}.yaml",
               "ORDER1": trial["order"][0],
               "ORDER2": trial["order"][1],
               "MAX_TOOL_CALLS": cfg["max_tool_calls"],
@@ -177,9 +179,9 @@ jobs:
         with:
           name: pilot-campaign-${{ inputs.trial_id || 'push' }}
           path: |
-            /opt/lance-dev-1/output/pilot-campaign/
-            /opt/lance-dev-1/output/agent/*/run_meta.json
-            /opt/lance-dev-1/output/agent/*/audit_inventory.json
-            /opt/lance-dev-1/output/agent/*/cost_summary.json
+            /opt/nato-smartcity-iot/output/pilot-campaign/
+            /opt/nato-smartcity-iot/output/agent/*/run_meta.json
+            /opt/nato-smartcity-iot/output/agent/*/audit_inventory.json
+            /opt/nato-smartcity-iot/output/agent/*/cost_summary.json
           retention-days: 14
           if-no-files-found: warn
