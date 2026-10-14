@@ -41,6 +41,12 @@ jobs:
           curl -fsS --max-time 10 http://127.0.0.1:8501/api/pipeline/status | head -c 400; echo
           echo "--- dev-1 benchmark listing (8502) ---"
           curl -fsS --max-time 10 "http://127.0.0.1:8502/api/runs/benchmark?compact=true&limit=6" | head -c 1500; echo
+          echo "--- phase3 status of Oct 14 pilot runs (dev-1) ---"
+          for d in 2026-10-14_105442 2026-10-14_105622; do
+            echo "### $d"
+            cat "/opt/lance-dev-1/output/agent/$d/03_phase3_status.json" 2>&1 | head -c 1200; echo
+            ls "/opt/lance-dev-1/output/agent/$d/" 2>&1 | head -25
+          done
           echo "--- audit CLI present in main checkout ---"
           /opt/nato-smartcity-iot/venv/bin/python -m src.agent --help 2>&1 | grep -E "decision-policy|audit-inventory" | head -4
           echo "--- ollama models (umons) ---"
