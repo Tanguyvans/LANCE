@@ -132,3 +132,19 @@ toute mesure des 12 paires et appliquée à l'identique aux deux bras :
 défaut code 240 inchangé hors pilote). Les plafonds appels (200) et
 coût (2 USD) ne mordaient pas (94 appels, 0,49 USD observés) et sont
 inchangés, de même que le modèle, le set et le critère δ.
+
+## Paire fumée S1 r1 — run `38549458127` (budgets calibrés, comparable)
+
+Premier essai comparable. Checkout mesuré `a91415d` (correctifs
+comparateur + alias services inclus), `max_duration_s=1800`,
+`device_timeout_s=600` enregistrés à l'identique dans les deux
+`run_meta.json` (`2026-10-14_122830` rules, `2026-10-14_123242` llm).
+`comparable: true`, aucun motif d'incomparabilité. Phase 3
+`completed` des deux côtés (4/4, 0 échec — la normalisation des noms
+nmap a aussi supprimé les faux « incidents techniques »). Scores
+(strict-v3) : rules 66,7 %, llm 72,0 %. Deltas llm-règles : TP
+confirmés +1, F1 confirmé +0,053, FP candidats +6 ; llm : 1394 s de
+mur (sur 1800), 1,34 USD (sur 2), 1 189 300 tokens, 67 tours.
+Marge restante faible sur les deux plafonds temps/coût : à surveiller
+sur S14/S15, plus gros que S1. Essai de fumée : il prouve que
+l'instrument mesure ; il ne préjuge pas du verdict des 12 paires.
