@@ -33,6 +33,19 @@ def _number(value):
     return value if not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) else None
 
 
+def _analysis_complete(result) -> bool:
+    """Phase 3 completeness follows run-verdict semantics (analysis/context.py):
+    the artifact status preserves scanner errors as information, so
+    "completed_with_device_errors" is complete when every device was
+    analyzed and none failed; any failed or unanalyzed device is not."""
+    return (
+        result.phase3_status in ("completed", "completed_with_device_errors")
+        and result.phase3_devices_total > 0
+        and result.phase3_devices_analyzed == result.phase3_devices_total
+        and result.phase3_devices_failed == 0
+    )
+
+
 def _arm(path: Path | None, policy: str, truth: Path) -> tuple[dict, dict | None, list[str]]:
     arm = {"run_dir": str(path) if path else None, "status": "missing", "evaluation": None, "metrics": {}}
     problems = []
@@ -62,7 +75,7 @@ def _arm(path: Path | None, policy: str, truth: Path) -> tuple[dict, dict | None
         stages = result.funnel.get("stages", {})
         if any(not stages.get(stage, {}).get("available") for stage in ("candidates", "filtered", "confirmed")):
             problems.append(f"{policy}: missing evaluable stage artifacts")
-        if result.phase3_status != "completed":
+        if not _analysis_complete(result):
             problems.append(f"{policy}: incomplete analysis")
         cost = json.loads((path / "cost_summary.json").read_text(encoding="utf-8"))
         metrics = {name: _number(getattr(result, name, None)) for name in METRICS}
