@@ -210,3 +210,57 @@ n'est calculé ici. D1/A1 mesure l'apport global de la politique LLM sur les pha
 3–4 ; isoler l'adaptation demandera ensuite un bras A0 au plan figé et des
 imprévus reproductibles. La revue humaine, l'inventaire des connaissances des
 simulateurs et les variantes réservées restent du travail expérimental à mener.
+
+## Workflow du pilote et conservation des preuves
+
+Le [workflow pilote](../../.github/workflows/pilot-campaign.yml) exécute un essai
+par `workflow_dispatch`, avec son `trial_id`. Un push ne lance plus d'audit.
+Il conserve le verrou commun, sans annuler une exécution déjà en cours.
+Son checkout propre sert uniquement à l'orchestration : l'agent est exécuté
+depuis `/opt/nato-smartcity-iot`, après vérification de l'empreinte de ressources
+déclarée dans le manifeste. Les changements d'orchestration ne modifient ni
+`src/agent`, ni `src/benchmark`, ni les budgets et le modèle gelés.
+
+S1 conserve le chemin `deploy.sh 1` utilisé pour sa calibration. S14 et S15
+utilisent directement les playbooks du catalogue natif : nettoyage de la cible,
+déploiement, injection, peuplement et vérification. S1h utilise un overlay propre
+à la tentative, construit depuis la topologie S1 : mêmes VMID et adresses,
+noms `s1h-*`, aucune faille routeur et profils MQTT/web/SSH durcis. Le fournisseur
+de configuration et de vérification est celui des contrôles S14
+(`source_scenario_id=14`), tandis que l'identité du scénario reste `1h`.
+Un échec de playbook bloque les étapes suivantes. Les contrôles existants ne
+certifient pas toutes les propriétés de la vérité terrain.
+
+Chaque tentative écrit dans
+`output/pilot-campaign/<trial_id>/<github_run_id>-<github_run_attempt>/`.
+Elle garde les journaux de déploiement et de nettoyage, les précontrôles,
+l'inventaire, les codes de sortie, les références des runs, les snapshots du
+manifeste/scénario/vérité terrain et l'overlay effectivement utilisé. Les reprises
+n'écrasent donc pas les essais précédents. Le nettoyage intervient aussi après
+un échec de préparation ou de comparaison, avec les contrôles d'appartenance
+des VMID des playbooks existants.
+
+Après l'essai, y compris en cas d'échec, le
+[support du pilote](../../scripts/benchmark/pilot_support.py) conserve sur nato :
+
+```text
+output/pilot-evidence/<trial_id>/<github_run_id>-<github_run_attempt>/
+  evidence.tar.gz
+  evidence-manifest.json
+  comparison-<trial_id>.json    si la comparaison a été produite
+```
+
+L'archive contient la tentative et les dossiers complets des deux runs : traces
+`tool_calls.jsonl`, scans, candidats, décisions, preuves, livrables et fichiers
+cachés. Les dossiers interrompus sans métadonnées lisibles sont conservés ; un
+bras absent reste explicitement absent. Le manifeste donne les chemins relatifs,
+tailles et SHA-256 de chaque fichier et de l'archive. Les liens symboliques et
+références hors du magasin de runs sont refusés. Les archives complètes restent
+sur nato ; leur conservation n'est pas limitée aux 90 jours des artefacts Actions.
+
+GitHub conserve seulement le manifeste d'empreintes, la comparaison et les
+métadonnées/inventaires/coûts déjà publiés, limités à cette tentative. Les réponses
+brutes des outils et l'archive complète ne sont pas téléversées. Les noms d'artefact
+incluent l'identifiant du job et de la tentative ; leur rétention est de 90 jours.
+Une archive complète permet une relecture et un recalcul ; elle ne transforme
+pas une paire incomplète en résultat admissible.

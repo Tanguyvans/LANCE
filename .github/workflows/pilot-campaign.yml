@@ -14,11 +14,6 @@ on:
         description: 'Pilot trial id from the manifest (e.g. s14-r1)'
         required: true
         default: s1-r1
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/pilot-campaign.yml
-      - benchmarks/experiments/policy-comparison/next-trial.txt
 
 permissions:
   contents: read
@@ -35,17 +30,24 @@ jobs:
       LANCE_LAB_LOCK: /var/lib/lance/lab.lock
       LANCE_DEPLOYMENT_ROOT: /opt/nato-smartcity-iot/output/scenario_deployments
     steps:
+      - name: Checkout workflow support
+        uses: actions/checkout@v6
+        with:
+          path: pilot-orchestration
+
       - name: Run one pilot trial under laboratory lock
+        id: trial
         shell: bash
         env:
           TRIAL_INPUT: ${{ inputs.trial_id }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
           test "$RUNNER_NAME" = nato-master
           exec 9>>/var/lib/lance/lab.lock
           flock -x 9
           cd /opt/nato-smartcity-iot
           PY="venv/bin/python -u"
+          SUPPORT="$GITHUB_WORKSPACE/pilot-orchestration/scripts/benchmark/pilot_support.py"
           export PYTHONUNBUFFERED=1
 
           # Resolve the trial from the manifest (single source of truth).
@@ -54,7 +56,7 @@ jobs:
             TRIAL_ID=$(tr -d '[:space:]' < benchmarks/experiments/policy-comparison/next-trial.txt)
           fi
           TRIAL_ID="${TRIAL_ID:-s1-r1}"
-          eval "$($PY - "$TRIAL_ID" <<'PY'
+          TRIAL_ENV=$($PY - "$TRIAL_ID" <<'PY'
           import json, pathlib, shlex, sys
           trial_id = sys.argv[1]
           manifest = json.loads(pathlib.Path("benchmarks/experiments/policy-comparison/pilot-2026-10.json").read_text())
@@ -62,6 +64,8 @@ jobs:
           assert "phase3_device_timeout_s" in cfg, "stale checkout: deploy the campaign commit to this instance first"
           trial = next((t for t in manifest["trials"] if t["trial_id"] == trial_id), None)
           assert trial is not None, f"unknown trial {trial_id}"
+          from src.agent.audit_experiment import resource_manifest
+          assert resource_manifest() == cfg["resource_manifest_sha256"], "audit resources differ from the campaign freeze"
           instance = trial["instance_id"]
           deploy_id = instance[1:]  # s1 -> 1, s14 -> 14, s1h -> 1h
           scen_name = {"s1": "S1", "s14": "S14", "s15": "S15", "s1h": "S1h"}[instance]
@@ -84,12 +88,52 @@ jobs:
           for key, value in values.items():
               print(f"export {key}={shlex.quote(str(value))}")
           PY
-          )"
+          )
+          eval "$TRIAL_ENV"
           echo "trial=$TRIAL_ID instance=$INSTANCE deploy=$DEPLOY_ID order=$ORDER1,$ORDER2 budgets: calls=$MAX_TOOL_CALLS duration=${MAX_DURATION_S}s device_timeout=${DEVICE_TIMEOUT_S}s cost=$MAX_COST_USD"
-          OUT=output/pilot-campaign/$TRIAL_ID
+          OUT="/opt/nato-smartcity-iot/output/pilot-campaign/$TRIAL_ID/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir -p "$OUT"
+          echo "trial_dir=$OUT" >> "$GITHUB_OUTPUT"
+          echo "trial_id=$TRIAL_ID" >> "$GITHUB_OUTPUT"
           git rev-parse HEAD > "$OUT/checkout_head.txt"
+          cp benchmarks/experiments/policy-comparison/pilot-2026-10.json "$OUT/campaign_manifest.json"
+          cp "$GT_FILE" "$OUT/ground_truth.yaml"
+          cp "$SCEN_FILE" "$OUT/scenario.yaml"
+          cp "$SUPPORT" "$OUT/pilot_support.py"
+          OVERLAY="$OUT/deployment.json"
+          $PY "$SUPPORT" prepare --repo-root "$PWD" --scenario-id "$DEPLOY_ID" --output "$OVERLAY"
+          PLAYBOOK=(ansible-playbook -i benchmarks/ansible/inventory.yml --vault-password-file /root/.vault_pass --extra-vars "@$OVERLAY")
           ARM_TIMEOUT=$((MAX_DURATION_S + 600))
+          OWNED=false
+
+          cleanup() {
+            result=$?
+            trap - EXIT
+            if [ "$OWNED" = true ]; then
+              "${PLAYBOOK[@]}" benchmarks/ansible/playbooks/99_teardown.yml > "$OUT/teardown.log" 2>&1 || {
+                tail -20 "$OUT/teardown.log"
+                result=1
+              }
+            fi
+            exit "$result"
+          }
+          trap cleanup EXIT
+
+          deploy_arm() {
+            # S1 keeps its calibrated deployment/population unchanged.
+            if [ "$DEPLOY_ID" = 1 ]; then
+              OWNED=true
+              (cd benchmarks/ansible && bash deploy.sh 1 --vault-pass-file /root/.vault_pass)
+            else
+              # 14/15 use the native catalogue. 1h uses S1's topology and
+              # S14's hardening provider through an attempt-local overlay.
+              "${PLAYBOOK[@]}" benchmarks/ansible/playbooks/99_teardown.yml || return $?
+              OWNED=true
+              for playbook in 03_deploy_scenario.yml 04_inject_vulns.yml 05_populate_services.yml 06_verify.yml; do
+                "${PLAYBOOK[@]}" "benchmarks/ansible/playbooks/$playbook" || return $?
+              done
+            fi
+          }
 
           run_arm() {
             policy=$1; n=$2
@@ -100,16 +144,19 @@ jobs:
             else
               POLICY_ARGS="--decision-policy rules"
             fi
+            arm_exit=0
             timeout $ARM_TIMEOUT env -u LANCE_LAB_LOCK LANCE_PHASE3_DEVICE_TIMEOUT_S=$DEVICE_TIMEOUT_S $PY -m src.agent $POLICY_ARGS \
               --experiment-scope analysis-verification \
               --audit-inventory "$OUT/inventory-$TRIAL_ID.json" \
               --execution-profile full --max-tool-calls $MAX_TOOL_CALLS --max-duration-s $MAX_DURATION_S \
-              --max-cost-usd $MAX_COST_USD > "$OUT/arm-$policy.log" 2>&1 || true
+              --max-cost-usd $MAX_COST_USD > "$OUT/arm-$policy.log" 2>&1 || arm_exit=$?
+            echo "$arm_exit" > "$OUT/arm-$policy-exit-code.txt"
             tail -15 "$OUT/arm-$policy.log"
+            $PY "$SUPPORT" capture --trial-dir "$OUT" --runs-root "$PWD/output/agent" --trial-id "$TRIAL_ID" --policy "$policy"
           }
 
           echo "== deploy scenario $DEPLOY_ID =="
-          (cd benchmarks/ansible && bash deploy.sh "$DEPLOY_ID" --vault-pass-file /root/.vault_pass) > "$OUT/deploy1.log" 2>&1 || { tail -50 "$OUT/deploy1.log"; exit 1; }
+          deploy_arm > "$OUT/deploy1.log" 2>&1 || { tail -50 "$OUT/deploy1.log"; exit 1; }
 
           echo "== build public inventory from deployed state =="
           $PY - "$GT_FILE" "$SCEN_FILE" "$INSTANCE" "$FAMILY_ID" "$TRIAL_ID" "$OUT/inventory-$TRIAL_ID.json" <<'PY'
@@ -123,6 +170,8 @@ jobs:
           for name, ip in hosts:
               scan = subprocess.run(["nmap", "-Pn", "-n", "-sV", "--version-intensity", "2", "--open", "-p-", "--min-rate", "2000",
                                      "-oG", "-", ip], capture_output=True, text=True, timeout=300)
+              if scan.returncode:
+                  raise RuntimeError(f"Inventory scan failed for {name}: exit {scan.returncode}")
               ports = []
               for line in scan.stdout.splitlines():
                   if "Ports:" in line:
@@ -153,15 +202,13 @@ jobs:
           run_arm "$ORDER1" 1
 
           echo "== restore initial state =="
-          (cd benchmarks/ansible && bash deploy.sh "$DEPLOY_ID" --vault-pass-file /root/.vault_pass) > "$OUT/deploy2.log" 2>&1 || { tail -50 "$OUT/deploy2.log"; exit 1; }
+          deploy_arm > "$OUT/deploy2.log" 2>&1 || { tail -50 "$OUT/deploy2.log"; exit 1; }
           $PY -c "import json,datetime,pathlib; p=pathlib.Path('$OUT/preflight-$TRIAL_ID-$ORDER2.json'); p.write_text(json.dumps({'status':'valid','arm':'$ORDER2','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'evidence':'deploy2.log (fresh deploy) + inventory in this artifact'}, indent=2)+'\n')"
           run_arm "$ORDER2" 2
 
           echo "== locate run dirs and compare =="
-          FIRST_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -name '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*' -newer "$OUT/.marker-$ORDER1" ! -newer "$OUT/.marker-$ORDER2" | sort | head -1)
-          SECOND_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -name '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*' -newer "$OUT/.marker-$ORDER2" | sort | head -1)
-          test -n "$FIRST_DIR" && test -n "$SECOND_DIR"
-          if [ "$ORDER1" = "rules" ]; then RULES_DIR=$FIRST_DIR; LLM_DIR=$SECOND_DIR; else RULES_DIR=$SECOND_DIR; LLM_DIR=$FIRST_DIR; fi
+          RULES_DIR=$(cat "$OUT/rules_dir.txt")
+          LLM_DIR=$(cat "$OUT/llm_dir.txt")
           echo "rules_dir=$RULES_DIR llm_dir=$LLM_DIR"
           echo "$RULES_DIR" > "$OUT/rules_dir.txt"
           echo "$LLM_DIR" > "$OUT/llm_dir.txt"
@@ -171,18 +218,26 @@ jobs:
             --output "$OUT/comparison-$TRIAL_ID.json" || true
           test -f "$OUT/comparison-$TRIAL_ID.json" && head -c 1200 "$OUT/comparison-$TRIAL_ID.json"
 
-          echo "== teardown =="
-          (cd benchmarks/ansible && ansible-playbook -i inventory.yml playbooks/99_teardown.yml --extra-vars "scenario_id=$DEPLOY_ID") > "$OUT/teardown.log" 2>&1 || tail -20 "$OUT/teardown.log" || true
+          # EXIT cleanup runs on success and on a preparation/comparison failure.
+
+      - name: Archive complete evidence on nato
+        if: always() && steps.trial.outputs.trial_dir != ''
+        env:
+          TRIAL_DIR: ${{ steps.trial.outputs.trial_dir }}
+          TRIAL_ID: ${{ steps.trial.outputs.trial_id }}
+        run: |
+          /opt/nato-smartcity-iot/venv/bin/python "$GITHUB_WORKSPACE/pilot-orchestration/scripts/benchmark/pilot_support.py" archive \
+            --trial-dir "$TRIAL_DIR" --trial-id "$TRIAL_ID" \
+            --runs-root /opt/nato-smartcity-iot/output/agent \
+            --destination "/opt/nato-smartcity-iot/output/pilot-evidence/$TRIAL_ID/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --summary-directory "$RUNNER_TEMP/pilot-summary-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
 
       - name: Upload trial artifacts
-        if: always()
+        if: always() && steps.trial.outputs.trial_dir != ''
         uses: actions/upload-artifact@v4
         with:
-          name: pilot-campaign-${{ inputs.trial_id || 'push' }}
-          path: |
-            /opt/nato-smartcity-iot/output/pilot-campaign/
-            /opt/nato-smartcity-iot/output/agent/*/run_meta.json
-            /opt/nato-smartcity-iot/output/agent/*/audit_inventory.json
-            /opt/nato-smartcity-iot/output/agent/*/cost_summary.json
-          retention-days: 14
-          if-no-files-found: warn
+          # Full tool responses stay in the local nato evidence bundle.
+          name: pilot-campaign-${{ inputs.trial_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pilot-summary-${{ github.run_id }}-${{ github.run_attempt }}/
+          retention-days: 90
+          if-no-files-found: error
