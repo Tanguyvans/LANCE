@@ -74,3 +74,47 @@ protocole interdit.
 - Correction mécanique uniquement : `env -u LANCE_LAB_LOCK` sur les deux
   invocations d'agent (le `flock` du workflow reste l'unique sérialisation).
   Set, modèle, critère inchangés. Essai conservé, non interprété.
+
+## Paire fumée S1 r1 — runs des 2026-10-14 (branche dev/1, instance dev-1)
+
+Les workflows temporaires vivent désormais sur `dev/1` (branche tirée
+par le mini-PC ; instance `/opt/lance-dev-1`), commit `ad11f18`, pour
+être visibles dans l'historique Actions sans toucher `main`.
+
+- Run fumée `38531094317` (branche codex/pilot-2026-10, code main
+  `7514254`) : job success, `comparable: false`. rules : pipeline
+  terminé, 4/4 appareils, score 60,9 %, mais rejeté « incomplete
+  analysis » — le comparateur exigeait `phase3_status == "completed"`
+  alors que l'artefact porte `completed_with_device_errors` (erreurs
+  scanner conservées comme information, 0 appareil en échec). llm :
+  `budget_exceeded` à 600 s en phase 4, 3/4 appareils (échec `s1-web`).
+- Run fumée `38534240392` (dev/1, déclenché par `ad11f18`) : job
+  success, `comparable: false`, mêmes motifs. Réserve : le job a
+  attrapé le runner avant le déploiement dev-1, les deux bras portent
+  `git_commit: 37d287d54` (ancien checkout) — essai conservé, non
+  interprété comme mesure du nouveau code.
+- Correction de l'instrument (commit `96b8a0a`, déployé dev-1 par le
+  run `38536910949`) : la complétude phase 3 du comparateur suit la
+  sémantique du verdict d'exécution (`run_verdict` dans
+  `src/agent/phases/analysis/context.py`) — complète si statut
+  `completed`/`completed_with_device_errors`, tous appareils analysés,
+  aucun en échec. Test : `tests/test_compare_policies.py`. La logique
+  plus stricte de l'évaluateur pour les contrôles zéro-GT (spécificité)
+  est inchangée.
+- Run fumée `38538127991` (dev/1, checkout mesuré prouvé
+  `96b8a0a756ceb39cb7f7503398d3d06dfbc26193` via `checkout_head.txt`
+  et les deux `run_meta.json`) : job success. rules : **plus aucun
+  motif d'incomparabilité**, score 60,9 %. llm : seul bloquant restant,
+  `budget_exceeded` — 94 appels outil (< 200), 0,49 USD (< 2), mais
+  600,0 s de mur : la phase 3 série (workers=1, ~24 requêtes modèle de
+  20-45 s, échec `s1-web` à ~8 min) consomme presque tout le budget
+  avant la phase 4. `comparable: false` pour le seul bras llm
+  (3/4 appareils, artefacts d'exploitation absents).
+
+Conclusion de fumée : l'instrument de comparaison est réparé ; le
+budget durée du manifeste (600 s) est structurellement insuffisant
+pour le bras llm dès S1. Décision à prendre avant toute mesure des
+12 paires : relever le budget durée du manifeste (calibration pilote,
+à documenter) ou traiter le dépassement comme résultat mesuré — le
+comparateur actuel écarte la paire au lieu de la scorer. Aucune
+extension aux autres paires tant que ce point n'est pas tranché.
