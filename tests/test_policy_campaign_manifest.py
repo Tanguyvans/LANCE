@@ -32,3 +32,17 @@ def test_manifest_rejects_non_numeric_device_timeout(tmp_path):
     except ValueError:
         return
     raise AssertionError("non-numeric phase3_device_timeout_s must be rejected")
+
+
+def test_every_trial_resolves_to_existing_files():
+    """The campaign workflow deploys by instance and scores against the
+    trial ground truth; both files must exist for all 12 trials."""
+    manifest = load_manifest(PILOT)
+    root = PILOT.parents[3]
+    assert len(manifest["trials"]) == 12
+    for trial in manifest["trials"]:
+        gt = (PILOT.parent / trial["ground_truth"]).resolve()
+        assert gt.is_file(), trial["trial_id"]
+        scenario = root / "benchmarks/scenarios/dev" / f"{trial['instance_id'].upper()}.yaml"
+        assert scenario.is_file(), trial["trial_id"]
+        assert trial["order"] in (["rules", "llm"], ["llm", "rules"])

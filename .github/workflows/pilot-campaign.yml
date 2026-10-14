@@ -1,0 +1,185 @@
+name: Pilot campaign pair (temporary)
+
+# Temporary paired-trial execution of the D1/A1 pilot
+# (benchmarks/experiments/policy-comparison/pilot-2026-10.json) from the
+# nato-master runner, against the dev-1 instance checkout
+# (/opt/lance-dev-1, branch dev/1). One trial per run; the job holds the
+# shared laboratory lock. Delete once the pilot is done.
+
+on:
+  workflow_dispatch:
+    inputs:
+      trial_id:
+        description: 'Pilot trial id from the manifest (e.g. s14-r1)'
+        required: true
+        default: s1-r1
+  push:
+    branches: [dev/1]
+    paths:
+      - .github/workflows/pilot-campaign.yml
+      - benchmarks/experiments/policy-comparison/next-trial.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-lab-nato-master
+  cancel-in-progress: false
+
+jobs:
+  trial:
+    runs-on: [self-hosted, nato-master]
+    timeout-minutes: 150
+    env:
+      LANCE_LAB_LOCK: /var/lib/lance/lab.lock
+      LANCE_DEPLOYMENT_ROOT: /opt/lance-dev-1/output/scenario_deployments
+    steps:
+      - name: Run one pilot trial under laboratory lock
+        shell: bash
+        env:
+          TRIAL_INPUT: ${{ inputs.trial_id }}
+        run: |
+          set -uo pipefail
+          test "$RUNNER_NAME" = nato-master
+          exec 9>>/var/lib/lance/lab.lock
+          flock -x 9
+          cd /opt/lance-dev-1
+          PY="venv/bin/python -u"
+          export PYTHONUNBUFFERED=1
+
+          # Resolve the trial from the manifest (single source of truth).
+          TRIAL_ID="${TRIAL_INPUT:-}"
+          if [ -z "$TRIAL_ID" ] && [ -f benchmarks/experiments/policy-comparison/next-trial.txt ]; then
+            TRIAL_ID=$(tr -d '[:space:]' < benchmarks/experiments/policy-comparison/next-trial.txt)
+          fi
+          TRIAL_ID="${TRIAL_ID:-s1-r1}"
+          eval "$($PY - "$TRIAL_ID" <<'PY'
+          import json, pathlib, shlex, sys
+          trial_id = sys.argv[1]
+          manifest = json.loads(pathlib.Path("benchmarks/experiments/policy-comparison/pilot-2026-10.json").read_text())
+          cfg = manifest["configuration"]
+          trial = next((t for t in manifest["trials"] if t["trial_id"] == trial_id), None)
+          assert trial is not None, f"unknown trial {trial_id}"
+          instance = trial["instance_id"]
+          deploy_id = instance[1:]  # s1 -> 1, s14 -> 14, s1h -> 1h
+          values = {
+              "TRIAL_ID": trial_id,
+              "INSTANCE": instance,
+              "DEPLOY_ID": deploy_id,
+              "FAMILY_ID": trial["family_id"],
+              "GT_FILE": str((pathlib.Path("benchmarks/experiments/policy-comparison") / trial["ground_truth"]).resolve()),
+              "SCEN_FILE": f"benchmarks/scenarios/dev/{instance.upper()}.yaml",
+              "ORDER1": trial["order"][0],
+              "ORDER2": trial["order"][1],
+              "MAX_TOOL_CALLS": cfg["max_tool_calls"],
+              "MAX_DURATION_S": int(cfg["max_duration_s"]),
+              "MAX_COST_USD": cfg["max_cost_usd"],
+              "DEVICE_TIMEOUT_S": int(cfg["phase3_device_timeout_s"]),
+              "PROVIDER": cfg["provider"],
+              "MODEL": cfg["model"],
+          }
+          for key, value in values.items():
+              print(f"export {key}={shlex.quote(str(value))}")
+          PY
+          )"
+          echo "trial=$TRIAL_ID instance=$INSTANCE deploy=$DEPLOY_ID order=$ORDER1,$ORDER2 budgets: calls=$MAX_TOOL_CALLS duration=${MAX_DURATION_S}s device_timeout=${DEVICE_TIMEOUT_S}s cost=$MAX_COST_USD"
+          OUT=output/pilot-campaign/$TRIAL_ID
+          mkdir -p "$OUT"
+          git rev-parse HEAD > "$OUT/checkout_head.txt"
+          ARM_TIMEOUT=$((MAX_DURATION_S + 600))
+
+          run_arm() {
+            policy=$1; n=$2
+            echo "== arm $n: $policy =="
+            touch "$OUT/.marker-$policy"
+            if [ "$policy" = "llm" ]; then
+              POLICY_ARGS="--decision-policy llm --provider $PROVIDER --model $MODEL"
+            else
+              POLICY_ARGS="--decision-policy rules"
+            fi
+            timeout $ARM_TIMEOUT env -u LANCE_LAB_LOCK LANCE_PHASE3_DEVICE_TIMEOUT_S=$DEVICE_TIMEOUT_S $PY -m src.agent $POLICY_ARGS \
+              --experiment-scope analysis-verification \
+              --audit-inventory "$OUT/inventory-$TRIAL_ID.json" \
+              --execution-profile full --max-tool-calls $MAX_TOOL_CALLS --max-duration-s $MAX_DURATION_S \
+              --max-cost-usd $MAX_COST_USD > "$OUT/arm-$policy.log" 2>&1 || true
+            tail -15 "$OUT/arm-$policy.log"
+          }
+
+          echo "== deploy scenario $DEPLOY_ID =="
+          (cd benchmarks/ansible && bash deploy.sh "$DEPLOY_ID" --vault-pass-file /root/.vault_pass) > "$OUT/deploy1.log" 2>&1 || { tail -50 "$OUT/deploy1.log"; exit 1; }
+
+          echo "== build public inventory from deployed state =="
+          $PY - "$GT_FILE" "$SCEN_FILE" "$INSTANCE" "$FAMILY_ID" "$TRIAL_ID" "$OUT/inventory-$TRIAL_ID.json" <<'PY'
+          import hashlib, json, pathlib, subprocess, sys
+          import yaml
+          gt = yaml.safe_load(open(sys.argv[1]))
+          topo = gt["topology"]
+          hosts = [(topo["router"]["name"], topo["router"]["ip"])] + \
+                  [(s["name"], s["ip"]) for s in topo["services"]]
+          devices = []
+          for name, ip in hosts:
+              scan = subprocess.run(["nmap", "-Pn", "-n", "-sV", "--version-intensity", "2", "--open", "-p-", "--min-rate", "2000",
+                                     "-oG", "-", ip], capture_output=True, text=True, timeout=300)
+              ports = []
+              for line in scan.stdout.splitlines():
+                  if "Ports:" in line:
+                      for field in line.split("Ports:")[1].split(","):
+                          bits = field.strip().split("/")
+                          if len(bits) > 2 and bits[1] == "open":
+                              ports.append({"name": bits[4] if len(bits) > 4 and bits[4] else "tcp-" + bits[0], "port": int(bits[0]), "protocol": "tcp"})
+              devices.append({"id": name, "ip": ip, "services": ports})
+          env_hash = hashlib.sha256(open(sys.argv[2], "rb").read()).hexdigest()
+          inventory = {
+              "schema_version": 1,
+              "provenance": f"Deployed {sys.argv[3]} inventory scanned from nato-master after deploy (pilot trial {sys.argv[5]})",
+              "target_network": "192.168.100.0/24",
+              "devices": devices,
+              "experiment": {
+                  "id": "lance-policy-pilot-2026-10",
+                  "family_id": sys.argv[4],
+                  "instance_id": sys.argv[3],
+                  "trial_id": sys.argv[5],
+                  "environment_sha256": env_hash,
+              },
+          }
+          pathlib.Path(sys.argv[6]).write_text(json.dumps(inventory, indent=2) + "\n")
+          print(json.dumps({"devices": len(devices), "ports": sum(len(d["services"]) for d in devices)}))
+          PY
+
+          $PY -c "import json,datetime,pathlib; p=pathlib.Path('$OUT/preflight-$TRIAL_ID-$ORDER1.json'); p.write_text(json.dumps({'status':'valid','arm':'$ORDER1','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'evidence':'deploy1.log + inventory in this artifact'}, indent=2)+'\n')"
+          run_arm "$ORDER1" 1
+
+          echo "== restore initial state =="
+          (cd benchmarks/ansible && bash deploy.sh "$DEPLOY_ID" --vault-pass-file /root/.vault_pass) > "$OUT/deploy2.log" 2>&1 || { tail -50 "$OUT/deploy2.log"; exit 1; }
+          $PY -c "import json,datetime,pathlib; p=pathlib.Path('$OUT/preflight-$TRIAL_ID-$ORDER2.json'); p.write_text(json.dumps({'status':'valid','arm':'$ORDER2','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'evidence':'deploy2.log (fresh deploy) + inventory in this artifact'}, indent=2)+'\n')"
+          run_arm "$ORDER2" 2
+
+          echo "== locate run dirs and compare =="
+          FIRST_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -newer "$OUT/.marker-$ORDER1" ! -newer "$OUT/.marker-$ORDER2" | head -1)
+          SECOND_DIR=$(find output/agent -mindepth 1 -maxdepth 1 -type d -newer "$OUT/.marker-$ORDER2" | head -1)
+          test -n "$FIRST_DIR" && test -n "$SECOND_DIR"
+          if [ "$ORDER1" = "rules" ]; then RULES_DIR=$FIRST_DIR; LLM_DIR=$SECOND_DIR; else RULES_DIR=$SECOND_DIR; LLM_DIR=$FIRST_DIR; fi
+          echo "rules_dir=$RULES_DIR llm_dir=$LLM_DIR"
+          echo "$RULES_DIR" > "$OUT/rules_dir.txt"
+          echo "$LLM_DIR" > "$OUT/llm_dir.txt"
+          $PY -m src.benchmark.compare_policies \
+            --rules-run "$RULES_DIR" --llm-run "$LLM_DIR" \
+            --ground-truth "$GT_FILE" \
+            --output "$OUT/comparison-$TRIAL_ID.json" || true
+          test -f "$OUT/comparison-$TRIAL_ID.json" && head -c 1200 "$OUT/comparison-$TRIAL_ID.json"
+
+          echo "== teardown =="
+          (cd benchmarks/ansible && ansible-playbook -i inventory.yml playbooks/99_teardown.yml --extra-vars "scenario_id=$DEPLOY_ID") > "$OUT/teardown.log" 2>&1 || tail -20 "$OUT/teardown.log" || true
+
+      - name: Upload trial artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-campaign-${{ inputs.trial_id || 'push' }}
+          path: |
+            /opt/lance-dev-1/output/pilot-campaign/
+            /opt/lance-dev-1/output/agent/*/run_meta.json
+            /opt/lance-dev-1/output/agent/*/audit_inventory.json
+            /opt/lance-dev-1/output/agent/*/cost_summary.json
+          retention-days: 14
+          if-no-files-found: warn
