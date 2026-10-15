@@ -69,7 +69,9 @@ lancement, pas des budgets scientifiquement calibrés.
 **Lancer la comparaison** appelle `POST /api/pipeline/start` avec
 `runner_kind="comparison"`. Le coordinateur applicatif n’autorise qu’une
 opération active par instance ; la réservation commune du labo couvre les deux
-bras et le nettoyage. Le lancement exige le contrôleur nato, la réservation
+bras, le nettoyage, l’évaluation et la publication du résultat terminal. Le
+contrôleur annonce l’état inactif avant de libérer cette réservation, pour
+permettre un déploiement en attente. Le lancement exige le contrôleur nato, la réservation
 configurée, Ansible/Nmap et une vérification SSH de l’identité `nato` ou
 `pve-nato` avant toute modification. Aucun repli vers un autre labo n’est prévu.
 

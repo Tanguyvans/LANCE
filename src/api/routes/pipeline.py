@@ -496,10 +496,15 @@ def _comparison_thread(runner):
             _state["run_status"] = event["status"]
             _state["run_dir"] = None
         _coordinator.publish(_state, event)
+        if event.get("type") == "comparison_done":
+            # PairRunner still owns the lab reservation here. Publish idle
+            # before unlocking so a queued deployment can proceed safely.
+            _coordinator.finish(_state)
     try:
         runner.run(callback=callback, stop_event=_state["stop_event"])
     finally:
-        _coordinator.finish(_state)
+        if _state.get("comparison_id") == runner.id and _state["running"]:
+            _coordinator.finish(_state)
 
 
 def _simple_runner_thread(req: StartRequest):

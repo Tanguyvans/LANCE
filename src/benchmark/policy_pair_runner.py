@@ -5,6 +5,7 @@ after both workers have ended, through the existing read-only comparator.
 """
 from __future__ import annotations
 
+from contextlib import ExitStack
 from datetime import datetime, timezone
 import ipaddress
 import json
@@ -185,55 +186,60 @@ class PairRunner:
         return worker.run_dir
 
     def run(self, *, callback, stop_event):
+        # Keep the reservation until the final record and terminal callback,
+        # including evaluation. A waiting deployment must not see a live pair.
+        with ExitStack() as reservation:
+            return self._run_pair(callback=callback, stop_event=stop_event, reservation=reservation)
+
+    def _run_pair(self, *, callback, stop_event, reservation):
         self.callback = callback
         runs = {"rules": None, "llm": None}
         try:
-            with reserve_lab(stop_event=stop_event, callback=callback):
-                try:
-                    verify_nato()
-                    self.data["status"] = "running"
+            reservation.enter_context(reserve_lab(stop_event=stop_event, callback=callback))
+            try:
+                verify_nato()
+                self.data["status"] = "running"
+                self.save()
+                common = None
+                for policy in self.data["order"]:
+                    self.step(f"prepare-{policy}", f"Remettre le scénario en état pour {'les règles' if policy == 'rules' else 'le modèle'}", "running")
+                    self._prepare(policy, stop_event)
+                    self.step(f"prepare-{policy}", "Remise en état et vérifications du scénario", "completed")
+                    self.step(f"preflight-{policy}", "Vérifier l’inventaire TCP public", "running")
+                    observed = self._observe(policy, stop_event)
+                    valid = common is None or observed == common["devices"]
+                    preflight = {"status": "valid" if valid else "invalid", "checked_at": now(),
+                        "devices_sha256": digest(observed), "scope": "playbook-and-public-tcp-surface",
+                        "devices": observed, "preparation_dir": str(self.deployments[-1].run_dir.relative_to(self.path))}
+                    self.data["preflights"][policy] = preflight
+                    (self.path / f"preflight-{policy}.json").write_text(json.dumps(preflight, indent=2))
                     self.save()
-                    common = None
-                    for policy in self.data["order"]:
-                        self.step(f"prepare-{policy}", f"Remettre le scénario en état pour {'les règles' if policy == 'rules' else 'le modèle'}", "running")
-                        self._prepare(policy, stop_event)
-                        self.step(f"prepare-{policy}", "Remise en état et vérifications du scénario", "completed")
-                        self.step(f"preflight-{policy}", "Vérifier l’inventaire TCP public", "running")
-                        observed = self._observe(policy, stop_event)
-                        valid = common is None or observed == common["devices"]
-                        preflight = {"status": "valid" if valid else "invalid", "checked_at": now(),
-                            "devices_sha256": digest(observed), "scope": "playbook-and-public-tcp-surface",
-                            "devices": observed, "preparation_dir": str(self.deployments[-1].run_dir.relative_to(self.path))}
-                        self.data["preflights"][policy] = preflight
-                        (self.path / f"preflight-{policy}.json").write_text(json.dumps(preflight, indent=2))
-                        self.save()
-                        if not valid:
-                            raise PairPreparationError("La surface TCP a changé entre les deux bras ; la paire est interrompue.")
-                        self.step(f"preflight-{policy}", "Inventaire TCP vérifié et conservé", "completed")
-                        if common is None:
-                            common = validate_inventory({"schema_version": 1,
-                                "provenance": "Topologie publique et ports TCP observés par le contrôleur après remise en état.",
-                                "target_network": self.spec["target_network"], "devices": observed,
-                                "experiment": {"id": self.id, "trial_id": self.id, "family_id": "ui-public-scenario",
-                                    "instance_id": f"scenario-{self.spec['scenario_id']}", "environment_sha256": digest(self.spec)}})
-                            (self.path / "audit_inventory.json").write_text(json.dumps(common, indent=2))
-                        self.step(f"audit-{policy}", "Analyse et vérification par règles" if policy == "rules" else "Analyse et vérification par le modèle", "running")
-                        runs[policy] = self._execute(policy, common, stop_event)
-                        meta = json.loads((runs[policy] / "run_meta.json").read_text())
-                        self.step(f"audit-{policy}", "Analyse et vérification", meta.get("status", "incomplete"))
-                        if stop_event.is_set():
-                            raise LabWaitCancelled("Arrêt demandé")
-                    self.data["status"] = "completed"
-                finally:
-                    if self.deployments:
-                        self.step("cleanup", "Nettoyer le scénario", "running")
-                        try:
-                            self.data["cleanup"] = bool(self.deployments[-1]._run_teardown(callback))
-                        except Exception:
-                            self.data["cleanup"] = False
-                        self.step("cleanup", "Nettoyer le scénario", "completed" if self.data["cleanup"] else "failed")
-                        if not self.data["cleanup"]:
-                            self.data["status"] = "partial"
+                    if not valid:
+                        raise PairPreparationError("La surface TCP a changé entre les deux bras ; la paire est interrompue.")
+                    self.step(f"preflight-{policy}", "Inventaire TCP vérifié et conservé", "completed")
+                    if common is None:
+                        common = validate_inventory({"schema_version": 1,
+                            "provenance": "Topologie publique et ports TCP observés par le contrôleur après remise en état.",
+                            "target_network": self.spec["target_network"], "devices": observed,
+                            "experiment": {"id": self.id, "trial_id": self.id, "family_id": "ui-public-scenario",
+                                "instance_id": f"scenario-{self.spec['scenario_id']}", "environment_sha256": digest(self.spec)}})
+                        (self.path / "audit_inventory.json").write_text(json.dumps(common, indent=2))
+                    self.step(f"audit-{policy}", "Analyse et vérification par règles" if policy == "rules" else "Analyse et vérification par le modèle", "running")
+                    runs[policy] = self._execute(policy, common, stop_event)
+                    meta = json.loads((runs[policy] / "run_meta.json").read_text())
+                    self.step(f"audit-{policy}", "Analyse et vérification", meta.get("status", "incomplete"))
+                    if stop_event.is_set():
+                        raise LabWaitCancelled("Arrêt demandé")
+            finally:
+                if self.deployments:
+                    self.step("cleanup", "Nettoyer le scénario", "running")
+                    try:
+                        self.data["cleanup"] = bool(self.deployments[-1]._run_teardown(callback))
+                    except Exception:
+                        self.data["cleanup"] = False
+                    self.step("cleanup", "Nettoyer le scénario", "completed" if self.data["cleanup"] else "failed")
+                    if not self.data["cleanup"]:
+                        self.data["status"] = "partial"
         except LabWaitCancelled:
             self.data.update(status="stopped", error="Arrêt demandé ; les bras absents restent non exécutés.")
         except Exception as exc:
@@ -243,6 +249,8 @@ class PairRunner:
                 if entry["status"] == "running":
                     entry["status"] = "failed"
         finally:
+            if self.data["status"] == "running":
+                self.data["status"] = "completed"
             # Preserve failed workers even if run() raised before returning.
             from src.agent.pipeline import OUTPUT_DIR
             for policy, identifier in self.data["arms"].items():

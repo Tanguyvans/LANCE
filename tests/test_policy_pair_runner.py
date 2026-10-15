@@ -31,6 +31,8 @@ def simulation(tmp_path, monkeypatch):
         directory.mkdir(parents=True)
         def cleanup(callback):
             assert lab_lock._held.active
+            # Public completion must wait for cleanup AND post-run evaluation.
+            assert json.loads((self.path / "pair.json").read_text())["status"] == "running"
             calls.append("cleanup")
             return control["cleanup"]
         self.deployments.append(SimpleNamespace(run_dir=directory, _run_teardown=cleanup))
@@ -68,6 +70,7 @@ def simulation(tmp_path, monkeypatch):
         return tmp_path / "private-ground-truth.yaml"
 
     def compare(left, right, truth):
+        assert lab_lock._held.active
         calls.append("compare")
         comparable = bool(left and right) and all(json.loads((p / "run_meta.json").read_text())["status"] == "completed" for p in (left, right))
         return {"comparable": comparable, "incomparability_reasons": [] if comparable else ["missing or incomplete arm"],
@@ -86,7 +89,15 @@ def simulation(tmp_path, monkeypatch):
 
 def test_both_arms_share_public_inventory_and_limits_and_oracle_is_post_run(simulation):
     runner, control, calls, constructors, events, stop = simulation
-    data = runner.run(callback=events.append, stop_event=stop)
+    from src.benchmark import lab_lock
+    def callback(event):
+        if event["type"] == "comparison_done":
+            assert lab_lock._held.active
+            record = json.loads((runner.path / "pair.json").read_text())
+            assert record["finished_at"] and record["status"] == "completed"
+        events.append(event)
+    data = runner.run(callback=callback, stop_event=stop)
+    assert not lab_lock._held.active
     assert data["status"] == "completed" and data["comparison"]["comparable"] is True
     assert calls == ["prepare-rules", "preflight-rules", "audit-rules", "prepare-llm", "preflight-llm",
                      "provider-llm", "audit-llm", "cleanup", "oracle", "compare"]

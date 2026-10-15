@@ -1,6 +1,7 @@
 """Comparison contracts and bounded, public records. No laboratory execution."""
 import asyncio
 import json
+import threading
 from types import SimpleNamespace
 
 from fastapi import FastAPI, HTTPException
@@ -126,3 +127,21 @@ def test_nonfinite_record_values_are_not_json_responses(client, tmp_path):
     directory, _ = _record(tmp_path)
     (directory / "pair.json").write_text('{"cost":1e999}')
     assert client.get(f"/api/comparisons/{ID}").status_code == 422
+
+
+def test_terminal_callback_publishes_idle_before_worker_returns_and_cannot_finish_next_run():
+    snapshot = dict(pipeline._state)
+    pipeline._state.update(running=True, comparison_id=ID, stop_event=threading.Event(),
+                           queue=None, loop=None, recent_events=[])
+    def run(callback, stop_event):
+        callback({"type": "comparison_done", "status": "completed"})
+        assert pipeline._state["running"] is False
+        # Simulate a new operation accepted immediately after completion.
+        pipeline._state.update(running=True, comparison_id="next-operation")
+    try:
+        pipeline._comparison_thread(SimpleNamespace(id=ID, run=run))
+        assert pipeline._state["running"] is True
+        assert pipeline._state["comparison_id"] == "next-operation"
+    finally:
+        pipeline._state.clear()
+        pipeline._state.update(snapshot)
