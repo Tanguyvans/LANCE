@@ -1,4 +1,4 @@
-# Première calibration SSH V2
+# Calibration SSH V2 : pilote natif validé
 
 Le premier incrément logiciel de `s_ssh_identifiants` fournit un contrat public,
 un adaptateur D1 pour l'exécuteur existant et un évaluateur de preuves hors ligne.
@@ -13,7 +13,9 @@ conserve les hypothèses et la sélection des expériences.
 Depuis la racine, les tests de qualification logicielle se lancent avec :
 
 ```bash
-.venv/bin/python -m pytest -q tests/test_ssh_reference.py
+.venv/bin/python -m pytest -q \
+  tests/test_ssh_reference.py tests/test_ssh_reference_live.py \
+  tests/test_ssh_reference_proxmox.py tests/test_ssh_reference_diagnostics.py
 ```
 
 Ces tests utilisent le vrai adaptateur `ssh_exec` et la frontière d'exécution
@@ -27,7 +29,7 @@ localement sur nato. Les tests simulés ne prouvent pas l'exécution de ce pilot
 Le gel expérimental et le pipeline A1 complet restent distincts. Les manifestes
 et résultats de la campagne historique ne sont pas modifiés.
 
-Validation logicielle du 15 octobre 2026 : les 32 cas de ce module passent ; la
+Validation logicielle initiale du 15 octobre 2026 : les 32 cas du contrat passent ; la
 suite complète `python -m pytest -q tests model_training/tests` termine avec
 **3 885 tests réussis, un ignoré et deux avertissements de dépréciation de
 fixtures**. Les tests de précontrôle ouvrant un serveur local ont été exécutés
@@ -42,6 +44,24 @@ Le workflow et le contrôleur refusent un autre fournisseur ou modèle. Une pann
 UMONS bloque l'essai ; elle ne déclenche aucun repli vers MiniMax. La sélection
 erronée du lancement historique ci-dessous n'a produit aucun appel modèle :
 la préparation s'est arrêtée avant les quatre bras.
+
+La **qualification native est terminée** : le
+[lancement 38769747406](https://github.com/Tanguyvans/LANCE/actions/runs/38769747406)
+a validé les quatre bras sur pve-nato avec le commit `63203a8`, les contrôles
+avant et après le dictionnaire, le nettoyage et les **120 fichiers de preuves**.
+La CI de ce commit compte **3 933 tests réussis et deux ignorés**. Le
+[bilan de référence](../../../docs/benchmark/agent-vs-automation-cli.md#qualification-native-vérifiée-le-15-octobre-2026)
+conserve les mesures, les empreintes des deux archives et les limites. Les
+preuves complètes restent sur nato. Une répétition par posture qualifie cet
+instrument ; elle ne démontre pas une plus-value générale du LLM.
+
+Le lancement reste manuel sur `dev/2` et réservé à `dev-2`, y compris après
+intégration du code sur `main`. Le push sur `main` valide et déploie l'application
+par le runner nato-master ; il ne lance pas les quatre bras. Le pipeline
+historique, ses ressources gelées et ses verdicts ne sont pas modifiés par cet
+incrément expérimental.
+
+### Historique de préparation
 
 La [CI du commit `6691af4`](https://github.com/Tanguyvans/LANCE/actions/runs/38745281005)
 a réussi : 3 903 tests, deux ignorés, deux avertissements ; le déploiement
@@ -70,17 +90,17 @@ le 15 octobre 2026 ; les preuves complètes restent sur nato.
 Le lancement de la fixture transmet maintenant un `argv[0]` absolu à OpenSSH.
 Un test avec le vrai binaire, une configuration volontairement absente et aucun
 port ouvert reproduit le refus avant correction et atteint la lecture de
-configuration après correction. Cette validation logicielle ne démontre pas
-encore que la préparation réelle et les quatre bras ont abouti.
+configuration après correction. Ce test logiciel reste distinct de la
+qualification réelle documentée ci-dessus.
 
 Le [lancement corrigé `50fc5a7`](https://github.com/Tanguyvans/LANCE/actions/runs/38767219662)
 a exécuté les quatre bras et vérifié **120 fichiers**, avec deux archives de
 paire. Les quatre précontrôles initiaux étaient valides ; trois bras sont en
 non-succès et le LLM obtient une preuve dans le cas vulnérable. Ces résultats
 restent intacts sous `/opt/lance-dev-2/output/ssh-reference/38767219662-1/`.
-Les accès légitimes qui échouent immédiatement après les refus motivent un
-diagnostic de la protection temporaire par source, avant toute interprétation
-comparative. Le précontrôle exige désormais que le témoin fonctionne également
+Les journaux ont confirmé une protection temporaire par source : après les
+refus, des accès légitimes étaient bloqués. Ce défaut de fixture empêche une
+interprétation comparative de cette tentative. Le précontrôle exige désormais que le témoin fonctionne également
 après le dictionnaire, et la fixture statique désactive `PerSourcePenalties`.
-La qualification de cette correction exige un nouveau lancement ; les verdicts
-anciens ne sont ni recalculés ni remplacés.
+Cette correction a été qualifiée par le lancement distinct cité ci-dessus ;
+les verdicts anciens ne sont ni recalculés ni remplacés.

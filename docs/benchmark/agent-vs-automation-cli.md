@@ -346,6 +346,12 @@ Le lancement est **manuel** : après publication sur `dev/2`, choisir
 exact précèdent l'essai. Un push seul ne lance aucun essai SSH. La procédure
 conserve les preuves sur nato, sans téléversement automatique vers GitHub :
 
+L'intégration de cet incrément sur `main` suit la CI et le déploiement habituels
+via nato-master. Elle n'active pas l'expérience sur l'instance principale : le
+workflow SSH exige toujours un lancement manuel sur `dev/2`, l'instance `dev-2`
+et Qwen, puis le verrou commun. Le code applicatif et les ressources auditées
+gelées de `src/agent` et `src/benchmark` ne sont pas modifiés par cet incrément.
+
 **Prérequis sur nato :** `ansible-playbook`, `ssh`, `sshpass`, l'inventaire NATO
 déjà déployé et son accès Vault. Le contrôleur vérifie les binaires et la présence
 de Qwen dans le catalogue du fournisseur avant toute création d'environnement ;
