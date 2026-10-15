@@ -34,3 +34,19 @@ fixtures**. Les tests de précontrôle ouvrant un serveur local ont été exécu
 avec l'autorisation d'écoute sur `127.0.0.1`. Le contrôle des ressources gelées du
 pilote passe sans modifier son manifeste. Cette validation ne constitue pas un
 résultat expérimental sur la plus-value d'un LLM.
+
+## État de l'exécution réelle
+
+La [CI du commit `6691af4`](https://github.com/Tanguyvans/LANCE/actions/runs/38745281005)
+a réussi : 3 903 tests, deux ignorés, deux avertissements ; le déploiement
+dev/2 a annoncé ce même commit et le verrou actif. Le
+[lancement manuel](https://github.com/Tanguyvans/LANCE/actions/runs/38745339418)
+du 15 octobre 2026 s'est arrêté avant toute connexion SSH : le binaire Docker
+est absent de `nato-master`. Aucun résultat script/LLM n'a donc été mesuré.
+La collection de préparation reste sur nato sous
+`/opt/lance-dev-2/output/ssh-reference/38745339418-1/`.
+
+Le contrôleur vérifie désormais les prérequis avant de démarrer l'environnement
+et permet de sceller un échec de préparation sans moteur. L'installation ou la
+mise à disposition du runtime sur nato reste nécessaire avant une nouvelle
+tentative. Aucun moteur temporaire ni service système n'a été installé.

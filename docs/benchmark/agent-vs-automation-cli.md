@@ -329,6 +329,15 @@ Le lancement est **manuel** : après publication sur `dev/2`, choisir
 exact précèdent l'essai. Un push seul ne lance aucun essai SSH. La procédure
 conserve les preuves sur nato, sans téléversement automatique vers GitHub :
 
+**Prérequis sur nato :** client et moteur Docker joignables, `ssh` et `sshpass`.
+Le contrôleur vérifie ces binaires et la réponse du moteur avant toute création
+d'environnement ; il n'installe aucun paquet ni service. Un prérequis absent
+produit une préparation bloquée, conservée dans `preconditions.json`, sans faux
+bras exécuté. Cette préparation peut être archivée sans appeler Docker lorsqu'
+aucune création n'a commencé. La commande hors ligne `seal` permet aussi de
+sceller la collection après une récupération incomplète, sans déclarer le
+nettoyage réussi.
+
 ```bash
 gh workflow run benchmark-integrity.yml --ref dev/2 -f slot=dev-2 -f ssh_reference=true
 ```

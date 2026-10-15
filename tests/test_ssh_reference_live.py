@@ -250,6 +250,27 @@ def test_label_scoped_cleanup_never_touches_other_containers(tmp_path, monkeypat
                         ('network', 'rm', 'network-id')]
 
 
+def test_missing_executable_keeps_diagnostic(tmp_path, monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise FileNotFoundError('development-only missing binary')
+
+    monkeypatch.setattr(subprocess, 'run', unavailable)
+    with pytest.raises(RuntimeError, match='Docker operation failed'):
+        live.Docker(tmp_path, 'owned-trial').call('version')
+    operation = json.loads(next((tmp_path / 'docker-operations').glob('*.json')).read_text())
+    assert operation['returncode'] == 127 and operation['error_type'] == 'FileNotFoundError'
+
+
+def test_blocked_setup_does_not_require_an_engine_to_archive(tmp_path, monkeypatch):
+    live.write_json(tmp_path / 'ownership.json', {'owner': 'development', 'resources_may_exist': False})
+    docker = live.Docker(tmp_path, 'development')
+    monkeypatch.setattr(docker, 'call', lambda *a, **k: pytest.fail('No engine operation started'))
+    docker.cleanup()
+    live.finalize_archives(tmp_path)
+    assert live.verify_archives(tmp_path) == 2
+    assert json.loads((tmp_path / 'cleanup.json').read_text())['status'] == 'not_required'
+
+
 def test_recovery_archives_incomplete_trial_and_detects_corruption(tmp_path):
     root = tmp_path / 'experiment'
     trial = root / 'trials' / 'development'

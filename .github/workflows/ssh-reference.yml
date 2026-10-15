@@ -36,6 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          umask 077
           test "$RUNNER_NAME" = nato-master
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF" = refs/heads/dev/2
@@ -64,6 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          umask 077
           test "$RUNNER_NAME" = nato-master
           exec 9>>/var/lib/lance/lab.lock
           flock -x 9
@@ -72,6 +74,9 @@ jobs:
           OUT="output/ssh-reference/$TRIAL_NAME"
           if [ -d "$OUT" ]; then
             if [ -f "$OUT.console.log" ]; then cp "$OUT.console.log" "$OUT/controller-console.log"; fi
-            venv/bin/python -m benchmarks.experiments.ssh_reference_live recover --output "$OUT"
+            recovery_status=0
+            venv/bin/python -m benchmarks.experiments.ssh_reference_live recover --output "$OUT" || recovery_status=$?
+            venv/bin/python -m benchmarks.experiments.ssh_reference_live seal --output "$OUT"
             venv/bin/python -m benchmarks.experiments.ssh_reference_live summary --output "$OUT"
+            exit "$recovery_status"
           fi

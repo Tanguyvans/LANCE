@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import platform
 import secrets
+import shutil
 import signal
 import socket
 import subprocess
@@ -60,16 +61,27 @@ class Docker:
 
     def call(self, *args, timeout=60, check=True):
         self.sequence += 1
-        result = subprocess.run(['docker', *args], capture_output=True, text=True, timeout=timeout)
+        error_type = None
+        try:
+            result = subprocess.run(['docker', *args], capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            error_type = type(exc).__name__
+            result = subprocess.CompletedProcess(['docker', *args], 127 if isinstance(exc, OSError) else 124,
+                                                  stdout='', stderr='Executable unavailable or command timed out')
         write_json(self.root / 'docker-operations' / f'{time.time_ns()}-{self.sequence}.json', {
             'argv': ['docker', *args], 'returncode': result.returncode,
-            'stdout': result.stdout, 'stderr': result.stderr,
+            'stdout': result.stdout, 'stderr': result.stderr, 'error_type': error_type,
         })
         if check and result.returncode:
             raise RuntimeError(f'Docker operation failed: {args[0]}')
         return result
 
     def cleanup(self):
+        ownership = self.root / 'ownership.json'
+        if ownership.is_file() and json.loads(ownership.read_text()).get('resources_may_exist') is False:
+            write_json(self.root / 'cleanup.json', {'status': 'not_required', 'owner': self.owner,
+                                                   'reason': 'environment_creation_not_started'})
+            return
         containers = self.call('ps', '-aq', '--filter', f'label={LABEL}={self.owner}').stdout.split()
         if containers:
             self.call('rm', '-f', *containers)
@@ -354,6 +366,8 @@ def public_summary(root):
     result = json.loads(result_path.read_text()) if result_path.is_file() else {'cases': [], 'status': 'incomplete'}
     result['evidence_directory'] = str(root.resolve())
     result['verified_files'] = verify_archives(root)
+    if (root / 'preconditions.json').is_file():
+        result['preconditions'] = json.loads((root / 'preconditions.json').read_text())
     result['archive_sha256'] = {path.parent.name: json.loads(path.read_text())['archive_sha256']
                                for path in sorted((root / 'archives').glob('*/evidence-manifest.json'))}
     result['preflights'] = []
@@ -374,7 +388,7 @@ def run_experiment(args):
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     owner = uuid4().hex
-    write_json(root / 'ownership.json', {'owner': owner})
+    write_json(root / 'ownership.json', {'owner': owner, 'resources_may_exist': False})
     docker = Docker(root, owner)
     results = []
     write_json(root / 'plan.json', {'purpose': 'instrument qualification', 'intentional_flaws': [0, 1],
@@ -391,8 +405,15 @@ def run_experiment(args):
         metadata['provider'], metadata['model'] = args.provider, args.model
         metadata['budgets'] = {key: getattr(args, key) for key in ('max_tool_calls', 'max_duration_s', 'max_cost_usd', 'max_turns')}
         write_json(root / 'controller.json', metadata)
+        prerequisites = {name: shutil.which(name) is not None for name in ('docker', 'ssh', 'sshpass')}
+        write_json(root / 'preconditions.json', {'status': 'binaries_present' if all(prerequisites.values()) else 'blocked',
+                   'binaries': prerequisites, 'reason': None if all(prerequisites.values()) else 'missing_runtime_prerequisite'})
+        if not all(prerequisites.values()):
+            raise RuntimeError('Missing runtime prerequisites; no environment creation attempted')
+        docker.call('version', '--format', '{{.Server.Version}}')
+        write_json(root / 'ownership.json', {'owner': owner, 'resources_may_exist': True})
         image = 'lance-ssh-reference:' + metadata['git_commit'][:12]
-        docker.call('build', '-t', image, str(ROOT / 'benchmarks/experiments/ssh-reference/fixture'), timeout=600)
+        docker.call('build', '--force-rm', '-t', image, str(ROOT / 'benchmarks/experiments/ssh-reference/fixture'), timeout=600)
         metadata['image'] = json.loads(docker.call('image', 'inspect', image).stdout)[0]
         write_json(root / 'controller.json', metadata)
         network = docker.call('network', 'create', '--internal', '--label', f'{LABEL}={owner}',
@@ -415,7 +436,7 @@ def run_experiment(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['run', 'recover', 'verify', 'summary'])
+    parser.add_argument('command', choices=['run', 'recover', 'verify', 'summary', 'seal'])
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--provider', default='ollama-umons')
     parser.add_argument('--model', default='qwen3.8:27b')
@@ -432,6 +453,10 @@ def main():
         return 0
     if args.command == 'summary':
         print(json.dumps(public_summary(args.output), indent=2))
+        return 0
+    if args.command == 'seal':
+        finalize_archives(args.output)
+        print(json.dumps({'verified_files': verify_archives(args.output)}))
         return 0
     require_nato()
     if args.command == 'recover':
