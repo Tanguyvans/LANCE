@@ -75,7 +75,7 @@ def process_for(public, config, positive):
             return {'return_code': 0, 'stderr': '',
                     'stdout': f'{IDENTITY_MARKER}\n{user}\n{OBJECT_MARKER}\n' + config['object']}
         return {'return_code': 5, 'stdout': '', 'stderr':
-                "Warning: Permanently added '[127.0.0.1]:2222' (ED25519) to the list of known hosts.\r\n"
+                f"Warning: Permanently added '[{public['target']['ip']}]:{public['target']['port']}' (ED25519) to the list of known hosts.\r\n"
                 'Permission denied, please try again.\r\n'}
     return process
 
@@ -115,6 +115,17 @@ def test_missing_provider_usage_remains_unknown_in_comparison(tmp_path, monkeypa
     assert metrics['usage_complete'] is False
     assert metrics['input_tokens'] is metrics['estimated_cost_usd'] is metrics['billed_cost_usd'] is None
     assert result['paired_execution_complete'] is False and result['mt_admissible'] is False
+
+
+def test_native_target_uses_authorized_laboratory_scope(tmp_path, monkeypatch, setup):
+    public, config, args = setup
+    public['target_network'], public['target']['ip'] = '192.168.100.0/24', '192.168.100.220'
+    monkeypatch.setattr(recon_tools, '_run', process_for(public, config, False))
+    oracle = {'schema_version': 1, 'briefing_sha256': live.digest(public), 'intentional_flaws': 0,
+              'canary_sha256': hashlib.sha256(config['object'].encode()).hexdigest()}
+    result = live.run_arm(public, oracle, 'rules', tmp_path, args, {})
+    assert result['success'] is True
+    assert len(live.read_ledger(tmp_path)) == 4
 
 
 def test_subscription_allocation_does_not_claim_measured_zero_cost(tmp_path, monkeypatch, setup):

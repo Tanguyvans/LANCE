@@ -92,7 +92,8 @@ jobs:
             05_populate_services.yml \
             06_verify.yml \
             08_reset_scenario.yml \
-            99_teardown.yml; do
+            99_teardown.yml \
+            ssh_reference.yml; do
             ansible-playbook -i inventory.yml "playbooks/${playbook}" --syntax-check
           done
 

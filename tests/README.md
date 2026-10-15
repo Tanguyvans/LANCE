@@ -21,6 +21,10 @@ et son enregistreur avec un client simulé, les pertes d'archives, les compteurs
 inconnus, les avis OpenSSH liés à la cible, le nettoyage par propriété, les
 archives interrompues et le lancement manuel réservé à nato/dev-2. Ces tests ne
 lancent ni Docker, ni serveur SSH, ni modèle réel.
+`test_ssh_reference_proxmox.py` vérifie les frontières de la fixture LXC native :
+identité de pve-nato avant transfert, refus d'une campagne active, allocation
+sans collision, propriété avant destruction, récupération partielle et arrêt
+avant allocation lorsque Qwen est indisponible. Les appels Proxmox sont simulés.
 
 `test_run_graph_context.py` vérifie les graphes distincts de deux runs,
 les réinitialisations et mutations pondérées, les outils et prompts exécutés

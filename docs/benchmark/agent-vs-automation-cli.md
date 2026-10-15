@@ -286,15 +286,24 @@ un futur manifeste V2 devra aussi identifier la version de cet instrument.
 
 ### Premier pilote SSH réel sur dev/2
 
-`benchmarks.experiments.ssh_reference_live` crée sur **nato-master** un serveur
-OpenSSH Docker éphémère, publié uniquement sur `127.0.0.1` et relié à un réseau
-Docker interne. Il ne déploie ni ne réinitialise de scénario Proxmox. Il exige
-l'identité du runner, l'adresse Tailscale de nato et la réservation commune du
-laboratoire. Seuls ses conteneurs/réseaux portant son identifiant de propriété
-sont supprimés ; aucune opération globale de nettoyage Docker n'est exécutée.
+`benchmarks.experiments.ssh_reference_live` utilise l'infrastructure **Proxmox/LXC
+existante sur pve-nato**. Le contrôleur tourne sur nato-master ; le serveur
+OpenSSH réside dans un clone jetable du template Debian 9000. Il n'installe aucun
+runtime sur le maître, ne change ni pont, ni pare-feu, ni service de l'hôte et ne
+réinitialise aucun scénario existant. Le verrou commun couvre toute l'opération.
+
+Avant tout transfert, Ansible exige l'adresse Tailscale `100.76.206.65` de
+pve-nato. Le contrôleur de l'hyperviseur répète ce contrôle et vérifie Proxmox.
+Il réserve un VMID libre entre 7000 et 7099 et une IP disponible entre
+`192.168.100.220` et `.239`, sur le pont vmbr1 existant. Une autre charge active
+sur ce pont bloque l'allocation, à l'exception du maître identifié. Le template
+doit être non privilégié et posséder une seule interface. Le clone utilise
+256 Mio, un cœur, aucun nesting et aucune passerelle. La destruction exige le
+VMID borné et le nom dérivé de l'identifiant de propriété, vérifiés à nouveau.
+Les VM et configurations d'autres campagnes restent hors des opérations.
 
 Le pilote prévoit quatre bras : F0 script puis LLM, F1 LLM puis script. Avant
-chaque bras, le conteneur est recréé et un précontrôle indépendant teste le témoin
+chaque bras, le LXC est recréé et un précontrôle indépendant teste le témoin
 et tous les couples publics. **F0 signifie zéro couple du dictionnaire accepté ;
 F1 exactement un couple accepté.** Ce n'est pas une affirmation d'absence de toute
 autre vulnérabilité d'OpenSSH ou du système. Les mots de passe hors dictionnaire
@@ -330,12 +339,14 @@ Le lancement est **manuel** : après publication sur `dev/2`, choisir
 exact précèdent l'essai. Un push seul ne lance aucun essai SSH. La procédure
 conserve les preuves sur nato, sans téléversement automatique vers GitHub :
 
-**Prérequis sur nato :** client et moteur Docker joignables, `ssh` et `sshpass`.
-Le contrôleur vérifie ces binaires et la réponse du moteur avant toute création
-d'environnement ; il n'installe aucun paquet ni service. Un prérequis absent
+**Prérequis sur nato :** `ansible-playbook`, `ssh`, `sshpass`, l'inventaire NATO
+déjà déployé et son accès Vault. Le contrôleur vérifie les binaires et la présence
+de Qwen dans le catalogue du fournisseur avant toute création d'environnement ;
+il n'installe aucun paquet ni service. Un prérequis absent
 produit une préparation bloquée, conservée dans `preconditions.json`, sans faux
-bras exécuté. Cette préparation peut être archivée sans appeler Docker lorsqu'
-aucune création n'a commencé. La commande hors ligne `seal` permet aussi de
+bras exécuté. Une panne UMONS est conservée dans les traces de précontrôle et
+ne déclenche aucun repli. Cette préparation peut être archivée sans appel à
+Proxmox lorsqu'aucune allocation n'a commencé. La commande hors ligne `seal` permet de
 sceller la collection après une récupération incomplète, sans déclarer le
 nettoyage réussi.
 
@@ -346,8 +357,9 @@ gh workflow run benchmark-integrity.yml --ref dev/2 -f slot=dev-2 -f ssh_referen
 
 Les artefacts restent sous
 `/opt/lance-dev-2/output/ssh-reference/<workflow-run-id>-<attempt>/` : plan,
-briefing, oracle et configuration privés, identité du code et de l'image, reset
-par conteneur neuf, précontrôles et leurs traces, deux runs par cas, journal
+briefing, oracle et configuration privés, identité du code et du template,
+requêtes/réponses Ansible, bail et configurations du LXC, reset par clone neuf,
+précontrôles et leurs traces, deux runs par cas, journal
 complet d'outils, prompts, échanges visibles du modèle, décisions, consommation,
 comparaisons et nettoyage. Chaque paire possède `evidence.tar.gz` et son manifeste
 SHA-256 ; `experiment-manifest.json` couvre aussi les fichiers du contrôleur.

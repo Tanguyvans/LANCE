@@ -1,4 +1,4 @@
-"""Real OpenSSH D1/LLM qualification on nato; never deploys a Proxmox scenario."""
+"""Real OpenSSH D1/LLM qualification using an owned disposable LXC on pve-nato."""
 from __future__ import annotations
 
 import argparse
@@ -24,6 +24,7 @@ from benchmarks.experiments.ssh_reference import (
     proof_command, run_rules, validate_briefing,
 )
 from benchmarks.experiments.ssh_reference_llm import RecordingClient, run_llm
+from benchmarks.experiments.ssh_reference_proxmox import Proxmox, Fixture as ProxmoxFixture
 from scripts.benchmark.pilot_support import archive_trial
 from src.agent.audit_experiment import digest, resource_manifest
 from src.agent.cost_tracker import CostTracker
@@ -93,55 +94,7 @@ class Docker:
         write_json(self.root / 'cleanup.json', {'status': 'completed', 'owner': self.owner})
 
 
-class Fixture:
-    def __init__(self, docker, image, network, config, directory, port=None):
-        self.docker, self.directory, self.cid = docker, directory, None
-        self.image, self.network, self.config, self.port = image, network, config, port
-
-    def start(self):
-        self.directory.mkdir(parents=True, exist_ok=True)
-        published = f'127.0.0.1:{self.port or ""}:22'
-        self.cid = self.docker.call(
-            'run', '-d', '--label', f'{LABEL}={self.docker.owner}',
-            '--network', self.network, '--publish', published,
-            '--pids-limit', '128', '--memory', '256m', '--cpus', '1',
-            '--cap-drop', 'NET_RAW', '--security-opt', 'no-new-privileges',
-            '--mount', f'type=bind,source={self.config.resolve()},target=/fixture.json,readonly',
-            self.image,
-        ).stdout.strip()
-        inspection = json.loads(self.docker.call('inspect', self.cid).stdout)[0]
-        binding = inspection['NetworkSettings']['Ports']['22/tcp']
-        if len(binding) != 1 or binding[0]['HostIp'] != '127.0.0.1':
-            raise RuntimeError('SSH fixture must be published only on loopback')
-        self.port = int(binding[0]['HostPort'])
-        write_json(self.directory / 'container-before.json', inspection)
-        deadline = time.monotonic() + 40
-        while time.monotonic() < deadline:
-            try:
-                with socket.create_connection(('127.0.0.1', self.port), timeout=1) as client:
-                    client.settimeout(1)
-                    banner = client.recv(256).decode('ascii', errors='replace')
-                if banner.startswith('SSH-2.0-OpenSSH_'):
-                    write_json(self.directory / 'readiness.json', {'banner': banner, 'port': self.port})
-                    return self.port
-            except (OSError, TimeoutError):
-                pass
-            time.sleep(0.25)
-        raise RuntimeError('OpenSSH fixture did not become ready')
-
-    def close(self):
-        if self.cid is None:
-            return
-        logs = self.docker.call('logs', '--timestamps', self.cid, check=False)
-        (self.directory / 'server.log').write_text(logs.stdout + logs.stderr, encoding='utf-8')
-        result = self.docker.call('inspect', self.cid, check=False)
-        if result.returncode == 0:
-            write_json(self.directory / 'container-after.json', json.loads(result.stdout)[0])
-        self.docker.call('rm', '-f', self.cid)
-        self.cid = None
-
-
-def new_run(directory, policy, args):
+def new_run(directory, policy, args, network='127.0.0.1/32'):
     directory.mkdir(parents=True, exist_ok=True)
     # An explicitly opened empty collection is distinct from missing evidence
     # when the provider fails before its first SSH operation.
@@ -151,7 +104,7 @@ def new_run(directory, policy, args):
         max_duration_s=args.max_duration_s, max_turns=args.max_turns,
         _artifact_log_lock=threading.Lock(), _tool_call_count=0,
         _run_started=time.monotonic(), _execution_limit_reason=None,
-        experiment_scope='ssh-reference-calibration', context={'target_subnet': '127.0.0.1/32'},
+        experiment_scope='ssh-reference-calibration', context={'target_subnet': network},
         decision_policy=policy,
         tracker=CostTracker(model=args.model if policy == 'llm' else '',
                             provider=args.provider if policy == 'llm' else '',
@@ -163,7 +116,7 @@ def new_run(directory, policy, args):
 
 
 def preflight(public, oracle, directory, args):
-    run = new_run(directory, 'preflight', args)
+    run = new_run(directory, 'preflight', args, public['target_network'])
     execute = bind_ssh_tool(run)
     results = []
     try:
@@ -205,7 +158,7 @@ def allocate_run(runs_root):
 def run_arm(public, oracle, policy, directory, args, metadata):
     from src.agent.core.executor import EvidenceWriteError
     from src.agent.provider import LLMProvider
-    run = new_run(directory, policy, args)
+    run = new_run(directory, policy, args, public['target_network'])
     decision = {'schema_version': 1, 'contract': CONTRACT, 'decision_policy': policy,
                 'briefing_sha256': digest(public), 'status': 'no_output', 'finding': False, 'evidence_refs': []}
     write_json(directory / 'briefing.json', public)
@@ -285,7 +238,7 @@ def comparison(trial, arms):
     return result
 
 
-def run_case(root, docker, image, network, flaws, args, metadata):
+def run_case(root, backend, flaws, args, metadata):
     trial_id = 'ssh-' + uuid4().hex[:12]
     trial = root / 'trials' / trial_id
     trial.mkdir(parents=True)
@@ -297,13 +250,13 @@ def run_case(root, docker, image, network, flaws, args, metadata):
     port, public, oracle, arms = None, None, None, {}
     try:
         for policy in (['rules', 'llm'] if flaws == 0 else ['llm', 'rules']):
-            fixture = Fixture(docker, image, network, trial / 'fixture-private.json', trial / 'fixture' / policy, port)
+            fixture = ProxmoxFixture(backend, trial / 'fixture-private.json', trial / 'fixture' / policy)
             try:
                 port = fixture.start()
                 if public is None:
                     public = validate_briefing({'schema_version': 1, 'scenario_id': 's_ssh_identifiants',
-                        'instance_id': trial_id, 'target_network': '127.0.0.1/32',
-                        'target': {'asset_id': 'ssh-device', 'ip': '127.0.0.1', 'port': port},
+                        'instance_id': trial_id, 'target_network': '192.168.100.0/24',
+                        'target': {'asset_id': 'ssh-device', 'ip': fixture.address, 'port': port},
                         'dictionary': dictionary, 'control_credential': control, 'proof_path': '/srv/lance/proof'})
                     oracle = {'schema_version': 1, 'briefing_sha256': digest(public),
                               'intentional_flaws': flaws, 'canary_sha256': hashlib.sha256(config['object'].encode()).hexdigest()}
@@ -370,6 +323,12 @@ def public_summary(root):
     result['verified_files'] = verify_archives(root)
     if (root / 'preconditions.json').is_file():
         result['preconditions'] = json.loads((root / 'preconditions.json').read_text())
+    for name in ('provider-preflight', 'provider-preflight-error'):
+        if (root / f'{name}.json').is_file():
+            result[name] = json.loads((root / f'{name}.json').read_text())
+    result['proxmox_failures'] = [{key: response.get(key) for key in ('error_type', 'reason')}
+                                 for path in sorted((root / 'proxmox-operations').glob('*.response.json'))
+                                 if (response := json.loads(path.read_text())).get('ok') is not True]
     result['archive_sha256'] = {path.parent.name: json.loads(path.read_text())['archive_sha256']
                                for path in sorted((root / 'archives').glob('*/evidence-manifest.json'))}
     result['preflights'] = []
@@ -392,8 +351,8 @@ def run_experiment(args):
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     owner = uuid4().hex
-    write_json(root / 'ownership.json', {'owner': owner, 'resources_may_exist': False})
-    docker = Docker(root, owner)
+    write_json(root / 'ownership.json', {'owner': owner, 'backend': 'proxmox-lxc', 'resources_may_exist': False})
+    backend = Proxmox(root, owner)
     results = []
     write_json(root / 'plan.json', {'purpose': 'instrument qualification', 'intentional_flaws': [0, 1],
                                    'policies': ['rules', 'llm'], 'planned_arms': 4})
@@ -402,28 +361,39 @@ def run_experiment(args):
                     'resource_manifest_sha256': resource_manifest(ROOT), 'host': socket.gethostname(),
                     'platform': platform.platform(), 'python': platform.python_version(),
                     'started_at': datetime.now(timezone.utc).isoformat(), 'mt_admissible': False}
-        source_files = [*ROOT.glob('benchmarks/experiments/ssh_reference*.py'),
+        source_files = [ROOT / 'benchmarks/ansible/files/ssh_reference_proxmox.py',
+                        ROOT / 'benchmarks/ansible/playbooks/ssh_reference.yml',
+                        *ROOT.glob('benchmarks/experiments/ssh_reference*.py'),
                         *ROOT.glob('benchmarks/experiments/ssh-reference/fixture/*')]
         metadata['implementation_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                              for path in source_files if path.is_file()}
         metadata['provider'], metadata['model'] = args.provider, args.model
         metadata['budgets'] = {key: getattr(args, key) for key in ('max_tool_calls', 'max_duration_s', 'max_cost_usd', 'max_turns')}
         write_json(root / 'controller.json', metadata)
-        prerequisites = {name: shutil.which(name) is not None for name in ('docker', 'ssh', 'sshpass')}
+        prerequisites = {name: shutil.which(name) is not None for name in ('ansible-playbook', 'ssh', 'sshpass')}
         write_json(root / 'preconditions.json', {'status': 'binaries_present' if all(prerequisites.values()) else 'blocked',
                    'binaries': prerequisites, 'reason': None if all(prerequisites.values()) else 'missing_runtime_prerequisite'})
         if not all(prerequisites.values()):
             raise RuntimeError('Missing runtime prerequisites; no environment creation attempted')
-        docker.call('version', '--format', '{{.Server.Version}}')
-        write_json(root / 'ownership.json', {'owner': owner, 'resources_may_exist': True})
-        image = 'lance-ssh-reference:' + metadata['git_commit'][:12]
-        docker.call('build', '--force-rm', '-t', image, str(ROOT / 'benchmarks/experiments/ssh-reference/fixture'), timeout=600)
-        metadata['image'] = json.loads(docker.call('image', 'inspect', image).stdout)[0]
+        from src.agent.provider import LLMProvider
+        try:
+            provider = LLMProvider(PROVIDER, MODEL)
+            catalogue = provider.client.with_options(timeout=15, max_retries=0).models.list()
+            available = any(item.id == MODEL for item in catalogue.data)
+            write_json(root / 'provider-preflight.json', {'provider': PROVIDER, 'model': MODEL,
+                                                        'available': available, 'purpose': 'catalogue only; no model generation'})
+            if not available:
+                raise RuntimeError('Selected Qwen model not present at configured UMONS endpoint')
+        except Exception as exc:
+            write_json(root / 'provider-preflight-error.json', {'error_type': type(exc).__name__,
+                       'status_code': getattr(exc, 'status_code', None), 'provider': PROVIDER, 'model': MODEL})
+            raise
+        write_json(root / 'ownership.json', {'owner': owner, 'backend': 'proxmox-lxc', 'resources_may_exist': True})
+        metadata['backend'] = 'proxmox-lxc'
+        metadata['allocation'] = backend.prepare()
         write_json(root / 'controller.json', metadata)
-        network = docker.call('network', 'create', '--internal', '--label', f'{LABEL}={owner}',
-                              'lance-ssh-' + owner[:12]).stdout.strip()
         for flaws in (0, 1):
-            results.append(run_case(root, docker, image, network, flaws, args, metadata))
+            results.append(run_case(root, backend, flaws, args, metadata))
         write_json(root / 'results.json', {'schema_version': 1, 'purpose': 'instrument qualification',
                    'mt_admissible': False, 'cases': results})
         return 0
@@ -432,7 +402,7 @@ def run_experiment(args):
         raise
     finally:
         try:
-            docker.cleanup()
+            backend.cleanup()
         finally:
             finalize_archives(root)
             verify_archives(root)
@@ -470,7 +440,11 @@ def main():
         if len(owner) != 32 or any(char not in '0123456789abcdef' for char in owner):
             raise ValueError('Invalid cleanup ownership identifier')
         try:
-            Docker(args.output, owner).cleanup()
+            ownership = json.loads((args.output / 'ownership.json').read_text())
+            if ownership.get('backend') == 'proxmox-lxc':
+                Proxmox(args.output, owner).cleanup()
+            else:
+                Docker(args.output, owner).cleanup()  # Historical Docker attempts only.
         finally:
             finalize_archives(args.output)
         print(json.dumps({'verified_files': verify_archives(args.output)}))

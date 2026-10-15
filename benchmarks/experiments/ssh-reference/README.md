@@ -52,7 +52,11 @@ est absent de `nato-master`. Aucun résultat script/LLM n'a donc été mesuré.
 La collection de préparation reste sur nato sous
 `/opt/lance-dev-2/output/ssh-reference/38745339418-1/`.
 
-Le contrôleur vérifie désormais les prérequis avant de démarrer l'environnement
-et permet de sceller un échec de préparation sans moteur. L'installation ou la
-mise à disposition du runtime sur nato reste nécessaire avant une nouvelle
-tentative. Aucun moteur temporaire ni service système n'a été installé.
+La fixture utilise désormais le **LXC natif de pve-nato** via Ansible et le
+template Debian 9000 déjà présents dans le laboratoire. Docker n'est plus un
+prérequis du pilote ; aucun moteur temporaire ni service système n'a été installé.
+Le contrôleur vérifie les outils et le catalogue Qwen avant toute allocation,
+refuse une autre charge active sur vmbr1 et exige la propriété du LXC avant de
+le détruire. Le code de nettoyage Docker reste réservé aux anciennes tentatives.
+Le déploiement et l'exécution de cette adaptation doivent être confirmés par
+leurs propres artefacts ; le code et les tests ne prouvent pas un essai réel.
