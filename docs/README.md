@@ -10,6 +10,9 @@ LLM/règles ; les propositions restent distinctes de la référence implémenté
 
 ## Organisation
 
+Pour lancer une découverte ou un audit sans modèle depuis l’interface, voir le
+[catalogue des procédures et le lancement guidé](architecture/run-modes.md#catalogue-et-lancement-guidé).
+
 | Dossier | Contenu |
 | --- | --- |
 | `architecture/` | Fonctionnement du pipeline, livrables et mécanismes de reprise |
@@ -29,7 +32,7 @@ La [documentation du benchmark V1](benchmark/v1/README.md) est le point d'entré
 - [Exécution](benchmark/v1/execution.md) : lancer un run, lire son statut, ses coûts et ses diagnostics.
 - [Guide CLI D1/A1](benchmark/agent-vs-automation-cli.md) : analyse et vérification sur inventaire public commun, évaluation et comparaison d'une paire.
 - [Calibration SSH V2](benchmark/agent-vs-automation-cli.md#calibration-ssh-v2) : contrat public, script et LLM bornés, pilote OpenSSH natif sur pve-nato, archivage complet et [qualification vérifiée](benchmark/agent-vs-automation-cli.md#qualification-native-vérifiée-le-15-octobre-2026), sans campagne M-T admise.
-- [Guide de campagne](benchmark/agent-vs-automation-campaign.md) : politique D1 bornée, manifeste du pilote de 24 essais, bilan et revue indépendante des preuves.
+- [Guide de campagne](benchmark/agent-vs-automation-campaign.md) : parcours d’une paire règles/LLM dans l’interface, politique D1 bornée, manifeste du pilote de 24 essais, bilan et revue indépendante des preuves.
 - [Index dérivé des étiquettes](benchmark/derived-index.md) : axes expérimentaux calculés depuis les vérités terrain (type, chaînage, surface, bruit), sans modifier catalogue ni vérités terrain.
 
 « V1 » nomme cette référence documentaire, pas une nouvelle version du catalogue

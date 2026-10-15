@@ -6,8 +6,10 @@ import ipaddress
 import io
 import json
 import logging
+import math
 import os
 import re
+import stat
 import zipfile
 from dataclasses import asdict
 from pathlib import Path
@@ -1043,6 +1045,170 @@ def get_audit_results(run_id: str):
         raise HTTPException(status_code=400, detail="Device audit results require a public rules audit")
     from src.agent.rules_audit import device_results
     return device_results(run_dir)
+
+
+_PROCEDURE_JSON_LIMIT = 2 * 1024 * 1024
+_PROCEDURE_LEDGER_LIMIT = 32 * 1024 * 1024
+
+
+def _procedure_file(run_dir: Path, filename: str, *, limit: int = _PROCEDURE_JSON_LIMIT) -> bytes | None:
+    """Read only fixed controller artifact names, without following symlinks."""
+    if Path(filename).name != filename or filename.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid procedure artifact path")
+    try:
+        descriptor = os.open(run_dir / filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise HTTPException(status_code=404, detail="Procedure artifact unavailable") from exc
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise HTTPException(status_code=404, detail="Procedure artifact is not a regular file")
+        if info.st_size > limit:
+            raise HTTPException(status_code=413, detail="Procedure artifact exceeds the read limit")
+        content = handle.read(limit + 1)
+        if len(content) > limit:
+            raise HTTPException(status_code=413, detail="Procedure artifact exceeds the read limit")
+    return content
+
+
+def _procedure_json(run_dir: Path, filename: str) -> dict | None:
+    content = _procedure_file(run_dir, filename)
+    if content is None:
+        return None
+    try:
+        def reject_constant(value):
+            raise ValueError("Non-finite JSON value")
+        def finite_float(value):
+            parsed = float(value)
+            if not math.isfinite(parsed):
+                raise ValueError("Non-finite JSON number")
+            return parsed
+        value = json.loads(content, parse_constant=reject_constant, parse_float=finite_float)
+        if not isinstance(value, dict):
+            raise ValueError("Expected an object")
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid procedure artifact: {filename}") from exc
+    return value
+
+
+def _archived_procedure(value: object, identifier: str) -> dict:
+    """Never assign today's version/fingerprint to an older execution."""
+    if value is None:
+        return {"id": identifier, "title": identifier, "version": None, "fingerprint": None}
+    if (not isinstance(value, dict) or value.get("id") != identifier
+            or not all(isinstance(value.get(key), str) and 0 < len(value[key]) <= 512
+                       for key in ("title", "version", "fingerprint"))
+            or not re.fullmatch(r"[a-f0-9]{64}", value["fingerprint"])):
+        raise HTTPException(status_code=422, detail="Invalid archived procedure descriptor")
+    return {key: value[key] for key in ("id", "title", "version", "fingerprint")}
+
+
+def _validate_procedure_steps(steps: object) -> None:
+    from src.agent.procedure_progress import STEP_STATUSES
+    if not isinstance(steps, list) or len(steps) > 512 or any(
+        not isinstance(step, dict) or not isinstance(step.get("id"), str)
+        or not isinstance(step.get("label"), str) or not isinstance(step.get("status"), str)
+        or step["status"] not in STEP_STATUSES
+        for step in steps
+    ):
+        raise HTTPException(status_code=422, detail="Invalid procedure steps")
+
+
+def _validate_script_results(value: dict, metadata: dict) -> None:
+    from src.agent.procedures import SCRIPT_IDS
+    from src.agent.procedure_progress import RUN_STATUSES
+    identifier = value.get("script_id")
+    if (type(value.get("schema_version")) is not int or value["schema_version"] != 1
+            or not isinstance(identifier, str) or identifier not in SCRIPT_IDS
+            or not isinstance(value.get("status"), str) or value["status"] not in RUN_STATUSES
+            or metadata.get("script_id") != identifier
+            or not isinstance(value.get("coverage"), dict)
+            or not isinstance(value.get("counts"), dict)
+            or not isinstance(value.get("errors"), list)
+            or not isinstance(value.get("evidence_refs"), list)):
+        raise HTTPException(status_code=422, detail="Invalid procedure result state")
+    _validate_procedure_steps(value.get("steps"))
+    hosts = value.get("hosts")
+    if not isinstance(hosts, list) or len(hosts) > 256:
+        raise HTTPException(status_code=422, detail="Invalid procedure host inventory")
+    if any(type(count) is not int or count < 0 for count in value["counts"].values()):
+        raise HTTPException(status_code=422, detail="Invalid procedure inventory counts")
+    try:
+        network = ipaddress.ip_network(value["target_network"], strict=True) if identifier != "smoke-v1" else None
+        if network is not None and (not isinstance(network, ipaddress.IPv4Network) or network.prefixlen < 16):
+            raise ValueError("Unsupported network")
+        if value.get("target_network") != metadata.get("target_network"):
+            raise ValueError("Network does not match run metadata")
+        if identifier == "smoke-v1" and (hosts or value.get("target_network") is not None):
+            raise ValueError("Offline diagnostic has network observations")
+        total_services = 0
+        for host in hosts:
+            if not isinstance(host, dict) or network is None or ipaddress.ip_address(host.get("ip")) not in network:
+                raise ValueError("Host outside declared network")
+            if (not isinstance(host.get("status"), str) or host["status"] not in {"up", "observed"}
+                    or not isinstance(host.get("services"), list)):
+                raise ValueError("Invalid host state")
+            for service in host["services"]:
+                total_services += 1
+                if (total_services > 512 or not isinstance(service, dict)
+                        or type(service.get("port")) is not int or not 1 <= service["port"] <= 65535
+                        or service.get("protocol") != "tcp" or service.get("state") != "open"
+                        or any(key in service and not isinstance(service[key], str) for key in ("name", "detail"))):
+                    raise ValueError("Invalid service observation")
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid procedure network observations") from exc
+
+
+@router.get("/{run_id}/procedure-results")
+def get_procedure_results(run_id: str):
+    """Read procedure observations and archived progress, never certify labels."""
+    run_dir = _resolve_run_dir(run_id)
+    # Bound metadata before the shared sealed classifier reads it. Malformed
+    # markers remain fail-closed; no procedure artifacts are exposed first.
+    metadata = _procedure_json(run_dir, "run_meta.json") or {}
+    _procedure_json(run_dir, "scenario_meta.json")
+    if _is_sealed_run(run_dir):
+        raise HTTPException(status_code=403, detail="Sealed runs expose aggregate evaluation summaries only")
+    runner = metadata.get("runner_kind", "lance")
+    if runner == "scripted":
+        results = _procedure_json(run_dir, "procedure_results.json")
+        if results is None:
+            return {"schema_version": 1, "available": False, "reason": "procedure_results_not_recorded",
+                    "status": _run_status(run_dir)}
+        _validate_script_results(results, metadata)
+        procedure = _archived_procedure(results.get("procedure"), results["script_id"])
+        return {"schema_version": 1, "available": True,
+                "kind": "diagnostic" if results["script_id"] == "smoke-v1" else "inventory",
+                "procedure": procedure, "results": results}
+    if runner == "rules":
+        from src.agent.rules_audit import device_results
+        from src.agent.procedure_progress import RUN_STATUSES
+        # The common projection consumes these fixed files. Validate their type
+        # and size first so a symlink cannot import data from outside this run.
+        for filename in ("audit_topology.json", "03_phase3_status.json", "03_vuln_analysis.json", "04_exploitation.json"):
+            _procedure_json(run_dir, filename)
+        for artifact in run_dir.glob("03_device_*.json"):
+            _procedure_file(run_dir, artifact.name)
+        _procedure_file(run_dir, "tool_calls.jsonl", limit=_PROCEDURE_LEDGER_LIMIT)
+        progress = _procedure_json(run_dir, "procedure_progress.json")
+        procedure = _archived_procedure(None, "rules-audit-v1")
+        if progress is not None:
+            if (type(progress.get("schema_version")) is not int or progress["schema_version"] != 1
+                    or progress.get("runner_kind") != "rules" or not isinstance(progress.get("status"), str)
+                    or progress["status"] not in RUN_STATUSES
+                    or (progress.get("controls_complete") is not None and type(progress["controls_complete"]) is not bool)):
+                raise HTTPException(status_code=422, detail="Invalid procedure progress state")
+            _validate_procedure_steps(progress.get("steps"))
+            procedure = _archived_procedure(progress.get("procedure"), "rules-audit-v1")
+        try:
+            audit = device_results(run_dir)
+        except (ValueError, TypeError, AttributeError, KeyError, RecursionError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid audit procedure artifacts") from exc
+        return {"schema_version": 1, "available": bool(progress is not None or audit["available"]), "kind": "audit",
+                "procedure": procedure, "audit": audit, "progress": progress}
+    return {"schema_version": 1, "available": False, "reason": "run_is_not_a_catalogued_procedure"}
 
 
 @router.get("/{run_id}/{filename}")

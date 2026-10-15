@@ -1,8 +1,8 @@
 # Apport de l'agent face à l'automatisation
 
-**Cycle de vie : Actif** (inventaire du 2026-10-12) — protocole proposé, pilote et campagne à établir ; proposition de recentrage et état des lieux ajoutés le 2026-10-12.
+**Cycle de vie : Actif** (mise à jour du 2026-10-15) — catalogue et comparaison guidée livrés ; une paire exploratoire S1 complète, campagne et revue expérimentale des preuves à établir.
 
-**Statut : protocole proposé ; premier incrément logiciel documenté.**
+**Statut : implémentation guidée validée ; un résultat descriptif réel, aucune supériorité générale établie.**
 Travaux documentés les 27 et 28 septembre 2026. Dossier organisé le 29 septembre
 2026 ; ce classement n'ajoute aucune validation expérimentale.
 Revue complémentaire le 29 septembre 2026 : inspection du code, sources
@@ -21,9 +21,75 @@ du 29 septembre 2026.
 une politique LLM à un audit IoT automatisé par des règles ? L'étude distingue
 interprétation, planification, adaptation et rédaction du rapport.
 
-Les documents décrivent un premier incrément D1/A1 et sa validation logicielle
-locale. Ils ne rapportent pas de résultat démontrant un avantage de l'agent en
-laboratoire. Les autres systèmes et extensions du protocole restent proposés.
+Les documents historiques décrivent le protocole et ses premiers incréments
+logiciels. Le complément du 15 octobre ci-dessous ajoute l'interface livrée et
+une paire réelle S1 ; les autres systèmes et extensions du protocole restent proposés.
+
+## Automatisations et comparaison guidée — 15 octobre 2026
+
+**Dernière révision du complément : 2026-10-15 20:25
+(Europe/Brussels, UTC+02:00).** Cette révision remplace la proposition statique
+de 11:35 par un bilan de réalisation ; la provenance de cette revue initiale
+et ses trois avis spécialisés est conservée dans le registre des sources.
+Les autres rapports du dossier gardent leur date et leur périmètre historiques.
+
+- [Rapport PDF](lancement-automatisations.pdf) · [source LaTeX éditable](lancement-automatisations.tex) :
+  catalogue, lancement guidé, suivi, historique, protocole, corrections et résultats ; huit pages.
+- [Registre des sources et validations](lancement-automatisations-sources.json) :
+  commits, empreintes du code, CI, revue initiale et relecture de cette version.
+- [Agrégats des essais et provenance](lancement-automatisations-resultats.json) :
+  paramètres, identifiants, empreintes des exports et métriques, sans grosses traces brutes.
+- [Guide opérationnel de la comparaison](../../docs/benchmark/agent-vs-automation-campaign.md)
+  et [journal de relecture](validation.md#automatisations-et-paire-s1-du-15-octobre-2026).
+
+Le catalogue décrit quatre procédures intégrées : découverte, inventaire TCP,
+audit par règles d'un scénario public et diagnostic hors ligne. L'historique
+sépare les sorties opérationnelles des scores d'évaluation. Le parcours
+« Comparer règles / LLM » réserve nato, restaure avant chaque méthode, vérifie
+les playbooks et la surface TCP publique, puis conserve les audits, le nettoyage
+et le résultat du comparateur existant. Il ne permet pas l'import libre de scripts.
+
+La réalisation passe par `347451b` (catalogue/inventaire), `39a50ec` (effets et
+états incomplets), `e64bd03` (historique), `38d8f26` (comparaison guidée),
+`4547c91` (suivi visible), `711f966` (réservation jusqu'à finalisation) et
+`b8a415a` (suppression des plafonds de coût et de durée dans ce seul parcours).
+Le dernier essai a été lancé après la
+[CI réussie de b8a415a](https://github.com/Tanguyvans/LANCE/actions/runs/38768357489) :
+**3 972 tests réussis, deux ignorés, deux avertissements**. Les tests logiciels
+simulent outils et modèles ; ils ne prouvent pas une performance en laboratoire.
+
+L'inventaire réel `2026-10-15_123829_42ecb36bbe68` observe quatre hôtes et
+dix services TCP. Son scénario n'étant pas enregistré dans l'artefact, aucun
+score S1 ne lui est attribué.
+
+La paire réelle complète
+[`2026-10-15_165709_11c3405c5607`](http://100.103.253.86:8502/#comparison/2026-10-15_165709_11c3405c5607)
+utilise S1, Qwen 3.8 27B via `ollama-umons`, les règles d'abord et 2 000 appels
+maximum par audit, sans plafond de durée ni de coût. Les précontrôles ont la
+même empreinte TCP ; les deux audits sont complets, le nettoyage réussi et
+le comparateur ne signale aucun motif d'incomparabilité.
+
+| Mesure des confirmations | Règles D1 | Qwen A1 |
+| --- | ---: | ---: |
+| Vrais positifs / faux positifs / failles manquées | 11 / 3 / 1 | 12 / 3 / 0 |
+| Précision / rappel | 78,6 % / 91,7 % | 80,0 % / 100,0 % |
+| F1 | 84,6 % | 88,9 % |
+| Appels d'outils / erreurs | 73 / 0 | 132 / 0 |
+| Durée des audits, hors préparation/nettoyage | 179,8 s | 1 239,9 s |
+
+Les quatre tentatives précédentes restent décrites : accès modèle indisponible,
+sélection erronée de MiniMax (exclue de l'évaluation Qwen), puis deux arrêts
+pendant la vérification aux plafonds de 600 et 1 200 secondes. Aucun score absent
+n'est remplacé par zéro. Le relais UMONS a été rétabli par l'opérateur ; sa
+persistance après redémarrage n'a pas été qualifiée.
+
+**Portée : une seule paire exploratoire.** Le F1 augmente ici de 4,3 points,
+avec davantage de temps et d'appels ; aucun avantage général ni intervalle de
+confiance n'est établi. Les contrôles de préparation ne certifient pas tout
+l'état du laboratoire ; les preuves et la vérité terrain de cette paire
+attendent une adjudication expérimentale indépendante. Les 1 029 775 tokens
+conduisent à une estimation générique de 1,141787 USD : ce n'est pas une facture
+UMONS et ce n'est pas une limite d'exécution.
 
 <a id="methodes-sans-llm"></a>
 
@@ -93,7 +159,8 @@ Les deux partent du même inventaire public et utilisent le même scanner initia
 La comparaison actuelle porte sur les phases 3 et 4 (analyse et vérification),
 avec un contrat de preuve commun. La question est : **les décisions du LLM
 apportent-elles un bénéfice mesurable par rapport aux règles seules, à ressources
-comparables ?** Aucun gain expérimental n'est encore établi. Ces codes
+comparables ?** Le complément du 15 octobre rapporte un contraste descriptif S1,
+sans établir de gain général. Ces codes
 identifient des variantes du protocole, pas des scores.
 
 ## Documents et sources

@@ -32,6 +32,27 @@ lancé ; il est ignoré si ce binaire n'est pas installé.
 préparations en échec ne publie que quatre champs filtrés et exclut les valeurs
 privées, y compris dans les erreurs et arguments de commandes.
 
+`test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
+des outils. `test_procedure_runs.py` couvre le tableau paginé des exécutions,
+les filtres, les mesures absentes, les artefacts invalides et la confidentialité
+des runs scellés. Les observations restent distinctes d’un score de benchmark.
+`test_procedures_ui.py` exerce les requêtes guidées, le tableau, les liens directs,
+les résultats, l’échappement des observations et les échecs historiques sans
+topologie, avec Node.js et un DOM simulé. `test_procedure_progress.py` couvre les étapes réelles,
+les contrôles incomplets, l’attente du laboratoire et la lecture bornée des
+artefacts publics. `test_run_modes.py` vérifie aussi l’inventaire TCP déterministe,
+ses limites de portée, d’hôtes, de temps et d’appels, les preuves et les arrêts.
+Ces vérifications ne lancent ni Nmap réel ni audit de laboratoire.
+
+`test_policy_pair_runner.py` simule la préparation et les audits d’une paire
+règles/LLM : inventaire et limites communs, oracle après les audits, changement
+de surface, arrêt, échec et nettoyage sous réservation. `test_comparisons_api.py`
+vérifie les contrats, l’exclusion mutuelle, les artefacts publics bornés et les
+refus de cibles non autorisées. `test_comparisons_ui.py` vérifie les mesures
+absentes, les contrôles sains, les écarts interdits et l’échappement des textes.
+Ces tests logiciels ne prouvent ni une remise en état physique ni un résultat
+scientifique de laboratoire.
+
 `test_run_graph_context.py` vérifie les graphes distincts de deux runs,
 les réinitialisations et mutations pondérées, les outils et prompts exécutés
 dans des threads, la restauration après exception et les entrées des six phases
