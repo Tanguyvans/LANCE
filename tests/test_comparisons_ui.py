@@ -24,6 +24,7 @@ vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),context);
 vm.runInContext('ComparisonUI.render(input)',context);
 console.log(JSON.stringify({html:el('comparison-results').innerHTML,outcome:el('comparison-outcome').textContent,
  context:el('comparison-context').textContent,steps:el('comparison-steps').innerHTML,
+ resultsHidden:el('comparison-results').hidden,stepsOpen:el('comparison-steps-panel').open,
  number:vm.runInContext("ComparisonUI.number(-65,'duration')",context)}));
 """
     result = subprocess.run([node, "-e", script, str(ROOT / "src/static/comparisons.js")],
@@ -80,3 +81,12 @@ def test_server_identities_errors_and_reasons_are_escaped():
     output = render(data)
     assert "<script>" not in output["html"] and "<img" not in output["html"]
     assert "&lt;script&gt;" in output["html"] and "&quot; onclick=&quot;" in output["html"]
+
+
+def test_live_pair_prioritizes_steps_and_shows_measures_only_after_completion():
+    data = pair()
+    data.update(status="running", comparison=None)
+    output = render(data)
+    assert output["resultsHidden"] is True and output["stepsOpen"] is True
+    output = render(pair())
+    assert output["resultsHidden"] is False and output["stepsOpen"] is False

@@ -58,6 +58,7 @@ const ComparisonUI = (() => {
     el('comparison-context').textContent = `${date(data.started_at)} · ${data.public_environment?.target_network || 'Réseau enregistré dans l’inventaire'} · ${data.config.model} · ${data.order.map(p=>p==='rules'?'Règles':'Agent LLM').join(' puis ')} · ${data.config.max_tool_calls} appels et ${data.config.max_duration_s} secondes maximum par audit`;
     const result = data.comparison;
     const finished = !['running','pending'].includes(data.status);
+    el('comparison-results').hidden = !finished;
     el('comparison-outcome').textContent = (state.stopping && state.activeComparison===data.id
       ? 'Arrêt demandé. Attente de la fin des opérations en cours et du nettoyage. ' : state.waiting && state.activeComparison===data.id ? 'En attente du laboratoire partagé. ' : '') + `${statusLabel(data.status)}. ` + (result ? result.comparable
       ? 'Paire comparable selon les contrôles du protocole. L’écart est celui de cet essai uniquement.'
