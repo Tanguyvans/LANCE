@@ -1,0 +1,187 @@
+{
+  "schema_version": 2,
+  "revision": "2026-10-15 20:25 (Europe/Brussels, UTC+02:00)",
+  "scope": "Implemented workflow, software validation and real exploratory S1 observations; not a controlled repeated campaign",
+  "git_commit": "b8a415ab428a9eb8b3e064f17d8178315bb129c7",
+  "implementation_commits": [
+    "b8a415ab428a9eb8b3e064f17d8178315bb129c7 Remove cost and time caps from guided policy comparisons",
+    "711f966e8d282e4c709b05e6834cee8224cccb01 fix: finalize comparison before releasing laboratory reservation",
+    "4547c91f01db798c168e13f6e52084b077df9f9a fix(ui): prioritize active comparison steps before results",
+    "38d8f26ab08ba3592897a3a4845fff90a67d83fd feat: add guided rules versus LLM comparison workflow",
+    "e64bd03faa1fe6ee70f237345e2af4a404ecf3bb feat(ui): make automation results browsable like benchmark runs",
+    "39a50ec6ba7897443e6aa9504ad54f142b7fc084 fix: clarify procedure effects and preserve incomplete execution states",
+    "347451bb56e4af3b162618c84ca97d4089f4fbb2 feat: add guided automation catalogue and TCP inventory"
+  ],
+  "sources_sha256": {
+    "src/agent/procedures.py": "472a88bb9e8a4d8af9be7d34d98f94533fbe0c1ef4cdadfd4acab8a5d12a1325",
+    "src/agent/run_modes.py": "2bd0f69105c4afffc0acd0a020a7a48da768d44bad857e0cdbf9d0538df5c014",
+    "src/agent/procedure_progress.py": "731a8b77fcdd42a0b4635b943c915a060f3efbc58ec94fabb41f8f9ac5b7b817",
+    "src/agent/procedure_observations.py": "e6d9a6810e6795affd2a6d978265fc9efacc0652267960b430150247c5338918",
+    "src/api/procedure_runs.py": "918a30337bac75a3964e288aec91ba42e2733de7fe67b2c104d8b9ddd147f9a7",
+    "src/api/routes/procedures.py": "d8a51d98a933c96ec10d71ae0115de0e4b6b9da9e921b8ad748fe42037e4e908",
+    "src/api/routes/comparisons.py": "0100101b3d2abcde5ef8d8020ca9e222420824735ad153778b21707e83e602a9",
+    "src/api/routes/pipeline.py": "d9ffa76b4c16ba83faaa951c273aecd3cc2f7678c114cf4ee3f212b096c116e9",
+    "src/api/run_coordinator.py": "3285c02dcf6aab68f8dda4612af1529bd2f3a37876a135e4c3d663f1e56b2d84",
+    "src/static/procedures.js": "7dd6ccba85bfedeb7d64875d2773968a66e2198550f8826c4a7e858c2d95bf49",
+    "src/static/comparisons.js": "61901d64b68e083f0915856aeaab22c59f9b0f30f70a45a97e318362fbbc7ada",
+    "src/benchmark/policy_pair_runner.py": "425f5de79ec2dd84de4986bbee33a179978b59bc3bcf79dbe9439b7024587b7d",
+    "src/benchmark/compare_policies.py": "e3d3287742c4e4a8576660d7d88fe6d7ca51ae5f11e95c2742ac316b4da356cc",
+    "src/agent/pipeline.py": "296cf1facebceda307e7d5b9145317025c414e4f0e27ba0cbabc53cc6281f8be",
+    "src/agent/audit_experiment.py": "b6a01f831026f3dd124cae5c3e05f6ef66fa42cab51ba44ea3e6b5d4f1888346",
+    "src/agent/phases/analysis/devices.py": "8a7c2e1a96bcc2844a52c93479a0b131fea13da245bb576fc41deba617b7517d",
+    "docs/benchmark/agent-vs-automation-campaign.md": "439ac6e26c9c2e7ca7637732028a1e58b978433238327626be00cc733165f358",
+    "docs/benchmark/agent-vs-automation-cli.md": "7b87d17530cdc312b6c8090c2b56c7f7e6f166950a30f4b35d071750418f7174",
+    "docs/guides/umons-llm.md": "29ff3d41cca656d095e154b4afb12c71fd0fb4ea8da9a95bbb4e0a19a77464af",
+    "tests/test_policy_pair_runner.py": "b4e4b79f33f725448d1dc2f8b6d4566120ff6c8444a0db82c42abedf4c496f63",
+    "tests/test_procedure_catalogue.py": "5da96d054575bb4652c20f24518543d4acc886dc02ff4031d9f7e6aaf1b860ca",
+    "tests/test_compare_policies.py": "de824eaed1fd4847aca1beda690d9e99a0e6a077dd3db06c8bd67e850fa39e6b"
+  },
+  "historical_review_1135": {
+    "schema_version": 1,
+    "revision": "2026-10-15 11:35 (Europe/Brussels, UTC+02:00)",
+    "scope": "Static local working-tree review; no live UI, network or laboratory inspection",
+    "git_commit": "73369b03359d4facc8ec58a233c1623284e746d0",
+    "sources_sha256": {
+      "src/agent/run_modes.py": "b185f4e39f58a17ee6fcefedf299083d089d6b8ff2ad665a6946b031bd4c8c9e",
+      "src/agent/scanner.py": "df0eff6f00d4605d9dc3facc0514aeb36169e6321b5b4627f63f2970d4c855bf",
+      "src/agent/audit_experiment.py": "4bf94fd062ce5c7397967ea67285c7ec1d7ec1a44c18c1c88f500a67d6795eb0",
+      "src/agent/phases/analysis/devices.py": "15cf7c0f429e67cd318f4ba4665074b9b85e11bd5925dc05e75b22a3f58fdf6f",
+      "src/agent/phases/analysis/supplemental.py": "704d7b00ad7411bb3c6a6658a39ca340781e451011f4f53bc0c83724685af5e1",
+      "src/agent/phases/verification/rules.py": "9ca029d35e1493724c5ddb6b0abfec0e938037c6d0918198508238f9648fb3cd",
+      "src/agent/phases/verification/contract.py": "020435d55d69b98e07ac1e569e34e5ab96e34b751b16ffb79f15ce6cd425e1d1",
+      "src/agent/core/lifecycle.py": "f42cbce23881dac2984ce32ac799109c3c69b0b19fdf75e64a01c0cc03c33640",
+      "src/agent/rules_audit.py": "11e2c15804aed8483b59fca7389b31d870753429a69796ac0dd91c92c330f9a8",
+      "src/api/run_coordinator.py": "4d3661245dc6ac7bfaa30520a25900044fd3724f8b3c53562f633e477ba41f10",
+      "src/api/routes/pipeline.py": "d2b9bb17f6f9518eb8e693dc08b55e60ea4356cb69a15af45e6798f20e8fe04e",
+      "src/api/routes/runs.py": "587c4494b4d9b7122c630da95361e7e15118fe0346ce5c502d88a9d657c75aa0",
+      "src/static/index.html": "b283c470d3b2109e61fc38831630cc6c0d958882ef6a903bc247f8c3b023a239",
+      "src/static/app.js": "f091241547259ce0c56d4de7b42071e3a47d80821c7324ffd88f4e202727cce0",
+      "src/benchmark/lab_lock.py": "0f097dc4d1336d0cce63a32a7e3e97766e7ad2f250c94eb579927c17d42bc211",
+      "src/benchmark/compare_policies.py": "e3d3287742c4e4a8576660d7d88fe6d7ca51ae5f11e95c2742ac316b4da356cc",
+      "src/benchmark/policy_campaign.py": "36e8d0d64688bf27ee6ab4cf6bc84bc8df92020f6b76f0e537b72b7e1c712edb",
+      ".github/workflows/pilot-campaign.yml": "6afba42a2f6dd5ccf17fe4933621a53e0d3cf89796e7578ffc9f6278bfc923c7",
+      "benchmarks/ansible/deploy.sh": "e5f2ec60f4da7434fbfdae4fa7cb347482f15e8f52e202cb4aec268767db46ee",
+      "benchmarks/ansible/playbooks/03_deploy_scenario.yml": "65c393672a1e6fc8dda31b9ceaffed5bbcbb5222594158737c85a9f34b7e1dad",
+      "benchmarks/experiments/policy-comparison/pilot-2026-10-preflight.md": "f5f2e8f8a807c222bf210bf0f6c14bea9a5745c9655ddbafe23f84cf983bed2e",
+      "docs/architecture/run-modes.md": "9504cd3799bc554f1565fda0d6853707b15c89ecfd4530583b676fdaf5810ffe",
+      "docs/benchmark/agent-vs-automation-cli.md": "ebd0b14692ffb27d14b9da50d08962efed2722238dd05be560cb155ad6fd0729",
+      "docs/benchmark/agent-vs-automation-campaign.md": "efe3f8188b9183ba44699e737a22eb5f5cc230c7b89f1f2e5af07747bac9ac49",
+      "research/2026-09-27-agent-vs-automation/protocol.md": "5ff4797f4c11bf958b42c8574f44dd4fd68ef10de000379c44599ae8acf35fa1",
+      "research/2026-10-12-recentrage-corpus/README.md": "27715f44d6c92d2681e7bb7b7e635ff9d65b34bb24e9c06980880b550049ba35",
+      "tests/test_run_modes.py": "45bf12e60993a33f3a187f9550441076b7eaca36bc8d6ef4671178cea94450ec",
+      "tests/test_audit_policy.py": "6f3587df716f91d8c8e2a95084b5c253437df31a209a345f37bc05b0d3c31c8f",
+      "tests/test_scenario_rules_audit.py": "75761b3dd0628b93a76ef27b34c29414dab5d9d4daccd477888dce21eaa9237a",
+      "tests/test_compare_policies.py": "de824eaed1fd4847aca1beda690d9e99a0e6a077dd3db06c8bd67e850fa39e6b",
+      "tests/test_rules_audit_ui.py": "4f7101f6b83ea157973e16e34b528cb740fcfebdfbe0530717cde2ce48bc264c",
+      "tests/test_api_run_modes.py": "a1879c5e6b2280abdd70e90221faf89728e831662dc1b268c7421e537f501819"
+    },
+    "expert_reviews": {
+      "cyber": "/root/cyber_automation_review",
+      "network": "/root/network_execution_review",
+      "ux": "/root/ux_research_workflow_review"
+    },
+    "checks": [
+      {
+        "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_run_modes.py tests/test_audit_policy.py tests/test_scenario_rules_audit.py tests/test_compare_policies.py",
+        "result": "133 passed in 7.78s",
+        "scope": "Executed earlier in the same conversation; simulated I/O and model"
+      },
+      {
+        "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_rules_audit_ui.py tests/test_api_run_modes.py",
+        "result": "35 passed in 0.82s",
+        "scope": "Executed for this review; synthetic DOM/API and simulated I/O"
+      }
+    ],
+    "limitations": [
+      "No new audit run, deployment or benchmark",
+      "No current served version inspected",
+      "Historical smoke result read from local log only; artifacts not re-evaluated",
+      "Report and design are proposals; no application code edited"
+    ],
+    "review_status": "source and six final rendered PDF pages independently reviewed; no remaining reservation within static/editorial scope",
+    "review_corrections": [
+      "Titre : mesurer l’apport du LLM",
+      "Champ de rôle de ressource API, pas rôle d’un compte utilisateur",
+      "Définitions IoT, OTA, CIDR et CLI",
+      "Schéma : même état initial commun pour les deux bras"
+    ],
+    "validation": {
+      "checked_at": "2026-10-15 11:37 (Europe/Brussels, UTC+02:00)",
+      "reviewer": "/root/automation_report_review",
+      "document_revision": "2026-10-15 11:35 (Europe/Brussels, UTC+02:00)",
+      "pages": 6,
+      "source_and_rendered_pdf_inspected": true,
+      "sources_sha256_reproduced": 32,
+      "compiler": "Desktop compiler success and latexmk PDF export success",
+      "layout": "No overfull, underfull or undefined reference; six final pages inspected by author and independent reviewer",
+      "remaining_diagnostic": "babel French hyphenation warning; no visual defect observed",
+      "scope": "Editorial and static-code review only; no deployment, reset attestation, runtime benchmark or LLM advantage established"
+    },
+    "artifacts_sha256": {
+      "lancement-automatisations.tex": "7d50410094cc2a80b6fe8b6437d4e59622451c336bd8dc5e189c3b51ab5afc00",
+      "lancement-automatisations.pdf": "2a3bd95be97d9c77802c4200e29663b023bc4e943c5a86bca9b705ceb550624a"
+    }
+  },
+  "results_register": {
+    "path": "lancement-automatisations-resultats.json",
+    "sha256": "37bd0ca54039ef8198dc6c6442d0c42422128cf01ba70a62357a5726e333a20a"
+  },
+  "checks": [
+    {
+      "kind": "targeted simulated software tests",
+      "result": "126 passed; no real model or lab for these tests",
+      "provenance": "Observed earlier in this conversation before commit b8a415a; separate from full CI log"
+    },
+    {
+      "kind": "full CI before final real run",
+      "git_commit": "b8a415ab428a9eb8b3e064f17d8178315bb129c7",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38768357489",
+      "conclusion": "success",
+      "passed": 3972,
+      "skipped": 2,
+      "warnings": 2,
+      "duration_s": 460.04,
+      "log_sha256": "dad092c1a77c4ed127cd5fe65c61a304619734fe6c31788da9bfe3bf192dd74e"
+    },
+    {
+      "kind": "browser",
+      "result": "Deployed form, real launch, live steps and terminal metrics inspected on Dev 1; final pair completed, cleanup true"
+    }
+  ],
+  "review_status": "Final source and all eight rendered PDF pages independently reviewed; three wording corrections resolved; no remaining editorial reservation within described scope",
+  "sources_basis": "Tracked file contents at git commit b8a415ab428a9eb8b3e064f17d8178315bb129c7; use git show COMMIT:path to reproduce, not later documentary revisions",
+  "artifacts_sha256": {
+    "lancement-automatisations.tex": "83eb11e6f79fa88a0beebe415812b73a8f7db8bfb1437b6c4cc185ae483fb537",
+    "lancement-automatisations.pdf": "6f07831d43252ef0cb16685a070e9619dc71a0c1c3d2d5c320701955d049cbba"
+  },
+  "validation": {
+    "checked_at": "2026-10-15 20:26 (Europe/Brussels, UTC+02:00)",
+    "document_revision": "2026-10-15 20:25 (Europe/Brussels, UTC+02:00)",
+    "reviewer": "/root/automation_final_research_review",
+    "pages": 8,
+    "source_and_rendered_pdf_inspected": true,
+    "final_changed_pages_reinspected": [
+      1,
+      4,
+      7
+    ],
+    "unchanged_pages_identical_to_reviewed_render": [
+      2,
+      3,
+      5,
+      6,
+      8
+    ],
+    "sources_sha256_reproduced": 22,
+    "raw_attempt_exports_sha256_reproduced": 5,
+    "corrections": [
+      "Cleanup precedes ground-truth loading and evaluation; laboratory reservation remains held",
+      "Common tool-call ceiling distinguished from actual tool-call consumption",
+      "Other execution contracts keep their existing resource-limit rules; not all ordinary LLM paths necessarily require ceilings"
+    ],
+    "compiler": "Desktop compiler success; latexmk export success",
+    "layout": "Eight pages; no overfull, underfull or undefined reference; final rendered pages inspected",
+    "remaining_diagnostic": "Existing babel French hyphenation-pattern warning, no visual defect observed",
+    "scope": "Editorial/scientific claim strength, source/code coherence and aggregate transcription; not independent experimental adjudication of raw findings, ground truth or runtime state"
+  }
+}

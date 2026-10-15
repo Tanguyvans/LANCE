@@ -349,3 +349,59 @@ Sources LaTeX finales contrôlées : synthèse
 `64c346e3fd1b8731068a08629a8b121e9647a8ca2635ca230f5f0d1af44c1b0b`, raisonnement
 `15ff0fce557e13c1632b5d7898226024d4ded3539cd723be754005e4c137a104`, expériences
 `a9f15d2c7634c42b21ede6b1bcf2318652f82633094cd4117c545ee6b41d34f4`.
+
+
+## Automatisations et paire S1 du 15 octobre 2026
+
+Révision du complément : **2026-10-15 20:25 (Europe/Brussels, UTC+02:00)**.
+Relecture finale consignée le **2026-10-15 20:26 (Europe/Brussels, UTC+02:00)** par le sous-agent distinct de
+l'auteur `/root/automation_final_research_review`.
+
+Le [rapport](lancement-automatisations.pdf), sa [source LaTeX](lancement-automatisations.tex),
+le [registre de provenance](lancement-automatisations-sources.json) et les
+[agrégats réels](lancement-automatisations-resultats.json) couvrent le catalogue,
+l'inventaire TCP, l'historique, la comparaison guidée, le cycle de réservation,
+les incidents d'accès modèle et les cinq tentatives, dont une seule paire S1
+complète avec Qwen 3.8 27B. La revue statique de 11:35 et son reçu initial de
+11:37 sont conservés dans le registre, explicitement historiques.
+
+Le relecteur a lu la source et inspecté visuellement les huit pages rendues.
+Trois corrections ont été appliquées : ordre réel nettoyage puis évaluation,
+plafond d'appels commun distinct des appels consommés, et formulation précise
+du maintien des règles de limites des autres contrats. Après recompilation,
+les pages finales 1, 4 et 7 ont été réinspectées ; les pages 2, 3, 5, 6 et 8
+sont identiques aux rendus déjà relus. Aucun blocage éditorial restant signalé.
+
+La source finale compile avec le compilateur intégré ; le PDF exporté avec
+latexmk contient huit pages. Auteur et relecteur ont contrôlé le rendu.
+Aucun Overfull, Underfull ou renvoi indéfini ; avertissement babel sur les
+motifs de césure français préexistants, sans défaut visuel constaté. Les
+pages du sommaire et leurs destinations correspondent. Les liens Markdown
+locaux existent et `git diff --check` passe.
+
+Les 22 empreintes des sources applicatives sont reproduites depuis le commit
+`b8a415ab428a9eb8b3e064f17d8178315bb129c7`, via `git show COMMIT:chemin`,
+pour distinguer le code exécuté des modifications documentaires ultérieures.
+Les empreintes des cinq exports bruts et les transcriptions de paramètres,
+états et métriques sont vérifiées. Le hash du registre agrégé est conservé
+dans le registre des sources.
+
+| Artefact final relu | SHA-256 |
+| --- | --- |
+| LaTeX | `83eb11e6f79fa88a0beebe415812b73a8f7db8bfb1437b6c4cc185ae483fb537` |
+| PDF | `6f07831d43252ef0cb16685a070e9619dc71a0c1c3d2d5c320701955d049cbba` |
+
+**Portée de validation :** cohérence documentaire/code, transcription et rendu.
+La CI du code applicatif `b8a415a` a réussi avant le lancement réel :
+[run 38768357489](https://github.com/Tanguyvans/LANCE/actions/runs/38768357489),
+3 972 tests réussis, deux ignorés, deux avertissements en 460,04 s ; 126 tests
+ciblés avaient également réussi. Outils et modèles y sont simulés. La présente
+révision ne change que la recherche et un lien/une clarification du guide.
+
+La paire `2026-10-15_165709_11c3405c5607` est complète, avec nettoyage réussi
+et comparabilité admise par les contrôles du protocole. F1 confirmé : 84,6 %
+pour D1, 88,9 % pour A1. Cette revue indépendante du rapport ne constitue pas
+une adjudication expérimentale indépendante des preuves ou de la vérité terrain.
+Les vérifications de préparation restent limitées ; aucun résultat général,
+intervalle de confiance ni campagne répétée n'est établi. Le coût Qwen est une
+estimation générique, pas une facture UMONS. Les gros artefacts restent sur nato.

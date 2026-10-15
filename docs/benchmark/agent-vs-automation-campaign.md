@@ -1,9 +1,15 @@
 # Campagne D1/A1 : préparation, bilan et revue
 
-Cette extension prépare le pilote de **24 exécutions** et calcule son bilan à
-partir d'artefacts existants. Elle ne déploie rien et ne lance aucun audit.
+L'outillage de campagne prépare le pilote de **24 exécutions** et calcule son
+bilan à partir d'artefacts existants, sans déployer ni lancer d'audit. Le
+parcours guidé décrit plus bas orchestre quant à lui une paire réelle.
 Le [protocole](../../research/2026-09-27-agent-vs-automation/protocol.md) fixe les questions scientifiques ; le
 [guide CLI](agent-vs-automation-cli.md) décrit l'exécution d'un bras.
+
+Le [bilan du 15 octobre 2026](../../research/2026-09-27-agent-vs-automation/README.md#automatisations-et-comparaison-guidée--15-octobre-2026)
+conserve l'implémentation du parcours guidé, les incidents et une paire
+exploratoire réelle S1 avec Qwen 3.8 27B. Ce résultat unique ne valide pas une
+campagne ni une supériorité générale du modèle.
 
 ## Structure et responsabilités
 
