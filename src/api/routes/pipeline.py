@@ -189,7 +189,7 @@ class StartRequest(BaseModel):
                 raise ValueError("smoke-v1 does not use tools or a model budget")
         else:
             if not self.target_network or "/" not in self.target_network:
-                raise ValueError("Vanilla and discovery-v1 require an explicit target_network CIDR")
+                raise ValueError("Network procedures require an explicit target_network CIDR")
             try:
                 from src.agent.run_modes import validate_target_network
                 validate_target_network(self.target_network)
@@ -216,12 +216,12 @@ class StartRequest(BaseModel):
             raise ValueError("Execution profiles apply only to the LANCE runner")
         if self.max_tool_calls is not None and self.max_tool_calls > 100:
             raise ValueError("max_tool_calls must be between 1 and 100")
-        if self.max_duration_s is not None and self.max_duration_s > 3600:
+        if self.max_duration_s is not None and (not math.isfinite(self.max_duration_s) or self.max_duration_s > 3600):
             raise ValueError("max_duration_s must be between 0 and 3600")
         if self.max_cost_usd is not None and (not math.isfinite(self.max_cost_usd) or self.max_cost_usd <= 0):
             raise ValueError("max_cost_usd must be positive")
         if self.runner_kind == "scripted":
-            from src.agent.run_modes import SCRIPT_IDS
+            from src.agent.procedures import SCRIPT_IDS
             if self.script_id not in SCRIPT_IDS:
                 raise ValueError(f"script_id must be one of: {', '.join(sorted(SCRIPT_IDS))}")
         return self
@@ -318,6 +318,8 @@ def _pipeline_thread(req: StartRequest):
     """Run the pipeline in a background thread, pushing events to the async queue."""
     pipeline = None
     callback = None
+    procedure_progress = None
+    progress_available = True
     try:
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env")
@@ -373,12 +375,37 @@ def _pipeline_thread(req: StartRequest):
         _state["run_dir"] = str(pipeline.run_dir)
         if req.runner_kind == "rules":
             _state["scenario_id"] = getattr(pipeline, "scenario_id", req.scenario_id)
+            from src.agent.procedure_progress import RulesProcedureProgress
+            try:
+                procedure_progress = RulesProcedureProgress(Path(pipeline.run_dir), auto_teardown=req.auto_teardown)
+            except OSError:
+                progress_available = False
+                _coordinator.publish(_state, {"type": "warn", "runner_kind": "rules",
+                    "message": "Le suivi des étapes n’a pas pu être enregistré.",
+                    "run_dir": str(pipeline.run_dir)})
+
+        def publish_procedure_progress(event, *, terminal=False):
+            nonlocal progress_available
+            if procedure_progress is None or not progress_available:
+                return
+            try:
+                progress = procedure_progress.observe(event, terminal=terminal)
+            except OSError:
+                progress_available = False
+                _coordinator.publish(_state, {"type": "warn", "runner_kind": "rules",
+                    "message": "Le suivi enregistré des étapes est incomplet.",
+                    "run_dir": str(pipeline.run_dir)})
+                return
+            if progress is not None:
+                _coordinator.publish(_state, {"type": "procedure_progress", "runner_kind": "rules",
+                    "run_dir": str(pipeline.run_dir), "progress": progress})
 
         def callback(event: dict):
             nonlocal pending_pipeline_done
             if req.runner_kind == "rules":
                 event = {**event, "runner_kind": "rules", "run_dir": str(pipeline.run_dir),
                          "scenario_id": getattr(pipeline, "scenario_id", req.scenario_id)}
+                publish_procedure_progress(event, terminal=release_pipeline_done)
             _lab_event(event)
             # Evaluation must happen before pipeline_done reaches the browser;
             # the frontend closes the SSE stream as soon as it receives that
@@ -426,6 +453,8 @@ def _pipeline_thread(req: StartRequest):
                     "evaluation_status": "skipped",
                     "evaluation_error": "Pipeline interrupted before post-run evaluation",
                 })
+            elif req.runner_kind == "rules":
+                publish_procedure_progress({"type": "pipeline_done", "status": "failed"}, terminal=True)
         else:
             _coordinator.publish(_state, error_event)
     finally:
@@ -454,6 +483,8 @@ def _simple_runner_thread(req: StartRequest):
         )
         def callback(event: dict):
             nonlocal seen_terminal
+            if isinstance(event.get("run_dir"), str):
+                _state["run_dir"] = event["run_dir"]
             _lab_event(event)
             if event.get("type") in {"pipeline_done", "runner_done"}:
                 seen_terminal = True

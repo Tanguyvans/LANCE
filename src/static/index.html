@@ -14,6 +14,7 @@
 <div id="header">
   <h1>NATO Smart City IoT</h1>
   <div id="view-nav" role="tablist" aria-label="Vue principale">
+    <button class="view-btn" data-view="procedures" role="tab" aria-selected="false" aria-controls="procedures-view">Automatisations</button>
     <button class="view-btn active" data-view="main" role="tab" aria-selected="true" aria-controls="main">Dashboard</button>
     <button class="view-btn" data-view="benchmark" role="tab" aria-selected="false" aria-controls="benchmark-view">Benchmark</button>
     <button class="view-btn" data-view="scenario-lab" role="tab" aria-selected="false" aria-controls="scenario-lab-view">Scenario Lab</button>
@@ -56,7 +57,8 @@
 
     <!-- Launch form -->
     <div class="sidebar-section" id="launch-section">
-      <h3>New Run</h3>
+      <h3>Nouvelle exécution</h3>
+      <button type="button" class="catalogue-shortcut" onclick="switchView('procedures')">Choisir une automatisation <span aria-hidden="true">→</span></button>
 
       <fieldset class="runner-choices" aria-label="Type d'exécution">
         <legend>Exécution</legend>
@@ -91,6 +93,7 @@
             <option value="">Choisir une procédure…</option>
             <option value="smoke-v1">Démo hors ligne · sans scan</option>
             <option value="discovery-v1">Découverte des hôtes</option>
+            <option value="service-inventory-v1">Inventaire des services TCP</option>
           </select>
           <p id="script-description" class="field-hint" aria-live="polite"></p>
         </div>
@@ -576,7 +579,51 @@
   </div>
 </div>
 
+<section id="procedures-view" class="procedures-view" hidden aria-labelledby="procedures-heading">
+  <header class="procedures-header">
+    <div><p class="procedure-eyebrow">LANCE / OPÉRATIONS</p><h2 id="procedures-heading">Audits et automatisations</h2>
+      <p>Choisissez les contrôles à exécuter. Retrouvez leurs étapes, leurs observations et leurs preuves.</p></div>
+    <button type="button" id="procedure-refresh" class="procedure-secondary">Actualiser</button>
+  </header>
+  <div id="procedure-catalogue-message" role="status" class="procedure-notice" hidden></div>
+  <div class="procedure-layout">
+    <aside class="procedure-library" aria-label="Catalogue des procédures">
+      <h3>Procédures disponibles</h3><div id="procedure-catalogue"><p class="procedure-empty">Chargement du catalogue…</p></div>
+      <details class="procedure-diagnostics"><summary>Diagnostic de l’application</summary><div id="procedure-diagnostics"></div></details>
+      <div class="procedure-history"><h3>Exécutions récentes</h3><div id="procedure-history"><p class="procedure-empty">Chargement…</p></div></div>
+    </aside>
+    <div class="procedure-workspace">
+      <article id="procedure-description" class="procedure-panel"><p class="procedure-empty">Sélectionnez une procédure pour voir ce qu’elle exécute.</p></article>
+      <form id="procedure-form" class="procedure-panel" hidden>
+        <div class="procedure-section-heading"><span class="procedure-number">1</span><h3>Configurer la cible</h3></div>
+        <div id="procedure-network-field"><label for="procedure-network">Réseau IPv4 autorisé</label><input id="procedure-network" type="text" placeholder="192.168.100.0/24" autocomplete="off"><p class="procedure-help">Les sondes restent dans le réseau indiqué. Aucun scénario n’est déployé.</p></div>
+        <div id="procedure-scenario-field" hidden><label for="procedure-scenario">Scénario du laboratoire</label><select id="procedure-scenario"><option value="">Choisir un scénario public…</option></select>
+          <label class="procedure-checkbox"><input id="procedure-cleanup" type="checkbox" checked> Nettoyer les machines du scénario après l’audit</label></div>
+        <p id="procedure-offline-field" class="procedure-help" hidden>Ce diagnostic fonctionne sans cible réseau ni modèle.</p>
+        <div class="procedure-effects"><strong>Actions sur l’environnement</strong><p id="procedure-effects"></p></div>
+        <details class="procedure-limits"><summary>Ajuster les limites d’exécution</summary><div class="procedure-limit-grid">
+          <div><label for="procedure-duration">Temps maximal (secondes)</label><input id="procedure-duration" type="number" min="1" max="3600" step="1" required></div>
+          <div id="procedure-calls-field"><label for="procedure-calls">Appels d’outils maximum</label><input id="procedure-calls" type="number" min="1" max="100" step="1"></div>
+        </div><p class="procedure-help">Un arrêt ou une limite atteinte conserve les observations déjà obtenues et signale les contrôles incomplets.</p></details>
+        <div id="procedure-form-error" class="procedure-error" role="alert" hidden></div>
+        <div class="procedure-launch-row"><p id="procedure-launch-summary"></p><button type="submit" id="procedure-launch" class="procedure-primary">Lancer la procédure</button></div>
+      </form>
+      <section class="procedure-panel" aria-labelledby="procedure-follow-heading">
+        <div class="procedure-section-heading"><span class="procedure-number">2</span><h3 id="procedure-follow-heading">Suivre l’exécution</h3><span id="procedure-status" class="procedure-status">En attente</span></div>
+        <p id="procedure-activity" class="procedure-help" role="status" aria-live="polite">Les étapes s’actualiseront au lancement.</p>
+        <ol id="procedure-steps" class="procedure-timeline"></ol>
+        <div class="procedure-run-actions"><button type="button" id="procedure-stop" class="procedure-secondary" hidden>Demander l’arrêt</button><button type="button" id="procedure-dashboard" class="procedure-secondary" hidden>Voir sur le dashboard</button></div>
+      </section>
+      <section class="procedure-panel" aria-labelledby="procedure-results-heading">
+        <div class="procedure-section-heading"><span class="procedure-number">3</span><h3 id="procedure-results-heading">Lire les résultats</h3></div>
+        <div id="procedure-results"><p class="procedure-empty">Les observations apparaîtront ici. Vous pourrez retrouver chaque exécution dans l’historique.</p></div>
+      </section>
+    </div>
+  </div>
+</section>
+
 <script src="/static/app.js"></script>
+<script src="/static/procedures.js"></script>
 <script src="/static/activity.js"></script>
 <script src="/static/scenario_generator.js"></script>
 </body>

@@ -8,7 +8,7 @@ def test_main_view_is_persisted_and_restored_safely():
     javascript = (ROOT / "src" / "static" / "app.js").read_text(encoding="utf-8")
 
     assert "const VIEW_STORAGE_KEY = 'lance.activeView';" in javascript
-    assert "new Set(['main', 'benchmark', 'scenario-lab'])" in javascript
+    assert "new Set(['main', 'benchmark', 'scenario-lab', 'procedures'])" in javascript
     assert "window.localStorage.getItem(VIEW_STORAGE_KEY)" in javascript
     assert "window.localStorage.setItem(VIEW_STORAGE_KEY, view)" in javascript
     assert "return VALID_VIEWS.has(stored) ? stored : 'main';" in javascript
@@ -23,7 +23,7 @@ def test_main_view_is_persisted_and_restored_safely():
 def test_persisted_views_match_dashboard_navigation():
     html = (ROOT / "src" / "static" / "index.html").read_text(encoding="utf-8")
 
-    for view in ("main", "benchmark", "scenario-lab"):
+    for view in ("main", "benchmark", "scenario-lab", "procedures"):
         assert f'data-view="{view}"' in html
 
 

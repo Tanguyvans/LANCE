@@ -7,6 +7,15 @@ GPU sont regroupés dans [model_training/tests/](../model_training/tests/).
 Ne pas confondre ces tests logiciels avec les
 [scénarios d’évaluation du benchmark](../docs/benchmark/v1/scenarios.md).
 
+`test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
+des outils. `test_procedures_ui.py` exerce les requêtes guidées, les résultats,
+l’échappement des observations et les échecs historiques sans topologie, avec
+Node.js et un DOM simulé. `test_procedure_progress.py` couvre les étapes réelles,
+les contrôles incomplets, l’attente du laboratoire et la lecture bornée des
+artefacts publics. `test_run_modes.py` vérifie aussi l’inventaire TCP déterministe,
+ses limites de portée, d’hôtes, de temps et d’appels, les preuves et les arrêts.
+Ces vérifications ne lancent ni Nmap réel ni audit de laboratoire.
+
 `test_run_graph_context.py` vérifie les graphes distincts de deux runs,
 les réinitialisations et mutations pondérées, les outils et prompts exécutés
 dans des threads, la restauration après exception et les entrées des six phases

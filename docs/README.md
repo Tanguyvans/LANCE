@@ -10,6 +10,9 @@ LLM/règles ; les propositions restent distinctes de la référence implémenté
 
 ## Organisation
 
+Pour lancer une découverte ou un audit sans modèle depuis l’interface, voir le
+[catalogue des procédures et le lancement guidé](architecture/run-modes.md#catalogue-et-lancement-guidé).
+
 | Dossier | Contenu |
 | --- | --- |
 | `architecture/` | Fonctionnement du pipeline, livrables et mécanismes de reprise |

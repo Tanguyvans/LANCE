@@ -20,6 +20,7 @@ from src.api.routes import (
     admin_session,
     models,
     pipeline,
+    procedures,
     providers,
     runs,
     scenario_generator,
@@ -51,6 +52,7 @@ app.include_router(admin_session.router, prefix="/api/admin/session", tags=["adm
 app.include_router(topology.router,  prefix="/api/topology",  tags=["topology"])
 app.include_router(runs.router,      prefix="/api/runs",      tags=["runs"])
 app.include_router(pipeline.router,  prefix="/api/pipeline",  tags=["pipeline"])
+app.include_router(procedures.router, prefix="/api/procedures", tags=["procedures"])
 app.include_router(scenarios.router, prefix="/api/scenarios", tags=["scenarios"])
 app.include_router(
     scenario_generator.router,

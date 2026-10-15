@@ -37,7 +37,8 @@ function updateScriptSelection() {
     : "Les appels d'outils apparaissent dans le journal. Le résumé et les fichiers sont disponibles dans l'historique après le run.";
   document.getElementById('script-description').textContent = script === 'smoke-v1'
     ? 'Teste le lancement, les événements et l’historique. Aucun réseau, modèle ou laboratoire utilisé.'
-    : script === 'discovery-v1' ? 'Découverte fixe des hôtes du réseau indiqué (scan réel).' : '';
+    : script === 'discovery-v1' ? 'Découverte fixe des hôtes du réseau indiqué (scan réel).'
+    : script === 'service-inventory-v1' ? 'Découverte puis inventaire TCP de 16 hôtes observés au maximum, sans modèle.' : '';
   if (activeExecutionKind === 'scripted') {
     const target = document.getElementById('inp-target-network').value.trim();
     document.getElementById('simple-stage-target').textContent = offline
@@ -1929,6 +1930,7 @@ function startSSE(resume = false) {
 }
 
 function handleEvent(ev) {
+  if (typeof ProcedureUI !== 'undefined') ProcedureUI.onEvent(ev);
   if (ev.runner_kind === 'rules' && ev.run_dir &&
       (ev.type === 'pipeline_start' || ev.type === 'pipeline_done' ||
        (ev.type === 'phase_done' && [3, 4].includes(ev.phase)))) {
@@ -2784,7 +2786,7 @@ let _bmOffset = 0;
 let _bmTotal = 0;
 let _bmRequestId = 0;
 const VIEW_STORAGE_KEY = 'lance.activeView';
-const VALID_VIEWS = new Set(['main', 'benchmark', 'scenario-lab']);
+const VALID_VIEWS = new Set(['main', 'benchmark', 'scenario-lab', 'procedures']);
 
 function getStoredView() {
   try {
@@ -2809,6 +2811,10 @@ function switchView(view) {
   mainEl.style.display = isMain ? 'flex' : 'none';
   document.getElementById('benchmark-view').hidden = !isBenchmark;
   document.getElementById('scenario-lab-view').hidden = !isScenarioLab;
+  const proceduresEl = document.getElementById('procedures-view');
+  if (proceduresEl) proceduresEl.hidden = view !== 'procedures';
+  document.body.classList.toggle('procedures-active', view === 'procedures');
+  if (view === 'procedures' && typeof ProcedureUI !== 'undefined') ProcedureUI.open();
   // Log panel belongs to the dashboard only
   document.getElementById('resize-log').style.display = isMain ? '' : 'none';
   document.getElementById('log-wrap').style.display = isMain ? '' : 'none';

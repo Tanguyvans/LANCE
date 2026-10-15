@@ -65,6 +65,107 @@
   --glow-medium:   0 0 10px rgba(210, 153, 34, 0.4);
 }
 
+/* Procedure catalogue: task cards, a guided launch and an evidence workbench. */
+.catalogue-shortcut { width: 100%; display: flex; justify-content: space-between; gap: 12px; padding: 10px; margin: 0 0 14px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-bg); color: var(--text); cursor: pointer; font: inherit; text-align: left; }
+.procedures-view { flex: 1; min-height: 0; overflow: auto; padding: 30px clamp(18px, 3vw, 48px) 48px; }
+.procedures-header { display: flex; justify-content: space-between; align-items: center; gap: 20px; max-width: 1440px; margin: 0 auto 28px; }
+.procedure-eyebrow { font: 10px "SFMono-Regular", Consolas, monospace; letter-spacing: .13em; color: var(--muted); margin-bottom: 9px; }
+.procedures-header h2 { font: 600 clamp(23px, 2.3vw, 32px)/1.2 "Avenir Next", "Segoe UI", sans-serif; letter-spacing: -.035em; }
+.procedures-header > div > p:last-child { color: var(--muted); margin-top: 9px; line-height: 1.6; max-width: 740px; }
+.procedure-layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 26px; max-width: 1440px; margin: auto; align-items: start; }
+.procedure-library { min-width: 0; }
+.procedure-library h3 { font-size: 11px; font-weight: 600; color: var(--muted); margin: 0 0 12px; }
+.procedure-card { display: flex; flex-direction: column; width: 100%; text-align: left; gap: 8px; padding: 17px; margin-bottom: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font: inherit; cursor: pointer; transition: border-color .15s; }
+.procedure-card:hover:not(:disabled) { border-color: var(--muted); }
+.procedure-card.selected { border-color: var(--accent); background: var(--accent-bg); box-shadow: inset 3px 0 var(--accent); }
+.procedure-card:disabled { cursor: default; opacity: .65; }
+.procedure-card > strong { font-size: 14px; line-height: 1.4; font-weight: 600; }
+.procedure-card > span:not(.procedure-card-category):not(.procedure-card-footer) { font-size: 12px; line-height: 1.55; color: var(--muted); }
+.procedure-card-category { font-size: 10px; letter-spacing: .065em; color: var(--accent); font-weight: 600; }
+.procedure-card-footer { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); border-top: 1px solid var(--border2); padding-top: 10px; margin-top: 3px; }
+.procedure-diagnostics { padding-top: 8px; margin-bottom: 26px; }
+.procedure-diagnostics summary, .procedure-limits summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 8px 0; }
+.procedure-diagnostics[open] summary { margin-bottom: 8px; }
+.procedure-history { padding-top: 20px; border-top: 1px solid var(--border); }
+.procedure-history-item { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 12px 0; background: none; border: 0; border-bottom: 1px solid var(--border2); text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.procedure-history-item:hover strong { color: var(--accent); }
+.procedure-history-item strong { font-size: 12px; font-weight: 500; }
+.procedure-history-item span { font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+.procedure-workspace { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.procedure-panel { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 24px; min-width: 0; }
+.procedure-description-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 14px; }
+.procedure-version { color: var(--muted); font: 10px "SFMono-Regular", Consolas, monospace; }
+#procedure-description h3 { font: 600 24px/1.3 "Avenir Next", "Segoe UI", sans-serif; letter-spacing: -.025em; margin-bottom: 8px; }
+#procedure-description > p { color: var(--muted); line-height: 1.6; }
+.procedure-description-list { margin-top: 20px; border-top: 1px solid var(--border2); }
+.procedure-description-list > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; padding-top: 14px; font-size: 12px; line-height: 1.6; }
+.procedure-description-list dt { color: var(--muted); }
+.procedure-description-list dd { overflow-wrap: anywhere; }
+.procedure-mono { font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; }
+.procedure-section-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.procedure-section-heading h3 { font-size: 14px; font-weight: 600; }
+.procedure-number { color: var(--muted); border: 1px solid var(--border); border-radius: 5px; width: 23px; height: 23px; display: grid; place-items: center; font: 11px "SFMono-Regular", Consolas, monospace; }
+.procedure-panel label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 8px; }
+.procedure-panel input:not([type=checkbox]), .procedure-panel select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 11px 12px; font: inherit; }
+.procedure-panel input:disabled, .procedure-panel select:disabled { opacity: .65; }
+.procedure-help, .procedure-empty { font-size: 12px; color: var(--muted); line-height: 1.65; }
+.procedure-help { margin-top: 8px; }
+ul.procedure-help { padding-left: 18px; }
+.procedure-checkbox { display: flex !important; align-items: center; gap: 8px; margin-top: 15px; line-height: 1.5; }
+.procedure-checkbox input { accent-color: var(--accent); }
+.procedure-effects { border-left: 2px solid var(--border); padding-left: 12px; margin-top: 20px; }
+.procedure-effects strong { font-size: 11px; font-weight: 500; }
+.procedure-effects p { color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 5px; }
+.procedure-limits { margin-top: 16px; }
+.procedure-limit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 10px; }
+.procedure-launch-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; border-top: 1px solid var(--border2); margin-top: 20px; padding-top: 20px; }
+.procedure-launch-row > p { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.procedure-primary, .procedure-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 5px; padding: 10px 15px; cursor: pointer; line-height: 1.4; }
+.procedure-primary { background: var(--accent); color: #fff; border: 1px solid var(--accent); font: inherit; font-size: 12px; font-weight: 600; }
+.procedure-secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text); font: inherit; font-size: 12px; }
+.procedure-primary:disabled, .procedure-secondary:disabled { opacity: .5; cursor: default; }
+.procedure-secondary:hover:not(:disabled) { border-color: var(--muted); }
+.procedure-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.procedure-status { margin-left: auto; color: var(--muted); font-size: 11px; }
+.procedure-status[data-status=running], .procedure-status[data-status=waiting] { color: var(--accent); }
+.procedure-status[data-status=completed] { color: var(--green); }
+.procedure-status[data-status=failed], .procedure-status[data-status=budget_exceeded] { color: var(--red); }
+.procedure-status[data-status=partial], .procedure-status[data-status=stopping] { color: var(--orange); }
+.procedure-timeline { list-style: none; margin: 20px 0 0; }
+.procedure-timeline li { position: relative; display: flex; align-items: baseline; gap: 14px; padding: 0 0 21px; min-height: 38px; }
+.procedure-timeline li:not(:last-child)::before { content: ''; position: absolute; width: 1px; background: var(--border); top: 12px; bottom: 0; left: 4px; }
+.procedure-step-mark { position: relative; flex-shrink: 0; width: 9px; height: 9px; border: 1px solid var(--muted); border-radius: 50%; background: var(--surface); }
+.procedure-timeline li[data-status=completed] .procedure-step-mark { border-color: var(--green); background: var(--green); }
+.procedure-timeline li[data-status=running] .procedure-step-mark { border-color: var(--accent); background: var(--accent); }
+.procedure-timeline li[data-status=failed] .procedure-step-mark { border-color: var(--red); background: var(--red); }
+.procedure-timeline li[data-status=partial] .procedure-step-mark { border-color: var(--orange); background: var(--orange); }
+.procedure-timeline li > div { flex: 1; min-width: 0; }
+.procedure-timeline strong { font-size: 12px; font-weight: 500; }
+.procedure-timeline li > div > span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.procedure-step-status { flex-shrink: 0; color: var(--muted); font-size: 11px; }
+.procedure-run-actions, .procedure-evidence-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+.procedure-notice { padding: 12px; border: 1px solid var(--border); background: var(--surface2); border-radius: 5px; color: var(--muted); font-size: 12px; line-height: 1.6; margin-bottom: 14px; }
+#procedure-catalogue-message { max-width: 1440px; margin: 0 auto 16px; }
+.procedure-error { color: var(--red); line-height: 1.6; font-size: 12px; margin-top: 14px; }
+ul.procedure-error { padding-left: 18px; }
+.procedure-result-heading { display: flex; gap: 15px; justify-content: space-between; margin-bottom: 14px; font-size: 12px; }
+.procedure-result-heading > span { color: var(--muted); }
+.procedure-table-scroll { width: 100%; overflow: auto; }
+.procedure-table { border-collapse: collapse; width: 100%; font-size: 12px; text-align: left; }
+.procedure-table th { font-weight: 500; color: var(--muted); padding: 10px 12px 10px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.procedure-table td { vertical-align: top; padding: 12px 14px 12px 0; border-bottom: 1px solid var(--border2); line-height: 1.6; overflow-wrap: anywhere; max-width: 380px; }
+.procedure-cell-detail { display: block; margin-top: 3px; color: var(--muted); }
+.procedure-verdict { color: var(--muted); }
+.procedure-verdict[data-verdict=confirmed] { color: var(--green); }
+.procedure-verdict[data-verdict=error], .procedure-verdict[data-verdict=incomplete] { color: var(--orange); }
+.procedure-diagnostic-result { color: var(--green); line-height: 1.6; }
+.procedure-result-identity { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; font-size: 12px; }
+.procedure-result-identity > span { color: var(--muted); font-size: 11px; }
+.procedures-active #phase-bar, .procedures-active #cost-badge, .procedures-active #sub-agent-bar, .procedures-active #runner-activity { display: none !important; }
+@media (max-width: 960px) { .procedure-layout { grid-template-columns: 240px minmax(0, 1fr); gap: 16px; } .procedure-panel { padding: 18px; } .procedure-launch-row { align-items: stretch; flex-direction: column; } .procedure-description-list > div { grid-template-columns: 1fr; gap: 3px; } }
+@media (max-width: 700px) { .procedures-view { padding: 18px 14px 32px; } .procedures-header { align-items: flex-start; gap: 10px; } .procedures-header > button { padding: 8px; } .procedure-layout { grid-template-columns: minmax(0, 1fr); } #procedure-catalogue { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .procedure-card { margin-bottom: 0; padding: 12px; } .procedure-card > strong { font-size: 12px; } .procedure-card > span:not(.procedure-card-category):not(.procedure-card-footer) { font-size: 11px; } .procedure-card-footer { font-size: 9px; } .procedure-history { margin-bottom: 12px; max-height: 180px; overflow: auto; } .procedure-limit-grid { grid-template-columns: 1fr; } .procedure-section-heading { flex-wrap: wrap; } .procedures-active #header { height: auto; min-height: 44px; flex-wrap: wrap; padding: 10px 14px; gap: 10px; } .procedures-active #header h1 { flex: 1; } .procedures-active #view-nav { order: 1; width: 100%; min-width: 0; overflow-x: auto; } }
+@media (prefers-reduced-motion: reduce) { .procedure-card { transition: none; } }
+
 body {
   background: var(--bg);
   color: var(--text);
