@@ -26,6 +26,10 @@ on:
         type: choice
         options: ['qwen3.8:27b']
         default: qwen3.8:27b
+      ssh_inspect_experiment:
+        description: 'Manually inspect authorized filtered diagnostics from an existing SSH run-attempt'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -169,3 +173,11 @@ jobs:
     with:
       provider: ${{ inputs.ssh_provider }}
       model: ${{ inputs.ssh_model }}
+
+  ssh-inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev/2' &&
+      inputs.ssh_inspect_experiment != ''
+    uses: ./.github/workflows/ssh-reference-inspect.yml
+    with:
+      experiment: ${{ inputs.ssh_inspect_experiment }}

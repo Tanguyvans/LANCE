@@ -25,6 +25,9 @@ lancent ni Docker, ni serveur SSH, ni modèle réel.
 identité de pve-nato avant transfert, refus d'une campagne active, allocation
 sans collision, propriété avant destruction, récupération partielle et arrêt
 avant allocation lorsque Qwen est indisponible. Les appels Proxmox sont simulés.
+`test_ssh_reference_diagnostics.py` vérifie que l'inspection autorisée des
+préparations en échec ne publie que quatre champs filtrés et exclut les valeurs
+privées, y compris dans les erreurs et arguments de commandes.
 
 `test_run_graph_context.py` vérifie les graphes distincts de deux runs,
 les réinitialisations et mutations pondérées, les outils et prompts exécutés

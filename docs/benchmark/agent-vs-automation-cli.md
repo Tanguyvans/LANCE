@@ -355,6 +355,14 @@ gh workflow run benchmark-integrity.yml --ref dev/2 -f slot=dev-2 -f ssh_referen
   -f ssh_provider=ollama-umons -f ssh_model=qwen3.8:27b
 ```
 
+Pour diagnostiquer une tentative existante sans opérer le laboratoire, le champ
+manuel `ssh_inspect_experiment` accepte son identifiant `run-attempt`. Cette
+inspection, explicitement autorisée le 15 octobre 2026, affiche dans GitHub
+uniquement la classe d'erreur, l'utilitaire, le code de sortie et une cause issue
+d'une liste prédéfinie. Aucun texte brut, argument de commande, mot de passe,
+chemin privé ni contenu d'objet n'est publié. Les valeurs inconnues restent
+absentes ; le diagnostic ne remplace pas les preuves privées ni leur vérification.
+
 Les artefacts restent sous
 `/opt/lance-dev-2/output/ssh-reference/<workflow-run-id>-<attempt>/` : plan,
 briefing, oracle et configuration privés, identité du code et du template,
