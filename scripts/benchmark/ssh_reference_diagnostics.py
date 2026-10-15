@@ -92,9 +92,16 @@ def inspect(root):
             diagnostics.extend(server_diagnostics(operation.get('stdout', '') + '\n' + operation.get('stderr', '')))
             if operation.get('returncode', 0) != 0 or operation.get('error_type'):
                 utility = PurePosixPath(operation['argv'][0]).name
+                reason = 'external_operation_failed'
+                if operation['argv'][:2] == ['pct', 'config'] and 'does not exist' in operation.get('stderr', ''):
+                    reason = 'guest_configuration_absent'
+                elif operation['argv'][:2] == ['pct', 'exec'] and 'journalctl' in operation['argv']:
+                    reason, utility = 'fixture_journal_read_failed', 'journalctl'
                 diagnostics.append(entry(operation.get('error_type'), utility,
-                                         operation.get('returncode'), 'external_operation_failed'))
+                                         operation.get('returncode'), reason))
         diagnostics.extend(server_diagnostics(response.get('result', {}).get('server_log', '')))
+        if response.get('result', {}).get('status') == 'absent':
+            diagnostics.append(entry(utility='pct', reason='fixture_absent_during_cleanup'))
         if 'server_log' in response.get('result', {}) and not response['result']['server_log'].strip():
             diagnostics.append(entry(utility='journalctl', reason='startup_journal_unavailable'))
     # stop/recovery can record the same failure more than once.
