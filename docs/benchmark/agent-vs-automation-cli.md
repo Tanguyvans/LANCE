@@ -397,3 +397,44 @@ Le verdict reste `mt_admissible: false`. Une paire par posture qualifie
 l'instrument ; elle ne permet ni intervalle de confiance ni conclusion sur une
 plus-value du LLM. L'amendement des métriques, la calibration des budgets et une
 campagne indépendante restent nécessaires avant une étude confirmatoire.
+
+### Qualification native vérifiée le 15 octobre 2026
+
+Le [lancement 38769747406](https://github.com/Tanguyvans/LANCE/actions/runs/38769747406)
+a validé et déployé sur Dev 2 le commit
+`63203a8dc77ebb9d4afcc1190b902c9da5e29d84`, puis exécuté les quatre bras
+sur les LXC jetables de pve-nato. La CI compte **3 933 tests réussis, deux ignorés
+et deux avertissements**. Les quatre précontrôles prouvent le témoin avant et
+après le dictionnaire ; les quatre verdicts satisfont le contrat de calibration.
+
+| Posture du dictionnaire | Politique | Verdict | Appels SSH | Durée du bras | Tokens entrée / sortie |
+| --- | --- | --- | ---: | ---: | ---: |
+| Aucun couple accepté | Script D1 | Correct | 4 | 0,3 s | 0 / 0 |
+| Aucun couple accepté | Qwen 3.8 27B | Correct | 4 | 17,7 s | 2 394 / 890 |
+| Un couple accepté | Qwen 3.8 27B | Correct | 4 | 17,9 s | 2 638 / 1 577 |
+| Un couple accepté | Script D1 | Correct | 4 | 0,3 s | 0 / 0 |
+
+Les durées excluent la création des LXC et les précontrôles. Les tokens sont
+ceux renvoyés par le fournisseur ; le coût facturé UMONS et le coût matériel ne
+sont pas mesurés. Les estimations tarifaires par défaut ne constituent pas une
+mesure monétaire. Il s'agit d'une répétition par posture, à carte complète et
+avec des actions bornées : aucun avantage ni adaptivité générale du LLM n'est
+démontré, et les résultats restent non admis pour une campagne confirmatoire.
+
+Le nettoyage et la vérification de **120 fichiers** ont réussi. La collection
+complète reste sur nato sous
+`/opt/lance-dev-2/output/ssh-reference/38769747406-1/`, avec le manifeste global
+et les deux archives `archives/<trial>/evidence.tar.gz` :
+
+| Paire | Posture | SHA-256 de l'archive |
+| --- | --- | --- |
+| `ssh-5886a4c5f365` | Aucun couple accepté | `c4bae7e920ce00a0568bb618d439805eab1af9672ec6d686580536e911c4c8e0` |
+| `ssh-18e6557623cf` | Un couple accepté | `1a97cb308454914ffbe8a249856c71b7cc489f94b6c0c8f53ed889b3f263ebd7` |
+
+Les tentatives précédentes restent distinctes et intactes. L'inspection filtrée
+a confirmé un lancement OpenSSH avec nom de programme relatif dans
+`38758419755-1`, puis des pénalités par source réellement appliquées dans
+`38767219662-1`. Cette dernière conserve ses trois non-succès et son succès LLM ;
+ils ne démontrent pas une meilleure politique, puisque la fixture ajoutait une
+protection temporaire non contrôlée. Les corrections et leurs tests concernent
+la fixture et son précontrôle, sans modifier l'évaluateur ni les anciens verdicts.
