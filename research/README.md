@@ -8,6 +8,7 @@ présente les comportements implémentés, les contrats retenus et les procédur
 
 | Date du dossier | Étude | Question | Statut |
 | --- | --- | --- | --- |
+| 2026-10-15 | [Rapport d’ensemble LANCE et IoTChainBench](2026-10-15-bilan-projet/README.md) | Quels sont les objectifs, les composants, le fonctionnement et l’avancement du projet ? | **Actif.** [PDF](2026-10-15-bilan-projet/report.pdf) et [LaTeX](2026-10-15-bilan-projet/report.tex), révision **2026-10-15 22:53 (Europe/Brussels, UTC+02:00)** : **44 pages**, six rédactions spécialisées, architecture/graphe, réseaux, sécurité, application, modèles et benchmark ; huit figures et bilans par volet. Dernière lecture indépendante de découverte : objectifs, parcours complet, livrables et avancement clarifiés, sans renvoi entre chapitres. |
 | 2026-10-12 | [Recentrage conditionnel et structuration du corpus](2026-10-12-recentrage-corpus/README.md) | Sous quelles conditions A1 dépasse-t-il D1, et comment structurer le corpus pour le prouver ? | **Actif.** Proposition conditionnelle (H0-H3), état des lieux plateforme et structuration du corpus (grille dérivée, edge cases EC1-EC4), révisions du 2026-10-12 21:25 à 23:05 (Europe/Brussels, UTC+02:00) ; aucun résultat expérimental nouveau. Cible associée : [objectifs AsiaCCS 2027](../objectifs/asiaccs-2027/README.md). |
 | 2026-10-07 | [Méthodes d'audit et architectures de preuve](2026-10-07-methodes-audit/README.md) | Quelles méthodes rendent les conclusions d'audit plus vérifiables à observations constantes ? | **Actif.** Exploration et protocole proposé ; quatre rapports LaTeX/PDF relus ; synthèse révisée le 2026-10-07 à 13:56 (Europe/Brussels, UTC+02:00), sans gain expérimental établi |
 | 2026-09-27 | [Agent / automatisation](2026-09-27-agent-vs-automation/README.md) | Quel apport mesurable du LLM face à une automatisation à règles ? | **Actif.** [Catalogue, comparaison guidée et essai S1](2026-09-27-agent-vs-automation/lancement-automatisations.pdf), révision 2026-10-15 20:25 (Europe/Brussels, UTC+02:00) : une paire complète Qwen/règles, résultat descriptif ; campagne et revue expérimentale des preuves à mener. [Recherche sans LLM et six expériences](2026-09-27-agent-vs-automation/README.md#methodes-sans-llm) conservée avec ses dates. Recentrage poursuivi dans le dossier du 2026-10-12 ci-dessous. |
@@ -19,6 +20,10 @@ présente les comportements implémentés, les contrats retenus et les procédur
 | 2026-10-05 | [Diagnostic du pipeline, Run1 et Run2](2026-10-05-corrections-lance/README.md) | Que montrent les runs sélectionnés sur les erreurs de pipeline, puis séparément le lot initial et la campagne corrective ? | **Conclu.** Diagnostic révisé 2026-10-06 10:34 ; QA source/PDF le 6 octobre 2026 à 10:41 par Codex et un relecteur indépendant ([validation](2026-10-05-corrections-lance/validation.md)). Inventaire : 2 done, 8 partial, 2 failed ; objectif S1–S12 non atteint. |
 
 ## Lire les rapports
+
+Pour une présentation détaillée des volets du projet et de leur avancement, lire le
+[bilan LANCE au 15 octobre 2026](2026-10-15-bilan-projet/report.pdf)
+([source LaTeX](2026-10-15-bilan-projet/report.tex)).
 
 Commencer par le [rapport principal en PDF](2026-09-27-agent-vs-automation/report.pdf)
 ([source LaTeX](2026-09-27-agent-vs-automation/report.tex)) : il relie couverture du
