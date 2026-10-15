@@ -18,6 +18,7 @@ load_dotenv(ROOT / ".env")
 from src.api.routes import (
     activity,
     admin_session,
+    comparisons,
     models,
     pipeline,
     procedures,
@@ -53,6 +54,7 @@ app.include_router(topology.router,  prefix="/api/topology",  tags=["topology"])
 app.include_router(runs.router,      prefix="/api/runs",      tags=["runs"])
 app.include_router(pipeline.router,  prefix="/api/pipeline",  tags=["pipeline"])
 app.include_router(procedures.router, prefix="/api/procedures", tags=["procedures"])
+app.include_router(comparisons.router, prefix="/api/comparisons", tags=["comparisons"])
 app.include_router(scenarios.router, prefix="/api/scenarios", tags=["scenarios"])
 app.include_router(
     scenario_generator.router,

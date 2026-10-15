@@ -26,6 +26,11 @@ promet pas des runs concurrents : l'API conserve un seul run actif par instance.
 
 ## Catalogue et lancement guidé
 
+Le parcours **Comparer règles / LLM**, séparé du catalogue, prépare une paire
+contrôlée des phases 3–4. Voir le [guide de comparaison dans l’interface](../benchmark/agent-vs-automation-campaign.md#comparer-une-paire-depuis-linterface)
+pour ses conditions de remise en état, mesures et limites. Le score de ce parcours
+ne s’applique pas aux simples inventaires du catalogue.
+
 L’onglet **Automatisations** ouvre les **Résultats des exécutions** : un tableau
 filtrable par procédure et scénario ou réseau, paginé par dix exécutions. Il
 affiche les observations, la disponibilité d’une évaluation, la durée mesurée,

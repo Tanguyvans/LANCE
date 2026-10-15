@@ -43,8 +43,10 @@ const ProcedureUI = (() => {
     state.section = section;
     byId('procedure-overview').hidden = section !== 'results';
     byId('procedure-launcher').hidden = section !== 'launch';
+    byId('comparison-view').hidden = section !== 'comparison';
     byId('procedure-detail').hidden = section !== 'results' || !state.runId;
-    ['results','launch'].forEach(name => byId(`procedure-tab-${name}`).setAttribute('aria-selected', String(name === section)));
+    ['results','launch','comparison'].forEach(name => byId(`procedure-tab-${name}`).setAttribute('aria-selected', String(name === section)));
+    if (section === 'comparison' && typeof ComparisonUI !== 'undefined') ComparisonUI.open();
   }
 
   function clearRoute() {
@@ -432,6 +434,7 @@ const ProcedureUI = (() => {
       if (typeof window !== 'undefined' && !state.running) {
         const route = window.location.hash.match(/^#automation\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/);
         if (route) await showRun(route[1]);
+        if (/^#comparison\/[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}_[a-f0-9]{12}$/.test(window.location.hash)) setSection('comparison');
       }
     } catch (error) {
       byId('procedure-catalogue-message').textContent = error.message;
@@ -440,7 +443,11 @@ const ProcedureUI = (() => {
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    ['results','launch'].forEach(section => byId(`procedure-tab-${section}`).addEventListener('click', () => setSection(section)));
+    ['results','launch','comparison'].forEach(section => byId(`procedure-tab-${section}`).addEventListener('click', () => {
+      if (section !== 'comparison' && typeof window !== 'undefined' && window.location.hash.startsWith('#comparison/'))
+        window.history.replaceState(null,'',window.location.pathname + window.location.search);
+      setSection(section);
+    }));
     byId('procedure-close-detail').addEventListener('click', () => { if (state.running) return; state.runId = null; state.viewingHistory = false; ++state.request; byId('procedure-detail').hidden = true; clearRoute(); });
     for (const [id,key] of [['procedure-filter','filterProcedure'],['procedure-target-filter','filterTarget'],['procedure-include-diagnostics','includeDiagnostics']]) {
       byId(id).addEventListener('change', () => { state[key] = key === 'includeDiagnostics' ? byId(id).checked : byId(id).value; state.pageOffset = 0; history(); });

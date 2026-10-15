@@ -588,8 +588,37 @@
   <nav class="procedure-sections" role="tablist" aria-label="Sections des automatisations">
     <button id="procedure-tab-results" type="button" role="tab" aria-selected="true" aria-controls="procedure-overview" data-procedure-section="results">Résultats des exécutions</button>
     <button id="procedure-tab-launch" type="button" role="tab" aria-selected="false" aria-controls="procedure-launcher" data-procedure-section="launch">Nouvelle exécution</button>
+    <button id="procedure-tab-comparison" type="button" role="tab" aria-selected="false" aria-controls="comparison-view">Comparer règles / LLM</button>
   </nav>
   <div id="procedure-catalogue-message" role="status" class="procedure-notice" hidden></div>
+  <section id="comparison-view" hidden aria-labelledby="comparison-heading">
+    <h3 id="comparison-heading">Comparer les règles et un agent LLM</h3>
+    <p class="procedure-help">Deux audits successifs du même scénario : analyse et vérification des failles. Le laboratoire est remis en état avant chaque audit, puis nettoyé. L’inventaire public, les outils, les validateurs et les limites sont communs.</p>
+    <p id="comparison-runtime" class="procedure-notice" hidden></p>
+    <form id="comparison-form" class="procedure-panel comparison-form">
+      <div class="comparison-fields"><label>Scénario public<select id="comparison-scenario" required><option value="">Chargement…</option></select></label><label>Modèle de l’agent<select id="comparison-model" required><option value="">Chargement…</option></select></label></div>
+      <p id="comparison-target" class="procedure-help"></p>
+      <details class="procedure-limits"><summary>Ajuster les limites et l’ordre</summary><div class="comparison-fields">
+        <label>Appels d’outils maximum par audit<input id="comparison-calls" type="number" min="1" max="2000" value="200" required></label>
+        <label>Temps maximal par audit (secondes)<input id="comparison-duration" type="number" min="1" max="3600" value="600" required></label>
+        <label>Plafond d’usage LLM (USD)<input id="comparison-cost" type="number" min="0.01" max="100" step="0.01" value="2" required></label>
+        <label>Ordre des audits<select id="comparison-order"><option value="rules-first">Règles puis agent LLM</option><option value="llm-first">Agent LLM puis règles</option></select></label>
+      </div><p class="procedure-help">Le temps limite couvre chaque audit, hors attente, préparation et nettoyage. Une opération en cours peut dépasser sa limite. Le plafond LLM repose sur l’usage déclaré ; les coûts d’infrastructure et de revue humaine ne sont pas mesurés.</p></details>
+      <p class="procedure-help">La préparation peut supprimer les scénarios déjà présents dans le labo partagé. Ce parcours couvre les scénarios publics avec équipements TCP dans un seul /24. Les vérifications de préparation ne certifient pas toutes les propriétés attendues.</p>
+      <p id="comparison-error" role="alert" class="procedure-error" hidden></p>
+      <div class="procedure-launch-row"><p>2 audits · profil complet · mêmes limites · nettoyage final</p><button id="comparison-launch" class="procedure-primary" type="submit" disabled>Lancer la comparaison</button></div>
+    </form>
+    <div class="comparison-history-heading"><h3>Comparaisons enregistrées</h3><button type="button" class="procedure-secondary" id="comparison-refresh">Actualiser</button></div>
+    <p id="comparison-history-message" class="procedure-empty"></p>
+    <div class="procedure-overview-scroll"><table class="procedure-overview-table comparison-history"><thead><tr><th>Date / scénario</th><th>Modèle</th><th>Exécution</th><th>Comparabilité</th><th>Détails</th></tr></thead><tbody id="comparison-rows"></tbody></table></div>
+    <div class="procedure-pagination"><button id="comparison-prev" type="button" class="procedure-secondary" disabled>Précédentes</button><span id="comparison-page"></span><button id="comparison-next" type="button" class="procedure-secondary" disabled>Suivantes</button></div>
+    <section id="comparison-detail" class="procedure-detail" hidden aria-label="Résultat de la comparaison">
+      <div class="comparison-history-heading"><h3 id="comparison-detail-heading" tabindex="-1">Comparaison sélectionnée</h3><button id="comparison-stop" type="button" class="procedure-secondary" hidden>Demander l’arrêt</button></div>
+      <p id="comparison-context" class="procedure-help"></p><p id="comparison-outcome" class="procedure-notice" role="status"></p>
+      <div id="comparison-results"></div>
+      <details id="comparison-steps-panel" class="procedure-progress-details"><summary>Préparation, audits et nettoyage</summary><ol id="comparison-steps" class="procedure-timeline"></ol></details>
+    </section>
+  </section>
   <div id="procedure-overview">
     <div class="procedure-overview-toolbar">
       <label>Procédure<select id="procedure-filter"><option value="">Toutes les procédures</option></select></label>
@@ -646,6 +675,7 @@
 
 <script src="/static/app.js"></script>
 <script src="/static/procedures.js"></script>
+<script src="/static/comparisons.js"></script>
 <script src="/static/activity.js"></script>
 <script src="/static/scenario_generator.js"></script>
 </body>

@@ -196,6 +196,18 @@ ul.procedure-error { padding-left: 18px; }
 #procedure-record-description > span { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 #procedure-record-description > h3 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
 .procedure-permalink { color: var(--accent); font-size: 11px; }
+.comparison-form { margin: 22px 0 30px; }
+#comparison-view { max-width: 1440px; margin: auto; }
+.comparison-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; margin-top: 12px; }
+.comparison-fields label { min-width: 0; }
+.comparison-fields select, .comparison-fields input { margin-top: 8px; }
+.comparison-history-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 24px 0 12px; }
+.comparison-history { min-width: 680px; }
+.comparison-results { min-width: 560px; }
+.comparison-results td:not(:first-child), .comparison-results th:not(:first-child) { text-align: right; }
+.comparison-reasons { padding-left: 22px; font-size: 12px; line-height: 1.8; color: var(--orange); }
+.comparison-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+@media(max-width:700px) { .comparison-fields { grid-template-columns: minmax(0,1fr); } .procedure-sections { flex-wrap: wrap; } .procedure-sections button { min-width: 130px; } }
 .procedure-measures { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 14px; background: var(--surface); }
 .procedure-measures > div { display: flex; flex-direction: column; gap: 10px; padding: 18px; }
 .procedure-measures span { color: var(--muted); font-size: 11px; }
