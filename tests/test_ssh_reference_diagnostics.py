@@ -38,6 +38,19 @@ def test_diagnostic_duplicates_are_not_counted_as_distinct_errors(tmp_path):
     assert diagnostics.inspect(tmp_path) == [diagnostics.entry(utility='sshd', reason='sshd_runtime_directory_missing')]
 
 
+def test_unit_failures_and_missing_journal_are_classified_without_raw_output(tmp_path):
+    operations = tmp_path / 'proxmox-operations'
+    operations.mkdir()
+    (operations / '1.response.json').write_text(json.dumps({'operations': [
+        {'argv': ['pct', 'exec', '7000'], 'returncode': 0,
+         'stdout': 'private-hostname systemd[1]: status=203/EXEC', 'stderr': ''}],
+        'result': {'server_log': '-- No entries --'}}))
+    result = diagnostics.inspect(tmp_path)
+    assert diagnostics.entry(reason='systemd_executable_start_failed') in result
+    assert diagnostics.entry(utility='journalctl', reason='startup_journal_empty') in result
+    assert 'private-hostname' not in json.dumps(result)
+
+
 def test_inspection_workflow_is_manual_and_shell_syntax_valid():
     root = Path(__file__).resolve().parents[1]
     path = root / '.github/workflows/ssh-reference-inspect.yml'

@@ -29,6 +29,15 @@ SERVER_REASONS = {
     'Cannot assign requested address': 'sshd_bind_address_unavailable',
     'Bad configuration option': 'sshd_invalid_configuration',
     'status=226/NAMESPACE': 'systemd_namespace_setup_failed',
+    'status=203/EXEC': 'systemd_executable_start_failed',
+    'Failed at step': 'systemd_startup_step_failed',
+    'Failed to start': 'service_start_failed',
+    'Failed to execute': 'service_execute_failed',
+    'No journal files were found': 'startup_journal_unavailable',
+    '-- No entries --': 'startup_journal_empty',
+    'code=killed, status=9/KILL': 'service_process_killed',
+    'oom-kill': 'service_out_of_memory',
+    'unable to bind': 'sshd_listen_failed',
 }
 
 
@@ -44,7 +53,9 @@ def server_diagnostics(log):
     for line in log.splitlines():
         for text, reason in SERVER_REASONS.items():
             if text in line:
-                diagnostics.append(entry(utility='sshd', reason=reason))
+                utility = ('journalctl' if reason.startswith('startup_journal_') else
+                           None if reason.startswith(('systemd_', 'service_')) else 'sshd')
+                diagnostics.append(entry(utility=utility, reason=reason))
         error = re.search(r'\b(' + '|'.join(sorted(ERRORS)) + r'):', line)
         if not error:
             continue
@@ -78,11 +89,14 @@ def inspect(root):
     for path in sorted((root / 'proxmox-operations').glob('*.response.json')):
         response = json.loads(read(path))
         for operation in response.get('operations', []):
+            diagnostics.extend(server_diagnostics(operation.get('stdout', '') + '\n' + operation.get('stderr', '')))
             if operation.get('returncode', 0) != 0 or operation.get('error_type'):
                 utility = PurePosixPath(operation['argv'][0]).name
                 diagnostics.append(entry(operation.get('error_type'), utility,
                                          operation.get('returncode'), 'external_operation_failed'))
         diagnostics.extend(server_diagnostics(response.get('result', {}).get('server_log', '')))
+        if 'server_log' in response.get('result', {}) and not response['result']['server_log'].strip():
+            diagnostics.append(entry(utility='journalctl', reason='startup_journal_unavailable'))
     # stop/recovery can record the same failure more than once.
     return [json.loads(value) for value in dict.fromkeys(json.dumps(item, sort_keys=True) for item in diagnostics)]
 
