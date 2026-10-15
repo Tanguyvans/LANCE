@@ -304,7 +304,14 @@ Les VM et configurations d'autres campagnes restent hors des opérations.
 
 Le pilote prévoit quatre bras : F0 script puis LLM, F1 LLM puis script. Avant
 chaque bras, le LXC est recréé et un précontrôle indépendant teste le témoin
-et tous les couples publics. **F0 signifie zéro couple du dictionnaire accepté ;
+et tous les couples publics, puis relit l'objet par le témoin : une protection
+temporaire activée par les refus doit bloquer la qualification avant le bras.
+La fixture statique impose `PerSourcePenalties no` pour que les mauvaises
+authentifications du précontrôle ne modifient pas l'accès du bras suivant.
+Cette configuration concerne uniquement le service SSH du LXC jetable et ne
+constitue pas un scénario de défense adaptative. Voir le
+[contrat OpenSSH 10.0](https://github.com/openssh/openssh-portable/blob/V_10_0_P1/sshd_config.5).
+**F0 signifie zéro couple du dictionnaire accepté ;
 F1 exactement un couple accepté.** Ce n'est pas une affirmation d'absence de toute
 autre vulnérabilité d'OpenSSH ou du système. Les mots de passe hors dictionnaire
 sont aléatoires ; le compte root et les transferts SSH sont désactivés. L'objet

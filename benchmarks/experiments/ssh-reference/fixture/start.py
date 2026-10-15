@@ -48,6 +48,7 @@ PrintMotd no
 UseDNS no
 MaxAuthTries 2
 MaxSessions 2
+PerSourcePenalties no
 LoginGraceTime 10
 LogLevel VERBOSE
 '''

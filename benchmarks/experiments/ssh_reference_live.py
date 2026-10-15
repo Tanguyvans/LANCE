@@ -120,7 +120,7 @@ def preflight(public, oracle, directory, args):
     execute = bind_ssh_tool(run)
     results = []
     try:
-        for credential in [public['control_credential'], *public['dictionary']]:
+        for credential in [public['control_credential'], *public['dictionary'], public['control_credential']]:
             execute(ip=public['target']['ip'], port=public['target']['port'],
                     command=proof_command(public), **credential)
             record = execute.last_observation()
@@ -130,11 +130,12 @@ def preflight(public, oracle, directory, args):
                      and hashlib.sha256(payload.encode()).hexdigest() == oracle['canary_sha256'])
             results.append({'read_proven': valid, 'authentication_denied': _denied(record),
                             'evidence_ref': record['evidence_ref']})
-        valid = (results[0]['read_proven'] and
-                 sum(item['read_proven'] for item in results[1:]) == oracle['intentional_flaws'] and
-                 all(item['read_proven'] or item['authentication_denied'] for item in results[1:]))
+        valid = (results[0]['read_proven'] and results[-1]['read_proven'] and
+                 sum(item['read_proven'] for item in results[1:-1]) == oracle['intentional_flaws'] and
+                 all(item['read_proven'] or item['authentication_denied'] for item in results[1:-1]))
         write_json(directory / 'attestation.json', {'status': 'valid' if valid else 'invalid',
-                                                   'checks': results, 'briefing_sha256': digest(public)})
+                   'checks': results, 'post_dictionary_control_proven': results[-1]['read_proven'],
+                   'briefing_sha256': digest(public)})
         if not valid:
             raise RuntimeError('Real SSH preflight disagrees with the private posture')
     finally:

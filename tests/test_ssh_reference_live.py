@@ -199,8 +199,36 @@ def test_preflight_refuses_contradictory_real_observations(tmp_path, monkeypatch
               'canary_sha256': hashlib.sha256(config['object'].encode()).hexdigest()}
     with pytest.raises(RuntimeError, match='preflight'):
         live.preflight(public, oracle, tmp_path / 'preflight', args)
-    assert len(live.read_ledger(tmp_path / 'preflight')) == 4
+    assert len(live.read_ledger(tmp_path / 'preflight')) == 5
     assert json.loads((tmp_path / 'preflight/attestation.json').read_text())['status'] == 'invalid'
+
+
+@pytest.mark.parametrize('ban_after_rejections', [False, True])
+def test_preflight_requires_control_still_working_after_dictionary(tmp_path, monkeypatch, setup, ban_after_rejections):
+    public, config, args = setup
+    base = process_for(public, config, False)
+    calls = 0
+
+    def process(argv, timeout):
+        nonlocal calls
+        calls += 1
+        if ban_after_rejections and calls == 5:
+            return {'return_code': 255, 'stdout': '', 'stderr': 'Connection closed by remote host'}
+        return base(argv, timeout)
+
+    monkeypatch.setattr(recon_tools, '_run', process)
+    oracle = {'schema_version': 1, 'briefing_sha256': live.digest(public), 'intentional_flaws': 0,
+              'canary_sha256': hashlib.sha256(config['object'].encode()).hexdigest()}
+    directory = tmp_path / 'preflight'
+    if ban_after_rejections:
+        with pytest.raises(RuntimeError, match='preflight'):
+            live.preflight(public, oracle, directory, args)
+    else:
+        live.preflight(public, oracle, directory, args)
+    attestation = json.loads((directory / 'attestation.json').read_text())
+    assert calls == 5 and attestation['checks'][0]['read_proven'] is True
+    assert attestation['post_dictionary_control_proven'] is (not ban_after_rejections)
+    assert attestation['status'] == ('invalid' if ban_after_rejections else 'valid')
 
 
 def test_provider_evidence_write_failure_is_fatal(tmp_path):

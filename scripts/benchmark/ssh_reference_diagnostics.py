@@ -40,6 +40,8 @@ SERVER_REASONS = {
     'code=killed, status=9/KILL': 'service_process_killed',
     'oom-kill': 'service_out_of_memory',
     'unable to bind': 'sshd_listen_failed',
+    'penalty: failed authentication': 'sshd_per_source_penalty_recorded',
+    'penalty: connections without attempting authentication': 'sshd_per_source_penalty_recorded',
 }
 
 
@@ -53,6 +55,8 @@ def entry(error=None, utility=None, returncode=None, reason='unclassified'):
 def server_diagnostics(log):
     diagnostics = []
     for line in log.splitlines():
+        if 'drop connection #' in line and 'penalty: ' in line:
+            diagnostics.append(entry(utility='sshd', reason='sshd_per_source_penalty_enforced'))
         for text, reason in SERVER_REASONS.items():
             if text in line:
                 utility = ('journalctl' if reason.startswith('startup_journal_') else

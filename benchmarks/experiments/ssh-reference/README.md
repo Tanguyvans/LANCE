@@ -72,3 +72,15 @@ Un test avec le vrai binaire, une configuration volontairement absente et aucun
 port ouvert reproduit le refus avant correction et atteint la lecture de
 configuration après correction. Cette validation logicielle ne démontre pas
 encore que la préparation réelle et les quatre bras ont abouti.
+
+Le [lancement corrigé `50fc5a7`](https://github.com/Tanguyvans/LANCE/actions/runs/38767219662)
+a exécuté les quatre bras et vérifié **120 fichiers**, avec deux archives de
+paire. Les quatre précontrôles initiaux étaient valides ; trois bras sont en
+non-succès et le LLM obtient une preuve dans le cas vulnérable. Ces résultats
+restent intacts sous `/opt/lance-dev-2/output/ssh-reference/38767219662-1/`.
+Les accès légitimes qui échouent immédiatement après les refus motivent un
+diagnostic de la protection temporaire par source, avant toute interprétation
+comparative. Le précontrôle exige désormais que le témoin fonctionne également
+après le dictionnaire, et la fixture statique désactive `PerSourcePenalties`.
+La qualification de cette correction exige un nouveau lancement ; les verdicts
+anciens ne sont ni recalculés ni remplacés.

@@ -51,6 +51,14 @@ def test_unit_failures_and_missing_journal_are_classified_without_raw_output(tmp
     assert 'private-hostname' not in json.dumps(result)
 
 
+def test_recorded_penalty_is_distinct_from_enforced_connection_drop():
+    recorded = diagnostics.server_diagnostics('new deferred penalty of 5 seconds for penalty: failed authentication')
+    dropped = diagnostics.server_diagnostics('drop connection #0 from [private-ip] penalty: failed authentication')
+    enforced = diagnostics.entry(utility='sshd', reason='sshd_per_source_penalty_enforced')
+    assert enforced not in recorded and enforced in dropped
+    assert 'private-ip' not in json.dumps(dropped)
+
+
 def test_inspection_workflow_is_manual_and_shell_syntax_valid():
     root = Path(__file__).resolve().parents[1]
     path = root / '.github/workflows/ssh-reference-inspect.yml'
