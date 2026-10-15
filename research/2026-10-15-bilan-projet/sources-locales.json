@@ -1,0 +1,2159 @@
+{
+  "schema_version": 2,
+  "kind": "comprehensive-local-project-report",
+  "report_revision": "2026-10-15 22:53 (Europe/Brussels, UTC+02:00)",
+  "snapshot_created_at": "2026-10-15T22:55:03+02:00",
+  "base_commit": "73369b03359d4facc8ec58a233c1623284e746d0",
+  "scope": "Local code, documentation and attributed historical accounts. No new remote inspection, lab execution, model call or application test run. Source hashes identify this working copy; they do not authenticate remote provenance.",
+  "specialist_authors": {
+    "architecture": "Architecture logicielle et moteur",
+    "reseaux": "Réseaux et infrastructure",
+    "securite": "Sécurité et preuves",
+    "application": "Application et usages",
+    "modeles": "Modèles, données et entraînement",
+    "benchmark": "Benchmark, méthode et résultats"
+  },
+  "files": [
+    {
+      "path": ".github/workflows/benchmark-integrity.yml",
+      "bytes": 5219,
+      "sha256": "a618ce3e64aee27f17e50fb4ae2b4704f38c45ffd95d58dea4453de5929dc04b",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats",
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": ".github/workflows/update-master.yml",
+      "bytes": 959,
+      "sha256": "bbb2cac0f255ba74c8a52161ff4902b1dcd5c6c4dbb2f8c0db4b44b0d1049db6",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 5290,
+      "sha256": "2c2e415a97c6b7889850aecc3c8e96982a7ce3feec09dc023d6fac7b9f17787a",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Réseaux et infrastructure",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "G6259_Milestone3_UMONS_FINAL.docx",
+      "bytes": 152739,
+      "sha256": "125ced9b53810cd794a041da0c6416dfda635ed53907830f1f841b687b2575b5",
+      "tracked": false,
+      "working_tree_status": "??",
+      "specialist_readers": [],
+      "cited_in_report": true
+    },
+    {
+      "path": "README.md",
+      "bytes": 5107,
+      "sha256": "91bbc36a72354fd6aa2cace1e7476d5223202d206a894a25d8b1a0fa86a46426",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/README.md",
+      "bytes": 1442,
+      "sha256": "15cbec220d071a9d5dbbf2ec5b432df51cf86a773fc0ddc3c9b901acc53e6f32",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/ansible/README.md",
+      "bytes": 9256,
+      "sha256": "ffd1f4fc310b3eb78dd2c10f27b5778684b6492f21cb1b22d0020df4aa369a50",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/ansible/playbooks/03_deploy_scenario.yml",
+      "bytes": 17041,
+      "sha256": "65c393672a1e6fc8dda31b9ceaffed5bbcbb5222594158737c85a9f34b7e1dad",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/ansible/playbooks/06_verify.yml",
+      "bytes": 71902,
+      "sha256": "c9e8666301f8731dc4f24793e0bb6e4fbe781025eab3f339c358e2adfce099bf",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/ansible/playbooks/08_reset_scenario.yml",
+      "bytes": 2801,
+      "sha256": "1dd7ff91cf9fb262ffeefac1dd1f9e696c8c9a0225ec5475ec0c4c0294b3b4ba",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/ansible/playbooks/99_teardown.yml",
+      "bytes": 4084,
+      "sha256": "b6b88e6b3851159ceb5fc35f8ce4b1fe7443de815f872162b423afcc32a4a393",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/ansible/playbooks/deploy_master.yml",
+      "bytes": 21233,
+      "sha256": "8fdfad56538fac0285149f88e19960bf358b816093fd7304f637d73c33a14052",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/catalog.yaml",
+      "bytes": 2275,
+      "sha256": "caca35b72a554f007742b575c6fcb21d58e8f3dc05e0b2210ff320f6b60bd3a1",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats",
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/experiments/policy-comparison/README.md",
+      "bytes": 2735,
+      "sha256": "1b30784981bcc2603536dc083a16247c1c10dfd6796ee97219837dbb04bf39c7",
+      "tracked": true,
+      "working_tree_status": " M",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/experiments/policy-comparison/pilot-2026-10-preflight.md",
+      "bytes": 11405,
+      "sha256": "f5f2e8f8a807c222bf210bf0f6c14bea9a5745c9655ddbafe23f84cf983bed2e",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/experiments/policy-comparison/pilot-2026-10.json",
+      "bytes": 8209,
+      "sha256": "25e01b28e6acd43e4b023277f6b348ba1c02b07719aa31210f3b262f74d950cb",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/experiments/ssh-reference/README.md",
+      "bytes": 1787,
+      "sha256": "0a7012e485fb0e42f4e3228dc4fda6ddb79fef63a07c3f661d5b3d018925c666",
+      "tracked": false,
+      "working_tree_status": "??",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/experiments/ssh_reference.py",
+      "bytes": 15165,
+      "sha256": "9b8b2e4e5b6ffb53fe33307b68d4e43f64a990c128b8e0302c0e05be208d56ae",
+      "tracked": false,
+      "working_tree_status": "??",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/ground_truth/dev/scenario_15.yaml",
+      "bytes": 5863,
+      "sha256": "f991e7032098e33fb40620a2233abf9af9834853413630b52950fd5dd6463f8c",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/labels/README.md",
+      "bytes": 395,
+      "sha256": "2e24efc06a87b2dc9490a1a4c93246f418d5a417bc3761363b0f162c8e7bffd7",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/packs/definitions/f0_hardened.yaml",
+      "bytes": 287,
+      "sha256": "d127d3feb4078d761f8c54e7cc8bbeb24114ec4b4eaf3e84e88ec7eda95d4a1e",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/packs/definitions/f11_api_authorization.yaml",
+      "bytes": 2922,
+      "sha256": "a6220bd2059f671a0952772cef36bc35935507155522e4b75e81386b49bea24c",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/packs/definitions/f15_ot_protocols.yaml",
+      "bytes": 3787,
+      "sha256": "98ccb7a8e691bfed4b3f734e154e4e2b641960635067b8460aea321114a6c5bd",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/scenarios/dev/S1.yaml",
+      "bytes": 1969,
+      "sha256": "da669675bf249db3be13478b76561df57b84b1c11a3315c95d0474345a14b327",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats",
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/scenarios/dev/S14.yaml",
+      "bytes": 186,
+      "sha256": "c2ac51b156d61ac4b89f6faf8ab5496c231281a2df84a487281b82ba60cb83e3",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/scenarios/dev/S15.yaml",
+      "bytes": 860,
+      "sha256": "ddae4d8cd8a1a3eff46d736bc5a6a4c8c49f049523c303ffbfbebadb496b26b4",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "benchmarks/scenarios/dev/S19.yaml",
+      "bytes": 925,
+      "sha256": "2d65138dcbc85e8f73a161c584091cd80e6f807abddc8110dd6a95ecab9e4667",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/topologies/api_authorization.yaml",
+      "bytes": 1611,
+      "sha256": "66317d66584d10ef9e1d74df67ed34273d412131f3f6caab3745ffe67d972fd1",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/topologies/device_pki.yaml",
+      "bytes": 1647,
+      "sha256": "ed026f65acfa5da60e501fb1011456034800b32aacc8fca78b36d08764728fde",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/topologies/ot_multiprotocol.yaml",
+      "bytes": 1714,
+      "sha256": "237772038399ef4f58dfd523b2178f068c3cc9735a33701f3272ceaf0ed1b2ec",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "benchmarks/topologies/true_multihop.yaml",
+      "bytes": 1361,
+      "sha256": "23248a213cd33abe68aa3b7ea531c8f842ecaa011146dc96af5d2d2ab2f53a33",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/README.md",
+      "bytes": 5919,
+      "sha256": "37052db67378d662a9f05d9384400f93b60dabe5e7967fae5fa944f479959c44",
+      "tracked": true,
+      "working_tree_status": " M",
+      "specialist_readers": [
+        "Application et usages",
+        "Réseaux et infrastructure",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "docs/architecture/phase1-graph-recovery.md",
+      "bytes": 5153,
+      "sha256": "2c1cc9bcfe33f57a1c5a5799bcbcda259ddcfb774ae3faa2830586d92296cd50",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/architecture/phase3-block-recovery.md",
+      "bytes": 4959,
+      "sha256": "c77c6afa2328c273ed0423e1c05c77974b72e9f5faf3501d55bf89057b90e910",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/architecture/phase5-noop-gate.md",
+      "bytes": 1947,
+      "sha256": "c132f9db0133c7deb9133f8e7724f861a815f2a0127c69c299887a7750beaa67",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/architecture/report-writing.md",
+      "bytes": 7868,
+      "sha256": "ee24081f9d53c49d4bcb3cbb853d655a78f2e4b537901c0180b1380b71b4c8bf",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/architecture/run-artifacts.md",
+      "bytes": 9595,
+      "sha256": "c47dce2e85d1705f8738dbd5b30e01e11054f128228714e518088a814d5aa376",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/architecture/run-modes.md",
+      "bytes": 12814,
+      "sha256": "9504cd3799bc554f1565fda0d6853707b15c89ecfd4530583b676fdaf5810ffe",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/benchmark/agent-vs-automation-campaign.md",
+      "bytes": 16722,
+      "sha256": "efe3f8188b9183ba44699e737a22eb5f5cc230c7b89f1f2e5af07747bac9ac49",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/benchmark/agent-vs-automation-cli.md",
+      "bytes": 15636,
+      "sha256": "3e862f94f612bf3c3c3a91423c78c70bd4ee6a5b8847121a2c48d112e790efc9",
+      "tracked": true,
+      "working_tree_status": " M",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/benchmark/catalogue-attaques.md",
+      "bytes": 19220,
+      "sha256": "44a416de68f022014647e89ba90d5e1391f10916348f17fb7adfb695b376f8c4",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/benchmark/derived-index.md",
+      "bytes": 3005,
+      "sha256": "88c5c85a7e48cac1a4ac427dd7c8f8aaa4bab127633cd8928cbcd1323546717f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/benchmark/v1/evaluation.md",
+      "bytes": 19849,
+      "sha256": "f719205289f45263feb48665255db9af52cae7a9de88d2d27f57e6e83e86ffc2",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/benchmark/v1/scenarios.md",
+      "bytes": 5297,
+      "sha256": "baaf7233fd51f4b57fda231e513f5faf0debf737f66b1031f268b66c203dfde3",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats",
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/guides/admin-session.md",
+      "bytes": 1638,
+      "sha256": "addc70e859533ed57799abf6be6af89688722aae512cab2ea662ee4710e5e8d6",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/guides/development-instances.md",
+      "bytes": 12993,
+      "sha256": "82b3cecab433dba36d13086220abac76098259e12239086cce439f1c89e396e0",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/guides/lab-access-tailscale.md",
+      "bytes": 2494,
+      "sha256": "6dc00b7fcb00d05707e2bc4c31be6f8b39370e4224ac922087227d5a67cea42a",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/guides/manual-scenarios.md",
+      "bytes": 11063,
+      "sha256": "29878b91a5d2c1f993efb922bdf2eeebcae552a45740979a641f3c125be755ed",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/guides/provider-auth.md",
+      "bytes": 5228,
+      "sha256": "ec6c736a44e9e5bbfc63695e4b06204d226738de67867eb55617d087798614cb",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/training/hmoe-openwebui.md",
+      "bytes": 9053,
+      "sha256": "7d9612ba661ebac866e79e8be2c5974836de15c8c1c9797fca5cefe6e03df723",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/training/learning-loop.md",
+      "bytes": 8538,
+      "sha256": "8330d1020c94e583ab4a64ee06102162b0875c9e6eb310ef0717c1dc9f6fe13a",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "docs/training/workspaces.md",
+      "bytes": 4562,
+      "sha256": "7cd021892cd21bc4a92eec9013363357de4e3920063e662cbaa9670b6aec98d3",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "metric/squelette-latex/parts/partie1.tex",
+      "bytes": 7203,
+      "sha256": "c4793fc3ca45661d3d1097ff54f3d76aeeca49545840132dd198e2ebac91ad01",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [],
+      "cited_in_report": true
+    },
+    {
+      "path": "metric/squelette-latex/parts/partie3.tex",
+      "bytes": 14002,
+      "sha256": "3daf1a4f3d440a84525e7e6459e7b54fed9bb0933ecf286479e1d9d1a28125ee",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "model_training/README.md",
+      "bytes": 2964,
+      "sha256": "ba78bedcdf08b2c147d31b0fdfec21279386d13ae6d4e36712c6a727eb54b6d9",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "model_training/configs/qlora_qwen2_5_3b.yaml",
+      "bytes": 1847,
+      "sha256": "8c474e4e50a6363118b90cefd1be11ad952a2fee89a9ecf82d07f927a325f2ff",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "model_training/preflight_3b.py",
+      "bytes": 13824,
+      "sha256": "0de56f128bd755a56edd2e71ea5a7a8826235ea5c36ed75fb0e70bf1d0a279d9",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "model_training/prepare_3b_datasets.py",
+      "bytes": 11908,
+      "sha256": "8b6ee3379015e5c628419f9199116fcd002fb3fe087607c29d5f469379e6935b",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "model_training/templates/qwen2_5_tools_assistant_mask.jinja",
+      "bytes": 2667,
+      "sha256": "e117673b2c8a9c8d4fd925c81219ba0d52103a2a002db0e5426983741f1daca0",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "model_training/train_qlora_3b.py",
+      "bytes": 12908,
+      "sha256": "e308defe701896a9686ee3c50fbdc29cc7b72c463bc86ef6c13d50b20c2b929f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "model_training/workspace_sync.json",
+      "bytes": 1490,
+      "sha256": "e82edc357a41cdace82858e651173ccb2c1dcf7431887fbb9ff1346cc2ab5189",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "objectifs/asiaccs-2027/audit-couverture.md",
+      "bytes": 4935,
+      "sha256": "e31aef2f59116e07471451cb601f8c7dd17c1f2250042659a087275638dc079e",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "objectifs/asiaccs-2027/plan-soumission.md",
+      "bytes": 10505,
+      "sha256": "40ae9c17a60c572defeba10ec6f26d9951cf5f5318ce66b4088067971b31fa15",
+      "tracked": true,
+      "working_tree_status": " M",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "report/q1-2026.tex",
+      "bytes": 34083,
+      "sha256": "821c060bf64eddb09ea46549cf6d84b3ceeb05de0e7d31f2280d6acbcecb27a4",
+      "tracked": false,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "report/q4-2025.tex",
+      "bytes": 16912,
+      "sha256": "5beddd84413bbf9917612e6fe876837692dc387d91ad37ce9fd94c36baa3a5e8",
+      "tracked": false,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/implementation-plan.md",
+      "bytes": 14197,
+      "sha256": "c9455884d47a183b7a5895d71482d38d5189d9bbcc4ecf73a5ae440c365560b6",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "research/2026-09-27-agent-vs-automation/protocol.md",
+      "bytes": 29288,
+      "sha256": "5ff4797f4c11bf958b42c8574f44dd4fd68ef10de000379c44599ae8acf35fa1",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-09-29-context-scalability/README.md",
+      "bytes": 3785,
+      "sha256": "83cc40e0e252410c8d939bbb4bf8d00655c63851cb3142e104a3e917b152b39a",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-09-29-iomt/README.md",
+      "bytes": 3271,
+      "sha256": "6f4d42ed6969553fddb8765f2c8da3dd62ad15a189b4b52c2d972d633f4a0a97",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-10-03-organisation-code/README.md",
+      "bytes": 5954,
+      "sha256": "4545dc7c7ec86c04f9df27c2d0235e9ea1e94cae6ec66343836af3f2796d40ed",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-10-05-benchmark-coverage/README.md",
+      "bytes": 11235,
+      "sha256": "6cdfdeaa2b613129150979df4401bf073f3731ef6b9ebe317119f68ec91f1cf2",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-10-05-corrections-lance/diagnostic-pipeline.tex",
+      "bytes": 10473,
+      "sha256": "1677471e4699d9a2067aafab15fb3705f080006b5a827c91bf958317ae4ee41b",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-10-05-corrections-lance/run-01.tex",
+      "bytes": 9332,
+      "sha256": "54ed092fb6a78a752d174cc5bef631fa0ca158b9671df5a249163c16e53094a5",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-10-05-corrections-lance/run-02.tex",
+      "bytes": 9861,
+      "sha256": "02761f71c4faabe127d3699122eb5c567c89a87ea31f7268c0399df0de8e7e5f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-10-07-methodes-audit/README.md",
+      "bytes": 8735,
+      "sha256": "52174a9baac0948419a255d2bf9513001e9c07c81f4fc895b3fc87d82d4c8963",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-10-12-recentrage-corpus/README.md",
+      "bytes": 52306,
+      "sha256": "e5e660f1a1877b97a042572b4d24952055432da2871dde3ce3c3169e593682e8",
+      "tracked": true,
+      "working_tree_status": " M",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/2026-10-12-recentrage-corpus/coverage-plan.json",
+      "bytes": 700654,
+      "sha256": "f34e5f68e60b401490a9bbad4ecb345eb6112a41a166fbf45e6fbfd1ca495bdf",
+      "tracked": false,
+      "working_tree_status": "??",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "research/README.md",
+      "bytes": 24670,
+      "sha256": "02b6850e4ad190a84ee75f830ed570c1ddbbc8daa4cc17813bf65a115d281b48",
+      "tracked": true,
+      "working_tree_status": " M",
+      "specialist_readers": [
+        "Réseaux et infrastructure",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "scripts/deployment/deploy-instance.sh",
+      "bytes": 4971,
+      "sha256": "ae00e3711b4ad8db731021607c182b53f11487b4871e2a8098e19115f229974e",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/__main__.py",
+      "bytes": 7508,
+      "sha256": "14ac1d2453c2f59e8c7d5470ada532aa22e410de240cb9c7f5e9091c73cb5b8c",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/audit_experiment.py",
+      "bytes": 8290,
+      "sha256": "4bf94fd062ce5c7397967ea67285c7ec1d7ec1a44c18c1c88f500a67d6795eb0",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/core/completion_policy.py",
+      "bytes": 2899,
+      "sha256": "a6febd2563640dc2a7603da6c04e76ee2a668b678e1414f3c091367a0703417a",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/core/executor.py",
+      "bytes": 6792,
+      "sha256": "db74ae3aafd6e47676e8bcec8e3a6a4974e7b5039a278d6170805e46c9baf7df",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/core/graph_context.py",
+      "bytes": 2137,
+      "sha256": "f3c84878dd4a3bb46d8b7e29fa3dda4d75ad2aa3551ae8eb20e9135383a8bf9e",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/core/lifecycle.py",
+      "bytes": 25209,
+      "sha256": "f42cbce23881dac2984ce32ac799109c3c69b0b19fdf75e64a01c0cc03c33640",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/core/provider_concurrency.py",
+      "bytes": 1461,
+      "sha256": "f1d4b0e9fcd5c1b8db979487ab75311fd1b2cddefc94868fe9d46665cda4cd77",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/core/provider_transport.py",
+      "bytes": 6462,
+      "sha256": "d47a3252566454a03070a65136ff79cc43c350ed1311fc9a86bf53fd343a18e6",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/core/run_context.py",
+      "bytes": 305,
+      "sha256": "7878758aa892b33033a2dd4fd20f05e3c3fc31000efcd28bda03dbbadfe918a9",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/core/runner.py",
+      "bytes": 39947,
+      "sha256": "690a9136c981f7823eb96b76d730fda26bab6513ab244c3be69edfac91e2d6a2",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/cost_tracker.py",
+      "bytes": 15875,
+      "sha256": "a994fc3b0cbe8506a3c3f44c31dff73c50a3ed99a487b388141c282b99b4fe4f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/evidence/capabilities.py",
+      "bytes": 1699,
+      "sha256": "f37be49b54b1c76d908f03ee3f3743a0efa53aa340def78f056fe95735ddf961",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/evidence/mqtt.py",
+      "bytes": 10091,
+      "sha256": "cb856d042254c31b4dde9616cb0773bf8e37a6eb2e43599c12de5da3317916a4",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/evidence/mqtt_ws.py",
+      "bytes": 11277,
+      "sha256": "33b09c7d439fc4d546b6131441d9aa67b69aeac90fe9810935667bc45f42b65e",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/evidence/native.py",
+      "bytes": 7216,
+      "sha256": "31d1eb332a132b61615e803743d1116885aa4ff678a496bec43d3c493067bbe3",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/evidence/records.py",
+      "bytes": 2783,
+      "sha256": "3683f1db2704505f856e3b7d28a1020ebb56d001b67ffed64cba50623e4b279b",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/evidence/ssh.py",
+      "bytes": 3831,
+      "sha256": "9ca77a0a848fef24b740cf0839fa3fab127afb03f6d97330451e7b5911f27b8f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/execution_profiles.py",
+      "bytes": 10403,
+      "sha256": "1b3ace3e24713ebe674213672d68ecb7fc12964eaf6a924710d4a3bbd07d71dd",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/exploit_evidence.py",
+      "bytes": 84141,
+      "sha256": "322b0efd5f480d5a59ee0fdcc820812fa73803bbcfe663556afd480801816787",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/finding_identity.py",
+      "bytes": 5961,
+      "sha256": "957f620ed60acc6439606c1eff71a660269fa7f3e55ad2dc3212273de4ec1b45",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/finding_policy.py",
+      "bytes": 5082,
+      "sha256": "7898e45c1f6cdd6207b369d13a350402b0bd812f71a71288895f2b05a326457d",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/knowledge/embedder.py",
+      "bytes": 1066,
+      "sha256": "69a229ae81c0a5b64f7efc86913fdee7674894965e9ff347b5274ffc3ab40644",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/knowledge/ingest.py",
+      "bytes": 9549,
+      "sha256": "6c8bdfbedcdedfc76fe463d7f42c909385c2d1b1040f507cf78fbdb3ffe66a9a",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur",
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/knowledge/store.py",
+      "bytes": 5747,
+      "sha256": "94b2df305a4ff5e5ee92ee8df171a20ca8412846c00f113d9277754b2daf5e90",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/moe_server.py",
+      "bytes": 47178,
+      "sha256": "9cba1a8c8b0e9fc182ad7a5a49e06604ff4e9eb1ae3319cee38de37f684a66e5",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/README.md",
+      "bytes": 21183,
+      "sha256": "ea99b671f3f789e359127a32b0a72509a87f759a5431967ee98a1243e7cc3683",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/analysis/aggregation.py",
+      "bytes": 6376,
+      "sha256": "99bcab1b88b3efcf11c0ee034a96fbbfea9378fd946ae46bae7c696c00d1a48b",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/analysis/block_recovery.py",
+      "bytes": 17330,
+      "sha256": "7732605df3f6606bd6ee6947b6632b300a76057e664ea5db8f2d39820867c09b",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/phases/analysis/context.py",
+      "bytes": 6073,
+      "sha256": "da940c8a09d18ca3cfdece4a13dd10b7f414738f93baba37796947a3ec2c45f5",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/phases/analysis/devices.py",
+      "bytes": 21707,
+      "sha256": "15cf7c0f429e67cd318f4ba4665074b9b85e11bd5925dc05e75b22a3f58fdf6f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/phases/analysis/run.py",
+      "bytes": 37442,
+      "sha256": "d8fb283cc250abe1ce83a912f5f40ddde1c4f306541d7358162deca4a9358df0",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/context.py",
+      "bytes": 3190,
+      "sha256": "222fc12dab2c1fa1bdd2a7484efbf77a16687f7d4f4049970b433be5cc72ca37",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/graph/recovery.py",
+      "bytes": 29752,
+      "sha256": "0c775453ee322a599b3ff47265b47477e477e9716f897821efbd505a9fe1ac27",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/phases/graph/run.py",
+      "bytes": 7183,
+      "sha256": "9a9c42c03d7eaa2e479c8ce35e88d0fc15d178b71b7b6c2d7d04cd9a6fa6d859",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/phases/intrusion/observations.py",
+      "bytes": 8223,
+      "sha256": "525429fa7ae92149a2f9ece38f0841b4e2534659939ae926a9ea4338c4d8cf7d",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/intrusion/run.py",
+      "bytes": 46773,
+      "sha256": "cb52cd865f61f43d296f5940c70c1b44e345884ca7d04a161a9a0606773b1c73",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/intrusion/scope.py",
+      "bytes": 9606,
+      "sha256": "f35720fa7231e9b251984d3f07affe7760e258efb354c7c02ce9334bfb9d9693",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/recon/run.py",
+      "bytes": 51992,
+      "sha256": "8a2e11fd0e7591c5eec93652fd4f2b1c99d6ce5d5bc3273443757287cbda4cf6",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/recon/subagents.py",
+      "bytes": 21914,
+      "sha256": "6b3c02d4fa9b9b6e0761d5fda109ce1360961b21b33d3be4c8f792b783f0b804",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/registry.py",
+      "bytes": 1159,
+      "sha256": "ed21578b3bfdd63fe3cd47cfdd25463e58aa134c755cee813568ae7c21e105b4",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/report/rendering.py",
+      "bytes": 35672,
+      "sha256": "b2cba127b7665adb81398cbc611342910fcad8b04dbf68904bdbf90c06cc12e4",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Relecture de découverte : assemblage du rapport"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/phases/report/run.py",
+      "bytes": 15410,
+      "sha256": "cd5f2749d696afecae8115c983cf77d309299627d605e8246a8adb556ea9b039",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/report/sections.py",
+      "bytes": 17218,
+      "sha256": "64705dcdf172056d5bdd049dc88531fc16b7cc5f564daeb007a78854047984bd",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/phases/verification/contract.py",
+      "bytes": 32944,
+      "sha256": "020435d55d69b98e07ac1e569e34e5ab96e34b751b16ffb79f15ce6cd425e1d1",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/verification/evidence.py",
+      "bytes": 4653,
+      "sha256": "578804b96346af52bef848d7fadb109c9ff384274c589b3c6319722d3a02646e",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/phases/verification/rules.py",
+      "bytes": 8557,
+      "sha256": "9ca029d35e1493724c5ddb6b0abfec0e938037c6d0918198508238f9648fb3cd",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/phases/verification/run.py",
+      "bytes": 37522,
+      "sha256": "bfb0251950a7562fd798d9b67eef0cdf22d61f3e068571b0eb45693abccfabbc",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/pipeline.py",
+      "bytes": 46801,
+      "sha256": "abd7dd445347dfeef4d1a2ce7254e0098e534230e21b278621fc8a4bee525146",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/prompt_manager.py",
+      "bytes": 1530,
+      "sha256": "072fd740144b7da33cc47b5be2b6dfdb3e9dd37ccbd0dae70fdc1aa4e4801295",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/provider.py",
+      "bytes": 58609,
+      "sha256": "74e1539983a901afa861ebb0a9cbf098850b60dd5718df70663ecb70101f91fe",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur",
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/registry.py",
+      "bytes": 4360,
+      "sha256": "92d482eed9e0fa7643d554d0fe917902c5c07049813523713194bce8b2ae3264",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/report_evidence.py",
+      "bytes": 2267,
+      "sha256": "c992b53d742001f52b226e4ee957d122d64c62a32febd2ede4740a8c80ccd350",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/scanner.py",
+      "bytes": 102283,
+      "sha256": "df0eff6f00d4605d9dc3facc0514aeb36169e6321b5b4627f63f2970d4c855bf",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/tools/definitions/http_request.yaml",
+      "bytes": 1771,
+      "sha256": "bc038afa3a49043d69bc85566ad093a03234f33537ff9700c5c34b7097405eb1",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/tools/definitions/ssh_login.yaml",
+      "bytes": 1584,
+      "sha256": "5f39dc69554481de21443025a678b2e109dd2fa34b2bee33e43c738fb49f6e2f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/agent/tools/disbalance_engine.py",
+      "bytes": 10032,
+      "sha256": "e2b09de4048700241c2b33f720b6b77086bdc8266a6c9c2ee0ce3a5ff1d2726f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/tools/graph_tools.py",
+      "bytes": 25340,
+      "sha256": "799ea5afe2aa3d9090b824057c3eea6fe9d58cfd2403c531e5b11c8fd2b83204",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/tools/skill_tools.py",
+      "bytes": 20332,
+      "sha256": "7d2129f1a98688dbc85fae27ab1087d1787b4c867e448768ce972578fa702519",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur",
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/agent/tools/tool_loader.py",
+      "bytes": 16509,
+      "sha256": "c6f2da69fef6b5c64cb9ac91b517a1840ed373d82177ad7617d4a86671096a23",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/api/auth.py",
+      "bytes": 4550,
+      "sha256": "3abf7b5b7b875265e0f505fdde96ad97bd723b29bc62837f36767061113f5678",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/api/events.py",
+      "bytes": 3175,
+      "sha256": "473640478a55114b0b30cfa3ba2e87f38468b37f3e79f16fdb258dc70769f8c8",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/api/main.py",
+      "bytes": 3212,
+      "sha256": "8f5d5917bc000f533117610da7a8c2915732d811a5c48298c8da5da0c3b253ac",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/api/routes/activity.py",
+      "bytes": 3780,
+      "sha256": "55d78dd0a794723022230dbcaab22063cadfc122a6c408da27bc80843a7efe3a",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/api/routes/admin_session.py",
+      "bytes": 1539,
+      "sha256": "5dcd1b8f895de00b8d55dc6c15ecfbf21f4f5f3db0ad9677a0c2baa8506821cb",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/api/routes/models.py",
+      "bytes": 11434,
+      "sha256": "01443c0552dd98daeeb738e801ba5ac260ad1ec175290c613dec86ee976e7e14",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/api/routes/pipeline.py",
+      "bytes": 36856,
+      "sha256": "d2b9bb17f6f9518eb8e693dc08b55e60ea4356cb69a15af45e6798f20e8fe04e",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/api/routes/providers.py",
+      "bytes": 2766,
+      "sha256": "5cfda18f4078036374cab75c389ea05382da56ea3ac8a2b925a2a3f158ddd811",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/api/routes/runs.py",
+      "bytes": 40615,
+      "sha256": "587c4494b4d9b7122c630da95361e7e15118fe0346ce5c502d88a9d657c75aa0",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/api/run_coordinator.py",
+      "bytes": 8060,
+      "sha256": "4d3661245dc6ac7bfaa30520a25900044fd3724f8b3c53562f633e477ba41f10",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/attack_path.py",
+      "bytes": 10025,
+      "sha256": "bec2d68d66294dfd1d0b4da7bcbb34a8cc5b97f1f48597d0f7bee2fe57b13c61",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/benchmark/compare_policies.py",
+      "bytes": 8036,
+      "sha256": "e3d3287742c4e4a8576660d7d88fe6d7ca51ae5f11e95c2742ac316b4da356cc",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/benchmark/derived_index.py",
+      "bytes": 5122,
+      "sha256": "f17fe03ba684ea365261764472096c615b2abcea4d68c1b53ec5892b00dbc529",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/benchmark/evaluator.py",
+      "bytes": 143116,
+      "sha256": "9cf063e8374527d6aebf26c2bf3019933ebfa42a7d3d1b1428f94ef43bff68e0",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/benchmark/funnel.py",
+      "bytes": 12290,
+      "sha256": "1d6103e17a25a4d6ab5d9d1dc21a5f381e20888fab73c77cb9c3b38e2aeaf80f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/benchmark/inference.py",
+      "bytes": 3900,
+      "sha256": "35378285773cd7958706b521fbcb8a7dcbae47692c614e0d80c5a8f5405e15ab",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/benchmark/lab_lock.py",
+      "bytes": 3606,
+      "sha256": "0f097dc4d1336d0cce63a32a7e3e97766e7ad2f250c94eb579927c17d42bc211",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/benchmark/metric_contract.py",
+      "bytes": 1226,
+      "sha256": "24e95aab4a25e828225c67d7b6b2591151205ec1efb38601777c5546bc641d7a",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats",
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/benchmark/policy_campaign.py",
+      "bytes": 16121,
+      "sha256": "36e8d0d64688bf27ee6ab4cf6bc84bc8df92020f6b76f0e537b72b7e1c712edb",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/benchmark/scenario_composer.py",
+      "bytes": 28159,
+      "sha256": "2a96fe60514e5587a13931b9f7e04363f387f8ef400b2c0638a5315e6928cda5",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/benchmark/scenario_deployment.py",
+      "bytes": 20450,
+      "sha256": "f51af98f1032299ce2e34d1ed3465c4d933a963a191bbfd7f8c4d01a3fcec7ed",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Réseaux et infrastructure"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/cve_lookup.py",
+      "bytes": 15616,
+      "sha256": "59bc311904b29c2710a9f3ff9f57d007a4c83525373b4ccb14c3cfda2822d2ff",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/db/database.py",
+      "bytes": 17147,
+      "sha256": "868ac5a5b8b539470d592a9a3eeb55fc7a61a102c909803537eb3cf008a97512",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages",
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/graph_backend.py",
+      "bytes": 5111,
+      "sha256": "600aa851ef3b4991f642557555c88f9b7a8e295cc7bb0e2563ebf09a98d26456",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/learning/remote_runs.py",
+      "bytes": 10089,
+      "sha256": "6c9615952856340ecd85c80d992df939542ed508a35e3098d750baa22d625cd5",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/learning/sft_feedback.py",
+      "bytes": 25541,
+      "sha256": "a623bd889492c637a65ba4cbfc3abd43e5f1f1bd49ef44c7ae72765d865100c4",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Modèles, données et entraînement"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/loader.py",
+      "bytes": 2568,
+      "sha256": "c46901f2137ce93d08c97d03009a989a26f84ef6c35bd2355bb2691cb77bb363",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/risk_scorer.py",
+      "bytes": 5331,
+      "sha256": "082d5e0ed6f1a2cb8341122c4b3547f28cb8141b4b0da7cb5b88a71b1ed53f69",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Architecture logicielle et moteur"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "src/static/activity.js",
+      "bytes": 4839,
+      "sha256": "d8cb44d969b32db7d3f9ca4f33a3c80591a07102cc57d850536a5533e8037116",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "src/static/app.js",
+      "bytes": 195411,
+      "sha256": "f091241547259ce0c56d4de7b42071e3a47d80821c7324ffd88f4e202727cce0",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/README.md",
+      "bytes": 10566,
+      "sha256": "9386b3795bd6fbe3b7f1ee8baeba17de89c8ea3487b63fad3c4ce8e9a9844f49",
+      "tracked": true,
+      "working_tree_status": " M",
+      "specialist_readers": [],
+      "cited_in_report": false
+    },
+    {
+      "path": "tests/pipeline/test_pki_identity_evidence.py",
+      "bytes": 3793,
+      "sha256": "74ccf30f4370badc086f59ba637890b18da22d7f371482e9263d6c1fca11533d",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/pipeline/test_verification_evidence.py",
+      "bytes": 20665,
+      "sha256": "3c43bdef9d657c2431b13aa939a20d5a8325c861bed36cd79e477151736fe48d",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/test_api_run_modes.py",
+      "bytes": 10631,
+      "sha256": "a1879c5e6b2280abdd70e90221faf89728e831662dc1b268c7421e537f501819",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/test_intrusion_access_consistency.py",
+      "bytes": 3431,
+      "sha256": "daaec7b503bcbc564dabd2528594f8eb0b4ba23650027e8f68b377d8f75caa1f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/test_intrusion_observations.py",
+      "bytes": 12524,
+      "sha256": "77039508b8b48de173eb94894157819c44c8979a302f4509b90e3b100cef7056",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "tests/test_intrusion_observations_ui.py",
+      "bytes": 11998,
+      "sha256": "6b5589d3aeb7a9f1bfccc6178f6cab57d9680c4e2283d4203237f5c634b3a689",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/test_models_api.py",
+      "bytes": 6554,
+      "sha256": "13b31bb69071e41d768ad9a0c3603306652462dbc73f99a36fe637103fdc06e5",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "tests/test_pipeline_summary_ui.py",
+      "bytes": 12034,
+      "sha256": "8d390e653a8f223baddba5fda3ecad0aba3d26bf4ebbc9e82cf8af578f641dd5",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/test_providers_auth.py",
+      "bytes": 19595,
+      "sha256": "83905971afc04780fc8ef6bf77c889ee3823cd03dc47ff12b4340553d6d5ea0a",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "tests/test_review_admin_ui.py",
+      "bytes": 3326,
+      "sha256": "fbdc1113c72212c3dcab82e4fbed21b2464b96f86819c146b8720f8557545fa9",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "tests/test_review_batch_outcomes.py",
+      "bytes": 3752,
+      "sha256": "602c4772f85e062ee447afc947b855b19832aaa0600c112f85eb022039e34a8f",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/test_review_mqtt_ws_boundary.py",
+      "bytes": 3166,
+      "sha256": "6508bbd4aa49ae32758ca789d1a83d2525ff8b780e2a6454a8681ecd17c7dce3",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/test_review_mutation_auth.py",
+      "bytes": 2975,
+      "sha256": "9a90300f88690322ee7e9122b54bb972b6e6d0b23e156ebbd0890a069424753b",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/test_rules_audit_ui.py",
+      "bytes": 8877,
+      "sha256": "4f7101f6b83ea157973e16e34b528cb740fcfebdfbe0530717cde2ce48bc264c",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": true
+    },
+    {
+      "path": "tests/test_run_error_api.py",
+      "bytes": 6848,
+      "sha256": "ec80b68448df4511a457ccc070fbb26fa502b284f71bb1db3bcdebb8541a6682",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "tests/test_shared_activity.py",
+      "bytes": 4854,
+      "sha256": "c89d3042029e167399fede00c433248596edfc02dbe286481bed5062cacde310",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Application et usages"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "tests/test_ssh_policy_boundary.py",
+      "bytes": 2841,
+      "sha256": "cebdd91afb72aaa7e0d0396006e898761750ffedfc39ce1f07ed920315dbc0a3",
+      "tracked": true,
+      "working_tree_status": "  ",
+      "specialist_readers": [
+        "Sécurité et preuves"
+      ],
+      "cited_in_report": false
+    },
+    {
+      "path": "tests/test_ssh_reference.py",
+      "bytes": 13993,
+      "sha256": "4bf7216ef941bba7e993713caee0baeaa9c458e1a9706e3706af3a007e9d45ae",
+      "tracked": false,
+      "working_tree_status": "??",
+      "specialist_readers": [
+        "Benchmark, méthode et résultats"
+      ],
+      "cited_in_report": false
+    }
+  ],
+  "directly_recounted_facts": {
+    "catalog_version": "3.2.0",
+    "catalog_scenarios": 29,
+    "catalog_splits": {
+      "dev-public": 19,
+      "test-public": 10
+    },
+    "pack_definition_files": 22,
+    "pilot_planned_pairs": 12,
+    "pilot_planned_arms": 24,
+    "pilot_registered_run_paths": 0,
+    "pilot_preflight_statuses": {
+      "pending": 24
+    },
+    "pilot_order_counts": {
+      "rules -> llm": 6,
+      "llm -> rules": 6
+    },
+    "pilot_configuration": {
+      "provider": "ollama-umons",
+      "model": "qwen3.8:27b",
+      "max_tool_calls": 200,
+      "max_duration_s": 1800,
+      "phase3_device_timeout_s": 600,
+      "max_cost_usd": 2.0,
+      "execution_profile": "full",
+      "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+      "rules_version": "shared-scanner-bounded-verification-v5"
+    }
+  },
+  "output": {
+    "pdf": "report.pdf",
+    "sha256": "4675be0998ce8d1f64491935ec9d1390b5fd463b820784350bbcc04dc0924ae0",
+    "pages": 44,
+    "figures": 8,
+    "tables": 10,
+    "glossary_longtables": 1,
+    "bibliography_entries": 136,
+    "relative_pdf_file_links": 138,
+    "editable_source_sha256": "d39cf3fe6392011325f5b3df8806dae06d5058ac92fa39a3bdae105444e452d1"
+  },
+  "editorial_review": {
+    "scope": "Lecture sans contexte préalable : objectifs, fonctionnement, sorties, distinction implémentation/résultats/propositions et prochaines étapes.",
+    "independent_reviewers": [
+      "premiere_lecture_projet",
+      "relecture_etat_projet"
+    ],
+    "same_section_figure_table_references": 12,
+    "cross_section_references": 0,
+    "source_review": "Corps complet relu par deux nouveaux lecteurs ; ambiguïtés corrigées puis relues.",
+    "visual_review": "Pages 1–24 et 25–45 relues sur22:51 ; seules pages1/44 modifiées à22:53, revues par relecture_etat_projet et Codex ; ancienne page45 supprimée.",
+    "primary_sources_checked": [
+      "src/agent/pipeline.py",
+      "src/agent/core/lifecycle.py",
+      "src/api/routes/pipeline.py",
+      "src/agent/phases/intrusion/run.py",
+      "src/agent/phases/report/sections.py",
+      "src/agent/phases/report/rendering.py",
+      "src/agent/report_evidence.py",
+      "docs/architecture/run-modes.md",
+      "docs/architecture/report-writing.md"
+    ]
+  },
+  "editorial_review_history": [
+    {
+      "scope": "Explications au moment de leur emploi ; suppression des renvois entre chapitres ; vérification du rendu complet.",
+      "independent_reviewers": [
+        "lecture_autonome",
+        "explications_modeles_benchmark"
+      ],
+      "same_section_figure_table_references": 12,
+      "cross_section_references": 0,
+      "visual_review": "Pages 1–44 : révision 22:37, corrections 22:39 ; pages 1 et 13 de 22:41 contrôlées par Codex."
+    }
+  ]
+}
