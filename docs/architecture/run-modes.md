@@ -42,7 +42,11 @@ exécutables présents sur le contrôleur, sans certifier l’accès au laborato
 
 Choisir une fiche, renseigner le réseau ou le scénario, puis lancer. Les limites
 effectives sont préremplies et ajustables. L’audit de scénario précise les actions
-sur les services simulés et propose le nettoyage automatique. Le lancement utilise
+sur les services simulés et propose le nettoyage automatique final. Sa préparation
+peut supprimer les scénarios déjà présents dans le laboratoire partagé pour les
+remplacer par celui demandé, même si le nettoyage final est désactivé. Sa limite
+de temps porte sur les contrôles après déploiement, hors préparation et nettoyage ;
+elle ne borne pas la durée totale de l’opération. Le lancement utilise
 `POST /api/pipeline/start` avec les contrats existants ; aucune commande arbitraire
 ou import de fichier exécutable n’est accepté. Le dashboard avancé reste disponible.
 
@@ -52,7 +56,12 @@ Ses limites par défaut sont **17 appels et 600 secondes**. Chaque scan vise une
 adresse explicitement observée active par la découverte. Les hôtes silencieux et
 les autres ports restent hors couverture. Les bornes, erreurs, arrêts et pertes
 d’observations donnent des résultats incomplets explicites, jamais un audit sain.
+Un hôte découvert actif puis devenu silencieux pendant l’identification des
+services reste une inspection incomplète, même si Nmap termine avec un code zéro.
 Les observations structurées sont extraites avant la troncature des extraits texte.
+La découverte est plafonnée à 30 secondes par appel et chaque identification de
+services à 300 secondes, dans la limite du temps total encore disponible. Augmenter
+la durée totale ne relève pas ces plafonds par sonde.
 
 Le suivi affiche les étapes réellement observées et leur état, y compris l’attente
 du laboratoire et les fins non observées. Le bouton **Demander l’arrêt** utilise
@@ -186,7 +195,9 @@ découverte sur le CIDR d'exemple documentaire.
 Choisir **Audit par règles**, puis **Scénario** ou **Personnalisé** pour choisir
 l'architecture, la posture et les packs. **Lancer l'audit par règles** déploie
 et vérifie la préparation du scénario, exécute les phases 3 et 4, puis applique
-le choix de nettoyage automatique. Aucun fournisseur, modèle, catalogue de prix
+le choix de nettoyage automatique final. La préparation peut retirer les scénarios
+déjà présents, indépendamment de ce choix final ; elle utilise le même laboratoire
+partagé. Aucun fournisseur, modèle, catalogue de prix
 ou rapport LLM n'est utilisé. Les scénarios scellés restent réservés au contrôleur.
 
 Le moteur réutilise les scanners, l'agrégation et les décisions bornées de la

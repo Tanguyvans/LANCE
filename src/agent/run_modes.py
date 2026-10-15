@@ -470,9 +470,14 @@ class SimpleRunner:
                 step_id = f"host-{host}"
                 progress.step(step_id, "running", label=f"Services TCP · {host}", target=host)
                 scan("nmap_scan", target=host, ports=INVENTORY_PORTS)
-                progress.step(step_id, "completed", target=host)
-            progress.data["coverage"]["services_complete"] = not progress.data["coverage"]["partial"]
-            progress.step("services", "completed")
+                # A normal process exit can still mean that the previously
+                # discovered host no longer answered the scanner's probes.
+                # Only its matching live report attests an actual inspection.
+                inspection_status = "completed" if host in progress.inspected else "partial"
+                progress.step(step_id, inspection_status, target=host)
+            services_complete = not progress.data["coverage"]["partial"]
+            progress.data["coverage"]["services_complete"] = services_complete
+            progress.step("services", "completed" if services_complete else "partial")
         return (f"Procedure: {self.script_id}.\n\n"
                 f"Discovered hosts reported by nmap: {progress.data['counts']['discovered_hosts']}.\n\n"
                 f"Inspected hosts: {progress.data['counts']['inspected_hosts']}.\n\n"

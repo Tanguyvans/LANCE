@@ -696,6 +696,35 @@ def test_scan_of_discovered_host_without_matching_live_report_stays_partial(tmp_
     assert results["counts"]["services"] == results["counts"]["inspected_hosts"] == 0
     assert results["coverage"]["services_complete"] is False
     assert any(error["kind"] == "scan_incomplete" for error in results["errors"])
+    assert {step["id"]: step["status"] for step in results["steps"]} == {
+        "discovery": "completed", "services": "partial", "host-192.168.100.2": "partial",
+        "results": "completed"}
+
+
+def test_inventory_host_that_stops_answering_is_not_a_completed_empty_inspection(tmp_path, monkeypatch):
+    def cooperative(command, *, timeout):
+        if "-sn" in command:
+            output = _nmap_text(["192.168.100.2", "192.168.100.3"])
+        elif command[-1] == "192.168.100.2":
+            output = ("Note: Host seems down. If it is really up, but blocking our ping probes, try -Pn\n"
+                      "Nmap done: 1 IP address (0 hosts up) scanned in 3.00 seconds\n")
+        else:
+            # A successful empty inspection is different: the live host was
+            # actually scanned, with no selected TCP port observed open.
+            output = _nmap_text([command[-1]])
+        return output, "", 0, False, False
+
+    runner = _inventory_runner(tmp_path, monkeypatch, cooperative)
+    assert runner.run() == {"scripted": "partial"}
+    results = _procedure_results(runner)
+    assert results["counts"]["inspected_hosts"] == 1
+    assert results["counts"]["services"] == 0
+    assert results["coverage"]["services_complete"] is False
+    assert {step["id"]: step["status"] for step in results["steps"]} == {
+        "discovery": "completed", "services": "partial", "host-192.168.100.2": "partial",
+        "host-192.168.100.3": "completed", "results": "completed"}
+    assert [(error["kind"], error["target"]) for error in results["errors"]] == [
+        ("scan_incomplete", "192.168.100.2")]
 
 
 def test_inventory_missing_scanner_fails_before_network_and_persists_results(tmp_path, monkeypatch):

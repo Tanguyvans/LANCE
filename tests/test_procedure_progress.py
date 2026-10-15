@@ -19,7 +19,7 @@ def _step(snapshot, identifier):
     return next(item for item in snapshot["steps"] if item["id"] == identifier)
 
 
-def test_preparation_requires_its_verification_and_ignores_predeployment_cleanup(tmp_path):
+def test_preparation_requires_verification_and_ignores_unidentified_teardown(tmp_path):
     progress = RulesProcedureProgress(tmp_path, auto_teardown=True)
     assert progress.observe({"type": "lab_waiting"})["status"] == "waiting"
     assert progress.observe({"type": "lab_acquired"})["status"] == "running"
@@ -33,6 +33,46 @@ def test_preparation_requires_its_verification_and_ignores_predeployment_cleanup
     snapshot = progress.observe({"type": "verify_done", "success": False})
     assert _step(snapshot, "deployment")["status"] == "failed"
     assert json.loads((tmp_path / "procedure_progress.json").read_text()) == snapshot
+
+
+def test_observed_initial_cleanup_is_preparation_even_without_final_cleanup(tmp_path):
+    progress = RulesProcedureProgress(tmp_path, auto_teardown=False)
+    context = {"scenario_id": "2", "playbook": "99_teardown.yml", "attempt": 1}
+    snapshot = progress.observe({"type": "teardown_start", **context})
+    assert snapshot["status"] == "running"
+    assert _step(snapshot, "deployment")["status"] == "running"
+    assert _step(snapshot, "deployment")["reason"] == "predeployment_cleanup"
+    assert _step(snapshot, "cleanup")["status"] == "pending"
+    snapshot = progress.observe({"type": "teardown_done", **context, "success": True})
+    assert _step(snapshot, "deployment")["status"] == "running"
+    assert _step(snapshot, "cleanup")["status"] == "pending"
+    snapshot = progress.observe({"type": "verify_done", "success": True})
+    assert _step(snapshot, "deployment")["status"] == "completed"
+
+
+def test_failed_initial_cleanup_is_not_hidden_by_later_preflight_success(tmp_path):
+    progress = RulesProcedureProgress(tmp_path, auto_teardown=False)
+    context = {"scenario_id": "2", "playbook": "99_teardown.yml", "attempt": 1}
+    progress.observe({"type": "teardown_start", **context})
+    snapshot = progress.observe({"type": "teardown_done", **context, "success": False})
+    assert _step(snapshot, "deployment")["status"] == "failed"
+    assert _step(snapshot, "cleanup")["status"] == "pending"
+    progress.observe({"type": "deploy_start"})
+    progress.observe({"type": "deploy_done", "success": True})
+    snapshot = progress.observe({"type": "verify_done", "success": True})
+    assert _step(snapshot, "deployment")["status"] == "partial"
+    assert _step(snapshot, "deployment")["reason"] == "predeployment_cleanup_failed"
+    snapshot = progress.observe({"type": "pipeline_done", "status": "completed"}, terminal=True)
+    assert _step(snapshot, "deployment")["status"] == "partial"
+    assert _step(snapshot, "cleanup")["status"] == "skipped"
+    assert json.loads((tmp_path / "procedure_progress.json").read_text()) == snapshot
+
+
+def test_initial_cleanup_without_an_observed_result_does_not_complete_preparation(tmp_path):
+    progress = RulesProcedureProgress(tmp_path, auto_teardown=True)
+    snapshot = progress.observe({"type": "teardown_done", "playbook": "99_teardown.yml"})
+    assert _step(snapshot, "deployment")["status"] == "not_observed"
+    assert _step(snapshot, "cleanup")["status"] == "pending"
 
 
 def test_partial_checks_are_not_upgraded_by_successful_pipeline_terminal(tmp_path):

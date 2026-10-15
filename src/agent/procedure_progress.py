@@ -40,12 +40,15 @@ class RulesProcedureProgress:
     A successful deployment command does not complete preparation: injection and
     the controller's verification must also have succeeded. Teardown before the
     first deployment belongs to preparation, not to this run's final cleanup.
+    A failed preliminary cleanup remains visible even if later preflight checks
+    succeed: those checks do not establish that the previous machines vanished.
     """
 
     def __init__(self, run_dir: Path, *, auto_teardown: bool):
         self.run_dir = Path(run_dir)
         self.auto_teardown = auto_teardown
         self.preparation_started = False
+        self.preparation_cleanup_failed = False
         descriptor = get_procedure("rules-audit-v1")
         self.data = {
             "schema_version": 1, "runner_kind": "rules", "status": "pending",
@@ -90,7 +93,9 @@ class RulesProcedureProgress:
             if event.get("success") is False:
                 self._step("deployment", "failed", reason=kind.removesuffix("_done"))
             elif kind == "verify_done" and event.get("success") is True:
-                self._step("deployment", "completed", reason="preflight_checks_completed")
+                self._step("deployment", "partial" if self.preparation_cleanup_failed else "completed",
+                           reason="predeployment_cleanup_failed" if self.preparation_cleanup_failed
+                           else "preflight_checks_completed")
             else:
                 self._step("deployment", "running", reason=kind.removesuffix("_done"))
             changed = True
@@ -99,6 +104,21 @@ class RulesProcedureProgress:
             self.data["status"] = "running"
             status = "running" if kind == "phase_start" else _phase_status(event.get("status"))
             self._step(identifier, status, reason=str(event.get("status")) if kind == "phase_done" else None)
+            changed = True
+        elif (kind in {"teardown_start", "teardown_done"} and not self.preparation_started
+              and event.get("playbook") == "99_teardown.yml"):
+            # This is the controller's observed cleanup before the first
+            # deploy/inject/verify event. Its success alone does not prepare the
+            # requested scenario; final cleanup has not begun.
+            self.data["status"] = "running"
+            success = event.get("success")
+            if kind == "teardown_done" and success is False:
+                self.preparation_cleanup_failed = True
+            status = ("failed" if kind == "teardown_done" and success is False else
+                      "not_observed" if kind == "teardown_done" and success is not True else "running")
+            self._step("deployment", status,
+                       reason="predeployment_cleanup_failed" if self.preparation_cleanup_failed
+                       else "predeployment_cleanup")
             changed = True
         elif kind in {"teardown_start", "teardown_done"} and self.preparation_started:
             status = ("running" if kind == "teardown_start" else

@@ -3,7 +3,7 @@
 const ProcedureUI = (() => {
   const state = {catalogue: [], selected: null, steps: [], runId: null, liveId: null,
     running: false, starting: false, loading: false, request: 0, ready: false, status: 'pending',
-    viewingHistory: false, syncing: false};
+    viewingHistory: false, syncing: false, controlStatus: null};
   const byId = id => document.getElementById(id);
   const esc = value => escapeHtml(String(value ?? ''));
   const labels = {pending: 'En attente', waiting: 'Attente du laboratoire', running: 'En cours',
@@ -40,10 +40,20 @@ const ProcedureUI = (() => {
   }
 
   function renderSteps() {
-    byId('procedure-steps').innerHTML = state.steps.map(step => `<li data-status="${esc(step.status || 'pending')}"><span class="procedure-step-mark" aria-hidden="true"></span><div><strong>${esc(step.label || step.id)}</strong>${step.target ? `<span>${esc(step.target)}</span>` : ''}</div><span class="procedure-step-status">${esc(label(step.status || 'pending'))}</span></li>`).join('');
+    const explanations = {
+      predeployment_cleanup: 'Suppression des scénarios précédents avant le déploiement.',
+      predeployment_cleanup_failed: 'Le nettoyage préalable a échoué ; des machines des scénarios précédents peuvent rester présentes.',
+    };
+    byId('procedure-steps').innerHTML = state.steps.map(step => `<li data-status="${esc(step.status || 'pending')}"><span class="procedure-step-mark" aria-hidden="true"></span><div><strong>${esc(step.label || step.id)}</strong>${step.target ? `<span>${esc(step.target)}</span>` : ''}${explanations[step.reason] ? `<span>${esc(explanations[step.reason])}</span>` : ''}</div><span class="procedure-step-status">${esc(label(step.status || 'pending'))}</span></li>`).join('');
   }
 
   function setStatus(status, activity) {
+    if (state.running && !state.viewingHistory && state.controlStatus === 'stopping') {
+      status = 'stopping';
+      activity = 'Arrêt demandé. Les opérations en cours et le nettoyage doivent encore se terminer.';
+    } else if (state.running && !state.viewingHistory && state.controlStatus === 'waiting') {
+      status = 'waiting'; activity = 'En attente de la réservation du laboratoire.';
+    }
     state.status = status || 'pending';
     byId('procedure-status').textContent = label(state.status);
     byId('procedure-status').dataset.status = state.status;
@@ -77,6 +87,10 @@ const ProcedureUI = (() => {
     byId('procedure-offline-field').hidden = procedure.target_kind !== 'none';
     byId('procedure-effects').textContent = procedure.effects;
     byId('procedure-duration').value = procedure.defaults.max_duration_s;
+    byId('procedure-duration-label').textContent = procedure.runner_kind === 'rules' ? 'Temps maximal des contrôles (secondes)' : 'Temps maximal (secondes)';
+    byId('procedure-duration-help').textContent = procedure.runner_kind === 'rules'
+      ? 'Cette limite couvre l’analyse et la vérification. L’attente du laboratoire, le déploiement et le nettoyage peuvent prolonger la durée totale.'
+      : procedure.target_kind === 'network' ? 'Cette limite comprend l’attente du laboratoire et les sondes réseau.' : 'Cette limite couvre le diagnostic hors ligne.';
     byId('procedure-calls').value = procedure.defaults.max_tool_calls || '';
     byId('procedure-calls').max = procedure.runner_kind === 'rules' ? '2000' : '100';
     byId('procedure-calls-field').hidden = procedure.target_kind === 'none';
@@ -122,7 +136,7 @@ const ProcedureUI = (() => {
       const response = await adminFetch('/api/pipeline/start', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(_formatErrDetail(data.detail || `HTTP ${response.status}`));
-      state.runId = null; state.liveId = null; state.running = true;
+      state.runId = null; state.liveId = null; state.running = true; state.controlStatus = null;
       state.steps = list(state.selected.steps).map(step => ({...step, status: 'pending'}));
       renderSteps(); setStatus('running', 'Lancement accepté. Préparation de l’exécution…');
       byId('procedure-results').innerHTML = '<p class="procedure-empty">Collecte des observations en cours…</p>';
@@ -211,7 +225,11 @@ const ProcedureUI = (() => {
   }
 
   async function showRun(runId) {
-    if (state.running && state.liveId !== runId) { message('Une procédure est en cours. Son suivi reste affiché jusqu’à sa fin.', true); return; }
+    if (state.running) {
+      if (state.liveId !== runId) message('Une procédure est en cours. Son suivi reste affiché jusqu’à sa fin.', true);
+      else await sync();
+      return;
+    }
     state.runId = runId; state.viewingHistory = true; state.steps = []; renderSteps(); renderCatalogue();
     byId('procedure-form').hidden = true; byId('procedure-dashboard').hidden = false;
     byId('procedure-description').innerHTML = '<p class="procedure-empty">Lecture de l’exécution enregistrée…</p>';
@@ -252,6 +270,7 @@ const ProcedureUI = (() => {
         if (procedure && (state.viewingHistory || state.selected?.id !== procedure)) select(procedure);
       }
       state.running = true; state.viewingHistory = false; state.liveId = id; state.runId = id;
+      state.controlStatus = status.stopping ? 'stopping' : status.lab_waiting ? 'waiting' : null;
       setStatus(status.stopping ? 'stopping' : status.lab_waiting ? 'waiting' : 'running', status.stopping ? 'Arrêt demandé. Les opérations en cours et le nettoyage doivent encore se terminer.' : status.lab_waiting ? 'En attente de la réservation du laboratoire.' : 'Exécution en cours. Les observations restent intermédiaires.');
       await loadResults(id);
     } else if (!status.running && state.running) {
@@ -273,11 +292,15 @@ const ProcedureUI = (() => {
       if (state.running || ['runner_started', 'pipeline_start'].includes(event.type)) state.runId = id;
     }
     if (!state.running || (id && state.liveId && id !== state.liveId)) return;
+    if (['lab_waiting', 'lab_acquired'].includes(event.type)) {
+      if (state.controlStatus !== 'stopping') state.controlStatus = event.type === 'lab_waiting' ? 'waiting' : null;
+      setStatus(event.type === 'lab_waiting' ? 'waiting' : 'running');
+    }
     if (event.type === 'procedure_step') {
       const existing = state.steps.find(step => step.id === event.step_id);
       if (existing) Object.assign(existing, {status: event.status, target: event.target, label: event.label || existing.label});
       else state.steps.push({id: event.step_id, label: event.label, status: event.status, target: event.target});
-      renderSteps(); byId('procedure-activity').textContent = `${event.label || 'Étape'} · ${label(event.status)}`;
+      renderSteps(); setStatus(state.status, `${event.label || 'Étape'} · ${label(event.status)}`);
     }
     if (event.type === 'procedure_results' && event.results) renderResults({available: true, kind: event.results.script_id === 'smoke-v1' ? 'diagnostic' : 'inventory', results: event.results});
     if (event.type === 'procedure_progress' && event.progress) {
@@ -318,6 +341,7 @@ const ProcedureUI = (() => {
       try {
         const response = await adminFetch('/api/pipeline/stop', {method: 'POST'});
         if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(_formatErrDetail(data.detail || 'Arrêt refusé.')); }
+        state.controlStatus = 'stopping';
         setStatus('stopping', 'Arrêt demandé. Attente de la fin des opérations en cours et du nettoyage.');
       } catch (error) { message(error.message, true); }
     });

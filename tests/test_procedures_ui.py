@@ -21,11 +21,11 @@ const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const elements = new Map();
 const el = id => {
   if (!elements.has(id)) elements.set(id, {id, value:'', hidden:false, disabled:false,
-    textContent:'', innerHTML:'', dataset:{}, checked:true, classList:{toggle(){}},
-    querySelectorAll:()=>[], addEventListener(){}});
+    textContent:'', innerHTML:'', dataset:{}, checked:true, classList:{toggle(){}}, listeners:{},
+    querySelectorAll:()=>[], addEventListener(type, handler){this.listeners[type]=handler;}});
   return elements.get(id);
 };
-const document = {getElementById:el, querySelectorAll:()=>[], addEventListener(){}};
+const document = {getElementById:el, querySelectorAll:()=>[], addEventListener(type, handler){if(type==='DOMContentLoaded') handler();}};
 const escapeHtml = value => String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;')
   .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const context = vm.createContext({document, console, escapeHtml, input, setInterval(){},
@@ -34,12 +34,15 @@ const context = vm.createContext({document, console, escapeHtml, input, setInter
     : url==='/api/runs' ? [] : url==='/api/scenarios' ? {scenarios:[]}
     : url==='/api/pipeline/status' ? input.status || {running:false} : input.responses?.[url] || null,
   fetch:async url=>({ok:true,json:async()=>input.responses?.[url] || {available:false}})});
+context.adminFetch=async()=>({ok:true,json:async()=>({})});
 vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),context);
 (async()=>{
   const result = await vm.runInContext('(async()=>{'+input.program+'})()',context);
   console.log(JSON.stringify({result, status:el('procedure-status').textContent,
     description:el('procedure-description').innerHTML, results:el('procedure-results').innerHTML,
-    steps:el('procedure-steps').innerHTML, formHidden:el('procedure-form').hidden}));
+    steps:el('procedure-steps').innerHTML, formHidden:el('procedure-form').hidden,
+    activity:el('procedure-activity').textContent, durationLabel:el('procedure-duration-label').textContent,
+    durationHelp:el('procedure-duration-help').textContent}));
 })().catch(error=>{console.error(error);process.exitCode=1;});
 """
     payload = {"program": program, "catalogue": procedure_catalogue(), "responses": responses or {}}
@@ -87,6 +90,20 @@ def test_discovery_does_not_describe_uninspected_services_as_a_clean_scan():
     assert "Services non inspectés" in ui(f"return ProcedureUI.renderInventory({json.dumps(data)});")["result"]
 
 
+@pytest.mark.parametrize("step_status,expected,absent", [
+    ("partial", "Inspection non effectuée", "Aucun port ouvert observé"),
+    ("completed", "Aucun port ouvert observé", "Inspection non effectuée"),
+])
+def test_empty_service_observation_distinguishes_incomplete_and_completed_inspection(step_status, expected, absent):
+    data = {"script_id": "service-inventory-v1", "status": step_status,
+            "coverage": {"partial": step_status == "partial"},
+            "steps": [{"id": "host-192.0.2.1", "status": step_status}],
+            "hosts": [{"ip": "192.0.2.1", "status": "up", "services": []}]}
+    result = ui(f"return ProcedureUI.renderInventory({json.dumps(data)});")["result"]
+    assert expected in result
+    assert absent not in result
+
+
 def test_confirmed_finding_does_not_hide_incomplete_device_coverage():
     data = {"devices": [{"device_id": "web", "device_ip": "192.0.2.1",
                          "analysis_status": "incomplete", "verification_status": "incomplete",
@@ -110,6 +127,20 @@ def test_historical_preparation_failure_keeps_steps_without_topology():
     assert 'data-status="failed"' in result["steps"]
     assert "Audit automatique" in result["description"] and "0.9" in result["description"]
     assert result["formHidden"] is True
+
+
+@pytest.mark.parametrize("reason,status,expected", [
+    ("predeployment_cleanup", "running", "Suppression des scénarios précédents avant le déploiement."),
+    ("predeployment_cleanup_failed", "failed", "Le nettoyage préalable a échoué"),
+])
+def test_predeployment_cleanup_reason_is_explained_in_the_timeline(reason, status, expected):
+    response = {"available": True, "kind": "audit", "audit": {"devices": []},
+                "progress": {"status": status, "steps": [{"id": "deployment", "label": "Préparer le scénario",
+                                                        "status": status, "reason": reason}]}}
+    result = ui("await ProcedureUI.open(); await ProcedureUI.showRun('preparation');",
+                responses={"/api/runs/preparation/procedure-results": response})
+    assert expected in result["steps"]
+    assert reason not in result["steps"]
 
 
 def test_archived_rules_status_is_used_when_no_progress_was_recorded():
@@ -139,3 +170,70 @@ await ProcedureUI.open();
     assert "Exécution enregistrée" not in result["description"]
     assert "Découvrir les équipements" in result["description"]
     assert result["status"] == "En cours"
+
+
+def test_history_entry_for_active_run_keeps_the_live_configuration_and_identity():
+    responses = {
+        "/api/runs/live": {"script_id": "discovery-v1"},
+        "/api/runs/live/procedure-results": {"available": True, "kind": "inventory",
+            "procedure": {"id": "discovery-v1", "title": "Découvrir les équipements", "version": "1.0.0"},
+            "results": {"status": "running", "hosts": [], "steps": [], "coverage": {}}},
+    }
+    result = ui("""
+await ProcedureUI.open();
+input.status={running:true,runner_kind:'scripted',run_dir:'/runs/live'};
+await ProcedureUI.open(); await ProcedureUI.showRun('live'); await ProcedureUI.open();
+""", responses=responses)
+    assert result["formHidden"] is False
+    assert "Exécution enregistrée" not in result["description"]
+    assert "Préparer une nouvelle exécution" not in result["description"]
+    assert "Découvrir les équipements" in result["description"]
+    assert result["status"] == "En cours"
+
+
+@pytest.mark.parametrize("control,expected", [("stopping", "Arrêt demandé"), ("lab_waiting", "Attente du laboratoire")])
+def test_live_control_status_takes_priority_over_running_result_artifacts(control, expected):
+    responses = {
+        "/api/runs/live": {"script_id": "discovery-v1"},
+        "/api/runs/live/procedure-results": {"available": True, "kind": "inventory",
+            "results": {"status": "running", "hosts": [], "steps": [], "coverage": {}}},
+    }
+    result = ui(f"""
+await ProcedureUI.open();
+input.status={{running:true,runner_kind:'scripted',run_dir:'/runs/live',{control}:true}};
+await ProcedureUI.open();
+""", responses=responses)
+    assert result["status"] == expected
+    assert ("Arrêt demandé" if control == "stopping" else "En attente") in result["activity"]
+
+
+def test_running_events_do_not_erase_an_accepted_stop_request():
+    responses = {
+        "/api/runs/live/procedure-results": {"available": True, "kind": "audit",
+            "progress": {"status": "running", "steps": []}, "audit": {"devices": []}},
+    }
+    result = ui("""
+await ProcedureUI.open();
+input.status={running:true,runner_kind:'rules',run_dir:'/runs/live'};
+await ProcedureUI.open();
+await document.getElementById('procedure-stop').listeners.click();
+ProcedureUI.onEvent({type:'procedure_progress',runner_kind:'rules',run_dir:'/runs/live',progress:{status:'running',steps:[]}});
+ProcedureUI.onEvent({type:'procedure_step',runner_kind:'rules',run_dir:'/runs/live',step_id:'analysis',label:'Analyse',status:'running'});
+""", responses=responses)
+    assert result["status"] == "Arrêt demandé"
+    assert "Arrêt demandé" in result["activity"]
+
+
+def test_rules_time_limit_explains_which_operations_it_covers():
+    responses = {
+        "/api/runs/live/procedure-results": {"available": True, "kind": "audit",
+            "progress": {"status": "running", "steps": []}, "audit": {"devices": []}},
+    }
+    result = ui("""
+await ProcedureUI.open();
+input.status={running:true,runner_kind:'rules',run_dir:'/runs/live'};
+await ProcedureUI.open();
+""", responses=responses)
+    assert result["durationLabel"] == "Temps maximal des contrôles (secondes)"
+    assert "l’analyse et la vérification" in result["durationHelp"]
+    assert "le déploiement et le nettoyage" in result["durationHelp"]

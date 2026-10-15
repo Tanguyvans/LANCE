@@ -29,3 +29,11 @@ def test_descriptors_are_detached_and_unknown_procedures_are_not_executable():
     assert procedures.get_procedure("discovery-v1") == before
     with pytest.raises(ValueError, match="Unknown procedure"):
         procedures.get_procedure("../../custom.sh")
+
+
+def test_rules_effects_disclose_replacement_before_optional_final_cleanup():
+    effects = procedures.get_procedure("rules-audit-v1")["effects"]
+    assert "laboratoire est partagé" in effects
+    assert "scénarios déjà présents" in effects
+    assert "avant de déployer" in effects
+    assert "même si le nettoyage après audit est désactivé" in effects

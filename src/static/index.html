@@ -596,15 +596,15 @@
       <article id="procedure-description" class="procedure-panel"><p class="procedure-empty">Sélectionnez une procédure pour voir ce qu’elle exécute.</p></article>
       <form id="procedure-form" class="procedure-panel" hidden>
         <div class="procedure-section-heading"><span class="procedure-number">1</span><h3>Configurer la cible</h3></div>
-        <div id="procedure-network-field"><label for="procedure-network">Réseau IPv4 autorisé</label><input id="procedure-network" type="text" placeholder="192.168.100.0/24" autocomplete="off"><p class="procedure-help">Les sondes restent dans le réseau indiqué. Aucun scénario n’est déployé.</p></div>
+        <div id="procedure-network-field"><label for="procedure-network">Réseau IPv4 autorisé</label><input id="procedure-network" type="text" placeholder="ex. : 192.0.2.0/24" autocomplete="off" aria-describedby="procedure-network-help"><p id="procedure-network-help" class="procedure-help">Le format CIDR décrit un réseau : /24 regroupe 256 adresses. Saisissez le réseau de votre laboratoire autorisé. Les sondes restent dans ce réseau ; aucun scénario n’est déployé.</p></div>
         <div id="procedure-scenario-field" hidden><label for="procedure-scenario">Scénario du laboratoire</label><select id="procedure-scenario"><option value="">Choisir un scénario public…</option></select>
           <label class="procedure-checkbox"><input id="procedure-cleanup" type="checkbox" checked> Nettoyer les machines du scénario après l’audit</label></div>
         <p id="procedure-offline-field" class="procedure-help" hidden>Ce diagnostic fonctionne sans cible réseau ni modèle.</p>
         <div class="procedure-effects"><strong>Actions sur l’environnement</strong><p id="procedure-effects"></p></div>
         <details class="procedure-limits"><summary>Ajuster les limites d’exécution</summary><div class="procedure-limit-grid">
-          <div><label for="procedure-duration">Temps maximal (secondes)</label><input id="procedure-duration" type="number" min="1" max="3600" step="1" required></div>
-          <div id="procedure-calls-field"><label for="procedure-calls">Appels d’outils maximum</label><input id="procedure-calls" type="number" min="1" max="100" step="1"></div>
-        </div><p class="procedure-help">Un arrêt ou une limite atteinte conserve les observations déjà obtenues et signale les contrôles incomplets.</p></details>
+          <div><label for="procedure-duration" id="procedure-duration-label">Temps maximal (secondes)</label><input id="procedure-duration" type="number" min="1" max="3600" step="1" required></div>
+          <div id="procedure-calls-field"><label for="procedure-calls">Appels d’outils maximum</label><input id="procedure-calls" type="number" min="1" max="100" step="1" aria-describedby="procedure-calls-help"><p id="procedure-calls-help" class="procedure-help">Un appel correspond à une commande lancée par LANCE, par exemple une sonde Nmap. Un même équipement peut demander plusieurs appels.</p></div>
+        </div><p id="procedure-duration-help" class="procedure-help"></p><p class="procedure-help">Un arrêt ou une limite atteinte conserve les observations déjà obtenues et signale les contrôles incomplets.</p></details>
         <div id="procedure-form-error" class="procedure-error" role="alert" hidden></div>
         <div class="procedure-launch-row"><p id="procedure-launch-summary"></p><button type="submit" id="procedure-launch" class="procedure-primary">Lancer la procédure</button></div>
       </form>
