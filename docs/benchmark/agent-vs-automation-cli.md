@@ -64,7 +64,7 @@ python -m src.agent --decision-policy rules \
   --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
   --max-cost-usd 2
 
-python -m src.agent --decision-policy llm --provider minimax --model MODELE_CHOISI \
+python -m src.agent --decision-policy llm --provider ollama-umons --model qwen3.8:27b \
   --experiment-scope analysis-verification --audit-inventory inventory.json \
   --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
   --max-cost-usd 2
@@ -313,8 +313,9 @@ une décision bornée sur carte complète, pas le pipeline A1 entier ni l'adapta
 
 Les plafonds initiaux **de calibration**, non validés statistiquement, sont huit
 appels SSH, 420 secondes par bras, douze tours modèle et un dollar de coût
-**estimé** observé. Fournisseur et modèle sont choisis explicitement au lancement
-(`ssh_provider`, `ssh_model`), sans repli automatique vers un autre modèle.
+**estimé** observé. Ce pilote utilise exclusivement **`ollama-umons` /
+`qwen3.8:27b`** (`ssh_provider`, `ssh_model`). Le workflow et le contrôleur
+refusent un autre choix, sans repli automatique vers un autre fournisseur.
 Les requêtes et réponses visibles du fournisseur sont enregistrées par tentative,
 y compris les retries et leurs compteurs d'usage, sans en-têtes d'authentification
 ni raisonnement caché. L'absence de compteurs conserve tokens/coût inconnus dans
@@ -339,7 +340,8 @@ sceller la collection après une récupération incomplète, sans déclarer le
 nettoyage réussi.
 
 ```bash
-gh workflow run benchmark-integrity.yml --ref dev/2 -f slot=dev-2 -f ssh_reference=true
+gh workflow run benchmark-integrity.yml --ref dev/2 -f slot=dev-2 -f ssh_reference=true \
+  -f ssh_provider=ollama-umons -f ssh_model=qwen3.8:27b
 ```
 
 Les artefacts restent sous

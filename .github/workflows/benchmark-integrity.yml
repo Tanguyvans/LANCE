@@ -17,12 +17,14 @@ on:
         type: boolean
         default: false
       ssh_provider:
-        description: 'Explicit provider for the manual SSH qualification'
-        type: string
+        description: 'UMONS provider for the manual SSH qualification'
+        type: choice
+        options: [ollama-umons]
         default: ollama-umons
       ssh_model:
-        description: 'Explicit model for the manual SSH qualification'
-        type: string
+        description: 'Qwen model for the manual SSH qualification'
+        type: choice
+        options: ['qwen3.8:27b']
         default: qwen3.8:27b
 
 permissions:

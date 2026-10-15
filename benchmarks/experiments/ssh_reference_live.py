@@ -31,6 +31,8 @@ from src.agent.cost_tracker import CostTracker
 
 ROOT = Path(__file__).resolve().parents[2]
 LABEL = 'lance.ssh-reference'
+PROVIDER = 'ollama-umons'
+MODEL = 'qwen3.8:27b'
 
 
 def write_json(path, value):
@@ -384,6 +386,8 @@ def public_summary(root):
 
 
 def run_experiment(args):
+    if (args.provider, args.model) != (PROVIDER, MODEL):
+        raise ValueError('This SSH pilot requires ollama-umons / qwen3.8:27b; no provider fallback')
     require_nato()
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -438,8 +442,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['run', 'recover', 'verify', 'summary', 'seal'])
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--provider', default='ollama-umons')
-    parser.add_argument('--model', default='qwen3.8:27b')
+    parser.add_argument('--provider', choices=[PROVIDER], default=PROVIDER)
+    parser.add_argument('--model', choices=[MODEL], default=MODEL)
     parser.add_argument('--max-tool-calls', type=int, default=8)
     parser.add_argument('--max-duration-s', type=float, default=420)
     parser.add_argument('--max-cost-usd', type=float, default=1)

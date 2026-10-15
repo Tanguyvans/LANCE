@@ -233,6 +233,13 @@ def test_wrong_runner_is_refused_before_any_command(monkeypatch):
         live.require_nato()
 
 
+@pytest.mark.parametrize('provider,model', [('minimax', 'MiniMax-M2.7'), ('ollama-umons', 'other-model')])
+def test_live_pilot_rejects_other_models_before_host_or_lab_access(monkeypatch, provider, model):
+    monkeypatch.setattr(live, 'require_nato', lambda: pytest.fail('Must reject before host access'))
+    with pytest.raises(ValueError, match='requires ollama-umons / qwen3.8:27b'):
+        live.run_experiment(SimpleNamespace(provider=provider, model=model))
+
+
 def test_label_scoped_cleanup_never_touches_other_containers(tmp_path, monkeypatch):
     docker = live.Docker(tmp_path, 'owned-trial')
     commands = []
@@ -304,9 +311,14 @@ def test_workflow_is_manual_local_and_shell_syntax_valid(tmp_path):
     guard = ci['jobs']['ssh-reference']['if']
     assert "github.event_name == 'workflow_dispatch'" in guard
     assert 'inputs.ssh_reference == true' in guard and "inputs.slot == 'dev-2'" in guard
+    inputs = ci['on']['workflow_dispatch']['inputs']
+    assert inputs['ssh_provider']['options'] == ['ollama-umons']
+    assert inputs['ssh_model']['options'] == ['qwen3.8:27b']
     for step in workflow['jobs']['ssh-trial']['steps']:
         if 'run' in step:
             subprocess.run(['bash', '-n'], input=step['run'], text=True, check=True)
     text = path.read_text()
     assert 'flock -x 9' in text and 'test "$RUNNER_NAME" = nato-master' in text
     assert 'if: always()' in text and ' recover --output ' in text
+    assert 'test "$SSH_PROVIDER" = ollama-umons' in text
+    assert 'test "$SSH_MODEL" = qwen3.8:27b' in text

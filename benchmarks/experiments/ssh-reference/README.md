@@ -37,6 +37,12 @@ résultat expérimental sur la plus-value d'un LLM.
 
 ## État de l'exécution réelle
 
+Le pilote utilise exclusivement **Qwen `qwen3.8:27b` via `ollama-umons`**.
+Le workflow et le contrôleur refusent un autre fournisseur ou modèle. Une panne
+UMONS bloque l'essai ; elle ne déclenche aucun repli vers MiniMax. La sélection
+erronée du lancement historique ci-dessous n'a produit aucun appel modèle :
+la préparation s'est arrêtée avant les quatre bras.
+
 La [CI du commit `6691af4`](https://github.com/Tanguyvans/LANCE/actions/runs/38745281005)
 a réussi : 3 903 tests, deux ignorés, deux avertissements ; le déploiement
 dev/2 a annoncé ce même commit et le verrou actif. Le

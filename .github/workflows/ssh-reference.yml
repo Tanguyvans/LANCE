@@ -40,6 +40,8 @@ jobs:
           test "$RUNNER_NAME" = nato-master
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF" = refs/heads/dev/2
+          test "$SSH_PROVIDER" = ollama-umons
+          test "$SSH_MODEL" = qwen3.8:27b
           exec 9>>/var/lib/lance/lab.lock
           flock -x 9
           cd /opt/lance-dev-2
