@@ -28,6 +28,7 @@ La [documentation du benchmark V1](benchmark/v1/README.md) est le point d'entré
 - [Évaluation](benchmark/v1/evaluation.md) : détection, preuves, intrusion et interprétation des métriques.
 - [Exécution](benchmark/v1/execution.md) : lancer un run, lire son statut, ses coûts et ses diagnostics.
 - [Guide CLI D1/A1](benchmark/agent-vs-automation-cli.md) : analyse et vérification sur inventaire public commun, évaluation et comparaison d'une paire.
+- [Calibration SSH V2](benchmark/agent-vs-automation-cli.md#calibration-ssh-v2) : contrat public, adaptateur D1 et verdict probatoire hors ligne, sans campagne M-T admise.
 - [Guide de campagne](benchmark/agent-vs-automation-campaign.md) : politique D1 bornée, manifeste du pilote de 24 essais, bilan et revue indépendante des preuves.
 - [Index dérivé des étiquettes](benchmark/derived-index.md) : axes expérimentaux calculés depuis les vérités terrain (type, chaînage, surface, bruit), sans modifier catalogue ni vérités terrain.
 

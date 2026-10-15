@@ -12,6 +12,18 @@ on:
         type: choice
         default: none
         options: [none, dev-1, dev-2]
+      ssh_reference:
+        description: 'Manually run SSH qualification on dev-2 after validation/deployment; evidence stays on nato'
+        type: boolean
+        default: false
+      ssh_provider:
+        description: 'Explicit provider for the manual SSH qualification'
+        type: string
+        default: ollama-umons
+      ssh_model:
+        description: 'Explicit model for the manual SSH qualification'
+        type: string
+        default: qwen3.8:27b
 
 permissions:
   contents: read
@@ -144,3 +156,13 @@ jobs:
     uses: ./.github/workflows/update-master.yml
     with:
       slot: ${{ github.event_name == 'workflow_dispatch' && inputs.slot || (github.ref == 'refs/heads/dev/1' && 'dev-1' || 'dev-2') }}
+
+  ssh-reference:
+    needs: [deploy-development]
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.ssh_reference == true &&
+      github.ref == 'refs/heads/dev/2' && inputs.slot == 'dev-2'
+    uses: ./.github/workflows/ssh-reference.yml
+    with:
+      provider: ${{ inputs.ssh_provider }}
+      model: ${{ inputs.ssh_model }}

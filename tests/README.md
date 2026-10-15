@@ -7,6 +7,21 @@ GPU sont regroupés dans [model_training/tests/](../model_training/tests/).
 Ne pas confondre ces tests logiciels avec les
 [scénarios d’évaluation du benchmark](../docs/benchmark/v1/scenarios.md).
 
+`test_ssh_reference.py` qualifie le premier contrat SSH V2 avec le vrai exécuteur
+et l'adaptateur SSH existants, mais des entrées/sorties de processus simulées :
+contrôle protégé, lecture privée fraîche, identité/cible/session, erreurs,
+manquants, budget dépassé par la dernière sonde et archives complètes avec
+fichiers cachés. Le CLI d'évaluation est aussi exécuté sans connexion réseau.
+Ces tests ne mesurent ni serveur SSH réel ni performance LLM ; le résultat reste
+explicitement non admis pour une campagne M-T. Voir la
+[référence SSH V2](../docs/benchmark/agent-vs-automation-cli.md#calibration-ssh-v2).
+
+`test_ssh_reference_live.py` ajoute le dialogue multi-tours du vrai fournisseur
+et son enregistreur avec un client simulé, les pertes d'archives, les compteurs
+inconnus, les avis OpenSSH liés à la cible, le nettoyage par propriété, les
+archives interrompues et le lancement manuel réservé à nato/dev-2. Ces tests ne
+lancent ni Docker, ni serveur SSH, ni modèle réel.
+
 `test_run_graph_context.py` vérifie les graphes distincts de deux runs,
 les réinitialisations et mutations pondérées, les outils et prompts exécutés
 dans des threads, la restauration après exception et les entrées des six phases

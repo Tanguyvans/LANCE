@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "scenario_id": "s_ssh_identifiants",
+  "instance_id": "development-01",
+  "target_network": "192.0.2.0/24",
+  "target": {"asset_id": "edge", "ip": "192.0.2.17", "port": 2222},
+  "dictionary": [
+    {"user": "admin", "password": "admin"},
+    {"user": "iot", "password": "test"}
+  ],
+  "control_credential": {"user": "auditor", "password": "development-control-only"},
+  "proof_path": "/var/lib/lance/private-object.txt"
+}
