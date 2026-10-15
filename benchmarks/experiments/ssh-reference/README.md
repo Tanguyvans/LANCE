@@ -58,5 +58,17 @@ prérequis du pilote ; aucun moteur temporaire ni service système n'a été ins
 Le contrôleur vérifie les outils et le catalogue Qwen avant toute allocation,
 refuse une autre charge active sur vmbr1 et exige la propriété du LXC avant de
 le détruire. Le code de nettoyage Docker reste réservé aux anciennes tentatives.
-Le déploiement et l'exécution de cette adaptation doivent être confirmés par
-leurs propres artefacts ; le code et les tests ne prouvent pas un essai réel.
+La CI et le déploiement de l'adaptation native `9bfc6b1` ont réussi. Son
+[premier lancement](https://github.com/Tanguyvans/LANCE/actions/runs/38758419755)
+a vérifié le catalogue Qwen depuis nato, puis s'est arrêté avant les bras :
+le serveur OpenSSH n'est pas devenu joignable. Les 32 fichiers de la tentative
+ont été scellés et vérifiés sous
+`/opt/lance-dev-2/output/ssh-reference/38758419755-1/` ; ils ne constituent pas
+quatre essais exécutés. L'inspection filtrée des erreurs est autorisée depuis
+le 15 octobre 2026 ; les preuves complètes restent sur nato.
+
+Le lancement de la fixture transmet maintenant un `argv[0]` absolu à OpenSSH.
+Un test avec le vrai binaire, une configuration volontairement absente et aucun
+port ouvert reproduit le refus avant correction et atteint la lecture de
+configuration après correction. Cette validation logicielle ne démontre pas
+encore que la préparation réelle et les quatre bras ont abouti.

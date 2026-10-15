@@ -5,6 +5,10 @@ from pathlib import Path
 import subprocess
 
 
+def sshd_command(config='/run/sshd_config'):
+    return ['/usr/sbin/sshd', '-D', '-e', '-f', config]
+
+
 def main():
     config = json.loads(Path('/fixture.json').read_text())
     subprocess.run(['groupadd', 'proofreaders'], check=True)
@@ -49,7 +53,7 @@ LogLevel VERBOSE
 '''
     settings += 'AllowUsers ' + ' '.join(item['user'] for item in config['accounts']) + '\n'
     Path('/run/sshd_config').write_text(settings)
-    os.execv('/usr/sbin/sshd', ['sshd', '-D', '-e', '-f', '/run/sshd_config'])
+    os.execv('/usr/sbin/sshd', sshd_command())
 
 
 if __name__ == '__main__':

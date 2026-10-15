@@ -18,6 +18,10 @@ spec = importlib.util.spec_from_file_location(
     'ssh_guest_controller', ROOT / 'benchmarks/ansible/files/ssh_reference_proxmox.py')
 guest = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guest)
+fixture_spec = importlib.util.spec_from_file_location(
+    'ssh_fixture_start', ROOT / 'benchmarks/experiments/ssh-reference/fixture/start.py')
+fixture_module = importlib.util.module_from_spec(fixture_spec)
+fixture_spec.loader.exec_module(fixture_module)
 OWNER = 'a' * 32
 
 
@@ -209,3 +213,14 @@ def test_playbook_checks_identity_before_transfer_or_mutation():
     assert '100.76.206.65' in tasks[1]['ansible.builtin.assert']['that'][0]
     assert 'ansible.builtin.file' in tasks[2] and 'ansible.builtin.copy' in tasks[3]
     assert tasks[4]['no_log'] == tasks[5]['no_log'] == 'true'
+
+
+@pytest.mark.skipif(not Path('/usr/sbin/sshd').is_file(), reason='OpenSSH server binary not installed')
+def test_fixture_launch_reaches_openssh_config_loader_with_absolute_argv0(tmp_path):
+    # A deliberately absent config makes the real binary exit before any key
+    # loading or socket binding, even if this test is run by root.
+    missing = tmp_path / 'absent-sshd-config'
+    result = subprocess.run(fixture_module.sshd_command(str(missing)), executable='/usr/sbin/sshd',
+                            capture_output=True, text=True, timeout=5)
+    assert 'requires execution with an absolute path' not in result.stderr
+    assert str(missing) in result.stderr and result.returncode != 0

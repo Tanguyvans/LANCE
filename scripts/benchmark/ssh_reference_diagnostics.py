@@ -24,6 +24,8 @@ CONTROLLER_REASONS = {
 }
 SERVER_REASONS = {
     'no hostkeys available': 'sshd_host_keys_missing',
+    'sshd requires execution with an absolute path': 'sshd_argv0_not_absolute',
+    'sshd re-exec requires execution with an absolute path': 'sshd_argv0_not_absolute',
     'Missing privilege separation directory': 'sshd_runtime_directory_missing',
     'Cannot bind any address': 'sshd_listen_failed',
     'Cannot assign requested address': 'sshd_bind_address_unavailable',
