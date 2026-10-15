@@ -2790,6 +2790,7 @@ const VALID_VIEWS = new Set(['main', 'benchmark', 'scenario-lab', 'procedures'])
 
 function getStoredView() {
   try {
+    if (/^#automation\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(window.location?.hash || '')) return 'procedures';
     const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
     return VALID_VIEWS.has(stored) ? stored : 'main';
   } catch (_) {

@@ -58,7 +58,7 @@
     <!-- Launch form -->
     <div class="sidebar-section" id="launch-section">
       <h3>Nouvelle exécution</h3>
-      <button type="button" class="catalogue-shortcut" onclick="switchView('procedures')">Choisir une automatisation <span aria-hidden="true">→</span></button>
+      <button type="button" class="catalogue-shortcut" onclick="switchView('procedures'); ProcedureUI.setSection('launch')">Choisir une automatisation <span aria-hidden="true">→</span></button>
 
       <fieldset class="runner-choices" aria-label="Type d'exécution">
         <legend>Exécution</legend>
@@ -581,21 +581,36 @@
 
 <section id="procedures-view" class="procedures-view" hidden aria-labelledby="procedures-heading">
   <header class="procedures-header">
-    <div><p class="procedure-eyebrow">LANCE / OPÉRATIONS</p><h2 id="procedures-heading">Audits et automatisations</h2>
-      <p>Choisissez les contrôles à exécuter. Retrouvez leurs étapes, leurs observations et leurs preuves.</p></div>
+    <div><p class="procedure-eyebrow">LANCE / AUTOMATISATIONS</p><h2 id="procedures-heading">Résultats des automatisations</h2>
+      <p>Retrouvez ce que chaque procédure a observé, sur quelle cible et avec quelles ressources.</p></div>
     <button type="button" id="procedure-refresh" class="procedure-secondary">Actualiser</button>
   </header>
+  <nav class="procedure-sections" role="tablist" aria-label="Sections des automatisations">
+    <button id="procedure-tab-results" type="button" role="tab" aria-selected="true" aria-controls="procedure-overview" data-procedure-section="results">Résultats des exécutions</button>
+    <button id="procedure-tab-launch" type="button" role="tab" aria-selected="false" aria-controls="procedure-launcher" data-procedure-section="launch">Nouvelle exécution</button>
+  </nav>
   <div id="procedure-catalogue-message" role="status" class="procedure-notice" hidden></div>
-  <div class="procedure-layout">
+  <div id="procedure-overview">
+    <div class="procedure-overview-toolbar">
+      <label>Procédure<select id="procedure-filter"><option value="">Toutes les procédures</option></select></label>
+      <label>Scénario ou réseau<select id="procedure-target-filter"><option value="">Toutes les cibles</option></select></label>
+      <label class="procedure-checkbox"><input id="procedure-include-diagnostics" type="checkbox"> Inclure les diagnostics hors ligne</label>
+      <div class="procedure-pagination" role="group" aria-label="Pagination des automatisations"><button id="procedure-prev" type="button" class="procedure-secondary" aria-label="Exécutions précédentes" disabled>‹</button><span id="procedure-page-info" role="status">Chargement…</span><button id="procedure-next" type="button" class="procedure-secondary" aria-label="Exécutions suivantes" disabled>›</button></div>
+    </div>
+    <p class="procedure-help procedure-overview-help">Les observations montrent ce qui a été trouvé. « Non évaluée » signifie qu’aucune comparaison aux résultats attendus du scénario n’a été enregistrée. Un état « Terminé » décrit l’exécution.</p>
+    <p id="procedure-overview-error" class="procedure-error" role="alert" hidden></p>
+    <p id="procedure-overview-empty" class="procedure-empty" hidden>Aucune exécution pour ces filtres. Choisissez « Nouvelle exécution » pour lancer une procédure.</p>
+    <div class="procedure-overview-scroll"><table class="procedure-overview-table"><caption>Exécutions sans modèle : observations, évaluation disponible et ressources utilisées.</caption><thead><tr><th scope="col">Procédure / Exécution</th><th scope="col">Scénario ou réseau</th><th scope="col">Observations</th><th scope="col">Évaluation par scénario</th><th scope="col">Durée</th><th scope="col">Appels d’outils</th><th scope="col">Statut</th><th scope="col"><span class="sr-only">Détails</span></th></tr></thead><tbody id="procedure-run-rows"></tbody></table></div>
+  </div>
+  <div id="procedure-launcher" class="procedure-layout" hidden>
     <aside class="procedure-library" aria-label="Catalogue des procédures">
       <h3>Procédures disponibles</h3><div id="procedure-catalogue"><p class="procedure-empty">Chargement du catalogue…</p></div>
       <details class="procedure-diagnostics"><summary>Diagnostic de l’application</summary><div id="procedure-diagnostics"></div></details>
-      <div class="procedure-history"><h3>Exécutions récentes</h3><div id="procedure-history"><p class="procedure-empty">Chargement…</p></div></div>
     </aside>
     <div class="procedure-workspace">
       <article id="procedure-description" class="procedure-panel"><p class="procedure-empty">Sélectionnez une procédure pour voir ce qu’elle exécute.</p></article>
       <form id="procedure-form" class="procedure-panel" hidden>
-        <div class="procedure-section-heading"><span class="procedure-number">1</span><h3>Configurer la cible</h3></div>
+        <div class="procedure-section-heading"><h3>Configurer la cible</h3></div>
         <div id="procedure-network-field"><label for="procedure-network">Réseau IPv4 autorisé</label><input id="procedure-network" type="text" placeholder="ex. : 192.0.2.0/24" autocomplete="off" aria-describedby="procedure-network-help"><p id="procedure-network-help" class="procedure-help">Le format CIDR décrit un réseau : /24 regroupe 256 adresses. Saisissez le réseau de votre laboratoire autorisé. Les sondes restent dans ce réseau ; aucun scénario n’est déployé.</p></div>
         <div id="procedure-scenario-field" hidden><label for="procedure-scenario">Scénario du laboratoire</label><select id="procedure-scenario"><option value="">Choisir un scénario public…</option></select>
           <label class="procedure-checkbox"><input id="procedure-cleanup" type="checkbox" checked> Nettoyer les machines du scénario après l’audit</label></div>
@@ -608,18 +623,25 @@
         <div id="procedure-form-error" class="procedure-error" role="alert" hidden></div>
         <div class="procedure-launch-row"><p id="procedure-launch-summary"></p><button type="submit" id="procedure-launch" class="procedure-primary">Lancer la procédure</button></div>
       </form>
+    </div>
+  </div>
+  <section id="procedure-detail" class="procedure-detail" aria-label="Résultats de l’exécution sélectionnée" hidden>
+      <div class="procedure-detail-toolbar"><div id="procedure-record-description" tabindex="-1">Exécution sélectionnée</div><button id="procedure-close-detail" type="button" class="procedure-secondary">Fermer les détails</button></div>
+      <div id="procedure-run-summary"></div>
+      <section class="procedure-panel" aria-labelledby="procedure-results-heading">
+        <div class="procedure-section-heading"><h3 id="procedure-results-heading">Résultats et preuves</h3></div>
+        <div id="procedure-results"><p class="procedure-empty">Les observations apparaîtront ici.</p></div>
+      </section>
+      <details id="procedure-progress-details" class="procedure-progress-details">
+      <summary>Étapes de l’exécution</summary>
       <section class="procedure-panel" aria-labelledby="procedure-follow-heading">
-        <div class="procedure-section-heading"><span class="procedure-number">2</span><h3 id="procedure-follow-heading">Suivre l’exécution</h3><span id="procedure-status" class="procedure-status">En attente</span></div>
+        <div class="procedure-section-heading"><h3 id="procedure-follow-heading">Suivre l’exécution</h3><span id="procedure-status" class="procedure-status">En attente</span></div>
         <p id="procedure-activity" class="procedure-help" role="status" aria-live="polite">Les étapes s’actualiseront au lancement.</p>
         <ol id="procedure-steps" class="procedure-timeline"></ol>
         <div class="procedure-run-actions"><button type="button" id="procedure-stop" class="procedure-secondary" hidden>Demander l’arrêt</button><button type="button" id="procedure-dashboard" class="procedure-secondary" hidden>Voir sur le dashboard</button></div>
       </section>
-      <section class="procedure-panel" aria-labelledby="procedure-results-heading">
-        <div class="procedure-section-heading"><span class="procedure-number">3</span><h3 id="procedure-results-heading">Lire les résultats</h3></div>
-        <div id="procedure-results"><p class="procedure-empty">Les observations apparaîtront ici. Vous pourrez retrouver chaque exécution dans l’historique.</p></div>
-      </section>
-    </div>
-  </div>
+      </details>
+  </section>
 </section>
 
 <script src="/static/app.js"></script>

@@ -3,7 +3,9 @@
 const ProcedureUI = (() => {
   const state = {catalogue: [], selected: null, steps: [], runId: null, liveId: null,
     running: false, starting: false, loading: false, request: 0, ready: false, status: 'pending',
-    viewingHistory: false, syncing: false, controlStatus: null};
+    viewingHistory: false, syncing: false, controlStatus: null, section: 'results',
+    pageOffset: 0, pageLimit: 10, pageRequest: 0, filterProcedure: '', filterTarget: '',
+    includeDiagnostics: false};
   const byId = id => document.getElementById(id);
   const esc = value => escapeHtml(String(value ?? ''));
   const labels = {pending: 'En attente', waiting: 'Attente du laboratoire', running: 'En cours',
@@ -14,11 +16,90 @@ const ProcedureUI = (() => {
     up: 'Répond aux sondes', observed: 'Observé', not_observed: 'Fin non observée'};
   const label = value => labels[value] || 'État indisponible';
   const list = value => Array.isArray(value) ? value : [];
+  const measured = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  const coverageLabels = {collected:'Collecte terminée', checked:'Phases de contrôle terminées',
+    partial:'Collecte ou contrôles incomplets', running:'Observations intermédiaires',
+    unavailable:'Données indisponibles', diagnostic:'Diagnostic hors ligne'};
+
+  function formatDuration(value) {
+    if (!measured(value)) return '—';
+    const seconds = Math.round(value);
+    if (seconds < 60) return `${seconds} s`;
+    return `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s`;
+  }
+
+  function formatDate(value, fallback) {
+    if (value && Number.isFinite(Date.parse(value))) return new Intl.DateTimeFormat('fr-BE',
+      {timeZone:'Europe/Brussels',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
+    return fallback;
+  }
+
+  function setSection(section) {
+    if (section === 'launch' && (state.running || state.starting)) return;
+    if (section === 'launch') {
+      if (state.viewingHistory || byId('procedure-form').hidden) select(state.selected?.id);
+      clearRoute();
+    }
+    state.section = section;
+    byId('procedure-overview').hidden = section !== 'results';
+    byId('procedure-launcher').hidden = section !== 'launch';
+    byId('procedure-detail').hidden = section !== 'results' || !state.runId;
+    ['results','launch'].forEach(name => byId(`procedure-tab-${name}`).setAttribute('aria-selected', String(name === section)));
+  }
+
+  function clearRoute() {
+    if (typeof window !== 'undefined' && window.location.hash.startsWith('#automation/'))
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+
+  function showDetail(scroll = false) {
+    setSection('results');
+    byId('procedure-detail').hidden = false;
+    byId('procedure-progress-details').open = state.running;
+    byId('procedure-close-detail').hidden = state.running;
+    if (scroll) { byId('procedure-detail').scrollIntoView({block:'start'}); byId('procedure-record-description').focus({preventScroll:true}); }
+  }
+
+  function observations(item) {
+    const data = item.observations;
+    if (!data) return item.diagnostic ? 'Diagnostic de l’application' : item.available ? 'Constats et preuves' : 'Résultats indisponibles';
+    const hosts = `${data.hosts} hôte${data.hosts === 1 ? '' : 's'}`;
+    return item.procedure.id === 'discovery-v1' ? hosts : `${hosts} · ${data.services} service${data.services === 1 ? '' : 's'} TCP`;
+  }
+
+  function renderOverview(data) {
+    const items = list(data.items);
+    byId('procedure-run-rows').innerHTML = items.map(item => `<tr data-run="${esc(item.id)}"><td><strong>${esc(item.procedure.title)}</strong><span>${esc(formatDate(item.started_at,item.id))}${item.procedure.version ? ` · v${esc(item.procedure.version)}` : ' · version non enregistrée'}</span></td><td>${esc(item.target || (item.diagnostic ? 'Sans réseau' : 'Cible non enregistrée'))}<span>${item.scenario ? 'Scénario enregistré' : item.diagnostic ? 'Diagnostic' : 'Scénario non enregistré'}</span></td><td><strong>${esc(observations(item))}</strong><span>${esc(coverageLabels[item.coverage] || coverageLabels.unavailable)}</span>${measured(item.tool_errors) ? `<span>${item.tool_errors} erreur${item.tool_errors === 1 ? '' : 's'} d’outil</span>` : ''}</td><td>${item.evaluation.status === 'not_applicable' ? 'Sans objet' : 'Non évaluée'}</td><td class="procedure-mono">${formatDuration(item.duration_s)}${item.duration_scope === 'tools' ? '<span>Outils uniquement</span>' : ''}</td><td class="procedure-mono">${measured(item.tool_calls) ? item.tool_calls : '—'}</td><td><span class="procedure-outcome" data-status="${esc(item.status)}">${esc(label(item.status))}</span></td><td><button type="button" class="procedure-secondary" data-procedure-run="${esc(item.id)}">Consulter</button></td></tr>`).join('');
+    byId('procedure-run-rows').querySelectorAll('[data-procedure-run]').forEach(button => button.addEventListener('click', () => showRun(button.dataset.procedureRun)));
+    byId('procedure-overview-empty').hidden = items.length > 0;
+    byId('procedure-page-info').textContent = data.total ? `${data.offset + 1}–${data.offset + items.length} sur ${data.total}` : '0 résultat';
+    byId('procedure-prev').disabled = data.offset === 0;
+    byId('procedure-next').disabled = data.offset + data.limit >= data.total;
+    byId('procedure-filter').innerHTML = '<option value="">Toutes les procédures</option>' + list(data.procedures).map(id => `<option value="${esc(id)}">${esc(state.catalogue.find(item => item.id === id)?.title || id)}</option>`).join('');
+    byId('procedure-filter').value = state.filterProcedure;
+    byId('procedure-target-filter').innerHTML = '<option value="">Toutes les cibles</option>' + list(data.targets).map(target => `<option value="${esc(target)}">${esc(target)}</option>`).join('');
+    byId('procedure-target-filter').value = state.filterTarget;
+  }
+
+  function renderSummary(item) {
+    if (!item) { byId('procedure-run-summary').innerHTML = '<p class="procedure-empty">Mesures d’exécution indisponibles.</p>'; return; }
+    const metrics = [[item.duration_scope === 'tools' ? 'Durée des outils' : 'Durée totale', formatDuration(item.duration_s)],
+      ['Appels d’outils', measured(item.tool_calls) ? item.tool_calls : '—'],
+      ['Erreurs d’outils', measured(item.tool_errors) ? item.tool_errors : '—']];
+    if (item.observations) metrics.push(['Hôtes observés',item.observations.hosts]);
+    if (item.observations && item.procedure.id === 'service-inventory-v1') metrics.push(['Services TCP observés',item.observations.services]);
+    const reason = item.evaluation.reason === 'offline_diagnostic' ? 'Ce diagnostic vérifie l’application sans accès réseau.'
+      : item.evaluation.reason === 'scenario_not_recorded' ? 'Cette exécution cible un réseau direct. Aucun scénario ni résultat attendu n’a été enregistré pour calculer un score.'
+      : 'Le scénario est enregistré. La comparaison aux résultats attendus et les scores de détection ne sont pas encore calculés pour cette procédure.';
+    byId('procedure-run-summary').innerHTML = `<div class="procedure-measures">${metrics.map(([title,value]) => `<div><span>${esc(title)}</span><strong>${esc(value)}</strong></div>`).join('')}</div><p class="procedure-evaluation"><strong>Évaluation par scénario : ${item.evaluation.status === 'not_applicable' ? 'sans objet' : 'non évaluée'}.</strong> ${esc(reason)}</p>`;
+  }
 
   function message(text, error = false) {
     const element = byId('procedure-form-error');
     element.textContent = text || ''; element.hidden = !text;
     element.classList.toggle('procedure-error', error);
+    const notice = byId('procedure-catalogue-message');
+    notice.textContent = text || ''; notice.hidden = !text;
   }
 
   function card(procedure) {
@@ -62,6 +143,7 @@ const ProcedureUI = (() => {
 
   function lockForm() {
     const locked = state.running || state.starting;
+    byId('procedure-tab-launch').disabled = locked;
     byId('procedure-form').querySelectorAll('input, select, button').forEach(input => { input.disabled = locked; });
     const missing = state.selected?.availability?.available === false;
     byId('procedure-launch').disabled = locked || missing || !state.selected;
@@ -75,6 +157,7 @@ const ProcedureUI = (() => {
     const procedure = state.catalogue.find(item => item.id === identifier);
     if (!procedure) return;
     state.selected = procedure; state.runId = null; state.viewingHistory = false;
+    byId('procedure-detail').hidden = true;
     state.steps = list(procedure.steps).map(step => ({...step, status: 'pending'}));
     ++state.request;
     renderCatalogue(); renderSteps(); message(''); setStatus('pending', 'Les étapes s’actualiseront au lancement.');
@@ -137,6 +220,9 @@ const ProcedureUI = (() => {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(_formatErrDetail(data.detail || `HTTP ${response.status}`));
       state.runId = null; state.liveId = null; state.running = true; state.controlStatus = null;
+      byId('procedure-record-description').textContent = `${state.selected.title} — démarrage`;
+      byId('procedure-run-summary').innerHTML = '';
+      showDetail(true);
       state.steps = list(state.selected.steps).map(step => ({...step, status: 'pending'}));
       renderSteps(); setStatus('running', 'Lancement accepté. Préparation de l’exécution…');
       byId('procedure-results').innerHTML = '<p class="procedure-empty">Collecte des observations en cours…</p>';
@@ -191,10 +277,10 @@ const ProcedureUI = (() => {
     const status = progress.status || data?.status || results.status || data?.audit?.run_status;
     if (status) setStatus(status, state.viewingHistory ? 'Exécution enregistrée. Les étapes et les observations ci-dessous proviennent de son dossier.' : undefined);
     const identity = data?.procedure || results.procedure || progress.procedure;
-    if (state.viewingHistory) {
+    if (identity || state.viewingHistory) {
       const known = state.catalogue.some(item => item.id === identity?.id);
-      byId('procedure-description').innerHTML = `<div class="procedure-description-top"><span class="procedure-card-category">Exécution enregistrée</span><span class="procedure-version">${identity?.version ? `Version ${esc(identity.version)} enregistrée` : 'Version non enregistrée'}</span></div><h3>${esc(identity?.title || 'Procédure automatisée')}</h3><p class="procedure-mono">${esc(state.runId)}</p>${known ? '<button type="button" class="procedure-secondary" id="procedure-prepare-new">Préparer une nouvelle exécution</button>' : ''}`;
-      byId('procedure-prepare-new')?.addEventListener('click', () => select(identity.id));
+      byId('procedure-record-description').innerHTML = `<span>${state.running ? 'Exécution en cours' : 'Exécution enregistrée'} · ${identity?.version ? `Version ${esc(identity.version)}` : 'Version non enregistrée'}</span><h3>${esc(identity?.title || 'Procédure automatisée')}</h3><span class="procedure-mono">${esc(state.runId)}</span>${known && !state.running ? '<button type="button" class="procedure-secondary" id="procedure-prepare-new">Relancer cette procédure</button>' : ''}<a class="procedure-permalink" href="#automation/${encodeURIComponent(state.runId || '')}">Lien vers cette exécution</a>`;
+      byId('procedure-prepare-new')?.addEventListener('click', () => { select(identity.id); setSection('launch'); });
     }
     if (!data?.available) {
       const reason = data?.reason === 'procedure_results_not_recorded' ? 'Cette ancienne exécution ne possède pas de résultats structurés. Son résumé reste disponible dans le dashboard.' : data?.reason;
@@ -216,9 +302,10 @@ const ProcedureUI = (() => {
     const request = ++state.request;
     let data;
     try {
-      const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/procedure-results`);
+      const [response, summary] = await Promise.all([fetch(`/api/runs/${encodeURIComponent(runId)}/procedure-results`), fetchJSON(`/api/procedures/runs/${encodeURIComponent(runId)}`)]);
       data = await response.json();
       if (!response.ok) data = {available: false, reason: `Résultats indisponibles : ${_formatErrDetail(data.detail || `HTTP ${response.status}`)}`};
+      if (request === state.request && state.runId === runId) renderSummary(summary);
     } catch (_) { data = {available: false, reason: 'Connexion aux résultats impossible. Actualisez pour réessayer.'}; }
     if (request !== state.request || state.runId !== runId) return;
     if (data) renderResults(data);
@@ -227,23 +314,36 @@ const ProcedureUI = (() => {
   async function showRun(runId) {
     if (state.running) {
       if (state.liveId !== runId) message('Une procédure est en cours. Son suivi reste affiché jusqu’à sa fin.', true);
-      else await sync();
+      else { await sync(); showDetail(true); }
       return;
     }
     state.runId = runId; state.viewingHistory = true; state.steps = []; renderSteps(); renderCatalogue();
+    showDetail();
     byId('procedure-form').hidden = true; byId('procedure-dashboard').hidden = false;
-    byId('procedure-description').innerHTML = '<p class="procedure-empty">Lecture de l’exécution enregistrée…</p>';
+    byId('procedure-record-description').textContent = 'Lecture de l’exécution enregistrée…';
+    byId('procedure-run-summary').innerHTML = '';
     byId('procedure-results').innerHTML = '<p class="procedure-empty">Chargement des observations…</p>';
     setStatus('pending', 'Lecture des observations enregistrées…');
     await loadResults(runId);
+    if (state.runId === runId) {
+      showDetail(true);
+      if (typeof window !== 'undefined') window.history.replaceState(null,'',`#automation/${encodeURIComponent(runId)}`);
+    }
   }
 
   async function history() {
-    const data = await fetchJSON('/api/runs');
-    if (!Array.isArray(data)) return;
-    const runs = data.filter(run => !run.sealed && ['scripted', 'rules'].includes(run.runner_kind)).slice(0, 8);
-    byId('procedure-history').innerHTML = runs.length ? runs.map(run => `<button type="button" class="procedure-history-item" data-procedure-run="${esc(run.id)}"><strong>${esc(run.runner_kind === 'rules' ? 'Audit automatique' : state.catalogue.find(item => item.id === run.script_id)?.title || 'Procédure automatisée')}</strong><span>${esc(run.scenario || run.target_network || 'Diagnostic hors ligne')}</span><span>${esc(label(run.status))} · ${esc(run.id.replace(/_/g, ' '))}</span></button>`).join('') : '<p class="procedure-empty">Aucune automatisation enregistrée. Votre première exécution apparaîtra ici.</p>';
-    byId('procedure-history').querySelectorAll('[data-procedure-run]').forEach(button => button.addEventListener('click', () => showRun(button.dataset.procedureRun)));
+    const request = ++state.pageRequest;
+    const query = `offset=${state.pageOffset}&limit=${state.pageLimit}&include_diagnostics=${state.includeDiagnostics}&procedure_id=${encodeURIComponent(state.filterProcedure)}&target=${encodeURIComponent(state.filterTarget)}`;
+    const data = await fetchJSON(`/api/procedures/runs?${query}`);
+    if (request !== state.pageRequest) return;
+    byId('procedure-overview-error').hidden = Array.isArray(data?.items);
+    if (!Array.isArray(data?.items)) {
+      byId('procedure-overview-error').textContent = 'Impossible de charger les exécutions. Cliquez sur Actualiser pour réessayer.';
+      byId('procedure-run-rows').innerHTML = ''; byId('procedure-page-info').textContent = 'Indisponible';
+      byId('procedure-prev').disabled = true; byId('procedure-next').disabled = true;
+      return;
+    }
+    renderOverview(data);
   }
 
   async function scenarios() {
@@ -270,11 +370,13 @@ const ProcedureUI = (() => {
         if (procedure && (state.viewingHistory || state.selected?.id !== procedure)) select(procedure);
       }
       state.running = true; state.viewingHistory = false; state.liveId = id; state.runId = id;
+      showDetail();
       state.controlStatus = status.stopping ? 'stopping' : status.lab_waiting ? 'waiting' : null;
       setStatus(status.stopping ? 'stopping' : status.lab_waiting ? 'waiting' : 'running', status.stopping ? 'Arrêt demandé. Les opérations en cours et le nettoyage doivent encore se terminer.' : status.lab_waiting ? 'En attente de la réservation du laboratoire.' : 'Exécution en cours. Les observations restent intermédiaires.');
       await loadResults(id);
     } else if (!status.running && state.running) {
       state.running = false;
+      byId('procedure-close-detail').hidden = false;
       setStatus(status.run_status || 'failed');
       if (state.liveId) await loadResults(state.liveId);
       byId('procedure-activity').textContent = 'Exécution terminée. Les observations et les traces disponibles sont présentées ci-dessous.';
@@ -310,6 +412,7 @@ const ProcedureUI = (() => {
     if (['deploy_start', 'deploy_done', 'phase_done', 'phase_start', 'teardown_done', 'procedure_progress'].includes(event.type) && state.runId) loadResults(state.runId);
     if (['runner_done', 'pipeline_done'].includes(event.type) && id === state.liveId) {
       state.running = false; setStatus(event.status || 'failed', 'Exécution terminée. Les observations et les traces disponibles sont présentées ci-dessous.');
+      byId('procedure-close-detail').hidden = false;
       lockForm(); loadResults(id); history();
     }
   }
@@ -323,8 +426,13 @@ const ProcedureUI = (() => {
       if (!Array.isArray(data?.procedures)) throw new Error('Catalogue indisponible. Actualisez pour réessayer.');
       state.catalogue = data.procedures; state.ready = true;
       select(state.catalogue.find(item => !item.diagnostic)?.id);
+      setSection(state.section);
       byId('procedure-catalogue-message').hidden = true;
       await Promise.all([scenarios(), history()]); await sync();
+      if (typeof window !== 'undefined' && !state.running) {
+        const route = window.location.hash.match(/^#automation\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/);
+        if (route) await showRun(route[1]);
+      }
     } catch (error) {
       byId('procedure-catalogue-message').textContent = error.message;
       byId('procedure-catalogue-message').hidden = false;
@@ -332,6 +440,13 @@ const ProcedureUI = (() => {
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    ['results','launch'].forEach(section => byId(`procedure-tab-${section}`).addEventListener('click', () => setSection(section)));
+    byId('procedure-close-detail').addEventListener('click', () => { if (state.running) return; state.runId = null; state.viewingHistory = false; ++state.request; byId('procedure-detail').hidden = true; clearRoute(); });
+    for (const [id,key] of [['procedure-filter','filterProcedure'],['procedure-target-filter','filterTarget'],['procedure-include-diagnostics','includeDiagnostics']]) {
+      byId(id).addEventListener('change', () => { state[key] = key === 'includeDiagnostics' ? byId(id).checked : byId(id).value; state.pageOffset = 0; history(); });
+    }
+    byId('procedure-prev').addEventListener('click', () => { state.pageOffset = Math.max(0,state.pageOffset - state.pageLimit); history(); });
+    byId('procedure-next').addEventListener('click', () => { state.pageOffset += state.pageLimit; history(); });
     byId('procedure-form').addEventListener('submit', launch);
     byId('procedure-refresh').addEventListener('click', async () => {
       if (state.running || state.starting) { await sync(); return; }
@@ -348,5 +463,5 @@ const ProcedureUI = (() => {
     byId('procedure-dashboard').addEventListener('click', () => { switchView('main'); if (state.runId) viewRun(state.runId); });
     setInterval(() => { if (!document.hidden && state.ready && (state.running || !byId('procedures-view').hidden)) sync(); }, 4000);
   });
-  return {open, onEvent, buildRequest, renderInventory, renderAudit, showRun};
+  return {open, onEvent, buildRequest, renderInventory, renderAudit, showRun, renderOverview, renderSummary, setSection};
 })();

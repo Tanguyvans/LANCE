@@ -8,9 +8,12 @@ Ne pas confondre ces tests logiciels avec les
 [scénarios d’évaluation du benchmark](../docs/benchmark/v1/scenarios.md).
 
 `test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
-des outils. `test_procedures_ui.py` exerce les requêtes guidées, les résultats,
-l’échappement des observations et les échecs historiques sans topologie, avec
-Node.js et un DOM simulé. `test_procedure_progress.py` couvre les étapes réelles,
+des outils. `test_procedure_runs.py` couvre le tableau paginé des exécutions,
+les filtres, les mesures absentes, les artefacts invalides et la confidentialité
+des runs scellés. Les observations restent distinctes d’un score de benchmark.
+`test_procedures_ui.py` exerce les requêtes guidées, le tableau, les liens directs,
+les résultats, l’échappement des observations et les échecs historiques sans
+topologie, avec Node.js et un DOM simulé. `test_procedure_progress.py` couvre les étapes réelles,
 les contrôles incomplets, l’attente du laboratoire et la lecture bornée des
 artefacts publics. `test_run_modes.py` vérifie aussi l’inventaire TCP déterministe,
 ses limites de portée, d’hôtes, de temps et d’appels, les preuves et les arrêts.

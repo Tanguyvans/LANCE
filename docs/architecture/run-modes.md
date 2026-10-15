@@ -26,8 +26,16 @@ promet pas des runs concurrents : l'API conserve un seul run actif par instance.
 
 ## Catalogue et lancement guidé
 
-L’onglet **Automatisations** et le bouton **Choisir une automatisation** du
-dashboard ouvrent le catalogue fourni par `GET /api/procedures`. Chaque fiche
+L’onglet **Automatisations** ouvre les **Résultats des exécutions** : un tableau
+filtrable par procédure et scénario ou réseau, paginé par dix exécutions. Il
+affiche les observations, la disponibilité d’une évaluation, la durée mesurée,
+les appels d’outils et le statut. Les diagnostics hors ligne sont masqués par
+défaut et peuvent être inclus explicitement. **Consulter** ouvre les résultats et
+les preuves, puis les étapes dans un panneau replié pour une exécution terminée.
+Le suivi d’une exécution en cours garde les étapes ouvertes.
+
+**Nouvelle exécution** et le bouton **Choisir une automatisation** du dashboard
+ouvrent le catalogue fourni par `GET /api/procedures`. Chaque fiche
 décrit son objectif, sa cible, ses étapes, les outils requis, ses effets et ses
 sorties. Le catalogue serveur porte un identifiant, une version et une empreinte
 de l’implémentation ; il ne charge aucun modèle. La disponibilité indique les
@@ -69,6 +77,24 @@ l’arrêt coopératif existant ; un playbook en cours peut encore devoir se ter
 avant le nettoyage. Les résultats et l’historique restent consultables après
 rechargement. Une exécution historique est présentée séparément de la préparation
 d’un nouveau lancement.
+
+`GET /api/procedures/runs` fournit les résumés paginés ;
+`GET /api/procedures/runs/{id}` fournit les mesures d’une exécution publique.
+Les observations sont calculées depuis les artefacts structurés enregistrés,
+sans transformer les déclarations d’un audit en confirmations. Les mesures
+absentes restent indisponibles. La durée totale vient des horodatages de début
+et de fin ; une durée de secours issue des outils est signalée comme telle.
+Les durées cumulées des agents ne remplacent pas le temps réellement écoulé.
+Un lien `/#automation/{id}` ouvre directement les détails de l’exécution.
+
+La colonne **Évaluation par scénario** indique actuellement **Non évaluée** :
+ces procédures n’enregistrent pas de comparaison aux résultats attendus, ni de
+score de détection. Un nombre de services trouvés n’est pas un taux de réussite ;
+**Terminé** décrit la fin de l’exécution. Le scénario est affiché uniquement s’il
+est enregistré dans les métadonnées ; un réseau CIDR seul ne permet pas de le
+déduire. Les diagnostics affichent **Sans objet**. Cette vue permet donc de lire
+les observations et les ressources utilisées, sans établir un classement de
+qualité entre scénarios.
 
 `GET /api/runs/{id}/procedure-results` fournit les observations structurées des
 scripts et la projection de preuves commune des audits par règles. Les fichiers
