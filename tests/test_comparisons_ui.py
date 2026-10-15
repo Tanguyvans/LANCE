@@ -90,3 +90,16 @@ def test_live_pair_prioritizes_steps_and_shows_measures_only_after_completion():
     assert output["resultsHidden"] is True and output["stepsOpen"] is True
     output = render(pair())
     assert output["resultsHidden"] is False and output["stepsOpen"] is False
+
+
+def test_unlimited_pair_and_historical_limits_are_distinguished():
+    data = pair()
+    data["config"].update(max_duration_s=None, max_cost_usd=None)
+    output = render(data)
+    assert "sans plafond de durée" in output["context"]
+    assert "sans plafond de coût" in output["context"]
+    assert "null secondes" not in output["context"]
+    data["config"].update(max_duration_s=1200, max_cost_usd=2)
+    output = render(data)
+    assert "1200 secondes maximum" in output["context"]
+    assert "$2.0000 maximum" in output["context"]

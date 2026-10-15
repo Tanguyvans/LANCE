@@ -598,15 +598,14 @@
     <form id="comparison-form" class="procedure-panel comparison-form">
       <div class="comparison-fields"><label>Scénario public<select id="comparison-scenario" required><option value="">Chargement…</option></select></label><label>Modèle de l’agent<select id="comparison-model" required><option value="">Chargement…</option></select></label></div>
       <p id="comparison-target" class="procedure-help"></p>
-      <details class="procedure-limits"><summary>Ajuster les limites et l’ordre</summary><div class="comparison-fields">
+      <details class="procedure-limits"><summary>Ordre des audits et appels d’outils</summary><div class="comparison-fields">
         <label>Appels d’outils maximum par audit<input id="comparison-calls" type="number" min="1" max="2000" value="200" required></label>
-        <label>Temps maximal par audit (secondes)<input id="comparison-duration" type="number" min="1" max="3600" value="600" required></label>
-        <label>Plafond d’usage LLM (USD)<input id="comparison-cost" type="number" min="0.01" max="100" step="0.01" value="2" required></label>
         <label>Ordre des audits<select id="comparison-order"><option value="rules-first">Règles puis agent LLM</option><option value="llm-first">Agent LLM puis règles</option></select></label>
-      </div><p class="procedure-help">Le temps limite couvre chaque audit, hors attente, préparation et nettoyage. Une opération en cours peut dépasser sa limite. Le plafond LLM repose sur l’usage déclaré ; les coûts d’infrastructure et de revue humaine ne sont pas mesurés.</p></details>
+      </div></details>
+      <p class="procedure-help">Aucun plafond de durée ou de coût. Les audits poursuivent leurs étapes jusqu’à leur fin ou votre demande d’arrêt, dans la limite du nombre d’appels d’outils choisi.</p>
       <p class="procedure-help">La préparation peut supprimer les scénarios déjà présents dans le labo partagé. Ce parcours couvre les scénarios publics avec équipements TCP dans un seul /24. Les vérifications de préparation ne certifient pas toutes les propriétés attendues.</p>
       <p id="comparison-error" role="alert" class="procedure-error" hidden></p>
-      <div class="procedure-launch-row"><p>2 audits · profil complet · mêmes limites · nettoyage final</p><button id="comparison-launch" class="procedure-primary" type="submit" disabled>Lancer la comparaison</button></div>
+      <div class="procedure-launch-row"><p>2 audits · profil complet · sans plafond de durée ou de coût · nettoyage final</p><button id="comparison-launch" class="procedure-primary" type="submit" disabled>Lancer la comparaison</button></div>
     </form>
     <div class="comparison-history-heading"><h3>Comparaisons enregistrées</h3><button type="button" class="procedure-secondary" id="comparison-refresh">Actualiser</button></div>
     <p id="comparison-history-message" class="procedure-empty"></p>

@@ -61,10 +61,19 @@ local d'une autre machine ne détermine pas la destination du runner.
 
 Dans **Automatisations → Comparer règles / LLM**, choisir un scénario public et
 un modèle disponible dans le registre. Le formulaire affiche le réseau et le
-nombre d’équipements TCP publics. Les limites communes sont préremplies à
-200 appels et 600 secondes par audit, avec un plafond LLM de 2 USD ; elles sont
-ajustables, ainsi que l’ordre règles/LLM. Ces valeurs sont des limites de
-lancement, pas des budgets scientifiquement calibrés.
+nombre d’équipements TCP publics. Ce parcours n’applique aucun plafond de durée
+ou de coût, ni de délai maximal d’analyse par équipement. La durée et l’usage
+restent mesurés. Le nombre maximal d’appels d’outils est prérempli à 200 par
+audit ; il est ajustable, ainsi que l’ordre règles/LLM. Le bouton d’arrêt
+interrompt les deux audits et déclenche le nettoyage.
+
+L’API exige `max_duration_s=null` et `max_cost_usd=null` (ou leur absence).
+Le contrôleur active explicitement `comparison_unlimited` pour les deux
+workers ; ce choix et l’absence de délai par équipement sont archivés et
+contrôlés par le comparateur. Les autres modes, expériences CLI et campagnes
+conservent leurs contrats et leurs limites. Les délais techniques des requêtes
+réseau restent applicables. Les résultats historiques conservent leurs plafonds
+d’origine dans l’affichage et les exports.
 
 **Lancer la comparaison** appelle `POST /api/pipeline/start` avec
 `runner_kind="comparison"`. Le coordinateur applicatif n’autorise qu’une

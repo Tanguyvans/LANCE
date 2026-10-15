@@ -164,11 +164,10 @@ class StartRequest(BaseModel):
                     or self.phases not in (None, [3, 4]) or self.execution_profile not in {"auto", "full"}):
                 raise ValueError("La comparaison utilise les phases 3–4, le profil complet et le nettoyage final obligatoire.")
             self.max_tool_calls = 200 if self.max_tool_calls is None else self.max_tool_calls
-            self.max_duration_s = 600 if self.max_duration_s is None else self.max_duration_s
-            self.max_cost_usd = 2 if self.max_cost_usd is None else self.max_cost_usd
-            if (self.max_tool_calls > 2000 or not math.isfinite(self.max_duration_s) or self.max_duration_s > 3600
-                    or not math.isfinite(self.max_cost_usd) or not 0 < self.max_cost_usd <= 100):
-                raise ValueError("Limites : 2000 appels, 3600 secondes et 100 USD maximum par bras.")
+            if self.max_duration_s is not None or self.max_cost_usd is not None:
+                raise ValueError("Les comparaisons s’exécutent sans plafond de durée ou de coût. Actualisez l’interface.")
+            if self.max_tool_calls > 2000:
+                raise ValueError("2000 appels d’outils maximum par audit.")
             self.execution_profile = "full"
             self.comparison_order = self.comparison_order or "rules-first"
             return self

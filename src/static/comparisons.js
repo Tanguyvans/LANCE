@@ -55,7 +55,11 @@ const ComparisonUI = (() => {
   function render(data) {
     el('comparison-detail').hidden = false;
     el('comparison-detail-heading').textContent = `S${data.scenario.id} · ${data.scenario.name}`;
-    el('comparison-context').textContent = `${date(data.started_at)} · ${data.public_environment?.target_network || 'Réseau enregistré dans l’inventaire'} · ${data.config.model} · ${data.order.map(p=>p==='rules'?'Règles':'Agent LLM').join(' puis ')} · ${data.config.max_tool_calls} appels et ${data.config.max_duration_s} secondes maximum par audit`;
+    const duration = measured(data.config.max_duration_s)
+      ? `${data.config.max_duration_s} secondes maximum par audit` : 'sans plafond de durée';
+    const cost = measured(data.config.max_cost_usd)
+      ? `${number(data.config.max_cost_usd,'money')} maximum par audit` : 'sans plafond de coût';
+    el('comparison-context').textContent = `${date(data.started_at)} · ${data.public_environment?.target_network || 'Réseau enregistré dans l’inventaire'} · ${data.config.model} · ${data.order.map(p=>p==='rules'?'Règles':'Agent LLM').join(' puis ')} · ${data.config.max_tool_calls} appels maximum par audit · ${duration} · ${cost}`;
     const result = data.comparison;
     const finished = !['running','pending'].includes(data.status);
     el('comparison-results').hidden = !finished;
@@ -176,8 +180,8 @@ const ComparisonUI = (() => {
     const selected=el('comparison-model').selectedOptions[0];
     const body={runner_kind:'comparison',scenario_id:el('comparison-scenario').value,
       provider:selected?.dataset.provider,model:selected?.dataset.model,
-      max_tool_calls:Number(el('comparison-calls').value),max_duration_s:Number(el('comparison-duration').value),
-      max_cost_usd:Number(el('comparison-cost').value),comparison_order:el('comparison-order').value};
+      max_tool_calls:Number(el('comparison-calls').value),max_duration_s:null,
+      max_cost_usd:null,comparison_order:el('comparison-order').value};
     if (!body.scenario_id || !body.provider || !body.model) {error('Choisissez un scénario et un modèle.');return;}
     state.starting=true;lock();
     try {

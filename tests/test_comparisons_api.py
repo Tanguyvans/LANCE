@@ -26,8 +26,14 @@ def client(tmp_path, monkeypatch):
 
 def test_comparison_requires_fixed_common_contract():
     request = pipeline.StartRequest(**BODY)
-    assert request.max_tool_calls == 200 and request.max_duration_s == 600 and request.max_cost_usd == 2
+    assert request.max_tool_calls == 200
+    assert request.max_duration_s is None and request.max_cost_usd is None
     assert request.execution_profile == "full" and request.comparison_order == "rules-first"
+
+
+def test_explicit_null_limits_do_not_restore_hidden_defaults():
+    request = pipeline.StartRequest(**(BODY | {"max_duration_s": None, "max_cost_usd": None}))
+    assert request.max_duration_s is None and request.max_cost_usd is None
 
 
 @pytest.mark.parametrize("patch", [
@@ -35,9 +41,10 @@ def test_comparison_requires_fixed_common_contract():
     {"phases": [1, 3, 4]}, {"target_network": "192.0.2.0/24"}, {"execution_profile": "compact"},
     {"architecture": "flat"}, {"blind": True}, {"max_tool_calls": 2001}, {"max_duration_s": float("nan")},
     {"max_cost_usd": 0}, {"max_cost_usd": float("inf")}, {"arbitrary_command": "anything"},
+    {"max_duration_s": 600}, {"max_cost_usd": 2},
     {"audit_inventory": {"vulnerabilities": []}},
 ])
-def test_mixed_or_unbounded_comparison_contracts_are_rejected(patch):
+def test_invalid_or_capped_comparison_contracts_are_rejected(patch):
     with pytest.raises(ValidationError):
         pipeline.StartRequest(**(BODY | patch))
 

@@ -71,6 +71,8 @@ def make_run(tmp_path, inventory, policy="rules", **overrides):
 def simulated_llm(run):
     """Protocol double, not an experimental LLM treatment or a measured result."""
     def chat(**kwargs):
+        if run.comparison_unlimited:
+            assert kwargs["deadline"] is None
         kwargs["cost_tracker"].record_turn(10, 5, 1)
         tools = {tool["name"]: tool["function"] for tool in kwargs["tools"]}
         if kwargs["user_message"].startswith("Review scan"):
@@ -98,12 +100,14 @@ def truth_file(tmp_path, *, positive=False):
 
 
 @pytest.mark.parametrize("positive", [False, True])
-def test_real_pipeline_rules_then_llm_pair(tmp_path, inventory, offline_tools, monkeypatch, positive):
+@pytest.mark.parametrize("unlimited", [False, True])
+def test_real_pipeline_rules_then_llm_pair(tmp_path, inventory, offline_tools, monkeypatch, positive, unlimited):
     calls, behavior = offline_tools
     behavior["positive"] = positive
     # Even price discovery is forbidden on the no-model path.
     monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda *_: pytest.fail("rules accessed pricing"))
-    run = make_run(tmp_path, inventory)
+    settings = {"max_duration_s": None, "max_cost_usd": None, "comparison_unlimited": True} if unlimited else {}
+    run = make_run(tmp_path, inventory, **settings)
     result = run.run()
     assert result == {"vuln_analysis": "completed", "exploitation": "completed"}
     assert not (run.run_dir / "02_recon.md").exists()
@@ -131,9 +135,14 @@ def test_real_pipeline_rules_then_llm_pair(tmp_path, inventory, offline_tools, m
         assert evaluated.verified_f1 is None
     monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda *_: None)
     provider = SimpleNamespace(model="offline-model", provider="offline-test")
-    llm = make_run(tmp_path, inventory, "llm", provider=provider)
+    llm = make_run(tmp_path, inventory, "llm", provider=provider, **settings)
     simulated_llm(llm)
     assert llm.run() == {"vuln_analysis": "completed", "exploitation": "completed"}
+    if unlimited:
+        metadata = json.loads((llm.run_dir / "run_meta.json").read_text())
+        assert metadata["comparison_unlimited"] is True
+        assert metadata["analysis_limits"]["device_timeout_s"] is None
+        assert metadata["max_duration_s"] is None and metadata["max_cost_usd"] is None
     pair = compare_runs(run.run_dir, llm.run_dir, truth)
     assert pair["comparable"], pair["incomparability_reasons"]
     assert pair["delta_llm_minus_rules"]["filtered.false_positives"] == 0
@@ -155,6 +164,19 @@ def test_real_pipeline_rules_then_llm_pair(tmp_path, inventory, offline_tools, m
     missing_proof = compare_runs(run.run_dir, llm.run_dir, truth)
     assert not missing_proof["comparable"]
     assert "llm: missing evaluable stage artifacts" in missing_proof["incomparability_reasons"]
+
+
+def test_unlimited_comparison_preserves_manual_stop_after_long_runtime_and_large_usage(tmp_path, inventory, offline_tools, monkeypatch):
+    from src.agent.core.executor import check_execution_limits
+    run = make_run(tmp_path, inventory, max_duration_s=None, max_cost_usd=None, comparison_unlimited=True)
+    run._run_started = time.monotonic() - 86400
+    run._stop_event = threading.Event()
+    monkeypatch.setattr(run.tracker, "total_cost", lambda: 1000)
+    assert run.tracker.max_cost_usd is None
+    check_execution_limits(run)
+    run._stop_event.set()
+    with pytest.raises(RunStopped):
+        check_execution_limits(run)
 
 
 def test_rules_budget_stops_scanner_and_persists_terminal_state(tmp_path, inventory, offline_tools):
@@ -209,7 +231,9 @@ def test_common_executor_stop_deadline_and_archive_failure(tmp_path, inventory, 
 
 @pytest.mark.parametrize("change", [
     {"experiment_scope": None}, {"execution_profile": "auto"}, {"phases": [4]},
-    {"max_tool_calls": None}, {"max_duration_s": float("nan")}, {"scenario_id": "1"},
+    {"max_tool_calls": None}, {"max_duration_s": None}, {"max_duration_s": float("nan")}, {"scenario_id": "1"},
+    {"comparison_unlimited": True},
+    {"comparison_unlimited": True, "max_duration_s": None, "max_cost_usd": 1},
     {"dry_run": True}, {"phase_models": {3: "model"}},
 ])
 def test_invalid_experiment_rejected_before_run_directory(tmp_path, inventory, change):

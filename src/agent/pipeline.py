@@ -104,6 +104,7 @@ class Pipeline(
         audit_inventory: dict | None = None,
         max_tool_calls: int | None = None,
         max_duration_s: float | None = None,
+        comparison_unlimited: bool = False,  # Opt-in reserved for the guided public pair controller.
     ):
         from src.agent.audit_experiment import validate_configuration
         self.rules_scenario_audit = (
@@ -119,6 +120,7 @@ class Pipeline(
             phases=phases, max_tool_calls=max_tool_calls, max_duration_s=max_duration_s,
             max_cost_usd=max_cost_usd,
             scenario_rules=self.rules_scenario_audit,
+            comparison_unlimited=comparison_unlimited,
             incompatible=bool(scenario_id is not None or custom_config is not None or blind
                               or execution_context is not None or phase_models or dry_run
                               or benchmark_split is not None or target_network is not None),
@@ -130,6 +132,7 @@ class Pipeline(
         self.decision_policy = decision_policy
         self.experiment_scope = experiment_scope
         self.max_duration_s = max_duration_s
+        self.comparison_unlimited = comparison_unlimited
         if self.audit_inventory is not None:
             target_network = self.audit_inventory["target_network"]
             manage_scenario = False
@@ -605,7 +608,7 @@ class Pipeline(
         }
         if self.experiment_scope:
             from src.agent.audit_experiment import digest, resource_manifest, analysis_limits, POLICY_SCHEMA_VERSION, RULES_VERSION
-            self.experiment_analysis_limits = analysis_limits()
+            self.experiment_analysis_limits = analysis_limits(comparison_unlimited=self.comparison_unlimited)
             run_meta.update({
                 "policy_schema_version": POLICY_SCHEMA_VERSION,
                 "decision_policy": self.decision_policy,
@@ -617,6 +620,8 @@ class Pipeline(
                 "workers": 1,
                 "analysis_limits": self.experiment_analysis_limits,
             })
+            if self.comparison_unlimited:
+                run_meta["comparison_unlimited"] = True
         if self.rules_scenario_audit:
             from src.agent.audit_experiment import RULES_VERSION
             run_meta.update({"runner_kind": "rules", "decision_policy": "rules",

@@ -170,7 +170,8 @@ class PairRunner:
         worker = Pipeline(provider=provider, decision_policy=policy, experiment_scope="analysis-verification",
                           audit_inventory=inventory, execution_profile="full", phases=[3, 4],
                           max_tool_calls=self.config["max_tool_calls"], max_duration_s=self.config["max_duration_s"],
-                          max_cost_usd=self.config["max_cost_usd"])
+                          max_cost_usd=self.config["max_cost_usd"],
+                          comparison_unlimited=(self.config["max_duration_s"] is None and self.config["max_cost_usd"] is None))
         self.data["arms"][policy] = worker.run_dir.name
         self.save()
 

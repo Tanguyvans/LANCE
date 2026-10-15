@@ -10,7 +10,7 @@ from src.benchmark import policy_pair_runner as pairs
 
 
 CONFIG = {"scenario_id": "1", "provider": "minimax", "model": "test-model",
-          "max_tool_calls": 20, "max_duration_s": 60, "max_cost_usd": 1,
+          "max_tool_calls": 20, "max_duration_s": None, "max_cost_usd": None,
           "comparison_order": "rules-first"}
 
 
@@ -103,6 +103,8 @@ def test_both_arms_share_public_inventory_and_limits_and_oracle_is_post_run(simu
                      "provider-llm", "audit-llm", "cleanup", "oracle", "compare"]
     left, right = constructors
     assert left["provider"] is None and right["provider"].model == "test-model"
+    assert left["comparison_unlimited"] is True and right["comparison_unlimited"] is True
+    assert left["max_duration_s"] is None and left["max_cost_usd"] is None
     for field in ("audit_inventory", "max_tool_calls", "max_duration_s", "max_cost_usd", "execution_profile", "phases"):
         assert left[field] == right[field]
     assert left["phases"] == [3, 4] and left["execution_profile"] == "full"

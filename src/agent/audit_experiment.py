@@ -97,12 +97,15 @@ def load_inventory(path: str | Path) -> dict:
 def validate_configuration(*, decision_policy, experiment_scope, inventory,
                            execution_profile, phases, max_tool_calls,
                            max_duration_s, max_cost_usd, incompatible=False,
-                           scenario_rules=False):
+                           scenario_rules=False, comparison_unlimited=False):
     """Validate before constructing a provider or creating execution artifacts."""
     if decision_policy not in {"rules", "llm"}:
         raise ValueError("decision_policy must be rules or llm")
     positive_limit(max_tool_calls, "max_tool_calls", integer=True)
     positive_limit(max_duration_s, "max_duration_s")
+    if comparison_unlimited and (experiment_scope != EXPERIMENT_SCOPE or incompatible
+                                 or max_duration_s is not None or max_cost_usd is not None):
+        raise ValueError("Unlimited UI comparisons require an inventory experiment with null cost/time limits")
     if experiment_scope is None:
         if scenario_rules:
             if decision_policy != "rules" or inventory is not None:
@@ -121,7 +124,7 @@ def validate_configuration(*, decision_policy, experiment_scope, inventory,
         raise ValueError("Inventory experiments cannot use scenarios, deployment contracts, custom configurations, dry-run, blind mode, splits, target-network or phase-model overrides")
     if execution_profile != "full" or (phases is not None and list(phases) != [3, 4]):
         raise ValueError("Inventory experiments require an explicit full profile and phases 3 4 only")
-    if max_tool_calls is None or max_duration_s is None:
+    if max_tool_calls is None or (max_duration_s is None and not comparison_unlimited):
         raise ValueError("Inventory experiments require max_tool_calls and max_duration_s")
     positive_limit(max_cost_usd, "max_cost_usd")
     return validate_inventory(inventory)
@@ -138,7 +141,7 @@ def resource_manifest(root: Path | None = None) -> str:
     return hasher.hexdigest()
 
 
-def analysis_limits() -> dict:
+def analysis_limits(*, comparison_unlimited: bool = False) -> dict:
     """Capture effective environment-dependent recovery settings, without secrets."""
     from src.agent.phases.analysis.block_recovery import block_config
     try:
@@ -146,4 +149,4 @@ def analysis_limits() -> dict:
         timeout = max(30.0, timeout) if math.isfinite(timeout) else 240.0
     except ValueError:
         timeout = 240.0
-    return {"device_timeout_s": timeout, "block_recovery": block_config()}
+    return {"device_timeout_s": None if comparison_unlimited else timeout, "block_recovery": block_config()}
