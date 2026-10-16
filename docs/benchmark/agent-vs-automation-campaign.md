@@ -204,6 +204,30 @@ Les chemins sont relatifs au manifeste, jamais au répertoire courant du shell.
 
 ## Calculer le bilan hors ligne
 
+Pour le pilote historique d'octobre, le [registre des tentatives réconciliées](../../benchmarks/experiments/policy-comparison/reconciliation-2026-10-16.json)
+complète le plan gelé : 23 tentatives de campagne/calibration et les inspections
+sont conservées sans remplacer les reprises. Le plan historique n'a pas été
+rempli en choisissant un seul résultat pour les identifiants réexécutés.
+Son bilan seul décrit ses références locales vides, pas l'activité réelle.
+Les exports bruts récupérés restent dans `output/`, ignoré par Git.
+
+Le registre se régénère depuis les téléchargements locaux, sans accès réseau,
+modèle ou laboratoire :
+
+```bash
+python scripts/benchmark/reconcile_pilot.py \
+  --source output/policy-comparison/reconciliation-2026-10-16 \
+  --plan benchmarks/experiments/policy-comparison/pilot-2026-10.json \
+  --output benchmarks/experiments/policy-comparison/reconciliation-2026-10-16.json
+```
+
+Le dossier source contient les inventaires Actions, les journaux et artefacts
+par identifiant de workflow, et les copies de runs obtenues par les API nato.
+Chaque copie de comparaison n'est admise que si les deux bras ont été lancés
+dans cette tentative et si leurs références correspondent aux journaux.
+Les essais annulés gardent des coûts inconnus lorsqu'aucune mesure n'existe.
+Les précontrôles déclaratifs restent distincts d'une revue humaine.
+
 Depuis la racine du dépôt, le modèle vide peut déjà être inspecté :
 
 ```bash

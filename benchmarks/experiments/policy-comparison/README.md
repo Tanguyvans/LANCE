@@ -2,26 +2,29 @@
 
 ## Campagne active et reprise
 
-Le manifeste actif est [pilot-2026-10.json](pilot-2026-10.json), avec S1,
-S14, S15 et S1h. Le [journal de précontrôle](pilot-2026-10-preflight.md)
-conserve les essais de calibration et les changements de gel des 13–14 octobre.
-Le modèle générique ci-dessous ne décrit pas l'avancement de cette campagne.
+Le [plan gelé](pilot-2026-10.json) conserve les 12 paires prévues (S1, S14,
+S15, S1h, trois répétitions). Le [registre réconcilié du 16 octobre](reconciliation-2026-10-16.json)
+est le suivi opérationnel des tentatives déjà exécutées. Les chemins nuls du
+plan historique ne signifient plus « aucun essai exécuté » ; le registre relie
+chaque tentative à ses runs, artefacts Actions, précontrôles et ressources.
 
-Recalcul local du 2026-10-15 : configuration complète, 12 paires prévues,
-24 bras sans référence de run, zéro paire admissible. L'empreinte courante
-correspond au gel `b636f0a5…`. L'absence de références dans ce checkout
-n'exclut pas des artefacts présents sur nato.
+La réconciliation recense **15 tentatives de campagne et 8 de calibration**,
+ainsi que 13 workflows d'inspection, dont six ont lancé un diagnostic isolé.
+Sous le gel `b636f0a5…`, **8 tentatives de paires couvrent 7 des 12 paires
+prévues** : trois comparables et cinq incomparables. S1 r1 a été exécutée
+deux fois ; le second essai a atteint la durée limite et avait écrasé son
+résumé dans le dossier partagé. Les deux essais restent distincts.
 
-`next-trial.txt` désigne `s14-r1` ; consulter l'historique Actions, les archives
-sur nato et le verrou avant tout lancement. Les essais de calibration sous
-une ancienne empreinte ne doivent pas être réintégrés dans le gel courant.
-La lecture distante était bloquée le 2026-10-15. Le 2026-10-16, l'API GitHub
-est accessible : des workflows en succès existent pour S1 r1–r3, S14 r1–r3
-et S15 r1. Le pointeur `s14-r1` est donc à réconcilier avec ces exécutions.
-Le téléchargement des artefacts reste refusé par la politique réseau du cloud ;
-leur comparabilité n'est pas encore vérifiée. Voir le
-[relevé des runs](../../../objectifs/asiaccs-2027/README.md#reprise-distante-du-16-octobre-2026).
-Aucun essai n'a été lancé lors de cette reprise.
+Les preuves des trois premières paires S1 sont retrouvées par l'API de nato :
+six exports de runs, 214 fichiers, 725 entrées de journal d'outils ; les 18
+fichiers de métadonnées publiés initialement sont identiques. Leur
+comparabilité est recalculée hors ligne. La revue humaine de l'état initial
+et des preuves reste à faire. Voir le [journal détaillé](pilot-2026-10-preflight.md#réconciliation-complète-du-16-octobre).
+
+Restent sans exécution sous ce gel : **S15 r2–r3 et S1h r1–r3**.
+`next-trial.txt` porte maintenant `blocked-new-freeze-required` : l'ancien
+pointeur S14 r1 était périmé et le code courant ne correspond plus au gel.
+Aucun nouveau run ni déploiement n'a été lancé pendant cette reprise.
 
 ## Modèle générique
 
@@ -56,9 +59,10 @@ pour les commandes, la matrice D1 et le protocole de revue.
 ## Artefacts récupérés le 16 octobre
 
 Le blocage de téléchargement est levé après enregistrement des paramètres.
-Les comparaisons publiées donnent trois paires S1 comparables et quatre paires
-incomparables (S14 r1–r3, S15 r1 ; bras LLM à 200 appels). Les archives complètes
-et les précontrôles restent à réconcilier avant de remplir le manifeste.
+Le premier relevé de sept essais donnait trois paires S1 comparables et quatre
+paires incomparables (S14 r1–r3, S15 r1 ; bras LLM à 200 appels). Le registre
+complet ajoute la seconde tentative S1 r1, arrêtée à 1 800 s. Les anciens
+artefacts cumulatifs ne sont pas comptés comme de nouvelles exécutions.
 Voir le [journal détaillé](pilot-2026-10-preflight.md#récupération-des-artefacts-actions--2026-10-16).
 
 ## Manifeste historique et évolution de l'application

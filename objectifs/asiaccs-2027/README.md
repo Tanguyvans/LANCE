@@ -19,18 +19,21 @@ qui reste la source de vérité de l'exécution.
 
 ## Statut
 
-**Objectif retenu le 2026-10-12 ; instrument calibré, campagne à renseigner.**
-Le [journal de précontrôle](../../benchmarks/experiments/policy-comparison/pilot-2026-10-preflight.md)
-décrit des essais S1 des 13–14 octobre, dont une paire de calibration comparable.
-Ces essais sont conservés hors des 12 paires du pilote gelé ; ils ne démontrent
-pas un avantage général de l'agent LLM face aux règles.
+**Objectif retenu le 2026-10-12 ; suivi réconcilié le 2026-10-16, campagne incomplète.**
+Le [registre des tentatives](../../benchmarks/experiments/policy-comparison/reconciliation-2026-10-16.json)
+recense 15 tentatives de campagne, 8 de calibration et 13 inspections, dont six
+ont créé un diagnostic isolé. Sous le gel actuel, huit tentatives appariées
+couvrent sept des douze paires prévues : trois sont comparables et cinq
+incomparables. La seconde tentative S1 r1, arrêtée à la limite de durée,
+avait écrasé son premier résumé ; les deux résultats sont maintenant conservés.
 
-Reprise vérifiée le **2026-10-15** : le manifeste réel contient 12 paires prévues,
-24 bras sans référence de run et zéro paire admissible. Sa configuration est
-complète et l'empreinte des ressources du checkout correspond au gel
-`b636f0a5…`. Ce bilan décrit les références locales disponibles ; il ne prouve
-pas l'absence de nouvelles exécutions sur nato. L'historique Actions et l'état
-courant du laboratoire restent à consulter avant tout lancement.
+Les six exports des trois paires S1 comparables sont retrouvés via les API
+nato : 214 fichiers, 725 entrées de journal d'outils et concordance des 18
+fichiers de métadonnées publiés initialement. Le recalcul confirme leur
+comparabilité ; la revue humaine des preuves et des remises à zéro reste
+ouverte. Le [journal détaillé](../../benchmarks/experiments/policy-comparison/pilot-2026-10-preflight.md#réconciliation-complète-du-16-octobre)
+précise les références et les limites de l'export API. Aucun avantage général
+du LLM n'est démontré.
 
 ## Dates
 
@@ -74,18 +77,21 @@ courant du laboratoire restent à consulter avant tout lancement.
 
 ## Suite et points ouverts
 
-1. Récupérer l'état courant du workflow pilote sur nato et ses artefacts avant
-   de relancer un essai. `next-trial.txt` désigne encore `s14-r1`, alors que
-   des workflows plus récents existent pour cette paire et pour S15 ; ce
-   pointeur ne permet donc pas de choisir la prochaine exécution.
-   Conserver le gel du manifeste réel, puis renseigner chaque bras et son
-   précontrôle dans le suivi de campagne.
+1. Faire relire les preuves et précontrôles retrouvés, puis préparer un plan
+   distinct pour la poursuite : cinq paires restent sans exécution sous ce
+   gel (S15 r2–r3 et S1h r1–r3). `next-trial.txt` porte
+   `blocked-new-freeze-required`. Les dépassements précédents restent dans
+   le registre ; aucune reprise ne les remplace.
 2. Calibrer le seuil delta sur le pilote, jamais après observation du test.
 3. Décider le 2026-11-16 selon les critères du plan : soumission AsiaCCS,
    ou repli workshop / version journal ultérieure.
 4. Préparer tôt l'artefact anonymisé exigé par l'appendice Open Science.
 
 ## Point de reprise du 15 octobre 2026
+
+Les sections suivantes conservent les étapes successives de la récupération.
+Le statut courant est celui de la réconciliation en tête de ce document ;
+les blocages réseau et pointeurs décrits ci-dessous sont des constats datés.
 
 - Manifeste actif : [pilot-2026-10.json](../../benchmarks/experiments/policy-comparison/pilot-2026-10.json),
   et non `pilot.example.json`. Set : S1, S14, S15, S1h ; trois répétitions.
@@ -155,7 +161,9 @@ Le [diagnostic hors ligne du 16 octobre](../../benchmarks/experiments/policy-com
 a vérifié les cinq archives disponibles sur nato (483 fichiers). Le plafond de
 200 appels laisse seulement un appel de vérification au LLM sur S15, après
 199 en analyse. Les anciens échecs restent des résultats opérationnels du gel.
-Les archives S1 ne sont pas dans ce magasin et restent à localiser.
+Les archives originales S1 ne sont pas dans ce magasin. La réconciliation
+ultérieure retrouve les exports de runs par l'API, avec les limites précisées
+dans le statut courant en tête du document.
 
 Le `main` courant (`7911b7b` lors de la reprise) contient de nouvelles ressources
 applicatives ; il n'est plus compatible avec le gel historique. La prochaine

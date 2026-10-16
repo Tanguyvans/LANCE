@@ -1,5 +1,11 @@
 # Tests automatisés de l’application
 
+`test_reconcile_pilot.py` couvre la réconciliation des téléchargements Actions :
+copies cumulatives exclues des essais annulés, reprises distinctes avec leurs
+échecs, correction bornée d'une référence erronée, refus des références ambiguës
+et du double comptage d'un run. Les données manquantes restent inconnues.
+Les fixtures sont locales ; aucun audit ni accès réseau n'est lancé.
+
 `test_pilot_archive_review.py` vérifie le lecteur hors ligne des archives du
 pilote : intégrité de l'archive et des fichiers, compteurs d'appels et absence
 d'arguments ou de réponses brutes dans le résumé exporté. Les fixtures sont
