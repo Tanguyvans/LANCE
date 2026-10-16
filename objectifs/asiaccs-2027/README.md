@@ -75,6 +75,19 @@ du LLM n'est démontré.
 - Suivi d'exécution :
   [manifeste de campagne](../../benchmarks/experiments/policy-comparison/README.md).
 
+## Avancement V2 au 2026-10-16 21:43
+
+Le [plan V2 consolidé](../../research/2026-10-12-recentrage-corpus/README.md)
+conserve 44 scénarios, 25 ensembles et 216 configurations candidates. Le
+[pilote SSH réel](../../docs/benchmark/agent-vs-automation-cli.md#qualification-native-vérifiée-le-15-octobre-2026)
+est déjà qualifié sur ses quatre bras script/Qwen, dans un périmètre local et
+borné. Cette calibration reste hors admission confirmatoire M-T.
+**La prochaine réalisation V2 est `s_mqtt_lecture`**, puis contexte API,
+reprise MQTT et cache inter-identités. Le gel et l’alignement des métriques
+restent à établir avant le nouveau test ; la poursuite du pilote historique
+ci-dessous constitue un suivi distinct, conservé sans remplacer ses échecs.
+Consolidation documentaire : **2026-10-16 21:43 (Europe/Brussels, UTC+02:00)**.
+
 ## Suite et points ouverts
 
 1. Faire relire les preuves et précontrôles retrouvés, puis préparer un plan

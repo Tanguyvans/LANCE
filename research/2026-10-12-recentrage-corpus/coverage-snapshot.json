@@ -1,0 +1,896 @@
+{
+  "schema_version": 1,
+  "scope": "static_definitions_only_not_deployed_or_experimental_coverage",
+  "generated_by": "benchmarks/experiments/research-review/coverage_snapshot.py",
+  "git_commit": "6eecf196b9f3e693ddaea9273fae228beb6a6931",
+  "sources_sha256": {
+    "benchmarks/ansible/files/benchmark_simulator.py": "f32995ba5a4d9ef887267b732e6e77d0faad1e310ce3c4436d4cde89a2144989",
+    "benchmarks/ansible/files/ssh_reference_proxmox.py": "e8f0081b2c55e01de212e438446c62db947949905bb0609e3058a9c2cc7731a4",
+    "benchmarks/ansible/playbooks/03_deploy_scenario.yml": "65c393672a1e6fc8dda31b9ceaffed5bbcbb5222594158737c85a9f34b7e1dad",
+    "benchmarks/ansible/playbooks/04_inject_vulns.yml": "9f8ba7604f8d67d9b90b2b3c43007e0785da4aa228774eb71209a19a2d8ecbbe",
+    "benchmarks/ansible/playbooks/06_verify.yml": "c9e8666301f8731dc4f24793e0bb6e4fbe781025eab3f339c358e2adfce099bf",
+    "benchmarks/ansible/playbooks/ssh_reference.yml": "1a364f47c8f92f46f9c836db8e7b3860d075a677543314954b6d7b68ddd4f02a",
+    "benchmarks/catalog.yaml": "caca35b72a554f007742b575c6fcb21d58e8f3dc05e0b2210ff320f6b60bd3a1",
+    "benchmarks/experiments/research-review/coverage_snapshot.py": "417bd429781afe258d0de9e16d60c7037b28709630d2411dbfd93cee0bd69ec6",
+    "benchmarks/experiments/research-review/inventory.py": "13128d8bc19e805610905ae0f43d4db78c934476ab48782b75fa86388ffed431",
+    "benchmarks/experiments/ssh_reference.py": "1216d016b60347f4cd5a852987a5c94d4ccc734a118ffe2652b72d24f6d8d382",
+    "benchmarks/experiments/ssh_reference_live.py": "7d9847c9b801cb8f13332a9703abd16bb54085ef9f9cdb90a6c5f83d0e10eeb3",
+    "benchmarks/experiments/ssh_reference_llm.py": "fd6fd5bdff44f23e6a1d3b5f0755619fa6d77eadc8ae792f44021bac7e068dae",
+    "benchmarks/experiments/ssh_reference_proxmox.py": "119e1bdd2dca502bd2ca973f84b66885964155395d70edf5da0633b07aaa6d5b",
+    "benchmarks/ground_truth/dev/scenario_1.yaml": "471a7db294f15a823aa2635eee317c436133b143816349a374fe9a03665214af",
+    "benchmarks/ground_truth/dev/scenario_10.yaml": "ba55a1c2febb74881380728a50a60df64a2d147187d4b9b603f65696378a7bf6",
+    "benchmarks/ground_truth/dev/scenario_11.yaml": "89324ef4042940c781500e6e2ccffa5315436675a01f3c3bf69a3d167f57a681",
+    "benchmarks/ground_truth/dev/scenario_12.yaml": "206e11a541738405c56537f15026390cf3dcf24ebaed30828cfc45456f26e0d9",
+    "benchmarks/ground_truth/dev/scenario_13.yaml": "53ed7e9e7298a2621ef4ac3568c223d3c338302c2b06a3c77a9780262a7617cc",
+    "benchmarks/ground_truth/dev/scenario_14.yaml": "91c6356a9ceabb4ccfa26837480a1b9443d130387ebc166592b4f282f6e86857",
+    "benchmarks/ground_truth/dev/scenario_15.yaml": "f991e7032098e33fb40620a2233abf9af9834853413630b52950fd5dd6463f8c",
+    "benchmarks/ground_truth/dev/scenario_16.yaml": "05d4a033727c0e618bd1a4217d2de6c4baa7eebacea32bf89b966fc471cb9eeb",
+    "benchmarks/ground_truth/dev/scenario_17.yaml": "f58a9b7afae0f9b9a9f8dda5047ae1fc26f043c4a43d6669fc7257fbad181876",
+    "benchmarks/ground_truth/dev/scenario_18.yaml": "619ff089b21d3688105af12e848469bd1cb64fe44f21ea4d61c840c927c8169b",
+    "benchmarks/ground_truth/dev/scenario_19.yaml": "75a9425f7e7570f8cb32e0a46ff253fec2b271ee71fdd68aca2dd3e23cad6819",
+    "benchmarks/ground_truth/dev/scenario_1h.yaml": "1227ec22149f06b594b2d50148f63776605c524454e5839ff54b76dea5280bb8",
+    "benchmarks/ground_truth/dev/scenario_2.yaml": "fdf6e91860a9ee8b327d8a3693ba0d579be6971321d76efc581150f136011286",
+    "benchmarks/ground_truth/dev/scenario_3.yaml": "196ee5bb7ab4f676fe4f605906cecbfbc8e81a3c0b16c3552d18a051d9bf8c1e",
+    "benchmarks/ground_truth/dev/scenario_4.yaml": "6132f184038cccefbce650db166a8cd0df26207d65198000b3168eb486400838",
+    "benchmarks/ground_truth/dev/scenario_4h.yaml": "e366eafd81470c905103c24dd7615b3a3aca1708f3615eaf769b92353382f262",
+    "benchmarks/ground_truth/dev/scenario_5.yaml": "545a2a16d1e1be34a519a2152527c3a23e41e3e3af9ad90da7f6eaff9bc624e2",
+    "benchmarks/ground_truth/dev/scenario_6.yaml": "ec50c0061b3432e0db89d4752b87b5903338961b85ee97ea8307fc84fdded92a",
+    "benchmarks/ground_truth/dev/scenario_7.yaml": "9bd66c0f91a9dd52b50f7ef57ae387fb3311bf41178346a082f5bde89cd340c2",
+    "benchmarks/ground_truth/dev/scenario_8.yaml": "d4fa114c267e68d69b3112dc28db70834d582cd3c0c0ede00289a57d7f79f8b7",
+    "benchmarks/ground_truth/dev/scenario_9.yaml": "74b889887d49ebb2556dc49f3cafc1acf0e5a55ec242751f166a6005806b4502",
+    "benchmarks/ground_truth/matching_contracts.yaml": "9316b7a0822ac06324fe16a8e8bc09caa9a1ee2e4a112f0355ba13df6ab2bb5d",
+    "benchmarks/ground_truth/test/scenario_20.yaml": "e8eca8fc9c83e3d193f90220779bf6c67f7096fb85ddafb9ffb6a636cbe9c355",
+    "benchmarks/ground_truth/test/scenario_21.yaml": "6b980c0f35328de6449706a38da4a1697be40207db1d5cbbe6efd11e3e043654",
+    "benchmarks/ground_truth/test/scenario_22.yaml": "503178f6bfdf4d25e86e4f5311104fd91cffbad87ecc4d1b482d3e3e2a497a99",
+    "benchmarks/ground_truth/test/scenario_23.yaml": "93c768af07e007aab70af944a33da49b888218a5bbe5a03e31b6ae1c936fe2a6",
+    "benchmarks/ground_truth/test/scenario_24.yaml": "ed66374846a3258ce0fc5743cbcd2fe825c4345e8916fbe0c060ccf22f0d8c34",
+    "benchmarks/ground_truth/test/scenario_25.yaml": "183461c1079cbafb0eed5169f0e1157b6e69fd04703aefb8c95808d9cec62211",
+    "benchmarks/ground_truth/test/scenario_26.yaml": "9c75dbc0ebdc2a23c68319436aaf4755f6ddeab79cce917db5491c11d6ab3298",
+    "benchmarks/ground_truth/test/scenario_27.yaml": "087bbb1fc1d59ec37aa672a8507157c2cafa23b872b078ca09c54028d9de3e5b",
+    "benchmarks/ground_truth/test/scenario_28.yaml": "32b9cc3006b1a54c1465a76effdd227ded5ffe18ebb3ff899bd675c37e85413b",
+    "benchmarks/ground_truth/test/scenario_29.yaml": "371571ffe6e1f10896094ffac40096cc282065e57041d4ad9354579aed6e1e82",
+    "benchmarks/packs/definitions/f0_hardened.yaml": "d127d3feb4078d761f8c54e7cc8bbeb24114ec4b4eaf3e84e88ec7eda95d4a1e",
+    "benchmarks/packs/definitions/f10_sparse_precision.yaml": "05ab8b2cf381520ae99ef24a6d9b0f66d5e4cbd566661c92aa071d47f5a47e05",
+    "benchmarks/packs/definitions/f11_api_authorization.yaml": "a6220bd2059f671a0952772cef36bc35935507155522e4b75e81386b49bea24c",
+    "benchmarks/packs/definitions/f12_device_pki.yaml": "d9718224a86bb23b32b3ff90cc1277754aeb57bb3423818b481190db48df2b56",
+    "benchmarks/packs/definitions/f13_ota_advanced.yaml": "ae810bd2fe9366664ed16c8c70ace0275eb15fb3d974b945cb2676293622c8b4",
+    "benchmarks/packs/definitions/f14_cloud_iam.yaml": "70038dcf7e1e608b1139077056c6d71e030d606ddf65167d2dc7c240c66dc2f5",
+    "benchmarks/packs/definitions/f15_ot_protocols.yaml": "98ccb7a8e691bfed4b3f734e154e4e2b641960635067b8460aea321114a6c5bd",
+    "benchmarks/packs/definitions/f16_true_multihop.yaml": "bc27aefabb5a73e4cf068cf494746c2c588c8c3ebd3bd76b9099aa67d278b4d0",
+    "benchmarks/packs/definitions/f17_sparse_low_prevalence.yaml": "b223794e54121e2f15a58ff6a808d29c1b2d3bc0167cd302ad9378441f8698d2",
+    "benchmarks/packs/definitions/f18_exploit_diversity.yaml": "ce7de4b7bc8f663115dc0a5766bed89ef27806d667f96c81fe6523dfd6855753",
+    "benchmarks/packs/definitions/f19_wireless_firmware.yaml": "02bbad78668bde9cca97046d74e7983417c44ba1ab478ce45c5374cbd4dabe48",
+    "benchmarks/packs/definitions/f1_weak_auth.yaml": "42a2d0dc9681fa5f4aec5029d0cb2532fe12b4c7037cb4ee7fee3df182d943c5",
+    "benchmarks/packs/definitions/f20_heldout_network_paths.yaml": "d2904dfd23a1075b709f0dd0c29aec91c9e50d7a8ae09fb7f8cf91b929cf6e37",
+    "benchmarks/packs/definitions/f21_provisioning_chain.yaml": "14c17238d6c94a9f72842611a52e5bb06d7f23a079d40f2dce639f89f93d3551",
+    "benchmarks/packs/definitions/f2_misconfig.yaml": "fac5d1142f4afc5dd04a4671a8034625b120d608fe5af8c66bd809a16afbaf83",
+    "benchmarks/packs/definitions/f3_data_exposure.yaml": "83bb19f5b888abd5ad5a1115ab8cff96f99375e92f1efb489acc2bf1dafeda00",
+    "benchmarks/packs/definitions/f5_injection.yaml": "bd0381b7ae316bfde493c118b1e54d770217f2f353023e2b4d8f013e945fb6c9",
+    "benchmarks/packs/definitions/f6_crypto.yaml": "6802d4332879f5caa0d7731f99da00b3bace7bc12ab87492d5989833d604890e",
+    "benchmarks/packs/definitions/f7_postexploit.yaml": "4438ad0d1b607bb7f4a994d82571fda9552ce5fbfc942c6167b28cfbbf989c3c",
+    "benchmarks/packs/definitions/f8_info_disclosure.yaml": "73dcdc34a25344bac11aa24a17de629779289c938ee55725b1fcdce1cc860602",
+    "benchmarks/packs/definitions/f9_insecure_update.yaml": "d4e6db5392b19c5dbff8f32075031015353ef4be63f025ccac1b4fde881bb707",
+    "benchmarks/packs/definitions/manual_flat_chain.yaml": "fe6d4c5040633aec886ad6b31eaf7289c27f912a9548101b6747b9fa827e76aa",
+    "benchmarks/scenarios/dev/S1.yaml": "da669675bf249db3be13478b76561df57b84b1c11a3315c95d0474345a14b327",
+    "benchmarks/scenarios/dev/S10.yaml": "e501e70c8af4a40a33b2ea65643f5886e85a34ef21742e9aef1f7d91499db057",
+    "benchmarks/scenarios/dev/S11.yaml": "3639979f5b279451c1a168b815018d9f361a86332e0aa309b8094b534ba1ba4e",
+    "benchmarks/scenarios/dev/S12.yaml": "a1dc16991df7bcf630fea5f539cc3f73033d5da126f3fc8acd2a87956ef5757b",
+    "benchmarks/scenarios/dev/S13.yaml": "f039a5cdda5fd05fd1e05cbbf2d118010cd2bad2689f695327f1284cca855ae4",
+    "benchmarks/scenarios/dev/S14.yaml": "c2ac51b156d61ac4b89f6faf8ab5496c231281a2df84a487281b82ba60cb83e3",
+    "benchmarks/scenarios/dev/S15.yaml": "ddae4d8cd8a1a3eff46d736bc5a6a4c8c49f049523c303ffbfbebadb496b26b4",
+    "benchmarks/scenarios/dev/S16.yaml": "ad228e807b8199fdf3eb9479855c607e1432f5a2a69bb5776688d75d44e7dbd2",
+    "benchmarks/scenarios/dev/S17.yaml": "d1c7aa442538b7c01fdbbfed97d93e6cc24df411c8d73843e90d72c66368c96c",
+    "benchmarks/scenarios/dev/S18.yaml": "d8abe0e6df27e4d322f53862febc9460b9ba22eb6de109f12869678a83c54d1c",
+    "benchmarks/scenarios/dev/S19.yaml": "2d65138dcbc85e8f73a161c584091cd80e6f807abddc8110dd6a95ecab9e4667",
+    "benchmarks/scenarios/dev/S2.yaml": "b239a62b2426f89d0a937888d2952bd24befd097508e0ced987740e41fce35db",
+    "benchmarks/scenarios/dev/S3.yaml": "084c098067fdc8c60ea9225f6aa2ab9dfd79121019c558f04a121427b01d1a8c",
+    "benchmarks/scenarios/dev/S4.yaml": "c9c646646c813bf62c33dc13ec259db44e4c1c87a22fcc58a11935bfb1611398",
+    "benchmarks/scenarios/dev/S5.yaml": "50ea5b9626e88053404aa6e94447a447a3021481a7294d8e2dd9724ec16b929a",
+    "benchmarks/scenarios/dev/S6.yaml": "c29fcd4ba554b5d2bd3222b87df51d317a89d96014daa9faef03162091e4f3e2",
+    "benchmarks/scenarios/dev/S7.yaml": "6784d14cc0c9f29b9bbfdcd8e77f6c96b54d9a777a6f275a90be6899075fbf7f",
+    "benchmarks/scenarios/dev/S8.yaml": "d8133c934b0adbc2e472f082be2a5c49586c98700fd3761d1fb34a4611a7b3b1",
+    "benchmarks/scenarios/dev/S9.yaml": "22eee22ff818386b7ce9d90549212732896d3cb6b28f7a36b69d656797cfa99a",
+    "benchmarks/scenarios/test/S20.yaml": "a7c2db4bf1ee52196da0cc96667ad9b9526f4810b904bfb7181c16c90fe41d61",
+    "benchmarks/scenarios/test/S21.yaml": "84a46ba7412b2e2aa68b89d1bb8e483e916a02b5331a3f75233dc9992d3f7428",
+    "benchmarks/scenarios/test/S22.yaml": "d1e238476c41a1d66479b75ee8b960ab738277f32efe02305cfd343c815559a3",
+    "benchmarks/scenarios/test/S23.yaml": "051c3fcdbb0ab4432c49e736e39187e1b8fc7c803892ca06f5c494e599f8c909",
+    "benchmarks/scenarios/test/S24.yaml": "2c3cdc0a2870169ed9dd883564a94ea68c27aead9df7620e6cb8f487cc765083",
+    "benchmarks/scenarios/test/S25.yaml": "6b57093b0924dbc432522aaac5aa5fae78ec8a00b27f51c4c94b640c8aaf13df",
+    "benchmarks/scenarios/test/S26.yaml": "45f040b43317699cea0b2e06cee437757d7a887d1f9baba41bf934a41f97258f",
+    "benchmarks/scenarios/test/S27.yaml": "65b4d375195c3c9b89b54fd65ce091b77f9acb012d817dbb80625030e34bd852",
+    "benchmarks/scenarios/test/S28.yaml": "0a1c78ff0bd01f79865cada14f98ac21016c8d90e4ffe3675aba7f5e3e92543b",
+    "benchmarks/scenarios/test/S29.yaml": "5dc2cd888fbdfcf1bc977822c8b176e0074ff5abf334b17600359eae78fa41d7",
+    "benchmarks/topologies/true_multihop.yaml": "23248a213cd33abe68aa3b7ea531c8f842ecaa011146dc96af5d2d2ab2f53a33",
+    "docs/benchmark/agent-vs-automation-cli.md": "f89d6a595fbab8a4af659c277a8a5a4b9c602a1f907354db537e120e437ec58b",
+    "objectifs/asiaccs-2027/README.md": "ac051cfe61824a03646d1d4436aa2978f8564322e3257a23b0dc96a012925b73",
+    "objectifs/asiaccs-2027/plan-soumission.md": "daa68447e3903f38b5143f1bbecaf3fe47d21d20de732fd1f51622a9f61a80ac",
+    "research/2026-09-27-agent-vs-automation/protocol.md": "5ff4797f4c11bf958b42c8574f44dd4fd68ef10de000379c44599ae8acf35fa1",
+    "research/2026-10-12-recentrage-corpus/coverage-plan.json": "c1de3ef484ba120c61c6751a7649a859b31b81d1a20c56711a1657663e4e8a91",
+    "research/2026-10-12-recentrage-corpus/revue-iot-ctf.json": "5b2a96e41dce8a8f61787ba562b6c528254fe7ad2cb3f54256e05b32f77a7359",
+    "research/2026-10-12-recentrage-corpus/revue-iot-ctf.pdf": "0bc474553152b984e2edf80610d3db1f7fc813062f68393093adbb911d2649bc",
+    "research/2026-10-12-recentrage-corpus/revue-iot-ctf.tex": "a8dce474eed93a1dff87b6fe0cd0915cfc05249d3e14905eedb744b3d0ee6f48",
+    "research/2026-10-12-recentrage-corpus/structuration-corpus.tex": "6c4616f8778d38988bcbb1639529008219741fec504d8ed603ac55b34442dead",
+    "src/agent/audit_experiment.py": "b6a01f831026f3dd124cae5c3e05f6ef66fa42cab51ba44ea3e6b5d4f1888346",
+    "src/agent/core/executor.py": "db74ae3aafd6e47676e8bcec8e3a6a4974e7b5039a278d6170805e46c9baf7df",
+    "src/agent/phases/intrusion/observations.py": "525429fa7ae92149a2f9ece38f0841b4e2534659939ae926a9ea4338c4d8cf7d",
+    "src/agent/pipeline.py": "296cf1facebceda307e7d5b9145317025c414e4f0e27ba0cbabc53cc6281f8be",
+    "src/agent/scanner.py": "df0eff6f00d4605d9dc3facc0514aeb36169e6321b5b4627f63f2970d4c855bf",
+    "src/benchmark/derived_index.py": "f17fe03ba684ea365261764472096c615b2abcea4d68c1b53ec5892b00dbc529",
+    "src/benchmark/manual_execution.py": "5a35308e64f588b44abd26d15ef4e0f48fbd381051a0c5c2e31d8d36bc8b89fe",
+    "src/benchmark/scenario_alterations.py": "0f4e8bbe1da9acf54158d1eb1a1cb8601fc1ef381541b9d3a9eb17db514e762b",
+    "src/benchmark/strict_v3.py": "58c7784f49b6a8ee269c8dd8a33117545dfb66f1decd971bcec11f3f7441f072"
+  },
+  "official_scenarios": 29,
+  "defined_pack_count": 22,
+  "referenced_pack_count": 20,
+  "defined_packs_not_referenced": [
+    "f0",
+    "manual_flat_chain"
+  ],
+  "packs_shared_across_current_splits": [
+    "f10_sparse_precision"
+  ],
+  "categories": {
+    "auth_bypass": 2,
+    "broken_access_control": 4,
+    "code_injection": 13,
+    "cve": 9,
+    "data_exposure": 54,
+    "default_credentials": 41,
+    "info_disclosure": 16,
+    "insecure_update": 12,
+    "misconfiguration": 70,
+    "missing_header": 3,
+    "no_authentication": 50,
+    "privilege_escalation": 4,
+    "weak_crypto": 10
+  },
+  "routine_category_proxy": {
+    "categories": [
+      "misconfiguration",
+      "data_exposure",
+      "no_authentication",
+      "default_credentials"
+    ],
+    "count": 215,
+    "warning": "Author-defined grouping of categories; not proof of signature detection or absence of reasoning."
+  },
+  "logic_category_proxy_scenarios": {
+    "15": [
+      "broken_access_control",
+      "broken_access_control",
+      "broken_access_control"
+    ],
+    "22": [
+      "auth_bypass"
+    ],
+    "28": [
+      "auth_bypass",
+      "broken_access_control"
+    ]
+  },
+  "template_keys_present": {
+    "F10-MQTT-ANON": 2,
+    "F10-REDIS-NOAUTH": 2,
+    "F10-SSH-DEFAULT": 1,
+    "F10-WEB-BACKUP": 2,
+    "F11-IDOR": 1,
+    "F11-JWT-SCOPE": 1,
+    "F11-MASS-ASSIGNMENT": 1,
+    "F12-CA-KEY-EXPOSURE": 1,
+    "F12-CLONED-IDENTITY": 1,
+    "F12-ENROLL-REPLAY": 1,
+    "F12-REVOCATION-IGNORED": 1,
+    "F13-OLD-FIRMWARE": 1,
+    "F13-ROLLBACK": 1,
+    "F13-SHARED-UPDATE-KEY": 1,
+    "F13-UNSIGNED-METADATA": 1,
+    "F14-OVERPRIV-ROLE": 1,
+    "F14-SECRET-BUCKET": 1,
+    "F14-SSRF-METADATA": 1,
+    "F15-BACNET-DISCLOSURE": 1,
+    "F15-BACNET-WRITE": 1,
+    "F15-MODBUS-WRITE": 1,
+    "F15-OPCUA-NONE": 1,
+    "F15-OPCUA-WRITE": 1,
+    "F16-ENTRY-CREDS": 1,
+    "F16-RELAY-CONFIG": 1,
+    "F16-RELAY-CREDS": 1,
+    "F16-VAULT-NOAUTH": 1,
+    "F17-MQTT-ANONYMOUS": 1,
+    "F17-WEB-BACKUP": 1,
+    "F18-AUTH-BYPASS": 1,
+    "F18-COMMAND-INJECTION": 1,
+    "F18-PATH-TRAVERSAL": 1,
+    "F18-PRIVILEGE-OVERRIDE": 1,
+    "F19-FIRMWARE-SECRET": 1,
+    "F19-JOIN-REPLAY": 1,
+    "F19-UNSIGNED-RECOVERY": 1,
+    "F19-WIRELESS-DISCLOSURE": 1,
+    "F20-ASSET-L1": 3,
+    "F20-ASSET-L2": 2,
+    "F20-ASSET-L3": 1,
+    "F20-PIVOT-ENTRY": 5,
+    "F20-PIVOT-RELAY-L1": 3,
+    "F20-PIVOT-RELAY-L2": 1,
+    "F21-CLAIM-REPLAY": 1,
+    "F21-DISCOVERY-CODE": 1,
+    "F21-MAINTENANCE-BYPASS": 1,
+    "F21-TELEMETRY-KEY": 1
+  },
+  "vulnerabilities_without_template_key": 229,
+  "healthy_definitions_outside_official_catalog": [
+    {
+      "scenario_id": "1h",
+      "vulnerabilities": 0
+    },
+    {
+      "scenario_id": "4h",
+      "vulnerabilities": 0
+    }
+  ],
+  "proposed_v2_design": {
+    "scope": "design_only_not_runtime_coverage_or_independent_sample_size",
+    "revision": "2026-10-16 21:43 Europe/Brussels UTC+02:00",
+    "stable_scenario_specs": 44,
+    "editorial_comparison_sets": 25,
+    "editorial_reading_question_counts": {
+      "preuve": 9,
+      "contexte": 12,
+      "contrats": 2,
+      "etat": 4,
+      "planification": 12,
+      "revision": 5
+    },
+    "technical_comparisons_crossing_reading_questions": 4,
+    "selected_fixture_types": 216,
+    "conditional_arm_runs_per_common_instance_and_repetition": 456,
+    "additional_frozen_plan_types": 24,
+    "direct_only_specs": 35,
+    "full_map_only_specs": 36,
+    "specs_with_complexity_and_measurement_contracts": 44,
+    "specs_with_iot_integration_and_priority": 44,
+    "iot_review_items_with_disposition": 25,
+    "iot_disposition_counts": {
+      "admission": 4,
+      "candidate": 15,
+      "separate": 1,
+      "support": 5
+    },
+    "priority_stage_counts": {
+      "comparaison-locale": 5,
+      "contrats-nouveaux": 3,
+      "extensions": 31,
+      "parcours-reseau": 1,
+      "preparation": 1,
+      "sequences-iot": 3
+    },
+    "implementation_main_steps": [
+      "comparaison-locale",
+      "sequences-iot",
+      "contrats-nouveaux"
+    ],
+    "implementation_work_roles": {
+      "preparation": "prerequisite",
+      "comparaison-locale": "main_step",
+      "sequences-iot": "main_step",
+      "contrats-nouveaux": "main_step",
+      "parcours-reseau": "parallel_workstream",
+      "extensions": "optional_extension",
+      "securite-auditeur": "separate_study"
+    },
+    "selected_experiment_contracts_sha256": "a41f8e9a28cc14a4e905703ca6108b0d9d6067faf25593cf5761c73dfb3f3174",
+    "pre_rename_experiment_contracts_sha256": "da770d4406c4c2478baf6f6fff0d67d1b919e79338c13656acc2b8c44e2064fe",
+    "descriptive_scenario_names": 44,
+    "renamed_fixture_types": 216,
+    "new_scored_types_from_iot_review": 0,
+    "task_counts": {
+      "frozen_observation_interpretation": 4,
+      "targeted_accessibility_diagnosis": 1,
+      "targeted_audit": 35,
+      "targeted_state_diagnosis": 1,
+      "whole_scope_audit": 3
+    }
+  },
+  "inventory": {
+    "rows": [
+      {
+        "scenario": "1",
+        "split": "dev",
+        "difficulty": "easy",
+        "services": 3,
+        "vulns": 12,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 4,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f6_crypto",
+          "f8_info_disclosure"
+        ]
+      },
+      {
+        "scenario": "2",
+        "split": "dev",
+        "difficulty": "medium",
+        "services": 5,
+        "vulns": 13,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 4,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f6_crypto",
+          "f8_info_disclosure",
+          "f9_insecure_update"
+        ]
+      },
+      {
+        "scenario": "3",
+        "split": "dev",
+        "difficulty": "hard",
+        "services": 7,
+        "vulns": 18,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 5,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f6_crypto",
+          "f7_postexploit",
+          "f8_info_disclosure",
+          "f9_insecure_update"
+        ]
+      },
+      {
+        "scenario": "4",
+        "split": "dev",
+        "difficulty": "hard",
+        "services": 7,
+        "vulns": 18,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 4,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f5_injection",
+          "f6_crypto",
+          "f8_info_disclosure",
+          "f9_insecure_update"
+        ]
+      },
+      {
+        "scenario": "5",
+        "split": "dev",
+        "difficulty": "medium",
+        "services": 7,
+        "vulns": 15,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 4,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f8_info_disclosure"
+        ]
+      },
+      {
+        "scenario": "6",
+        "split": "dev",
+        "difficulty": "medium",
+        "services": 5,
+        "vulns": 16,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 4,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f6_crypto",
+          "f8_info_disclosure",
+          "f9_insecure_update"
+        ]
+      },
+      {
+        "scenario": "7",
+        "split": "dev",
+        "difficulty": "hard",
+        "services": 5,
+        "vulns": 14,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 4,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f5_injection",
+          "f6_crypto",
+          "f7_postexploit",
+          "f9_insecure_update"
+        ]
+      },
+      {
+        "scenario": "8",
+        "split": "dev",
+        "difficulty": "hard",
+        "services": 7,
+        "vulns": 14,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 3,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f5_injection",
+          "f6_crypto",
+          "f9_insecure_update"
+        ]
+      },
+      {
+        "scenario": "9",
+        "split": "dev",
+        "difficulty": "medium",
+        "services": 5,
+        "vulns": 11,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 3,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f8_info_disclosure"
+        ]
+      },
+      {
+        "scenario": "10",
+        "split": "dev",
+        "difficulty": "medium",
+        "services": 5,
+        "vulns": 13,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 3,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f5_injection"
+        ]
+      },
+      {
+        "scenario": "11",
+        "split": "dev",
+        "difficulty": "hard",
+        "services": 14,
+        "vulns": 23,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 5,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f5_injection",
+          "f6_crypto",
+          "f8_info_disclosure"
+        ]
+      },
+      {
+        "scenario": "12",
+        "split": "dev",
+        "difficulty": "expert",
+        "services": 34,
+        "vulns": 42,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 5,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f5_injection",
+          "f6_crypto",
+          "f8_info_disclosure"
+        ]
+      },
+      {
+        "scenario": "13",
+        "split": "dev",
+        "difficulty": "hard",
+        "services": 16,
+        "vulns": 20,
+        "controls": 0,
+        "controls_type_evaluable": 0,
+        "paths": 4,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f1_weak_auth",
+          "f2_misconfig",
+          "f3_data_exposure",
+          "f5_injection"
+        ]
+      },
+      {
+        "scenario": "14",
+        "split": "dev",
+        "difficulty": "hard",
+        "services": 10,
+        "vulns": 4,
+        "controls": 8,
+        "controls_type_evaluable": 8,
+        "paths": 0,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f10_sparse_precision"
+        ]
+      },
+      {
+        "scenario": "15",
+        "split": "dev",
+        "difficulty": "hard",
+        "services": 6,
+        "vulns": 3,
+        "controls": 4,
+        "controls_type_evaluable": 3,
+        "paths": 1,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f11_api_authorization"
+        ]
+      },
+      {
+        "scenario": "16",
+        "split": "dev",
+        "difficulty": "expert",
+        "services": 6,
+        "vulns": 4,
+        "controls": 3,
+        "controls_type_evaluable": 0,
+        "paths": 1,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f12_device_pki"
+        ]
+      },
+      {
+        "scenario": "17",
+        "split": "dev",
+        "difficulty": "expert",
+        "services": 6,
+        "vulns": 4,
+        "controls": 4,
+        "controls_type_evaluable": 0,
+        "paths": 2,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f13_ota_advanced"
+        ]
+      },
+      {
+        "scenario": "18",
+        "split": "dev",
+        "difficulty": "expert",
+        "services": 6,
+        "vulns": 3,
+        "controls": 3,
+        "controls_type_evaluable": 2,
+        "paths": 1,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f14_cloud_iam"
+        ]
+      },
+      {
+        "scenario": "19",
+        "split": "dev",
+        "difficulty": "expert",
+        "services": 7,
+        "vulns": 5,
+        "controls": 2,
+        "controls_type_evaluable": 2,
+        "paths": 1,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f15_ot_protocols"
+        ]
+      },
+      {
+        "scenario": "20",
+        "split": "test",
+        "difficulty": "expert",
+        "services": 4,
+        "vulns": 4,
+        "controls": 3,
+        "controls_type_evaluable": 1,
+        "paths": 1,
+        "network_depth_explicit": 4,
+        "packs": [
+          "f16_true_multihop"
+        ]
+      },
+      {
+        "scenario": "21",
+        "split": "test",
+        "difficulty": "hard",
+        "services": 16,
+        "vulns": 2,
+        "controls": 18,
+        "controls_type_evaluable": 18,
+        "paths": 0,
+        "network_depth_explicit": 2,
+        "packs": [
+          "f17_sparse_low_prevalence"
+        ]
+      },
+      {
+        "scenario": "22",
+        "split": "test",
+        "difficulty": "expert",
+        "services": 8,
+        "vulns": 4,
+        "controls": 4,
+        "controls_type_evaluable": 4,
+        "paths": 0,
+        "network_depth_explicit": 4,
+        "packs": [
+          "f18_exploit_diversity"
+        ]
+      },
+      {
+        "scenario": "23",
+        "split": "test",
+        "difficulty": "expert",
+        "services": 8,
+        "vulns": 4,
+        "controls": 4,
+        "controls_type_evaluable": 4,
+        "paths": 1,
+        "network_depth_explicit": 4,
+        "packs": [
+          "f19_wireless_firmware"
+        ]
+      },
+      {
+        "scenario": "24",
+        "split": "test",
+        "difficulty": "expert",
+        "services": 5,
+        "vulns": 3,
+        "controls": 2,
+        "controls_type_evaluable": 2,
+        "paths": 1,
+        "network_depth_explicit": 3,
+        "packs": [
+          "f20_heldout_network_paths"
+        ]
+      },
+      {
+        "scenario": "25",
+        "split": "test",
+        "difficulty": "expert",
+        "services": 6,
+        "vulns": 3,
+        "controls": 3,
+        "controls_type_evaluable": 3,
+        "paths": 2,
+        "network_depth_explicit": 3,
+        "packs": [
+          "f20_heldout_network_paths"
+        ]
+      },
+      {
+        "scenario": "26",
+        "split": "test",
+        "difficulty": "expert",
+        "services": 7,
+        "vulns": 5,
+        "controls": 2,
+        "controls_type_evaluable": 2,
+        "paths": 2,
+        "network_depth_explicit": 5,
+        "packs": [
+          "f20_heldout_network_paths"
+        ]
+      },
+      {
+        "scenario": "27",
+        "split": "test",
+        "difficulty": "expert",
+        "services": 6,
+        "vulns": 4,
+        "controls": 2,
+        "controls_type_evaluable": 2,
+        "paths": 1,
+        "network_depth_explicit": 4,
+        "packs": [
+          "f20_heldout_network_paths"
+        ]
+      },
+      {
+        "scenario": "28",
+        "split": "test",
+        "difficulty": "expert",
+        "services": 8,
+        "vulns": 4,
+        "controls": 4,
+        "controls_type_evaluable": 4,
+        "paths": 1,
+        "network_depth_explicit": 4,
+        "packs": [
+          "f21_provisioning_chain"
+        ]
+      },
+      {
+        "scenario": "29",
+        "split": "test",
+        "difficulty": "hard",
+        "services": 20,
+        "vulns": 3,
+        "controls": 22,
+        "controls_type_evaluable": 22,
+        "paths": 0,
+        "network_depth_explicit": 0,
+        "packs": [
+          "f10_sparse_precision"
+        ]
+      }
+    ],
+    "groups": {
+      "dev": {
+        "category": {
+          "misconfiguration": 69,
+          "data_exposure": 42,
+          "default_credentials": 30,
+          "weak_crypto": 10,
+          "missing_header": 3,
+          "info_disclosure": 14,
+          "cve": 9,
+          "insecure_update": 11,
+          "privilege_escalation": 3,
+          "code_injection": 12,
+          "no_authentication": 46,
+          "broken_access_control": 3
+        },
+        "services": {
+          "mqtt": 37,
+          "http": 108,
+          "ssh": 42,
+          "telnet": 12,
+          "mqtt-ws": 2,
+          "mysql": 10,
+          "ftp": 8,
+          "modbus": 10,
+          "bacnet": 3,
+          "redis": 9,
+          "coap": 4,
+          "snmp": 3,
+          "https": 1,
+          "opcua": 2
+        },
+        "difficulty": {
+          "easy": 1,
+          "medium": 5,
+          "hard": 8,
+          "expert": 5
+        },
+        "packs": {
+          "f1_weak_auth": 13,
+          "f2_misconfig": 13,
+          "f3_data_exposure": 13,
+          "f6_crypto": 9,
+          "f8_info_disclosure": 9,
+          "f9_insecure_update": 6,
+          "f7_postexploit": 2,
+          "f5_injection": 7,
+          "f10_sparse_precision": 1,
+          "f11_api_authorization": 1,
+          "f12_device_pki": 1,
+          "f13_ota_advanced": 1,
+          "f14_cloud_iam": 1,
+          "f15_ot_protocols": 1
+        },
+        "network_depth": {
+          "unset": 252
+        },
+        "hop_depth": {
+          "0": 138,
+          "1": 60,
+          "2": 45,
+          "3": 5,
+          "unset": 4
+        }
+      },
+      "test": {
+        "category": {
+          "default_credentials": 11,
+          "data_exposure": 12,
+          "no_authentication": 4,
+          "auth_bypass": 2,
+          "code_injection": 1,
+          "privilege_escalation": 1,
+          "info_disclosure": 2,
+          "misconfiguration": 1,
+          "insecure_update": 1,
+          "broken_access_control": 1
+        },
+        "services": {
+          "ssh": 12,
+          "http": 19,
+          "mqtt": 2,
+          "wireless-discovery": 1,
+          "provisioning-discovery": 1,
+          "redis": 1
+        },
+        "difficulty": {
+          "expert": 8,
+          "hard": 2
+        },
+        "packs": {
+          "f16_true_multihop": 1,
+          "f17_sparse_low_prevalence": 1,
+          "f18_exploit_diversity": 1,
+          "f19_wireless_firmware": 1,
+          "f20_heldout_network_paths": 4,
+          "f21_provisioning_chain": 1,
+          "f10_sparse_precision": 1
+        },
+        "network_depth": {
+          "0": 21,
+          "1": 7,
+          "2": 4,
+          "3": 1,
+          "unset": 3
+        },
+        "hop_depth": {
+          "0": 21,
+          "1": 7,
+          "2": 4,
+          "3": 1,
+          "unset": 3
+        }
+      }
+    },
+    "gt_control_collisions": [
+      {
+        "scenario": "18",
+        "control": "C14-LIMITED-TOKEN@s18-cloud-control",
+        "vulnerability": "F14-SECRET-BUCKET@s18-cloud-control",
+        "types": [
+          "data_exposure"
+        ]
+      }
+    ],
+    "totals": {
+      "services": 249,
+      "vulns": 288,
+      "controls": 88,
+      "controls_type_evaluable": 77,
+      "paths": 67
+    }
+  }
+}
