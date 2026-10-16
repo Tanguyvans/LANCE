@@ -164,3 +164,52 @@ deux essais ci-dessus sont conservés comme essais d'instrument,
 non comptés dans les 12 paires. Aucun changement de set, modèle,
 budgets ou critère. À partir d'ici, aucun changement dans `src/`
 pendant la campagne.
+
+
+## Récupération des artefacts Actions — 2026-10-16
+
+Après enregistrement des domaines réseau dans les paramètres du cloud, les
+artefacts des 15 runs du workflow ont été téléchargés sous
+`output/policy-comparison/actions/<github_run_id>/` (stockage local ignoré).
+L'inventaire des jobs, y compris échecs et annulation, est conservé dans
+`output/policy-comparison/actions-inventory.json`.
+
+Lecture des comparaisons publiées pour les sept essais identifiés :
+
+| Essai | Run Actions | Verdict du comparateur publié | État LLM |
+| --- | --- | --- | --- |
+| s1-r1 | 38570488357 | comparable | completed |
+| s1-r2 | 38575803864 | comparable | completed |
+| s1-r3 | 38581153999 | comparable | completed |
+| s14-r1 | 38611677976 | incomparable | budget_exceeded, 200 appels, 792,5 s |
+| s14-r2 | 38616086219 | incomparable | budget_exceeded, 200 appels, 1 192,1 s |
+| s14-r3 | 38621265302 | incomparable | budget_exceeded, 200 appels, 1 179,4 s |
+| s15-r1 | 38626380879 | incomparable | budget_exceeded, 200 appels, 567,0 s |
+
+Pour chaque comparaison ci-dessus, l'identité des deux bras porte l'empreinte
+courante `b636f0a5…`. Les quatre dernières paires manquent d'artefacts de
+vérification évaluables du bras LLM ; leur phase d'analyse est déclarée achevée.
+Les coûts/temps viennent des `cost_summary.json` de ces bras. Le plafond de
+200 appels est atteint avant 1 800 secondes ; augmenter uniquement la durée
+ne répondrait donc pas au plafond observé. Le diagnostic S15 mentionne
+explicitement `Tool-call budget exhausted (200 calls)`.
+
+Ce relevé décrit les artefacts publiés, sans nouvelle exécution ni revue
+indépendante des preuves. Les anciens artefacts peuvent contenir des
+comparaisons cumulatives et des essais sous une ancienne empreinte : ne pas
+compter chaque fichier comme une nouvelle paire, ni effacer une tentative
+incomplète parce qu'une copie antérieure est comparable.
+
+Pour les quatre artefacts récents avec `evidence-manifest.json`, les six fichiers
+de métadonnées de runs téléchargés par paire correspondent aux SHA-256 du
+manifeste. Les archives complètes (92 à 131 fichiers annoncés par paire) restent
+sur nato ; leur contenu complet n'a pas été récupéré ni revérifié ici.
+Les métadonnées partielles ne suffisent donc pas à reconstruire le bilan complet
+avec `policy_campaign` ni à attester les précontrôles. Le manifeste actif reste
+inchangé pour éviter de fabriquer ces références.
+
+Suite : récupérer les archives complètes et réconcilier toutes les tentatives ;
+conserver les dépassements dans le bilan opérationnel. Toute calibration du
+plafond d'appels exige un nouveau gel explicite et des essais distincts, sans
+remplacer les résultats déjà obtenus. Aucun avantage scientifique n'est conclu
+à partir de ce relevé opérationnel.
