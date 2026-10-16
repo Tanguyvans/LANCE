@@ -164,3 +164,219 @@ deux essais ci-dessus sont conservés comme essais d'instrument,
 non comptés dans les 12 paires. Aucun changement de set, modèle,
 budgets ou critère. À partir d'ici, aucun changement dans `src/`
 pendant la campagne.
+
+
+## Récupération des artefacts Actions — 2026-10-16
+
+Après enregistrement des domaines réseau dans les paramètres du cloud, les
+artefacts des 15 runs du workflow ont été téléchargés sous
+`output/policy-comparison/actions/<github_run_id>/` (stockage local ignoré).
+L'inventaire des jobs, y compris échecs et annulation, est conservé dans
+`output/policy-comparison/actions-inventory.json`.
+
+Lecture des comparaisons publiées pour les sept essais identifiés :
+
+| Essai | Run Actions | Verdict du comparateur publié | État LLM |
+| --- | --- | --- | --- |
+| s1-r1 | 38570488357 | comparable | completed |
+| s1-r2 | 38575803864 | comparable | completed |
+| s1-r3 | 38581153999 | comparable | completed |
+| s14-r1 | 38611677976 | incomparable | budget_exceeded, 200 appels, 792,5 s |
+| s14-r2 | 38616086219 | incomparable | budget_exceeded, 200 appels, 1 192,1 s |
+| s14-r3 | 38621265302 | incomparable | budget_exceeded, 200 appels, 1 179,4 s |
+| s15-r1 | 38626380879 | incomparable | budget_exceeded, 200 appels, 567,0 s |
+
+Pour chaque comparaison ci-dessus, l'identité des deux bras porte l'empreinte
+courante `b636f0a5…`. Les quatre dernières paires manquent d'artefacts de
+vérification évaluables du bras LLM ; leur phase d'analyse est déclarée achevée.
+Les coûts/temps viennent des `cost_summary.json` de ces bras. Le plafond de
+200 appels est atteint avant 1 800 secondes ; augmenter uniquement la durée
+ne répondrait donc pas au plafond observé. Le diagnostic S15 mentionne
+explicitement `Tool-call budget exhausted (200 calls)`.
+
+Ce relevé décrit les artefacts publiés, sans nouvelle exécution ni revue
+indépendante des preuves. Les anciens artefacts peuvent contenir des
+comparaisons cumulatives et des essais sous une ancienne empreinte : ne pas
+compter chaque fichier comme une nouvelle paire, ni effacer une tentative
+incomplète parce qu'une copie antérieure est comparable.
+
+Pour les quatre artefacts récents avec `evidence-manifest.json`, les six fichiers
+de métadonnées de runs téléchargés par paire correspondent aux SHA-256 du
+manifeste. Les archives complètes (92 à 131 fichiers annoncés par paire) restent
+sur nato ; leur contenu complet n'a pas été récupéré ni revérifié ici.
+Les métadonnées partielles ne suffisent donc pas à reconstruire le bilan complet
+avec `policy_campaign` ni à attester les précontrôles. Le manifeste actif reste
+inchangé pour éviter de fabriquer ces références.
+
+Suite : récupérer les archives complètes et réconcilier toutes les tentatives ;
+conserver les dépassements dans le bilan opérationnel. Toute calibration du
+plafond d'appels exige un nouveau gel explicite et des essais distincts, sans
+remplacer les résultats déjà obtenus. Aucun avantage scientifique n'est conclu
+à partir de ce relevé opérationnel.
+
+
+## Diagnostic hors ligne sur nato — 2026-10-16
+
+Le [workflow 38905591684](https://github.com/Tanguyvans/LANCE/actions/runs/38905591684)
+a exécuté le lecteur d'archives `scripts/benchmark/pilot_archive_review.py`
+(commit `b143f67`) sur le runner `nato-master`, identifié par son nom et son IP.
+Aucun audit, appel de modèle ni déploiement n'a été exécuté. Les archives et
+traces brutes restent sur nato ; seul le
+[relevé agrégé](offline-review-2026-10-16.json) est conservé dans le dépôt.
+
+Les cinq archives présentes sous `output/pilot-evidence` ont été vérifiées :
+483 fichiers au total, avec contrôle du SHA-256 de chaque archive, de la liste
+exacte des fichiers, des tailles et empreintes individuelles. Une archive de
+huit fichiers correspond à l'échec de préparation S14 r1 `38610509723-1`, sans
+bras exécuté. Les quatre autres sont S14 r1–r3 et S15 r1, déjà identifiées.
+Les huit précontrôles de ces quatre paires déclarent `valid` et leurs fichiers
+sont intègres ; leur contenu déclaratif ne constitue pas une validation humaine
+de la remise à zéro ni de l'état réel des cibles.
+
+| Essai, bras LLM | Appels phase 3 | Appels phase 4 | Total journalisé | Appels curl_headers, toutes phases |
+| --- | ---: | ---: | ---: | ---: |
+| S14 r1 | 182 | 18 | 200 | 94 |
+| S14 r2 | 175 | 25 | 200 | 97 |
+| S14 r3 | 182 | 18 | 200 | 96 |
+| S15 r1 | 199 | 1 | 200 | 161 |
+
+Le journal concorde avec les 200 appels comptabilisés de chaque bras. Pour
+S15, le bras règles consomme déjà 177 appels en analyse et 15 en vérification,
+soit 192 au total ; il compte lui aussi 161 appels `curl_headers`. Le LLM
+atteint donc la vérification avec une seule unité de budget, après ajout des
+recherches et opérations de livrables. Ce constat explique le manque de marge ;
+il ne démontre ni que les sondes HTTP sont inutiles, ni qu'un plafond supérieur
+suffirait à terminer, ni un avantage de l'une des politiques.
+
+### Décision de reprise
+
+- Conserver les quatre dépassements dans le bilan du gel historique. Ne pas
+  remplacer les essais, ne pas relever rétroactivement leurs limites.
+- Les trois S1 comparables sont encore attribuées aux comparaisons Actions :
+  aucune archive S1 n'est présente dans le magasin `pilot-evidence` inspecté.
+  Leur preuve complète reste donc à localiser parmi les anciens dossiers.
+- Le code `main` a évolué depuis le gel (fusion `7911b7b`) ; ne pas reprendre
+  `pilot-campaign.yml` sur ce code en remplaçant l'empreinte du vieux manifeste.
+- Avant un nouveau pilote : définir explicitement s'il s'agit de mesurer la
+  performance sous 200 appels, ou de calibrer un budget permettant la
+  vérification. Dans ce dernier cas, prévoir un plan distinct, la même limite
+  pour les deux bras et un budget suffisant pour le scanner commun, puis
+  qualifier un essai S15 et son contrôle sain avant une série complète.
+
+Le nouveau lecteur est validé par 26 tests avec le support du pilote :
+agrégation sans export des arguments/réponses, refus d'archive altérée et de
+fichier dont l'empreinte ne correspond pas, ainsi que les tests existants du
+workflow. Les résultats sont opérationnels ; aucune nouvelle étude de
+performance ni revue humaine de preuves n'est revendiquée.
+
+## Réconciliation complète du 16 octobre
+
+Cette reprise complète les deux relevés précédents. Le
+[registre machine](reconciliation-2026-10-16.json) distingue les tentatives,
+les identifiants de paires prévues et les copies cumulatives des artefacts.
+Le plan gelé reste conservé séparément. Aucun audit, appel de modèle,
+déploiement ou modification des ressources `src/` n'a été effectué.
+
+### Preuves S1 retrouvées
+
+L'API existante de nato est accessible directement depuis le poste de
+développement. L'identité de l'instance principale, lue via `/api/environment`,
+annonce `main`, commit `7911b7b`, verrou partagé actif. Les six dossiers des
+trois paires S1 initiales sont accessibles sur le port 8501 :
+
+| Tentative Actions | Paire | Run règles | Run LLM | Recalcul hors ligne |
+| --- | --- | --- | --- | --- |
+| 38570488357-1 | S1 r1 | `2026-10-14_152007` | `2026-10-14_152419` | comparable |
+| 38575803864-1 | S1 r2 | `2026-10-14_155738` | `2026-10-14_160154` | comparable |
+| 38581153999-1 | S1 r3 | `2026-10-14_163348` | `2026-10-14_163759` | comparable |
+
+Le téléchargement `GET /api/runs/{run_id}/download/zip` fournit **214 fichiers**,
+dont les six journaux `tool_calls.jsonl` totalisent **725 entrées**, les scans,
+les artefacts d'analyse et de vérification. Les 18 fichiers `run_meta.json`,
+`audit_inventory.json` et `cost_summary.json` correspondent octet pour octet
+aux métadonnées publiées dans les artefacts Actions d'origine.
+Les précontrôles datés et journaux de déploiement sont récupérés depuis
+l'artefact Actions de chaque tentative, avant les écrasements ultérieurs.
+
+Les copies sont conservées localement sous
+`output/policy-comparison/reconciliation-2026-10-16/` : `actions/` contient les
+artefacts et journaux par workflow, `recovered-runs/` les ZIP et fichiers des
+API, `s1-recovery-manifest.json` leurs empreintes et les concordances, et
+`recomputed-*.json` les recalculs. Ce dossier est ignoré par Git ; les traces
+brutes ne sont pas publiées. Le registre versionné conserve les références
+opérationnelles et les empreintes des sources Actions déjà publiées.
+
+**Limites :** l'export API exclut les fichiers cachés et les fichiers privés
+d'évaluation. Il ne remplace donc pas une archive originale intégrale. Les
+empreintes établies lors de cette récupération assurent la traçabilité de la
+copie, sans prouver l'immutabilité historique des réponses brutes. Le
+recalcul confirme la cohérence logicielle des exports disponibles avec le
+comparateur consulté ; il ne certifie ni la remise à zéro réelle ni la
+validité humaine des preuves. Ces revues restent à faire.
+
+### Toutes les tentatives de campagne
+
+| Run Actions | Paire résolue | Exécution propre à cette tentative |
+| --- | --- | --- |
+| 38558691878 | S1 r1 | Calibration sous ancien gel ; référence LLM erronée vers le cache dans le résumé publié ; vrai run `135140` retrouvé, recalcul comparable. |
+| 38561923358 | Non résolue | Arrêt avant résolution des paramètres : `phase3_device_timeout_s` absent du checkout servi. Aucun bras lancé. |
+| 38563382320 | S1 r2 | Calibration sous ancien gel, comparable ; conservée hors du gel actuel. |
+| 38569060317 | S1 r2 | Annulée pendant la préparation ; son artefact recopie l'ancien résultat S1 r2, sans nouveau bras. |
+| 38570488357 | S1 r1 | Deux bras sous gel actuel, comparables. |
+| 38575803864 | S1 r2 | Deux bras sous gel actuel, comparables. |
+| 38581153999 | S1 r3 | Deux bras sous gel actuel, comparables. |
+| 38586490361 | S14 r1 | Préparation échouée, aucun bras ; copies des anciennes comparaisons S1 ignorées. |
+| 38586839491 | S1 r1 | **Seconde tentative sous le même identifiant** ; règles `171326`, LLM `171737` ; LLM arrêté à 1 800,1 s et 164 appels, sans vérification finale évaluable. |
+| 38593745614 | S14 r2 | Préparation échouée sur conflit avec S1 actif, aucun bras. |
+| 38610509723 | S14 r1 | Préparation échouée sur conflit avec S1 actif, aucun bras ; archive de huit fichiers conservée. |
+| 38611677976 | S14 r1 | Deux bras, LLM à 200 appels, incomparable. |
+| 38616086219 | S14 r2 | Deux bras, LLM à 200 appels, incomparable. |
+| 38621265302 | S14 r3 | Deux bras, LLM à 200 appels, incomparable. |
+| 38626380879 | S15 r1 | Deux bras, LLM à 200 appels, incomparable. |
+
+Les **huit essais de calibration** `pilot-smoke.yml` sont aussi conservés
+dans le registre : 38435392572, 38435541026, 38435795041, 38453703944,
+38531094317, 38534240392, 38538127991 et 38549458127. Les échecs avant audit,
+l'annulation, les dossiers sans métadonnées et les dépassements restent
+présents ; les sections précédentes en détaillent les causes.
+
+Parmi les **treize workflows d'inspection** recensés, six ont effectivement
+créé un diagnostic règles isolé :
+
+| Workflow | Run diagnostique retrouvé |
+| --- | --- |
+| 38452868852 | `2026-10-13_211132` |
+| 38453106419 | `2026-10-13_211319` |
+| 38453359147 | `2026-10-13_211512` |
+| 38534240361 | `2026-10-14_101903` |
+| 38547061703 | `2026-10-14_120510` |
+| 38547442149 | `2026-10-14_120821` |
+
+Ils sont rattachés à leur workflow et séparés des essais appariés. Un workflow
+d'inspection en succès ou en échec ne suffit pas à déduire qu'un audit a été
+lancé ; seuls les runs attribuables sont comptés. La reprise `38563383257`
+échoue avant son diagnostic. Les sept autres inspections ne fournissent
+aucun nouveau run diagnostique attribuable dans les sources récupérées.
+
+### Bilan et décision de suivi
+
+- **12 paires prévues ; 7 identifiants exécutés sous le gel actuel ; 8
+  tentatives appariées**, car S1 r1 a été réexécutée.
+- **3 tentatives comparables ; 5 incomparables** : quatre plafonds d'appels
+  S14/S15 et un plafond de durée S1. Les recalculs locaux confirment ces huit
+  statuts, sans sélectionner la meilleure reprise ni fusionner les essais.
+- **5 paires non exécutées sous ce gel** : S15 r2–r3, S1h r1–r3.
+- Les coûts observés incluent les essais échoués. Les totaux complets restent
+  inconnus si un bras n'a pas de comptabilité ; les diagnostics isolés sont
+  séparés du total campagne/calibration. Les montants issus de la grille de
+  prix restent des estimations, pas une dépense d'infrastructure mesurée.
+- `next-trial.txt` ne désigne plus S14 r1 mais
+  `blocked-new-freeze-required`. Toute poursuite exige le plan distinct déjà
+  décrit plus haut ; cette réconciliation ne relance aucun essai.
+
+Validation locale : les cinq tests du rapprochement et les 26 tests existants
+des archives et du support pilote passent (**31 tests**). Le rapprochement
+refuse les comparaisons cumulatives sans nouveaux bras, les références
+ambiguës et le double comptage d'un run. Les trois paires S1 et les cinq
+tentatives sous gel incomparables sont également recalculées depuis les
+exports API. La revue humaine des précontrôles et des preuves reste ouverte.

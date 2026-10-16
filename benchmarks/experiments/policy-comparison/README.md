@@ -1,5 +1,33 @@
 # Pilote D1/A1
 
+## Campagne active et reprise
+
+Le [plan gelé](pilot-2026-10.json) conserve les 12 paires prévues (S1, S14,
+S15, S1h, trois répétitions). Le [registre réconcilié du 16 octobre](reconciliation-2026-10-16.json)
+est le suivi opérationnel des tentatives déjà exécutées. Les chemins nuls du
+plan historique ne signifient plus « aucun essai exécuté » ; le registre relie
+chaque tentative à ses runs, artefacts Actions, précontrôles et ressources.
+
+La réconciliation recense **15 tentatives de campagne et 8 de calibration**,
+ainsi que 13 workflows d'inspection, dont six ont lancé un diagnostic isolé.
+Sous le gel `b636f0a5…`, **8 tentatives de paires couvrent 7 des 12 paires
+prévues** : trois comparables et cinq incomparables. S1 r1 a été exécutée
+deux fois ; le second essai a atteint la durée limite et avait écrasé son
+résumé dans le dossier partagé. Les deux essais restent distincts.
+
+Les preuves des trois premières paires S1 sont retrouvées par l'API de nato :
+six exports de runs, 214 fichiers, 725 entrées de journal d'outils ; les 18
+fichiers de métadonnées publiés initialement sont identiques. Leur
+comparabilité est recalculée hors ligne. La revue humaine de l'état initial
+et des preuves reste à faire. Voir le [journal détaillé](pilot-2026-10-preflight.md#réconciliation-complète-du-16-octobre).
+
+Restent sans exécution sous ce gel : **S15 r2–r3 et S1h r1–r3**.
+`next-trial.txt` porte maintenant `blocked-new-freeze-required` : l'ancien
+pointeur S14 r1 était périmé et le code courant ne correspond plus au gel.
+Aucun nouveau run ni déploiement n'a été lancé pendant cette reprise.
+
+## Modèle générique
+
 Ce dossier contient les **entrées de préparation** de l'expérience, pas ses
 résultats ni un lanceur de laboratoire.
 
@@ -27,6 +55,16 @@ zéro, audits et revues humaines ne sont pas exécutés par le calcul du bilan.
 Voir le [guide de campagne](../../../docs/benchmark/agent-vs-automation-campaign.md)
 pour les commandes, la matrice D1 et le protocole de revue.
 
+
+## Artefacts récupérés le 16 octobre
+
+Le blocage de téléchargement est levé après enregistrement des paramètres.
+Le premier relevé de sept essais donnait trois paires S1 comparables et quatre
+paires incomparables (S14 r1–r3, S15 r1 ; bras LLM à 200 appels). Le registre
+complet ajoute la seconde tentative S1 r1, arrêtée à 1 800 s. Les anciens
+artefacts cumulatifs ne sont pas comptés comme de nouvelles exécutions.
+Voir le [journal détaillé](pilot-2026-10-preflight.md#récupération-des-artefacts-actions--2026-10-16).
+
 ## Manifeste historique et évolution de l'application
 
 `pilot-2026-10.json` est le plan gelé du pilote d'octobre, distinct du modèle
@@ -48,3 +86,26 @@ faire accepter les nouveaux runs.
 `test_pilot_workflow.py` exerce le garde réel du workflow avec des ressources
 conformes et différentes. Il vérifie le refus avant tout paramètre de
 déploiement, plutôt que d'interdire toute évolution future du code de LANCE.
+
+
+## Diagnostic d'archives sur nato
+
+Le [relevé agrégé du 16 octobre](offline-review-2026-10-16.json), produit par le
+[workflow 38905591684](https://github.com/Tanguyvans/LANCE/actions/runs/38905591684),
+vérifie les cinq archives disponibles (483 fichiers). Il ne contient ni
+arguments d'outils, ni réponses brutes, ni identifiants. S15 LLM consomme
+199 appels en phase 3 et un en phase 4 ; les S14 consomment 175 à 182 appels
+en phase 3. Le budget de 200 appels limite donc la vérification.
+Voir le [diagnostic et la décision de reprise](pilot-2026-10-preflight.md#diagnostic-hors-ligne-sur-nato--2026-10-16).
+
+Le lecteur se relance sur nato, sans réseau ni pipeline, avec :
+
+```bash
+python3 scripts/benchmark/pilot_archive_review.py \
+  --evidence-root /opt/nato-smartcity-iot/output/pilot-evidence \
+  --output /tmp/pilot-offline-review/summary.json
+```
+
+Seul le résumé agrégé peut être publié par `pilot-inspect.yml` ; les archives
+complètes restent sur nato. L'absence d'archive ou une vérification en échec
+font échouer le contrôle et restent visibles dans le résumé.

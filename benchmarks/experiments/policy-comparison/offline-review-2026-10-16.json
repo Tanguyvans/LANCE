@@ -1,0 +1,444 @@
+{
+  "schema_version": 1,
+  "archives": [
+    {
+      "trial_id": "s14-r1",
+      "archive_sha256": "ffb90d7faf3e63511937cf30ad7ba17d16146175f58fa29d44303d000c954492",
+      "verified_files": 8,
+      "arms": {
+        "rules": {
+          "present": false
+        },
+        "llm": {
+          "present": false
+        }
+      },
+      "preflights": {},
+      "comparisons": [],
+      "attempt": "38610509723-1"
+    },
+    {
+      "trial_id": "s14-r1",
+      "archive_sha256": "378e84f3b83825d25ea4461377f60482cebd6bbe22ffa74bd1746635d51792f7",
+      "verified_files": 125,
+      "arms": {
+        "rules": {
+          "present": true,
+          "metadata_present": true,
+          "status": "completed",
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "ledger_present": true,
+          "ledger_entries": 164,
+          "malformed_ledger_entries": 0,
+          "calls_by_tool": {
+            "ssh_audit": 33,
+            "nmap_scan": 18,
+            "curl_headers": 95,
+            "tls_inspect": 1,
+            "mqtt_listen": 12,
+            "redis_cmd": 2,
+            "http_get": 2,
+            "http_request": 1
+          },
+          "calls_by_phase": {
+            "3": 134,
+            "4": 30
+          },
+          "calls_by_origin": {
+            "runner": 164
+          },
+          "repeated_tool_arguments": 24,
+          "resources": {
+            "total_tool_calls": 164,
+            "wall_clock_duration_s": 60.8,
+            "total_cost_usd": 0.0,
+            "cost_is_estimate": false
+          },
+          "limits": {
+            "max_tool_calls": 200,
+            "max_duration_s": 1800.0,
+            "max_cost_usd": 2.0
+          }
+        },
+        "llm": {
+          "present": true,
+          "metadata_present": true,
+          "status": "budget_exceeded",
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "ledger_present": true,
+          "ledger_entries": 200,
+          "malformed_ledger_entries": 0,
+          "calls_by_tool": {
+            "ssh_audit": 11,
+            "nmap_scan": 17,
+            "curl_headers": 94,
+            "tls_inspect": 1,
+            "mqtt_listen": 9,
+            "redis_cmd": 4,
+            "http_get": 4,
+            "cve_search": 31,
+            "save_deliverable": 11,
+            "http_request": 13,
+            "try_credential": 2,
+            "search_knowledge": 1,
+            "list_deliverables": 1,
+            "read_deliverable": 1
+          },
+          "calls_by_phase": {
+            "3": 182,
+            "4": 18
+          },
+          "calls_by_origin": {
+            "runner": 200
+          },
+          "repeated_tool_arguments": 7,
+          "resources": {
+            "total_tool_calls": 200,
+            "wall_clock_duration_s": 792.5,
+            "total_cost_usd": 0.7425649999999999,
+            "cost_is_estimate": true
+          },
+          "limits": {
+            "max_tool_calls": 200,
+            "max_duration_s": 1800.0,
+            "max_cost_usd": 2.0
+          }
+        }
+      },
+      "preflights": {
+        "preflight-s14-r1-llm.json": {
+          "sha256": "83bfbea69ea3d145f63e873c1da5e4c3baa1c600c106007da8f8dccd17538dfa",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "preflight-s14-r1-rules.json": {
+          "sha256": "535bf09e6847747d5fdb6d4b0fc7bd06de8212bf743794a680722c06d907e284",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "comparisons": [
+        {
+          "name": "comparison-s14-r1.json",
+          "comparable": false
+        }
+      ],
+      "attempt": "38611677976-1"
+    },
+    {
+      "trial_id": "s14-r2",
+      "archive_sha256": "0f7e1a0ed3e95554773b573915e10f4bc51a7a7bb945ce37a3e50945e90fbd7a",
+      "verified_files": 131,
+      "arms": {
+        "rules": {
+          "present": true,
+          "metadata_present": true,
+          "status": "completed",
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "ledger_present": true,
+          "ledger_entries": 164,
+          "malformed_ledger_entries": 0,
+          "calls_by_tool": {
+            "ssh_audit": 33,
+            "nmap_scan": 18,
+            "curl_headers": 95,
+            "tls_inspect": 1,
+            "mqtt_listen": 12,
+            "redis_cmd": 2,
+            "http_get": 2,
+            "http_request": 1
+          },
+          "calls_by_phase": {
+            "3": 134,
+            "4": 30
+          },
+          "calls_by_origin": {
+            "runner": 164
+          },
+          "repeated_tool_arguments": 24,
+          "resources": {
+            "total_tool_calls": 164,
+            "wall_clock_duration_s": 53.9,
+            "total_cost_usd": 0.0,
+            "cost_is_estimate": false
+          },
+          "limits": {
+            "max_tool_calls": 200,
+            "max_duration_s": 1800.0,
+            "max_cost_usd": 2.0
+          }
+        },
+        "llm": {
+          "present": true,
+          "metadata_present": true,
+          "status": "budget_exceeded",
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "ledger_present": true,
+          "ledger_entries": 200,
+          "malformed_ledger_entries": 0,
+          "calls_by_tool": {
+            "ssh_audit": 12,
+            "nmap_scan": 20,
+            "curl_headers": 97,
+            "tls_inspect": 2,
+            "mqtt_listen": 9,
+            "redis_cmd": 3,
+            "http_get": 2,
+            "cve_search": 27,
+            "save_deliverable": 14,
+            "try_credential": 7,
+            "http_request": 5,
+            "get_device_info": 1,
+            "tcp_send": 1
+          },
+          "calls_by_phase": {
+            "3": 175,
+            "4": 25
+          },
+          "calls_by_origin": {
+            "runner": 200
+          },
+          "repeated_tool_arguments": 13,
+          "resources": {
+            "total_tool_calls": 200,
+            "wall_clock_duration_s": 1192.1,
+            "total_cost_usd": 1.011319,
+            "cost_is_estimate": true
+          },
+          "limits": {
+            "max_tool_calls": 200,
+            "max_duration_s": 1800.0,
+            "max_cost_usd": 2.0
+          }
+        }
+      },
+      "preflights": {
+        "preflight-s14-r2-llm.json": {
+          "sha256": "cb09443c03afb04acca50858cb36632ac2fe604d88825fcc172f34d7f2be7f7a",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "preflight-s14-r2-rules.json": {
+          "sha256": "24a3ba154929ed590feb6d532d65b054f59451888b27c0e395ef632868315914",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "comparisons": [
+        {
+          "name": "comparison-s14-r2.json",
+          "comparable": false
+        }
+      ],
+      "attempt": "38616086219-1"
+    },
+    {
+      "trial_id": "s14-r3",
+      "archive_sha256": "f03a42543637b5dcbc70c166c528288ebc1b0a696e1091b0d9532bbc11772b7b",
+      "verified_files": 127,
+      "arms": {
+        "rules": {
+          "present": true,
+          "metadata_present": true,
+          "status": "completed",
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "ledger_present": true,
+          "ledger_entries": 164,
+          "malformed_ledger_entries": 0,
+          "calls_by_tool": {
+            "ssh_audit": 33,
+            "nmap_scan": 18,
+            "curl_headers": 95,
+            "tls_inspect": 1,
+            "mqtt_listen": 12,
+            "redis_cmd": 2,
+            "http_get": 2,
+            "http_request": 1
+          },
+          "calls_by_phase": {
+            "3": 134,
+            "4": 30
+          },
+          "calls_by_origin": {
+            "runner": 164
+          },
+          "repeated_tool_arguments": 24,
+          "resources": {
+            "total_tool_calls": 164,
+            "wall_clock_duration_s": 54.1,
+            "total_cost_usd": 0.0,
+            "cost_is_estimate": false
+          },
+          "limits": {
+            "max_tool_calls": 200,
+            "max_duration_s": 1800.0,
+            "max_cost_usd": 2.0
+          }
+        },
+        "llm": {
+          "present": true,
+          "metadata_present": true,
+          "status": "budget_exceeded",
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "ledger_present": true,
+          "ledger_entries": 200,
+          "malformed_ledger_entries": 0,
+          "calls_by_tool": {
+            "ssh_audit": 12,
+            "nmap_scan": 19,
+            "curl_headers": 96,
+            "tls_inspect": 1,
+            "mqtt_listen": 9,
+            "redis_cmd": 5,
+            "http_get": 7,
+            "cve_search": 32,
+            "save_deliverable": 12,
+            "tcp_send": 1,
+            "http_request": 5,
+            "try_credential": 1
+          },
+          "calls_by_phase": {
+            "3": 182,
+            "4": 18
+          },
+          "calls_by_origin": {
+            "runner": 200
+          },
+          "repeated_tool_arguments": 13,
+          "resources": {
+            "total_tool_calls": 200,
+            "wall_clock_duration_s": 1179.4,
+            "total_cost_usd": 0.944991,
+            "cost_is_estimate": true
+          },
+          "limits": {
+            "max_tool_calls": 200,
+            "max_duration_s": 1800.0,
+            "max_cost_usd": 2.0
+          }
+        }
+      },
+      "preflights": {
+        "preflight-s14-r3-llm.json": {
+          "sha256": "56210cfc16f71d0fa6d8ce886a07eb3306cd37cb6609423e3a6b9ca12f39fd1b",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "preflight-s14-r3-rules.json": {
+          "sha256": "526b858034bc4a0ccb9a701f506f1c4ff351ec6a554698a03287dc778c6d86f6",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "comparisons": [
+        {
+          "name": "comparison-s14-r3.json",
+          "comparable": false
+        }
+      ],
+      "attempt": "38621265302-1"
+    },
+    {
+      "trial_id": "s15-r1",
+      "archive_sha256": "2bc9e9c042ee34de68ac4c274af1ca28be3be4145d257769ab78ddff3d507a36",
+      "verified_files": 92,
+      "arms": {
+        "rules": {
+          "present": true,
+          "metadata_present": true,
+          "status": "completed",
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "ledger_present": true,
+          "ledger_entries": 192,
+          "malformed_ledger_entries": 0,
+          "calls_by_tool": {
+            "ssh_audit": 21,
+            "nmap_scan": 8,
+            "curl_headers": 161,
+            "tls_inspect": 1,
+            "http_get": 1
+          },
+          "calls_by_phase": {
+            "3": 177,
+            "4": 15
+          },
+          "calls_by_origin": {
+            "runner": 192
+          },
+          "repeated_tool_arguments": 14,
+          "resources": {
+            "total_tool_calls": 192,
+            "wall_clock_duration_s": 10.5,
+            "total_cost_usd": 0.0,
+            "cost_is_estimate": false
+          },
+          "limits": {
+            "max_tool_calls": 200,
+            "max_duration_s": 1800.0,
+            "max_cost_usd": 2.0
+          }
+        },
+        "llm": {
+          "present": true,
+          "metadata_present": true,
+          "status": "budget_exceeded",
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "ledger_present": true,
+          "ledger_entries": 200,
+          "malformed_ledger_entries": 0,
+          "calls_by_tool": {
+            "ssh_audit": 8,
+            "nmap_scan": 8,
+            "curl_headers": 161,
+            "tls_inspect": 1,
+            "http_request": 1,
+            "cve_search": 13,
+            "save_deliverable": 7,
+            "http_get": 1
+          },
+          "calls_by_phase": {
+            "3": 199,
+            "4": 1
+          },
+          "calls_by_origin": {
+            "runner": 200
+          },
+          "repeated_tool_arguments": 3,
+          "resources": {
+            "total_tool_calls": 200,
+            "wall_clock_duration_s": 567.0,
+            "total_cost_usd": 0.400346,
+            "cost_is_estimate": true
+          },
+          "limits": {
+            "max_tool_calls": 200,
+            "max_duration_s": 1800.0,
+            "max_cost_usd": 2.0
+          }
+        }
+      },
+      "preflights": {
+        "preflight-s15-r1-llm.json": {
+          "sha256": "654d8f9cf2034271d1f8a42c9e1a88210e1614ed020a7a3986ec03a1a6e68cd6",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "preflight-s15-r1-rules.json": {
+          "sha256": "b47541f1b84bf7a405f30aa069bb44582d372aa2bb3a2254a29a170b419fcd9c",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "comparisons": [
+        {
+          "name": "comparison-s15-r1.json",
+          "comparable": false
+        }
+      ],
+      "attempt": "38626380879-1"
+    }
+  ],
+  "source_workflow": "https://github.com/Tanguyvans/LANCE/actions/runs/38905591684",
+  "review_script_commit": "b143f67",
+  "raw_evidence_exported": false
+}

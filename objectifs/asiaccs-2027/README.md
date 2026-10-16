@@ -19,10 +19,21 @@ qui reste la source de vérité de l'exécution.
 
 ## Statut
 
-**Objectif retenu le 2026-10-12 ; expérimentation à lancer.**
-Aucun run de campagne n'a été exécuté pour cet objectif. La proposition
-scientifique associée est un protocole proposé, sans résultat expérimental
-nouveau.
+**Objectif retenu le 2026-10-12 ; suivi réconcilié le 2026-10-16, campagne incomplète.**
+Le [registre des tentatives](../../benchmarks/experiments/policy-comparison/reconciliation-2026-10-16.json)
+recense 15 tentatives de campagne, 8 de calibration et 13 inspections, dont six
+ont créé un diagnostic isolé. Sous le gel actuel, huit tentatives appariées
+couvrent sept des douze paires prévues : trois sont comparables et cinq
+incomparables. La seconde tentative S1 r1, arrêtée à la limite de durée,
+avait écrasé son premier résumé ; les deux résultats sont maintenant conservés.
+
+Les six exports des trois paires S1 comparables sont retrouvés via les API
+nato : 214 fichiers, 725 entrées de journal d'outils et concordance des 18
+fichiers de métadonnées publiés initialement. Le recalcul confirme leur
+comparabilité ; la revue humaine des preuves et des remises à zéro reste
+ouverte. Le [journal détaillé](../../benchmarks/experiments/policy-comparison/pilot-2026-10-preflight.md#réconciliation-complète-du-16-octobre)
+précise les références et les limites de l'export API. Aucun avantage général
+du LLM n'est démontré.
 
 ## Dates
 
@@ -30,7 +41,7 @@ nouveau.
 - Point de décision soumission / repli : **2026-11-16** (critères dans le plan).
 - Soumission visée : **2026-12-11 (AoE)**, AsiaCCS 2027 round 2.
 - Conférence : 12-16 juillet 2027, Macao.
-- Dernière mise à jour de ce dossier : **2026-10-12**.
+- Dernière mise à jour de ce dossier : **2026-10-16**.
 
 ## Synthèse
 
@@ -66,9 +77,96 @@ nouveau.
 
 ## Suite et points ouverts
 
-1. Lancer le pilote D1/A1 (24 exécutions modélisées) et consigner chaque
-   essai dans le manifeste de campagne.
+1. Faire relire les preuves et précontrôles retrouvés, puis préparer un plan
+   distinct pour la poursuite : cinq paires restent sans exécution sous ce
+   gel (S15 r2–r3 et S1h r1–r3). `next-trial.txt` porte
+   `blocked-new-freeze-required`. Les dépassements précédents restent dans
+   le registre ; aucune reprise ne les remplace.
 2. Calibrer le seuil delta sur le pilote, jamais après observation du test.
 3. Décider le 2026-11-16 selon les critères du plan : soumission AsiaCCS,
    ou repli workshop / version journal ultérieure.
 4. Préparer tôt l'artefact anonymisé exigé par l'appendice Open Science.
+
+## Point de reprise du 15 octobre 2026
+
+Les sections suivantes conservent les étapes successives de la récupération.
+Le statut courant est celui de la réconciliation en tête de ce document ;
+les blocages réseau et pointeurs décrits ci-dessous sont des constats datés.
+
+- Manifeste actif : [pilot-2026-10.json](../../benchmarks/experiments/policy-comparison/pilot-2026-10.json),
+  et non `pilot.example.json`. Set : S1, S14, S15, S1h ; trois répétitions.
+- Configuration gelée : `ollama-umons` / `qwen3.8:27b`, profil `full`,
+  200 appels outil, 1 800 s par bras, 600 s par appareil en phase 3,
+  plafond de 2 USD ; modèle et empreinte documentés dans le manifeste.
+- Prochaine vérification : historique de `pilot-campaign.yml`, identité du
+  checkout d'exécution, verrou du laboratoire et artefacts déjà conservés.
+  Ne pas modifier `src/` pendant cette campagne gelée.
+- Accès depuis cet environnement cloud : la requête HTTP vers nato renvoie
+  `403 Domain forbidden` et la lecture de l'API GitHub Actions renvoie
+  `Forbidden`. Aucun lancement ni déploiement effectué à cette reprise.
+  Ces refus ne prouvent ni une panne de nato ni l'absence d'identifiants.
+
+Le bilan local se recalcule avec la commande du guide de campagne en utilisant
+le manifeste actif. Les coûts manquants restent inconnus, et non nuls.
+
+## Reprise distante du 16 octobre 2026
+
+La lecture de l'API GitHub fonctionne désormais. L'historique de
+`pilot-campaign.yml` contient des jobs terminés avec succès pour les sept
+paires suivantes (date d'exécution : 14 octobre) :
+
+| Paire identifiée par l'artefact | Run GitHub Actions | Conclusion du workflow |
+| --- | --- | --- |
+| S1 r1 | [38570488357](https://github.com/Tanguyvans/LANCE/actions/runs/38570488357) | success |
+| S1 r2 | [38575803864](https://github.com/Tanguyvans/LANCE/actions/runs/38575803864) | success |
+| S1 r3 | [38581153999](https://github.com/Tanguyvans/LANCE/actions/runs/38581153999) | success |
+| S14 r1 | [38611677976](https://github.com/Tanguyvans/LANCE/actions/runs/38611677976) | success |
+| S14 r2 | [38616086219](https://github.com/Tanguyvans/LANCE/actions/runs/38616086219) | success |
+| S14 r3 | [38621265302](https://github.com/Tanguyvans/LANCE/actions/runs/38621265302) | success |
+| S15 r1 | [38626380879](https://github.com/Tanguyvans/LANCE/actions/runs/38626380879) | success |
+
+Il s'agit d'un inventaire opérationnel : les noms des artefacts identifient
+les essais, mais ni la complétude des bras ni leur comparabilité scientifique
+n'ont été vérifiées ici. Des tentatives en échec ou annulées existent aussi
+et restent à réconcilier sans les effacer. Aucun nouveau run n'est lancé.
+
+**Action prioritaire :** télécharger les artefacts, vérifier les comparaisons,
+les précontrôles, les identités de ressources et la disponibilité des preuves
+complètes sur nato, puis réconcilier le manifeste avant de déterminer les
+paires manquantes. Ne pas déduire « 7 paires admissibles » des 7 jobs en succès.
+
+Le téléchargement est actuellement refusé sur les domaines Azure Blob utilisés
+par GitHub Actions. Les dix domaines observés ont été ajoutés au brouillon
+réseau en conservant `api.github.com` ; cette sauvegarde n'applique pas la
+politique à la machine. Revoir et enregistrer ces changements dans les
+paramètres, puis publier l'environnement pour permettre une nouvelle tentative.
+
+
+### Accès rétabli et lecture des comparaisons
+
+Après enregistrement des paramètres réseau, les artefacts Actions sont
+accessibles. Le [journal du pilote](../../benchmarks/experiments/policy-comparison/pilot-2026-10-preflight.md#récupération-des-artefacts-actions--2026-10-16)
+consigne leur récupération : les trois comparaisons S1 sont marquées comparables ;
+S14 r1–r3 et S15 r1 sont incomparables avec dépassement du budget du bras LLM
+(200 appels atteints). Ce statut ne valide pas encore les preuves ni les
+précontrôles ; les archives complètes restent à récupérer sur nato.
+Le manifeste local n'est pas rempli à partir de ces seuls extraits.
+La priorité devient la réconciliation des tentatives et du plafond d'appels,
+avant une relance ou un changement de gel.
+
+
+### Diagnostic vérifié sur nato et suite du programme
+
+Le [diagnostic hors ligne du 16 octobre](../../benchmarks/experiments/policy-comparison/pilot-2026-10-preflight.md#diagnostic-hors-ligne-sur-nato--2026-10-16)
+a vérifié les cinq archives disponibles sur nato (483 fichiers). Le plafond de
+200 appels laisse seulement un appel de vérification au LLM sur S15, après
+199 en analyse. Les anciens échecs restent des résultats opérationnels du gel.
+Les archives originales S1 ne sont pas dans ce magasin. La réconciliation
+ultérieure retrouve les exports de runs par l'API, avec les limites précisées
+dans le statut courant en tête du document.
+
+Le `main` courant (`7911b7b` lors de la reprise) contient de nouvelles ressources
+applicatives ; il n'est plus compatible avec le gel historique. La prochaine
+campagne doit avoir un nouveau manifeste et une calibration explicite du budget
+commun. Il faut d'abord qualifier un essai S15 et le contrôle sain, avant de
+relancer une série de paires. Aucun nouveau gel ni audit n'est créé ici.

@@ -1,20 +1,14 @@
 name: Pilot inspect (temporary)
 
-# Temporary read-only inspection of the nato-master runner environment
-# before any pilot arm is executed. Lives on dev/1 (a branch the mini-PC
-# pulls, instance dev-1). Delete this workflow once the pilot is done.
-
+# Offline archive review only: no audit, deployment, model call or raw upload.
 on:
   workflow_dispatch:
-  push:
-    branches: [dev/1]
-    paths: [.github/workflows/pilot-inspect.yml]
 
 permissions:
   contents: read
 
 concurrency:
-  group: pilot-inspect-nato-master
+  group: pilot-offline-review-nato-master
   cancel-in-progress: false
 
 jobs:
@@ -22,67 +16,25 @@ jobs:
     runs-on: [self-hosted, nato-master]
     timeout-minutes: 10
     steps:
-      - name: Inspect runner environment (read-only)
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Verify archives and summarize on nato
+        env:
+          REVIEW_OUTPUT: ${{ runner.temp }}/pilot-offline-review
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
           test "$RUNNER_NAME" = nato-master
           ip -o -4 addr show | grep -q '100\.103\.253\.86/'
-          echo "host=$(hostname) uid=$(id -u)"
-          echo "--- lab lock / deployment root ---"
-          ls -la /var/lib/lance/ 2>&1 | head -5
-          ls /opt/nato-smartcity-iot/output/scenario_deployments 2>&1 | head -10
-          echo "--- checkouts ---"
-          for d in /opt/nato-smartcity-iot /opt/lance-dev-1 /opt/lance-dev-2; do
-            if [ -d "$d/.git" ]; then echo "$d HEAD=$(git -C "$d" rev-parse --short HEAD 2>/dev/null)"; fi
-            if [ -x "$d/venv/bin/python" ]; then echo "$d venv=ok"; fi
-          done
-          echo "--- pipeline status (main) ---"
-          curl -fsS --max-time 10 http://127.0.0.1:8501/api/pipeline/status | head -c 400; echo
-          echo "--- dev-1 benchmark listing (8502) ---"
-          curl -fsS --max-time 10 "http://127.0.0.1:8502/api/runs/benchmark?compact=true&limit=6" | head -c 1500; echo
-          echo "--- recover s1-r1 comparison (dev-1, run dirs from campaign 38558691878) ---"
-          cd /opt/lance-dev-1 && venv/bin/python -u -m src.benchmark.compare_policies \
-            --rules-run output/agent/2026-10-14_134728 --llm-run output/agent/2026-10-14_135140 \
-            --ground-truth benchmarks/ground_truth/dev/scenario_1.yaml \
-            --output output/pilot-campaign/s1-r1/comparison-s1-r1.json || true
-          head -c 900 output/pilot-campaign/s1-r1/comparison-s1-r1.json; echo
-          cd /
-          echo "--- phase3 status of Oct 14 pilot runs (dev-1) ---"
-          for d in 2026-10-14_105442 2026-10-14_105622; do
-            echo "### $d"
-            cat "/opt/lance-dev-1/output/agent/$d/03_phase3_status.json" 2>&1 | head -c 1200; echo
-            ls "/opt/lance-dev-1/output/agent/$d/" 2>&1 | head -25
-          done
-          echo "--- audit CLI present in main checkout ---"
-          /opt/nato-smartcity-iot/venv/bin/python -m src.agent --help 2>&1 | grep -E "decision-policy|audit-inventory" | head -4
-          echo "--- ollama models (umons) ---"
-          curl -fsS --max-time 10 http://100.76.206.65:11435/api/tags 2>/dev/null | head -c 300; echo
-          set +e
-          echo "--- pilot-smoke logs (cancelled run) ---"
-          ls -la /opt/nato-smartcity-iot/output/pilot-smoke/ 2>&1
-          for f in deploy1.log deploy2.log arm-rules.log arm-llm.log; do
-            p=/opt/nato-smartcity-iot/output/pilot-smoke/$f
-            if [ -f "$p" ]; then echo "### tail $f"; tail -30 "$p"; fi
-          done
-          echo "--- agent run dirs (recent) ---"
-          ls -dt /opt/nato-smartcity-iot/output/agent/*/ 2>/dev/null | head -5
-          for d in $(ls -dt /opt/nato-smartcity-iot/output/agent/*/ 2>/dev/null | head -3); do
-            echo "### $d"; ls "$d" | head -20
-            if [ -f "$d/run_meta.json" ]; then head -c 600 "$d/run_meta.json"; echo; fi
-          done
-          echo "--- rules arm diagnostic (timeout 120) ---"
-          cd /opt/nato-smartcity-iot
-          timeout 120 venv/bin/python -u -m src.agent --decision-policy rules --experiment-scope analysis-verification --audit-inventory output/pilot-smoke/inventory-s1-r1.json --execution-profile full --max-tool-calls 200 --max-duration-s 600 --max-cost-usd 2 > /tmp/rules-diag.log 2>&1; echo "exit=$?"
-          tail -40 /tmp/rules-diag.log
-          ls -dt output/agent/*/ | head -2
-          echo "--- inventory content ---"
-          cat /opt/nato-smartcity-iot/output/pilot-smoke/inventory-s1-r1.json
-          echo "--- diag run files ---"
-          ls /opt/nato-smartcity-iot/output/agent/2026-10-13_211132/
-          echo "--- original smoke inventory build output ---"
-          grep -a "devices" /opt/nato-smartcity-iot/output/pilot-smoke/deploy1.log | tail -2
-          echo "--- full rules-diag log ---"
-          cat /tmp/rules-diag.log 2>/dev/null | head -80
-          echo "--- original run dir timed entries ---"
-          ls -la /opt/nato-smartcity-iot/output/agent/2026-10-13_190815/ 2>&1
+          python3 scripts/benchmark/pilot_archive_review.py \
+            --evidence-root /opt/nato-smartcity-iot/output/pilot-evidence \
+            --output "$REVIEW_OUTPUT/summary.json"
+      - name: Upload aggregate diagnostics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-offline-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pilot-offline-review/summary.json
+          if-no-files-found: error
+          retention-days: 30

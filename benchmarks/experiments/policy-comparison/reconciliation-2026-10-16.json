@@ -1,0 +1,1832 @@
+{
+  "schema_version": "pilot-reconciliation-v1",
+  "campaign_id": "lance-policy-pilot-2026-10",
+  "configuration": {
+    "provider": "ollama-umons",
+    "model": "qwen3.8:27b",
+    "max_tool_calls": 200,
+    "max_duration_s": 1800,
+    "phase3_device_timeout_s": 600,
+    "max_cost_usd": 2.0,
+    "execution_profile": "full",
+    "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+    "rules_version": "shared-scanner-bounded-verification-v5"
+  },
+  "scope": "Operational inventory; published comparability is not human validation of evidence/reset",
+  "attempts_by_workflow": {
+    "pilot-smoke.yml": 8,
+    "pilot-campaign.yml": 15
+  },
+  "planned_pairs": 12,
+  "planned_pairs_with_frozen_execution": 7,
+  "frozen_execution_attempts": 8,
+  "published_comparable_frozen_attempts": 3,
+  "planned_trials": [
+    {
+      "trial_id": "s1-r1",
+      "attempt_ids": [
+        "38558691878-1",
+        "38570488357-1",
+        "38586839491-1"
+      ],
+      "frozen_execution_attempts": [
+        "38570488357-1",
+        "38586839491-1"
+      ],
+      "published_comparable_attempts": [
+        "38570488357-1"
+      ],
+      "status": "executed"
+    },
+    {
+      "trial_id": "s1-r2",
+      "attempt_ids": [
+        "38563382320-1",
+        "38569060317-1",
+        "38575803864-1"
+      ],
+      "frozen_execution_attempts": [
+        "38575803864-1"
+      ],
+      "published_comparable_attempts": [
+        "38575803864-1"
+      ],
+      "status": "executed"
+    },
+    {
+      "trial_id": "s1-r3",
+      "attempt_ids": [
+        "38581153999-1"
+      ],
+      "frozen_execution_attempts": [
+        "38581153999-1"
+      ],
+      "published_comparable_attempts": [
+        "38581153999-1"
+      ],
+      "status": "executed"
+    },
+    {
+      "trial_id": "s14-r1",
+      "attempt_ids": [
+        "38586490361-1",
+        "38610509723-1",
+        "38611677976-1"
+      ],
+      "frozen_execution_attempts": [
+        "38611677976-1"
+      ],
+      "published_comparable_attempts": [],
+      "status": "executed"
+    },
+    {
+      "trial_id": "s14-r2",
+      "attempt_ids": [
+        "38593745614-1",
+        "38616086219-1"
+      ],
+      "frozen_execution_attempts": [
+        "38616086219-1"
+      ],
+      "published_comparable_attempts": [],
+      "status": "executed"
+    },
+    {
+      "trial_id": "s14-r3",
+      "attempt_ids": [
+        "38621265302-1"
+      ],
+      "frozen_execution_attempts": [
+        "38621265302-1"
+      ],
+      "published_comparable_attempts": [],
+      "status": "executed"
+    },
+    {
+      "trial_id": "s15-r1",
+      "attempt_ids": [
+        "38626380879-1"
+      ],
+      "frozen_execution_attempts": [
+        "38626380879-1"
+      ],
+      "published_comparable_attempts": [],
+      "status": "executed"
+    },
+    {
+      "trial_id": "s15-r2",
+      "attempt_ids": [],
+      "frozen_execution_attempts": [],
+      "published_comparable_attempts": [],
+      "status": "not_executed_under_freeze"
+    },
+    {
+      "trial_id": "s15-r3",
+      "attempt_ids": [],
+      "frozen_execution_attempts": [],
+      "published_comparable_attempts": [],
+      "status": "not_executed_under_freeze"
+    },
+    {
+      "trial_id": "s1h-r1",
+      "attempt_ids": [],
+      "frozen_execution_attempts": [],
+      "published_comparable_attempts": [],
+      "status": "not_executed_under_freeze"
+    },
+    {
+      "trial_id": "s1h-r2",
+      "attempt_ids": [],
+      "frozen_execution_attempts": [],
+      "published_comparable_attempts": [],
+      "status": "not_executed_under_freeze"
+    },
+    {
+      "trial_id": "s1h-r3",
+      "attempt_ids": [],
+      "frozen_execution_attempts": [],
+      "published_comparable_attempts": [],
+      "status": "not_executed_under_freeze"
+    }
+  ],
+  "attempts": [
+    {
+      "attempt_id": "38435392572-1",
+      "github_run_id": 38435392572,
+      "workflow": "pilot-smoke.yml",
+      "created_at": "2026-10-13T17:02:16Z",
+      "workflow_commit": "eb4131f564cf7b1665b36a0e88e7667d24eb1c4d",
+      "workflow_conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38435392572",
+      "trial_id": "s1-r1",
+      "started_arms": [],
+      "reference_corrections": {},
+      "published_comparable": null,
+      "comparison_sha256": null,
+      "source_log_sha256": "d0e20c675d8ece03a57b2090db2747b9052166cbdcdc9dfa0a72d09b0f994515",
+      "source_artifacts": [],
+      "arms": {},
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": null
+    },
+    {
+      "attempt_id": "38435541026-1",
+      "github_run_id": 38435541026,
+      "workflow": "pilot-smoke.yml",
+      "created_at": "2026-10-13T17:03:22Z",
+      "workflow_commit": "0859682d8e13fdda77d90ded0c8f86e9ff464297",
+      "workflow_conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38435541026",
+      "trial_id": "s1-r1",
+      "started_arms": [],
+      "reference_corrections": {},
+      "published_comparable": null,
+      "comparison_sha256": null,
+      "source_log_sha256": "e9c8d760871541f8f4b447b2fce337f11d4ae7238a1f934d52489fbaf936891c",
+      "source_artifacts": [],
+      "arms": {},
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": null
+    },
+    {
+      "attempt_id": "38435795041-1",
+      "github_run_id": 38435795041,
+      "workflow": "pilot-smoke.yml",
+      "created_at": "2026-10-13T17:05:14Z",
+      "workflow_commit": "c5f958130a93932b7c295863fde1be9d8cae63b9",
+      "workflow_conclusion": "cancelled",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38435795041",
+      "trial_id": "s1-r1",
+      "started_arms": [
+        "rules"
+      ],
+      "reference_corrections": {},
+      "published_comparable": null,
+      "comparison_sha256": null,
+      "source_log_sha256": "d795df70784d46bc5a2661dda857b4d510af81ae7455836fdd806f15836bf7cb",
+      "source_artifacts": [],
+      "arms": {
+        "rules": {
+          "run": null,
+          "api_recovered": false,
+          "published_status": null,
+          "usage_complete": false,
+          "resources": {
+            "total_tool_calls": null,
+            "wall_clock_duration_s": null,
+            "total_cost_usd": null
+          },
+          "cost_is_estimate": null,
+          "resource_manifest_sha256": null
+        }
+      },
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": null
+    },
+    {
+      "attempt_id": "38453703944-1",
+      "github_run_id": 38453703944,
+      "workflow": "pilot-smoke.yml",
+      "created_at": "2026-10-13T19:17:46Z",
+      "workflow_commit": "b34b754b773c6b60b439f4dd38f31b8d07d26c12",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38453703944",
+      "trial_id": "s1-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": false,
+      "comparison_sha256": "550326d5a3ea79bfd3528aec0c75ba11e70d7fadb2cc3c46c1a88f7011404144",
+      "source_log_sha256": "f16292d8fb0f9d1e02e9c3cad10eea63ff5352f25a856a5f39e1431c84fafb25",
+      "source_artifacts": [
+        {
+          "id": 11846091497,
+          "name": "pilot-smoke-s1-r1"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-13_212054",
+          "api_recovered": true,
+          "published_status": "missing",
+          "usage_complete": false,
+          "resources": {
+            "total_tool_calls": null,
+            "wall_clock_duration_s": null,
+            "total_cost_usd": null
+          },
+          "cost_is_estimate": null,
+          "resource_manifest_sha256": null,
+          "instance": "main",
+          "recovered_status": null,
+          "proof_files_present": {
+            "run_meta.json": false,
+            "audit_inventory.json": false,
+            "tool_calls.jsonl": false,
+            "04_exploitation.json": false
+          }
+        },
+        "llm": {
+          "run": "2026-10-13_214706",
+          "api_recovered": true,
+          "published_status": "missing",
+          "usage_complete": false,
+          "resources": {
+            "total_tool_calls": null,
+            "wall_clock_duration_s": null,
+            "total_cost_usd": null
+          },
+          "cost_is_estimate": null,
+          "resource_manifest_sha256": null,
+          "instance": "main",
+          "recovered_status": null,
+          "proof_files_present": {
+            "run_meta.json": false,
+            "audit_inventory.json": false,
+            "tool_calls.jsonl": false,
+            "04_exploitation.json": false
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38453703944/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-rules.json",
+          "sha256": "c2dcb09a147e8a3dac2d6cef4878569911e2f3fea36b97513695a6aca147467f",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38453703944/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-llm.json",
+          "sha256": "bc161ede73616aa2a24d7443bf9e13808819bbd981f93c2e50d846cf26b9edfc",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": false
+    },
+    {
+      "attempt_id": "38531094317-1",
+      "github_run_id": 38531094317,
+      "workflow": "pilot-smoke.yml",
+      "created_at": "2026-10-14T07:51:25Z",
+      "workflow_commit": "7e81f0adb9c4e7106da9b0377ab8b67b629e6d9c",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38531094317",
+      "trial_id": "s1-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": false,
+      "comparison_sha256": "34e17bdd02afbb8ed892d4969d295bd8ff348c566c3768d6d8c733071b5659d5",
+      "source_log_sha256": "a00f3c55c5d089b63271c9e41cc627163ba1f8fb389258c84627a62aa62b8d51",
+      "source_artifacts": [
+        {
+          "id": 11877639720,
+          "name": "pilot-smoke-s1-r1"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_095432",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 77,
+            "wall_clock_duration_s": 28.9,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "64dd04f2c0dcfeeb5a1ad810a462d2367ab520b690d8ef9600570f3c764788b1",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_095612",
+          "api_recovered": true,
+          "published_status": "budget_exceeded",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 91,
+            "wall_clock_duration_s": 600.0,
+            "total_cost_usd": 0.397468
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "64dd04f2c0dcfeeb5a1ad810a462d2367ab520b690d8ef9600570f3c764788b1",
+          "instance": "main",
+          "recovered_status": "budget_exceeded",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": false
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38531094317/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-rules.json",
+          "sha256": "6418f80745f247ed022e3fadc7b678dff6fcf2e4843222884d0c002aa64dd161",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38531094317/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-llm.json",
+          "sha256": "c505c81d5b47770e4ad91fc0a01aab145f0e59734c49c729dcffe4bc898bfd92",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": false
+    },
+    {
+      "attempt_id": "38534240392-1",
+      "github_run_id": 38534240392,
+      "workflow": "pilot-smoke.yml",
+      "created_at": "2026-10-14T08:18:59Z",
+      "workflow_commit": "ad11f18b5c38337d22975bf43b0b70649fc35c64",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38534240392",
+      "trial_id": "s1-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": false,
+      "comparison_sha256": "b92801e1782024432dcd944ed30971182d92b03a36a777e3e1bc87ff1f001215",
+      "source_log_sha256": "615335ffff026f3785ee69cef39b490cdf5cf7396f1afde2601f8a1dc0c84172",
+      "source_artifacts": [
+        {
+          "id": 11880106631,
+          "name": "pilot-smoke-s1-r1"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_102246",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 77,
+            "wall_clock_duration_s": 29.2,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "6834543cadd4ffd0cbaa628534eb4e1978d2e1cf32f29c2451d26f2bbdda69a4",
+          "instance": "dev-1",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_102426",
+          "api_recovered": true,
+          "published_status": "budget_exceeded",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 78,
+            "wall_clock_duration_s": 600.0,
+            "total_cost_usd": 0.297721
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "6834543cadd4ffd0cbaa628534eb4e1978d2e1cf32f29c2451d26f2bbdda69a4",
+          "instance": "dev-1",
+          "recovered_status": "budget_exceeded",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": false
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38534240392/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-rules.json",
+          "sha256": "eccd5e316fc1f30905206088bd4871338632de0c8a42784d2ea634b7ce7277c7",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38534240392/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-llm.json",
+          "sha256": "b973a1e71ab56b60767ef0c8c4e47789c99b5e162e03b24e0d847494b470a233",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": false
+    },
+    {
+      "attempt_id": "38538127991-1",
+      "github_run_id": 38538127991,
+      "workflow": "pilot-smoke.yml",
+      "created_at": "2026-10-14T08:51:36Z",
+      "workflow_commit": "5bbd8f896bddf6a03edfaf5938edbd9535375cee",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38538127991",
+      "trial_id": "s1-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": false,
+      "comparison_sha256": "5b43e5e2f044959197d2b54dcf29fe72ab0dd6d0bdb70f67eeaebd512028b783",
+      "source_log_sha256": "339d4bd7afa349024cb89c6b319b61f0e74c9c5551d6c4d3740fb3f5cab68507",
+      "source_artifacts": [
+        {
+          "id": 11881527483,
+          "name": "pilot-smoke-s1-r1"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_105442",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 77,
+            "wall_clock_duration_s": 29.7,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "ac974fefc30077acd0840b82a1d58b7a1ed0480c5c4afcbbaafffc7814cc3840",
+          "instance": "dev-1",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_105622",
+          "api_recovered": true,
+          "published_status": "budget_exceeded",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 94,
+            "wall_clock_duration_s": 600.0,
+            "total_cost_usd": 0.488312
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "ac974fefc30077acd0840b82a1d58b7a1ed0480c5c4afcbbaafffc7814cc3840",
+          "instance": "dev-1",
+          "recovered_status": "budget_exceeded",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": false
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38538127991/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-rules.json",
+          "sha256": "1090848a2727c1349adbc5fb10e0864be57af71c82a57545d02982550b30c72c",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38538127991/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-llm.json",
+          "sha256": "8332f9bdea9eefd852cb27ac0b225a253097336e9e974101f2107a009a878c9a",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": false
+    },
+    {
+      "attempt_id": "38549458127-1",
+      "github_run_id": 38549458127,
+      "workflow": "pilot-smoke.yml",
+      "created_at": "2026-10-14T10:25:24Z",
+      "workflow_commit": "f5a174ccc839194a17c97d0c7157425338538983",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38549458127",
+      "trial_id": "s1-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": true,
+      "comparison_sha256": "fff1adeb1a08569943159eb89de1f84d3800a032222ecda639c0792bc018e573",
+      "source_log_sha256": "5a4c856a79bec795f653516080b240b4f393bbf25836e6dcf3dce30de44fcfd7",
+      "source_artifacts": [
+        {
+          "id": 11887925745,
+          "name": "pilot-smoke-s1-r1"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_122830",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 80,
+            "wall_clock_duration_s": 180.1,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "dacfe0ac4686e1c7b7fc86833ccd6454e67debfada66fa5ed267d0b1799ea456",
+          "instance": "dev-1",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_123242",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 153,
+            "wall_clock_duration_s": 1574.3,
+            "total_cost_usd": 1.342918
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "dacfe0ac4686e1c7b7fc86833ccd6454e67debfada66fa5ed267d0b1799ea456",
+          "instance": "dev-1",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38549458127/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-rules.json",
+          "sha256": "6c32ca68a91a41ce4e144ddefe8192a4f69d3c853550888ab202ee2ecfec8872",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38549458127/artifacts/pilot-smoke-s1-r1/pilot-smoke/preflight-s1-r1-llm.json",
+          "sha256": "baf60bd14f013a7f3c5aed46c2490b6031a3adcf730f46a53d07b693f23c4daf",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": true
+    },
+    {
+      "attempt_id": "38558691878-1",
+      "github_run_id": 38558691878,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T11:44:22Z",
+      "workflow_commit": "9717635827b93170219082034e694ac2b2461150",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38558691878",
+      "trial_id": "s1-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {
+        "llm": {
+          "published_reference": ".benchmark-score-cache",
+          "recovered_run": "2026-10-14_135140"
+        }
+      },
+      "published_comparable": false,
+      "comparison_sha256": "f17c7e75f8f39053e40f2815425869ed2ff704b34434a3ae0edf478601226c10",
+      "source_log_sha256": "8ef7de74937da6411ae7a119ee4d4589ccb12d47190d5b1cce8ba32b565fae04",
+      "source_artifacts": [
+        {
+          "id": 11893437320,
+          "name": "pilot-campaign-push"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_134728",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 80,
+            "wall_clock_duration_s": 180.4,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "f96066bb89dcf53553444fd3f55e28bc247acd1a63bd1670988fbcaa2355e027",
+          "instance": "dev-1",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_135140",
+          "api_recovered": true,
+          "published_status": "missing",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 155,
+            "wall_clock_duration_s": 1647.0,
+            "total_cost_usd": 1.388863
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "f96066bb89dcf53553444fd3f55e28bc247acd1a63bd1670988fbcaa2355e027",
+          "instance": "dev-1",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38558691878/artifacts/pilot-campaign-push/pilot-campaign/s1-r1/preflight-s1-r1-rules.json",
+          "sha256": "0cc28a2abb0c3842876fa369caf3deef71fe51e9522b11a05f695f1050c34d20",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38558691878/artifacts/pilot-campaign-push/pilot-campaign/s1-r1/preflight-s1-r1-llm.json",
+          "sha256": "0e205a38ff3149d052bfc54c7b3e8903f1b400720f8757b0d485e3a993279eb4",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": true
+    },
+    {
+      "attempt_id": "38561923358-1",
+      "github_run_id": 38561923358,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T12:11:07Z",
+      "workflow_commit": "a249681d3e5e76e4f9602e93305e01133219ebd2",
+      "workflow_conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38561923358",
+      "trial_id": null,
+      "started_arms": [],
+      "reference_corrections": {},
+      "published_comparable": null,
+      "comparison_sha256": null,
+      "source_log_sha256": "bcabc3431e90f0ad29d3506e3e1247f46472d37de475ce2cc43bb6eacec5944f",
+      "source_artifacts": [
+        {
+          "id": 11893327392,
+          "name": "pilot-campaign-push"
+        }
+      ],
+      "arms": {},
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": null
+    },
+    {
+      "attempt_id": "38563382320-1",
+      "github_run_id": 38563382320,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T12:23:05Z",
+      "workflow_commit": "379a997f090f4cd995015aa63dc76d0fa0f41c8d",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38563382320",
+      "trial_id": "s1-r2",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": true,
+      "comparison_sha256": "29c5425cdbe11684691c41cc38bc3dcb08cba1dc895b495822ffbc1e7a8edea9",
+      "source_log_sha256": "b2a08dbc55d0c8bc25e6fbf4e1c4228d2f216072a9c051f3c0cf62229085409f",
+      "source_artifacts": [
+        {
+          "id": 11896735849,
+          "name": "pilot-campaign-push"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_142612",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 80,
+            "wall_clock_duration_s": 179.8,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "f96066bb89dcf53553444fd3f55e28bc247acd1a63bd1670988fbcaa2355e027",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_143024",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 156,
+            "wall_clock_duration_s": 1555.0,
+            "total_cost_usd": 1.391801
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "f96066bb89dcf53553444fd3f55e28bc247acd1a63bd1670988fbcaa2355e027",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38563382320/artifacts/pilot-campaign-push/pilot-campaign/s1-r2/preflight-s1-r2-rules.json",
+          "sha256": "ed1fcd949533edc5aacf9bb27d1ba2ce420cc0b2ecd13eeedd7676fb25c391ca",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38563382320/artifacts/pilot-campaign-push/pilot-campaign/s1-r2/preflight-s1-r2-llm.json",
+          "sha256": "797f22d6be15b95235394728f186019e34960f62ff64c76b01324c9945ff8a4c",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": true
+    },
+    {
+      "attempt_id": "38569060317-1",
+      "github_run_id": 38569060317,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T13:06:28Z",
+      "workflow_commit": "374dfe78c344cd50c9549ce23ac5f432b71307a3",
+      "workflow_conclusion": "cancelled",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38569060317",
+      "trial_id": "s1-r2",
+      "started_arms": [],
+      "reference_corrections": {},
+      "published_comparable": null,
+      "comparison_sha256": null,
+      "source_log_sha256": "650831faeeb7a18bae2b180ded13c5cc0ea1a50557e448c0cc883042b9bb9e5f",
+      "source_artifacts": [
+        {
+          "id": 11897130491,
+          "name": "pilot-campaign-push"
+        }
+      ],
+      "arms": {},
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": null
+    },
+    {
+      "attempt_id": "38570488357-1",
+      "github_run_id": 38570488357,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T13:16:59Z",
+      "workflow_commit": "374dfe78c344cd50c9549ce23ac5f432b71307a3",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38570488357",
+      "trial_id": "s1-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": true,
+      "comparison_sha256": "60a7cdfaf604ba236becb7de8d423e4fdc8b611a55823181c9d5171c4e3fcf63",
+      "source_log_sha256": "3b19d18fb4118f4986b917025bb30a5f15c6ae026af191416ac3f4b977d0faeb",
+      "source_artifacts": [
+        {
+          "id": 11900660015,
+          "name": "pilot-campaign-s1-r1"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_152007",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 80,
+            "wall_clock_duration_s": 180.0,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_152419",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 167,
+            "wall_clock_duration_s": 1743.3,
+            "total_cost_usd": 1.537406
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38570488357/artifacts/pilot-campaign-s1-r1/pilot-campaign/s1-r1/preflight-s1-r1-rules.json",
+          "sha256": "f6231bda087a7feaba069116a1003d9a0c1ddd5030580bd72ac5002d2cd3b7fc",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38570488357/artifacts/pilot-campaign-s1-r1/pilot-campaign/s1-r1/preflight-s1-r1-llm.json",
+          "sha256": "e07f7981620be6f96030a03e904a0cab9c0014f5d604203d1e2d4688c185c06e",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": true
+    },
+    {
+      "attempt_id": "38575803864-1",
+      "github_run_id": 38575803864,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T13:54:29Z",
+      "workflow_commit": "374dfe78c344cd50c9549ce23ac5f432b71307a3",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38575803864",
+      "trial_id": "s1-r2",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": true,
+      "comparison_sha256": "be99dce671fdd002a7b42066b23f740ebfc8c4937a5b4f45f1465435315de8e5",
+      "source_log_sha256": "a1a14d7d35f92517f9a59e6af1bc1cee38a7eb027fa0090c6d76999116c4bd0f",
+      "source_artifacts": [
+        {
+          "id": 11902224756,
+          "name": "pilot-campaign-s1-r2"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_155738",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 80,
+            "wall_clock_duration_s": 180.1,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_160154",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 162,
+            "wall_clock_duration_s": 1608.0,
+            "total_cost_usd": 1.396769
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38575803864/artifacts/pilot-campaign-s1-r2/pilot-campaign/s1-r2/preflight-s1-r2-rules.json",
+          "sha256": "9c97e0337a7ec4fa9874a772791032e372803881bc2732bfbe471fd0023e3b8c",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38575803864/artifacts/pilot-campaign-s1-r2/pilot-campaign/s1-r2/preflight-s1-r2-llm.json",
+          "sha256": "530e2de18f67ebb72e10a4bdef6abb3a9f854c2f23c9fdd2697e698104a034ad",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": true
+    },
+    {
+      "attempt_id": "38581153999-1",
+      "github_run_id": 38581153999,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T14:30:40Z",
+      "workflow_commit": "374dfe78c344cd50c9549ce23ac5f432b71307a3",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38581153999",
+      "trial_id": "s1-r3",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": true,
+      "comparison_sha256": "2c016db1bd8c68b24c8ae7443362ac36cb5ab79b02c507e7484f47b3b3dc55c4",
+      "source_log_sha256": "207ad363e47c0b5658964618b854a1f44b8554d744f93cf2b4d698adfc3b8525",
+      "source_artifacts": [
+        {
+          "id": 11905231456,
+          "name": "pilot-campaign-s1-r3"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_163348",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 80,
+            "wall_clock_duration_s": 180.2,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_163759",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 156,
+            "wall_clock_duration_s": 1538.4,
+            "total_cost_usd": 1.308514
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38581153999/artifacts/pilot-campaign-s1-r3/pilot-campaign/s1-r3/preflight-s1-r3-rules.json",
+          "sha256": "658f489672618e9041240b61bae87dffe6da5b1f33c918b00d11e123da7e568c",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38581153999/artifacts/pilot-campaign-s1-r3/pilot-campaign/s1-r3/preflight-s1-r3-llm.json",
+          "sha256": "b5035b7748a3dd5d46dfd08308f91068c180c817ca1e35089dc8c0a1081d1be6",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": true
+    },
+    {
+      "attempt_id": "38586490361-1",
+      "github_run_id": 38586490361,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T15:07:00Z",
+      "workflow_commit": "374dfe78c344cd50c9549ce23ac5f432b71307a3",
+      "workflow_conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38586490361",
+      "trial_id": "s14-r1",
+      "started_arms": [],
+      "reference_corrections": {},
+      "published_comparable": null,
+      "comparison_sha256": null,
+      "source_log_sha256": "4ad678af60cf31989e8906387da6973215b685312308beb100ef052f61f6817c",
+      "source_artifacts": [
+        {
+          "id": 11905311992,
+          "name": "pilot-campaign-s14-r1"
+        }
+      ],
+      "arms": {},
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": null
+    },
+    {
+      "attempt_id": "38586839491-1",
+      "github_run_id": 38586839491,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T15:09:22Z",
+      "workflow_commit": "553a46e2dbdd7a10ea8c70f432259c80b3933c28",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38586839491",
+      "trial_id": "s1-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": false,
+      "comparison_sha256": "bf8ad0166e2375c14a131931f7752f8a5e779a2683abdb81d8fc48084749f7c9",
+      "source_log_sha256": "e049179f701652c89597f13852cea54e436564020d1a6445e0047fb838b16501",
+      "source_artifacts": [
+        {
+          "id": 11907209101,
+          "name": "pilot-campaign-push"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_171326",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 80,
+            "wall_clock_duration_s": 180.6,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_171737",
+          "api_recovered": true,
+          "published_status": "budget_exceeded",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 164,
+            "wall_clock_duration_s": 1800.1,
+            "total_cost_usd": 1.403543
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "budget_exceeded",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": false
+          }
+        }
+      },
+      "preflights": {
+        "rules": {
+          "source_path": "actions/38586839491/artifacts/pilot-campaign-push/pilot-campaign/s1-r1/preflight-s1-r1-rules.json",
+          "sha256": "7d281c93fb97954c3c4b27bb803188a128940e88391ea5f7e835db2cd7859196",
+          "declared_status": "valid",
+          "human_validated": false
+        },
+        "llm": {
+          "source_path": "actions/38586839491/artifacts/pilot-campaign-push/pilot-campaign/s1-r1/preflight-s1-r1-llm.json",
+          "sha256": "388eeff28931e7998c84af4b1465b540d8419662858841c52cd53c6365c35125",
+          "declared_status": "valid",
+          "human_validated": false
+        }
+      },
+      "preflight_human_validated": false,
+      "recomputed_comparable": false
+    },
+    {
+      "attempt_id": "38593745614-1",
+      "github_run_id": 38593745614,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T15:56:25Z",
+      "workflow_commit": "553a46e2dbdd7a10ea8c70f432259c80b3933c28",
+      "workflow_conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38593745614",
+      "trial_id": "s14-r2",
+      "started_arms": [],
+      "reference_corrections": {},
+      "published_comparable": null,
+      "comparison_sha256": null,
+      "source_log_sha256": "248311e612d1b37183c5cf68f3275e4406e9141b72d6a022b1f66284e19e1762",
+      "source_artifacts": [
+        {
+          "id": 11909550667,
+          "name": "pilot-campaign-s14-r2"
+        }
+      ],
+      "arms": {},
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": null
+    },
+    {
+      "attempt_id": "38610509723-1",
+      "github_run_id": 38610509723,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T17:53:35Z",
+      "workflow_commit": "9a6fa5eb9d12d9e0e6efb5e4ff574186860c441c",
+      "workflow_conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38610509723",
+      "trial_id": "s14-r1",
+      "started_arms": [],
+      "reference_corrections": {},
+      "published_comparable": null,
+      "comparison_sha256": null,
+      "source_log_sha256": "54929c8dcfb62d943b659570266f43e51809bfbb23a8eb999578eda4b792df3e",
+      "source_artifacts": [
+        {
+          "id": 11917635392,
+          "name": "pilot-campaign-s14-r1-38610509723-1"
+        }
+      ],
+      "arms": {},
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": null
+    },
+    {
+      "attempt_id": "38611677976-1",
+      "github_run_id": 38611677976,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T18:01:48Z",
+      "workflow_commit": "73369b03359d4facc8ec58a233c1623284e746d0",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38611677976",
+      "trial_id": "s14-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": false,
+      "comparison_sha256": "2764109debeab5df245d53c4640eee359a51bf2f3dd25e6c99070f68057db35d",
+      "source_log_sha256": "f450e7dab7e4decf0880e047171a4370c4e8466413866bacc7e81405124c7f6f",
+      "source_artifacts": [
+        {
+          "id": 11919505867,
+          "name": "pilot-campaign-s14-r1-38611677976-1"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_200831",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 164,
+            "wall_clock_duration_s": 60.8,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_201403",
+          "api_recovered": true,
+          "published_status": "budget_exceeded",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 200,
+            "wall_clock_duration_s": 792.5,
+            "total_cost_usd": 0.7425649999999999
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "budget_exceeded",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": false
+          }
+        }
+      },
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": false
+    },
+    {
+      "attempt_id": "38616086219-1",
+      "github_run_id": 38616086219,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T18:32:55Z",
+      "workflow_commit": "73369b03359d4facc8ec58a233c1623284e746d0",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38616086219",
+      "trial_id": "s14-r2",
+      "started_arms": [
+        "llm",
+        "rules"
+      ],
+      "reference_corrections": {},
+      "published_comparable": false,
+      "comparison_sha256": "65c5108c34466861a1681549caee465efdbb1c49e6c22046e7d037399f18f93e",
+      "source_log_sha256": "90b2209f9a3c774aadfb1707ff338256cdcb93e1885928bcd5c155ddd7a972dd",
+      "source_artifacts": [
+        {
+          "id": 11921571964,
+          "name": "pilot-campaign-s14-r2-38616086219-1"
+        }
+      ],
+      "arms": {
+        "llm": {
+          "run": "2026-10-14_203938",
+          "api_recovered": true,
+          "published_status": "budget_exceeded",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 200,
+            "wall_clock_duration_s": 1192.1,
+            "total_cost_usd": 1.011319
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "budget_exceeded",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": false
+          }
+        },
+        "rules": {
+          "run": "2026-10-14_210355",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 164,
+            "wall_clock_duration_s": 53.9,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        }
+      },
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": false
+    },
+    {
+      "attempt_id": "38621265302-1",
+      "github_run_id": 38621265302,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T19:09:21Z",
+      "workflow_commit": "73369b03359d4facc8ec58a233c1623284e746d0",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38621265302",
+      "trial_id": "s14-r3",
+      "started_arms": [
+        "llm",
+        "rules"
+      ],
+      "reference_corrections": {},
+      "published_comparable": false,
+      "comparison_sha256": "f59e6c1f83b6f14bbd1ff89ea9e4b197c902ac50bd1a6ce8dfc59cc3cc8c2b56",
+      "source_log_sha256": "e7e20817c3bda4e59604a22927f1aba2d506d66d74d6d6f90c2f0024c0603760",
+      "source_artifacts": [
+        {
+          "id": 11924172500,
+          "name": "pilot-campaign-s14-r3-38621265302-1"
+        }
+      ],
+      "arms": {
+        "llm": {
+          "run": "2026-10-14_211632",
+          "api_recovered": true,
+          "published_status": "budget_exceeded",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 200,
+            "wall_clock_duration_s": 1179.4,
+            "total_cost_usd": 0.944991
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "budget_exceeded",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": false
+          }
+        },
+        "rules": {
+          "run": "2026-10-14_214037",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 164,
+            "wall_clock_duration_s": 54.1,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        }
+      },
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": false
+    },
+    {
+      "attempt_id": "38626380879-1",
+      "github_run_id": 38626380879,
+      "workflow": "pilot-campaign.yml",
+      "created_at": "2026-10-14T19:45:44Z",
+      "workflow_commit": "73369b03359d4facc8ec58a233c1623284e746d0",
+      "workflow_conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38626380879",
+      "trial_id": "s15-r1",
+      "started_arms": [
+        "rules",
+        "llm"
+      ],
+      "reference_corrections": {},
+      "published_comparable": false,
+      "comparison_sha256": "69ebd241bcefce62d641f18f0c07d8b73259bb061ec9f044e0fcaea99522cdad",
+      "source_log_sha256": "0590885d1f9ed17e83b702d8e26b8efb15b1a79067894fa226739e237db69bb9",
+      "source_artifacts": [
+        {
+          "id": 11925271444,
+          "name": "pilot-campaign-s15-r1-38626380879-1"
+        }
+      ],
+      "arms": {
+        "rules": {
+          "run": "2026-10-14_215108",
+          "api_recovered": true,
+          "published_status": "completed",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 192,
+            "wall_clock_duration_s": 10.5,
+            "total_cost_usd": 0.0
+          },
+          "cost_is_estimate": false,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "completed",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": true
+          }
+        },
+        "llm": {
+          "run": "2026-10-14_215415",
+          "api_recovered": true,
+          "published_status": "budget_exceeded",
+          "usage_complete": true,
+          "resources": {
+            "total_tool_calls": 200,
+            "wall_clock_duration_s": 567.0,
+            "total_cost_usd": 0.400346
+          },
+          "cost_is_estimate": true,
+          "resource_manifest_sha256": "b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6",
+          "instance": "main",
+          "recovered_status": "budget_exceeded",
+          "proof_files_present": {
+            "run_meta.json": true,
+            "audit_inventory.json": true,
+            "tool_calls.jsonl": true,
+            "04_exploitation.json": false
+          }
+        }
+      },
+      "preflights": {},
+      "preflight_human_validated": false,
+      "recomputed_comparable": false
+    }
+  ],
+  "additional_diagnostic_runs": [
+    {
+      "run": "2026-10-13_211132",
+      "instance": "main",
+      "trial_id": "s1-r1",
+      "policy": "rules",
+      "status": "completed",
+      "resources": {
+        "total_tool_calls": 0,
+        "wall_clock_duration_s": 0.1,
+        "total_cost_usd": 0.0
+      },
+      "cost_is_estimate": false,
+      "inspection_run_ids": [
+        38452868852
+      ]
+    },
+    {
+      "run": "2026-10-13_211319",
+      "instance": "main",
+      "trial_id": "s1-r1",
+      "policy": "rules",
+      "status": "completed",
+      "resources": {
+        "total_tool_calls": 0,
+        "wall_clock_duration_s": 0.1,
+        "total_cost_usd": 0.0
+      },
+      "cost_is_estimate": false,
+      "inspection_run_ids": [
+        38453106419
+      ]
+    },
+    {
+      "run": "2026-10-13_211512",
+      "instance": "main",
+      "trial_id": "s1-r1",
+      "policy": "rules",
+      "status": "completed",
+      "resources": {
+        "total_tool_calls": 0,
+        "wall_clock_duration_s": 0.1,
+        "total_cost_usd": 0.0
+      },
+      "cost_is_estimate": false,
+      "inspection_run_ids": [
+        38453359147
+      ]
+    },
+    {
+      "run": "2026-10-14_101903",
+      "instance": "main",
+      "trial_id": "s1-r1",
+      "policy": "rules",
+      "status": "completed",
+      "resources": {
+        "total_tool_calls": 77,
+        "wall_clock_duration_s": 35.5,
+        "total_cost_usd": 0.0
+      },
+      "cost_is_estimate": false,
+      "inspection_run_ids": [
+        38534240361
+      ]
+    },
+    {
+      "run": "2026-10-14_120510",
+      "instance": "main",
+      "trial_id": "s1-r1",
+      "policy": "rules",
+      "status": "completed",
+      "resources": {
+        "total_tool_calls": 77,
+        "wall_clock_duration_s": 31.4,
+        "total_cost_usd": 0.0
+      },
+      "cost_is_estimate": false,
+      "inspection_run_ids": [
+        38547061703
+      ]
+    },
+    {
+      "run": "2026-10-14_120821",
+      "instance": "main",
+      "trial_id": "s1-r1",
+      "policy": "rules",
+      "status": "completed",
+      "resources": {
+        "total_tool_calls": 77,
+        "wall_clock_duration_s": 31.1,
+        "total_cost_usd": 0.0
+      },
+      "cost_is_estimate": false,
+      "inspection_run_ids": [
+        38547442149
+      ]
+    }
+  ],
+  "inspections": [
+    {
+      "github_run_id": 38434918279,
+      "created_at": "2026-10-13T16:58:51Z",
+      "conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38434918279",
+      "executed_diagnostic_runs": [],
+      "source_log_sha256": "44a22474e376796a8f3208fedf678b1f84bf5dbebeefa800bb02d10c127a3489"
+    },
+    {
+      "github_run_id": 38452322206,
+      "created_at": "2026-10-13T19:07:27Z",
+      "conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38452322206",
+      "executed_diagnostic_runs": [],
+      "source_log_sha256": "271ab062c8ca23cd5b6139300b2a167aead653994436d5fe42487da683c78ed1"
+    },
+    {
+      "github_run_id": 38452464077,
+      "created_at": "2026-10-13T19:08:31Z",
+      "conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38452464077",
+      "executed_diagnostic_runs": [],
+      "source_log_sha256": "bb06983a9b8a8084f7d7259b9107a194367b99ea78708a927d5bf331309debb5"
+    },
+    {
+      "github_run_id": 38452658855,
+      "created_at": "2026-10-13T19:09:58Z",
+      "conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38452658855",
+      "executed_diagnostic_runs": [],
+      "source_log_sha256": "94510b615d4fd0bfec01d0118ae96ca66350e9bae064c6686d9b5e9a09721241"
+    },
+    {
+      "github_run_id": 38452868852,
+      "created_at": "2026-10-13T19:11:29Z",
+      "conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38452868852",
+      "executed_diagnostic_runs": [
+        "2026-10-13_211132"
+      ],
+      "source_log_sha256": "d899e27264fc17e354a3b0974f4b5f704a38bdef6fc6abe3fd963c0052557a3d"
+    },
+    {
+      "github_run_id": 38453106419,
+      "created_at": "2026-10-13T19:13:15Z",
+      "conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38453106419",
+      "executed_diagnostic_runs": [
+        "2026-10-13_211319"
+      ],
+      "source_log_sha256": "52d23ad9a74c108bfe50214f0bcce44dc25eb32a9b2096612fe6217aa837763c"
+    },
+    {
+      "github_run_id": 38453359147,
+      "created_at": "2026-10-13T19:15:09Z",
+      "conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38453359147",
+      "executed_diagnostic_runs": [
+        "2026-10-13_211512"
+      ],
+      "source_log_sha256": "ffcdd9caead9fcbf53dcf21f3ae2ec344ea47571e37e68185bdefb769b1f8bc9"
+    },
+    {
+      "github_run_id": 38534240361,
+      "created_at": "2026-10-14T08:18:59Z",
+      "conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38534240361",
+      "executed_diagnostic_runs": [
+        "2026-10-14_101903"
+      ],
+      "source_log_sha256": "8b5391327938c0bf4abc4aceae47587e9d87999464202e674fd21841d671b099"
+    },
+    {
+      "github_run_id": 38547061703,
+      "created_at": "2026-10-14T10:05:06Z",
+      "conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38547061703",
+      "executed_diagnostic_runs": [
+        "2026-10-14_120510"
+      ],
+      "source_log_sha256": "8937ff80cf64401981525496000fac0ddc01666be55f4064d3239d9f016a8386"
+    },
+    {
+      "github_run_id": 38547442149,
+      "created_at": "2026-10-14T10:08:17Z",
+      "conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38547442149",
+      "executed_diagnostic_runs": [
+        "2026-10-14_120821"
+      ],
+      "source_log_sha256": "bd92b44181519b0593b47334ab8983edb4726f5b1fcad5607d2ec91c5ef46582"
+    },
+    {
+      "github_run_id": 38563383257,
+      "created_at": "2026-10-14T12:23:05Z",
+      "conclusion": "failure",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38563383257",
+      "executed_diagnostic_runs": [],
+      "source_log_sha256": "90fda3c6aa1b1af870409947d7d6430edd2985cf4ab50e3bc4cb2446ae519b6d"
+    },
+    {
+      "github_run_id": 38615770654,
+      "created_at": "2026-10-14T18:30:40Z",
+      "conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38615770654",
+      "executed_diagnostic_runs": [],
+      "source_log_sha256": "e19fa4023be002366c79c146bd918b7cdd7d09a11c2f26bbaf494f20c17440d6"
+    },
+    {
+      "github_run_id": 38905591684,
+      "created_at": "2026-10-16T13:08:34Z",
+      "conclusion": "success",
+      "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38905591684",
+      "executed_diagnostic_runs": [],
+      "source_log_sha256": "63d4f4d904376ca5f6cf03cdeb2451e641c75e328d29beb320db834b2e5bedf0"
+    }
+  ],
+  "resources_campaign_and_smoke": {
+    "rules": {
+      "total_tool_calls": {
+        "sum_observed": 1475,
+        "observed_arms": 14,
+        "started_arms": 16,
+        "complete_total": null
+      },
+      "wall_clock_duration_s": {
+        "sum_observed": 1528.2999999999997,
+        "observed_arms": 14,
+        "started_arms": 16,
+        "complete_total": null
+      },
+      "total_cost_usd": {
+        "sum_observed": 0.0,
+        "observed_arms": 14,
+        "started_arms": 16,
+        "complete_total": null
+      }
+    },
+    "llm": {
+      "total_tool_calls": {
+        "sum_observed": 2176,
+        "observed_arms": 14,
+        "started_arms": 15,
+        "complete_total": null
+      },
+      "wall_clock_duration_s": {
+        "sum_observed": 16997.100000000002,
+        "observed_arms": 14,
+        "started_arms": 15,
+        "complete_total": null
+      },
+      "total_cost_usd": {
+        "sum_observed": 14.052536,
+        "observed_arms": 14,
+        "started_arms": 15,
+        "complete_total": null
+      }
+    }
+  },
+  "limitations": [
+    "No human proof/reset review",
+    "API ZIP excludes hidden files and private evaluation files",
+    "Observed failed attempts and repeated trial IDs are retained separately",
+    "No missing cost is replaced by zero; no new audit was executed"
+  ]
+}
