@@ -213,3 +213,58 @@ conserver les dépassements dans le bilan opérationnel. Toute calibration du
 plafond d'appels exige un nouveau gel explicite et des essais distincts, sans
 remplacer les résultats déjà obtenus. Aucun avantage scientifique n'est conclu
 à partir de ce relevé opérationnel.
+
+
+## Diagnostic hors ligne sur nato — 2026-10-16
+
+Le [workflow 38905591684](https://github.com/Tanguyvans/LANCE/actions/runs/38905591684)
+a exécuté le lecteur d'archives `scripts/benchmark/pilot_archive_review.py`
+(commit `b143f67`) sur le runner `nato-master`, identifié par son nom et son IP.
+Aucun audit, appel de modèle ni déploiement n'a été exécuté. Les archives et
+traces brutes restent sur nato ; seul le
+[relevé agrégé](offline-review-2026-10-16.json) est conservé dans le dépôt.
+
+Les cinq archives présentes sous `output/pilot-evidence` ont été vérifiées :
+483 fichiers au total, avec contrôle du SHA-256 de chaque archive, de la liste
+exacte des fichiers, des tailles et empreintes individuelles. Une archive de
+huit fichiers correspond à l'échec de préparation S14 r1 `38610509723-1`, sans
+bras exécuté. Les quatre autres sont S14 r1–r3 et S15 r1, déjà identifiées.
+Les huit précontrôles de ces quatre paires déclarent `valid` et leurs fichiers
+sont intègres ; leur contenu déclaratif ne constitue pas une validation humaine
+de la remise à zéro ni de l'état réel des cibles.
+
+| Essai, bras LLM | Appels phase 3 | Appels phase 4 | Total journalisé | Appels curl_headers, toutes phases |
+| --- | ---: | ---: | ---: | ---: |
+| S14 r1 | 182 | 18 | 200 | 94 |
+| S14 r2 | 175 | 25 | 200 | 97 |
+| S14 r3 | 182 | 18 | 200 | 96 |
+| S15 r1 | 199 | 1 | 200 | 161 |
+
+Le journal concorde avec les 200 appels comptabilisés de chaque bras. Pour
+S15, le bras règles consomme déjà 177 appels en analyse et 15 en vérification,
+soit 192 au total ; il compte lui aussi 161 appels `curl_headers`. Le LLM
+atteint donc la vérification avec une seule unité de budget, après ajout des
+recherches et opérations de livrables. Ce constat explique le manque de marge ;
+il ne démontre ni que les sondes HTTP sont inutiles, ni qu'un plafond supérieur
+suffirait à terminer, ni un avantage de l'une des politiques.
+
+### Décision de reprise
+
+- Conserver les quatre dépassements dans le bilan du gel historique. Ne pas
+  remplacer les essais, ne pas relever rétroactivement leurs limites.
+- Les trois S1 comparables sont encore attribuées aux comparaisons Actions :
+  aucune archive S1 n'est présente dans le magasin `pilot-evidence` inspecté.
+  Leur preuve complète reste donc à localiser parmi les anciens dossiers.
+- Le code `main` a évolué depuis le gel (fusion `7911b7b`) ; ne pas reprendre
+  `pilot-campaign.yml` sur ce code en remplaçant l'empreinte du vieux manifeste.
+- Avant un nouveau pilote : définir explicitement s'il s'agit de mesurer la
+  performance sous 200 appels, ou de calibrer un budget permettant la
+  vérification. Dans ce dernier cas, prévoir un plan distinct, la même limite
+  pour les deux bras et un budget suffisant pour le scanner commun, puis
+  qualifier un essai S15 et son contrôle sain avant une série complète.
+
+Le nouveau lecteur est validé par 26 tests avec le support du pilote :
+agrégation sans export des arguments/réponses, refus d'archive altérée et de
+fichier dont l'empreinte ne correspond pas, ainsi que les tests existants du
+workflow. Les résultats sont opérationnels ; aucune nouvelle étude de
+performance ni revue humaine de preuves n'est revendiquée.

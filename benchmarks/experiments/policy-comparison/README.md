@@ -82,3 +82,26 @@ faire accepter les nouveaux runs.
 `test_pilot_workflow.py` exerce le garde réel du workflow avec des ressources
 conformes et différentes. Il vérifie le refus avant tout paramètre de
 déploiement, plutôt que d'interdire toute évolution future du code de LANCE.
+
+
+## Diagnostic d'archives sur nato
+
+Le [relevé agrégé du 16 octobre](offline-review-2026-10-16.json), produit par le
+[workflow 38905591684](https://github.com/Tanguyvans/LANCE/actions/runs/38905591684),
+vérifie les cinq archives disponibles (483 fichiers). Il ne contient ni
+arguments d'outils, ni réponses brutes, ni identifiants. S15 LLM consomme
+199 appels en phase 3 et un en phase 4 ; les S14 consomment 175 à 182 appels
+en phase 3. Le budget de 200 appels limite donc la vérification.
+Voir le [diagnostic et la décision de reprise](pilot-2026-10-preflight.md#diagnostic-hors-ligne-sur-nato--2026-10-16).
+
+Le lecteur se relance sur nato, sans réseau ni pipeline, avec :
+
+```bash
+python3 scripts/benchmark/pilot_archive_review.py \
+  --evidence-root /opt/nato-smartcity-iot/output/pilot-evidence \
+  --output /tmp/pilot-offline-review/summary.json
+```
+
+Seul le résumé agrégé peut être publié par `pilot-inspect.yml` ; les archives
+complètes restent sur nato. L'absence d'archive ou une vérification en échec
+font échouer le contrôle et restent visibles dans le résumé.

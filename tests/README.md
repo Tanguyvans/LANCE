@@ -1,5 +1,10 @@
 # Tests automatisés de l’application
 
+`test_pilot_archive_review.py` vérifie le lecteur hors ligne des archives du
+pilote : intégrité de l'archive et des fichiers, compteurs d'appels et absence
+d'arguments ou de réponses brutes dans le résumé exporté. Les fixtures sont
+synthétiques ; ces tests ne lancent ni laboratoire ni modèle.
+
 Ce dossier vérifie le pipeline, les outils, les preuves, les métriques du benchmark,
 l’API et leurs intégrations. Les tests du code d’entraînement et de synchronisation
 GPU sont regroupés dans [model_training/tests/](../model_training/tests/).

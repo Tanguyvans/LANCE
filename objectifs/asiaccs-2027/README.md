@@ -147,3 +147,18 @@ précontrôles ; les archives complètes restent à récupérer sur nato.
 Le manifeste local n'est pas rempli à partir de ces seuls extraits.
 La priorité devient la réconciliation des tentatives et du plafond d'appels,
 avant une relance ou un changement de gel.
+
+
+### Diagnostic vérifié sur nato et suite du programme
+
+Le [diagnostic hors ligne du 16 octobre](../../benchmarks/experiments/policy-comparison/pilot-2026-10-preflight.md#diagnostic-hors-ligne-sur-nato--2026-10-16)
+a vérifié les cinq archives disponibles sur nato (483 fichiers). Le plafond de
+200 appels laisse seulement un appel de vérification au LLM sur S15, après
+199 en analyse. Les anciens échecs restent des résultats opérationnels du gel.
+Les archives S1 ne sont pas dans ce magasin et restent à localiser.
+
+Le `main` courant (`7911b7b` lors de la reprise) contient de nouvelles ressources
+applicatives ; il n'est plus compatible avec le gel historique. La prochaine
+campagne doit avoir un nouveau manifeste et une calibration explicite du budget
+commun. Il faut d'abord qualifier un essai S15 et le contrôle sain, avant de
+relancer une série de paires. Aucun nouveau gel ni audit n'est créé ici.
