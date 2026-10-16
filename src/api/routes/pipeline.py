@@ -118,9 +118,12 @@ class StartRequest(BaseModel):
     def reject_cli_only_experiment(cls, value):
         if isinstance(value, dict) and set(value) & {"decision_policy", "experiment_scope", "audit_inventory"}:
             raise ValueError("Inventory policy experiments are CLI-only")
+        if isinstance(value, dict) and value.get("runner_kind") == "comparison" and set(value) - set(cls.model_fields):
+            raise ValueError("Paramètres de comparaison inconnus.")
         return value
 
-    runner_kind: Literal["lance", "rules", "vanilla", "scripted"] = "lance"
+    runner_kind: Literal["lance", "rules", "vanilla", "scripted", "comparison"] = "lance"
+    comparison_order: Literal["rules-first", "llm-first"] | None = None
     model: str | None = None
     provider: str | None = None
     script_id: str | None = None
@@ -152,6 +155,24 @@ class StartRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_runner_contract(self):
+        if self.runner_kind == "comparison":
+            if not self.scenario_id or not self.model or not self.model.strip() or not self.provider:
+                raise ValueError("Une comparaison exige un scénario public, un fournisseur et un modèle.")
+            if (any(value is not None for value in (self.script_id, self.target_network, self.architecture,
+                    self.posture, self.selected_packs, self.excluded_vulns, self.phase_models))
+                    or self.blind or self.deploy_only or not self.auto_teardown
+                    or self.phases not in (None, [3, 4]) or self.execution_profile not in {"auto", "full"}):
+                raise ValueError("La comparaison utilise les phases 3–4, le profil complet et le nettoyage final obligatoire.")
+            self.max_tool_calls = 200 if self.max_tool_calls is None else self.max_tool_calls
+            if self.max_duration_s is not None or self.max_cost_usd is not None:
+                raise ValueError("Les comparaisons s’exécutent sans plafond de durée ou de coût. Actualisez l’interface.")
+            if self.max_tool_calls > 2000:
+                raise ValueError("2000 appels d’outils maximum par audit.")
+            self.execution_profile = "full"
+            self.comparison_order = self.comparison_order or "rules-first"
+            return self
+        if self.comparison_order is not None:
+            raise ValueError("comparison_order est réservé aux comparaisons.")
         if self.runner_kind == "rules":
             if self.scenario_id is None and self.architecture is None:
                 raise ValueError("Rules audits require a selected scenario or architecture")
@@ -189,7 +210,7 @@ class StartRequest(BaseModel):
                 raise ValueError("smoke-v1 does not use tools or a model budget")
         else:
             if not self.target_network or "/" not in self.target_network:
-                raise ValueError("Vanilla and discovery-v1 require an explicit target_network CIDR")
+                raise ValueError("Network procedures require an explicit target_network CIDR")
             try:
                 from src.agent.run_modes import validate_target_network
                 validate_target_network(self.target_network)
@@ -216,12 +237,12 @@ class StartRequest(BaseModel):
             raise ValueError("Execution profiles apply only to the LANCE runner")
         if self.max_tool_calls is not None and self.max_tool_calls > 100:
             raise ValueError("max_tool_calls must be between 1 and 100")
-        if self.max_duration_s is not None and self.max_duration_s > 3600:
+        if self.max_duration_s is not None and (not math.isfinite(self.max_duration_s) or self.max_duration_s > 3600):
             raise ValueError("max_duration_s must be between 0 and 3600")
         if self.max_cost_usd is not None and (not math.isfinite(self.max_cost_usd) or self.max_cost_usd <= 0):
             raise ValueError("max_cost_usd must be positive")
         if self.runner_kind == "scripted":
-            from src.agent.run_modes import SCRIPT_IDS
+            from src.agent.procedures import SCRIPT_IDS
             if self.script_id not in SCRIPT_IDS:
                 raise ValueError(f"script_id must be one of: {', '.join(sorted(SCRIPT_IDS))}")
         return self
@@ -318,6 +339,8 @@ def _pipeline_thread(req: StartRequest):
     """Run the pipeline in a background thread, pushing events to the async queue."""
     pipeline = None
     callback = None
+    procedure_progress = None
+    progress_available = True
     try:
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env")
@@ -373,12 +396,37 @@ def _pipeline_thread(req: StartRequest):
         _state["run_dir"] = str(pipeline.run_dir)
         if req.runner_kind == "rules":
             _state["scenario_id"] = getattr(pipeline, "scenario_id", req.scenario_id)
+            from src.agent.procedure_progress import RulesProcedureProgress
+            try:
+                procedure_progress = RulesProcedureProgress(Path(pipeline.run_dir), auto_teardown=req.auto_teardown)
+            except OSError:
+                progress_available = False
+                _coordinator.publish(_state, {"type": "warn", "runner_kind": "rules",
+                    "message": "Le suivi des étapes n’a pas pu être enregistré.",
+                    "run_dir": str(pipeline.run_dir)})
+
+        def publish_procedure_progress(event, *, terminal=False):
+            nonlocal progress_available
+            if procedure_progress is None or not progress_available:
+                return
+            try:
+                progress = procedure_progress.observe(event, terminal=terminal)
+            except OSError:
+                progress_available = False
+                _coordinator.publish(_state, {"type": "warn", "runner_kind": "rules",
+                    "message": "Le suivi enregistré des étapes est incomplet.",
+                    "run_dir": str(pipeline.run_dir)})
+                return
+            if progress is not None:
+                _coordinator.publish(_state, {"type": "procedure_progress", "runner_kind": "rules",
+                    "run_dir": str(pipeline.run_dir), "progress": progress})
 
         def callback(event: dict):
             nonlocal pending_pipeline_done
             if req.runner_kind == "rules":
                 event = {**event, "runner_kind": "rules", "run_dir": str(pipeline.run_dir),
                          "scenario_id": getattr(pipeline, "scenario_id", req.scenario_id)}
+                publish_procedure_progress(event, terminal=release_pipeline_done)
             _lab_event(event)
             # Evaluation must happen before pipeline_done reaches the browser;
             # the frontend closes the SSE stream as soon as it receives that
@@ -426,10 +474,36 @@ def _pipeline_thread(req: StartRequest):
                     "evaluation_status": "skipped",
                     "evaluation_error": "Pipeline interrupted before post-run evaluation",
                 })
+            elif req.runner_kind == "rules":
+                publish_procedure_progress({"type": "pipeline_done", "status": "failed"}, terminal=True)
         else:
             _coordinator.publish(_state, error_event)
     finally:
         _coordinator.finish(_state)
+
+
+def _comparison_thread(runner):
+    def callback(event):
+        event = {**event, "runner_kind": "comparison", "comparison_id": runner.id}
+        _lab_event(event)
+        if event.get("comparison_arm") and event.get("run_dir"):
+            _state["run_dir"] = event["run_dir"]
+        if (event.get("type") == "comparison_step" and event.get("id", "").startswith("audit-")
+                and event.get("status") != "running"):
+            _state["run_dir"] = None
+        if event.get("type") == "comparison_done":
+            _state["run_status"] = event["status"]
+            _state["run_dir"] = None
+        _coordinator.publish(_state, event)
+        if event.get("type") == "comparison_done":
+            # PairRunner still owns the lab reservation here. Publish idle
+            # before unlocking so a queued deployment can proceed safely.
+            _coordinator.finish(_state)
+    try:
+        runner.run(callback=callback, stop_event=_state["stop_event"])
+    finally:
+        if _state.get("comparison_id") == runner.id and _state["running"]:
+            _coordinator.finish(_state)
 
 
 def _simple_runner_thread(req: StartRequest):
@@ -454,6 +528,8 @@ def _simple_runner_thread(req: StartRequest):
         )
         def callback(event: dict):
             nonlocal seen_terminal
+            if isinstance(event.get("run_dir"), str):
+                _state["run_dir"] = event["run_dir"]
             _lab_event(event)
             if event.get("type") in {"pipeline_done", "runner_done"}:
                 seen_terminal = True
@@ -496,7 +572,20 @@ async def start_pipeline(req: StartRequest):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     profile_name = None
     profile_policy = None
-    if req.runner_kind in {"lance", "rules"}:
+    if req.runner_kind == "comparison":
+        from src.benchmark.policy_pair_runner import public_spec, runtime_readiness
+        try:
+            public_spec(req.scenario_id)
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        readiness = runtime_readiness()
+        if not readiness["available"]:
+            raise HTTPException(503, readiness["reason"])
+        from src.api.routes.models import list_models
+        if not any(item["id"] == req.model and item["provider"] == req.provider and item.get("available")
+                   for item in list_models()["models"]):
+            raise HTTPException(422, "Le modèle sélectionné n’est pas disponible dans le registre.")
+    if req.runner_kind in {"lance", "rules", "comparison"}:
         from src.agent.execution_profiles import resolve_execution_profile_for_model
         resolution = resolve_execution_profile_for_model(req.execution_profile, req.model)
         profile_name = resolution.profile.name
@@ -514,14 +603,23 @@ async def start_pipeline(req: StartRequest):
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    target = _pipeline_thread if req.runner_kind in {"lance", "rules"} else _simple_runner_thread
-    thread = threading.Thread(target=target, args=(req,), daemon=True)
+    runner = None
     try:
+        if req.runner_kind == "comparison":
+            from src.benchmark.policy_pair_runner import PairRunner
+            runner = PairRunner(req.model_dump(include={"scenario_id", "provider", "model", "comparison_order",
+                                                        "max_tool_calls", "max_duration_s", "max_cost_usd"}))
+            _state["comparison_id"] = runner.id
+            target, argument = _comparison_thread, runner
+        else:
+            target = _pipeline_thread if req.runner_kind in {"lance", "rules"} else _simple_runner_thread
+            argument = req
+        thread = threading.Thread(target=target, args=(argument,), daemon=True)
         thread.start()
     except Exception:
         _coordinator.finish(_state)
         raise
-    return {"status": "started"}
+    return {"status": "started", **({"comparison_id": runner.id} if runner else {})}
 
 
 @router.post("/stop")

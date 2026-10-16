@@ -28,9 +28,10 @@ from src.agent.cost_tracker import BudgetExceeded, CostTracker
 from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 from src.agent.tools.runtime import run_cooperatively, tool_stop_context
 from src.benchmark.lab_lock import LabWaitCancelled, LabWaitDeadlineExceeded, reserve_lab
+from src.agent.procedures import SCRIPT_IDS, INVENTORY_PORTS
+from src.agent.procedure_observations import MAX_INVENTORY_HOSTS, ProcedureProgress, parse_nmap
 
 
-SCRIPT_IDS = frozenset({"discovery-v1", "smoke-v1"})
 _SIMPLE_TOOL_NAMES = frozenset({"nmap_discovery", "nmap_scan"})
 _PORTS = re.compile(r"[0-9,-]+\Z")
 log = logging.getLogger(__name__)
@@ -120,10 +121,13 @@ def _baseline_nmap(run: "SimpleRunner", name: str, args: dict) -> str:
                            for line in stdout.splitlines())
     stdout_truncated = len(stdout) > 4000
     stderr_truncated = len(stderr) > 1000
+    observations = parse_nmap(stdout, run.network,
+                              target=args["target"] if name == "nmap_scan" else None)
     return json.dumps({
         "stdout": stdout[:4000], "stderr": stderr[:1000],
         "stdout_truncated": stdout_truncated, "stderr_truncated": stderr_truncated,
         "scan_completed": scan_completed, "discovered_hosts": discovered_hosts,
+        "observations": observations,
         "return_code": return_code,
         "timed_out": timed_out, "cancelled": cancelled,
         "deadline_exceeded": timed_out and deadline_limited,
@@ -141,6 +145,7 @@ def _nmap_observation(result: object) -> bool:
         isinstance(payload, dict)
         and payload.get("return_code") == 0
         and not payload.get("error")
+        and not payload.get("timed_out") and not payload.get("cancelled")
         and isinstance(payload.get("stdout"), str)
         and (payload.get("scan_completed") is True or "Nmap done:" in payload["stdout"])
     )
@@ -182,8 +187,16 @@ def _tool_catalog(run: "SimpleRunner") -> list[dict]:
         executor = wrapped["function"]
 
         def with_stop(*, _executor=executor, **kwargs):
-            with tool_stop_context(run._stop_event):
-                result = _executor(**kwargs)
+            try:
+                with tool_stop_context(run._stop_event):
+                    result = _executor(**kwargs)
+            finally:
+                # Even a cancelled/failed scan retains observations and the
+                # evidence reference already committed by the executor.
+                if run.procedure is not None:
+                    entry = _executor.last_observation()
+                    if entry is not None:
+                        run.procedure.record(entry)
             # The shared wrapper has already archived this result. Preserve
             # the process-level reason before the provider can turn it into a
             # generic tool error or a no-observation result.
@@ -237,6 +250,8 @@ class SimpleRunner:
         root.mkdir(parents=True, exist_ok=True)
         self.run_dir = root / f"{datetime.now():%Y-%m-%d_%H%M%S}_{uuid4().hex[:12]}"
         self.run_dir.mkdir()
+        self.procedure = (ProcedureProgress(script_id, network, self.run_dir)
+                          if kind == "scripted" else None)
 
     def _metadata(self, status: str, **extra) -> dict:
         meta = {
@@ -252,6 +267,8 @@ class SimpleRunner:
         }
         if self.runner_kind == "scripted":
             meta["script_id"] = self.script_id
+            meta["procedure_version"] = self.procedure.descriptor["version"]
+            meta["procedure_fingerprint"] = self.procedure.descriptor["fingerprint"]
         else:
             meta.update(model=getattr(self.provider, "model", None),
                         provider=getattr(self.provider, "provider", None))
@@ -275,6 +292,10 @@ class SimpleRunner:
                              "target_network": self.target_network,
                              "script_id": self.script_id,
                              "run_dir": str(self.run_dir)})
+        if self.procedure is not None:
+            self.procedure.callback = stream_callback
+            self.procedure.data["status"] = "waiting"
+            self.procedure.publish()
         try:
             if self.script_id == "smoke-v1":
                 # A UI/API/CLI smoke test must not contend for or touch the lab.
@@ -304,6 +325,8 @@ class SimpleRunner:
         result: dict[str, str] = {}
         detail = ""
         self._write_meta("running")
+        if self.procedure is not None:
+            self.procedure.data["status"] = "running"
         try:
             if stop_event is not None and stop_event.is_set():
                 raise RunStopped("Run stopped")
@@ -312,6 +335,7 @@ class SimpleRunner:
             if self.script_id == "smoke-v1":
                 self.tracker.start_phase(self.runner_kind)
                 try:
+                    self.procedure.step("checked", "running")
                     if stream_callback:
                         stream_callback({"type": "script_step", "script_id": self.script_id,
                                          "step": "checked", "message": "Mode hors ligne validé ; aucun scan lancé."})
@@ -319,37 +343,13 @@ class SimpleRunner:
                               "Offline launch, event stream and artifact smoke test. "
                               "No network probe, model call or laboratory reservation was made. "
                               "This is not an audit result.")
+                    self.procedure.step("checked", "completed")
                 finally:
                     self.tracker.end_phase()
             elif self.runner_kind == "scripted":
-                if "nmap_discovery" not in by_name:
-                    raise RuntimeError("nmap_discovery is unavailable")
                 self.tracker.start_phase(self.runner_kind)
                 try:
-                    observation = by_name["nmap_discovery"]["function"](target=self.target_network)
-                    if stream_callback:
-                        stream_callback({"type": "tool_result", "name": "nmap_discovery",
-                                         "tool": "nmap_discovery",
-                                         "result": observation})
-                    parsed = json.loads(observation) if isinstance(observation, str) else observation
-                    if ((stop_event is not None and stop_event.is_set())
-                            or (isinstance(parsed, dict) and parsed.get("cancelled"))):
-                        raise RunStopped("Run stopped")
-                    if isinstance(parsed, dict) and parsed.get("deadline_exceeded"):
-                        raise BudgetExceeded("Elapsed-time budget exhausted")
-                    if isinstance(parsed, dict) and (parsed.get("error") or parsed.get("ok") is False
-                                                     or parsed.get("return_code", 0) not in (0, None)):
-                        raise RuntimeError("Discovery tool reported an error")
-                    if not _nmap_observation(observation):
-                        raise RuntimeError("Discovery produced no usable Nmap observation")
-                    stdout = parsed.get("stdout", "") if isinstance(parsed, dict) else ""
-                    host_count = parsed.get("discovered_hosts") if isinstance(parsed, dict) else None
-                    if type(host_count) is not int or host_count < 0:
-                        host_count = sum(line.startswith("Nmap scan report for ")
-                                         for line in stdout.splitlines()) if isinstance(stdout, str) else 0
-                    detail = (f"Procedure: {self.script_id}.\n\n"
-                              f"Discovered hosts reported by nmap: {host_count}.\n\n"
-                              "See tool_calls.jsonl for the underlying observations.")
+                    detail = self._run_procedure(by_name, stream_callback, stop_event)
                 finally:
                     self.tracker.end_phase()
             else:
@@ -384,8 +384,8 @@ class SimpleRunner:
             if time.monotonic() - self._run_started >= self.max_duration_s:
                 raise BudgetExceeded("Elapsed-time budget exhausted")
             self.tracker.check_budget()
-            status = "completed"
-            result = {self.runner_kind: "completed"}
+            status = "partial" if self.procedure and self.procedure.data["coverage"]["partial"] else "completed"
+            result = {self.runner_kind: status}
             return result
         except (RunStopped, KeyboardInterrupt):
             status = "stopped"
@@ -409,12 +409,16 @@ class SimpleRunner:
         except Exception as exc:
             detail = f"Run failed ({type(exc).__name__})."
             result = {self.runner_kind: "failed"}
+            if self.procedure is not None:
+                self.procedure.data["errors"].append({"kind": type(exc).__name__, "message": str(exc)[:512]})
             raise
         finally:
             self._finalize(status, result, detail, stream_callback)
 
     def _finalize(self, status: str, result: dict[str, str], detail: str,
                   stream_callback=None) -> None:
+        if self.procedure is not None:
+            self.procedure.finish(status)
         self.tracker.finalize()
         (self.run_dir / "cost_summary.json").write_text(self.tracker.to_json(), encoding="utf-8")
         (self.run_dir / "run_summary.md").write_text(
@@ -431,6 +435,53 @@ class SimpleRunner:
                         "total_cost_usd": self.tracker.total_cost()}
             stream_callback({"type": "runner_done", **terminal})
             stream_callback({"type": "pipeline_done", **terminal})
+
+    def _run_procedure(self, by_name, callback, stop_event):
+        progress = self.procedure
+
+        def scan(name, **args):
+            observation = by_name[name]["function"](**args)
+            if callback:
+                callback({"type": "tool_result", "name": name, "tool": name, "result": observation})
+            if stop_event is not None and stop_event.is_set():
+                raise RunStopped("Run stopped")
+            if not _nmap_observation(observation):
+                raise RuntimeError(f"{name} produced no usable Nmap observation")
+            return observation
+
+        progress.step("discovery", "running")
+        required = {"nmap_discovery", "nmap_scan"} if self.script_id == "service-inventory-v1" else {"nmap_discovery"}
+        for name in sorted(required):
+            if name not in by_name:
+                raise RuntimeError(f"{name} is unavailable")
+        scan("nmap_discovery", target=self.target_network)
+        progress.step("discovery", "completed")
+        if self.script_id == "service-inventory-v1":
+            hosts = sorted((host["ip"] for host in progress.data["hosts"] if host["status"] == "up"),
+                           key=ipaddress.IPv4Address)
+            if len(hosts) != len(progress.data["hosts"]):
+                progress.incomplete("unconfirmed_host_state")
+            selected, skipped = hosts[:MAX_INVENTORY_HOSTS], hosts[MAX_INVENTORY_HOSTS:]
+            if skipped:
+                progress.data["coverage"].update(host_limit_reached=True, skipped_hosts=skipped)
+                progress.incomplete("host_limit")
+            progress.step("services", "running")
+            for host in selected:
+                step_id = f"host-{host}"
+                progress.step(step_id, "running", label=f"Services TCP · {host}", target=host)
+                scan("nmap_scan", target=host, ports=INVENTORY_PORTS)
+                # A normal process exit can still mean that the previously
+                # discovered host no longer answered the scanner's probes.
+                # Only its matching live report attests an actual inspection.
+                inspection_status = "completed" if host in progress.inspected else "partial"
+                progress.step(step_id, inspection_status, target=host)
+            services_complete = not progress.data["coverage"]["partial"]
+            progress.data["coverage"]["services_complete"] = services_complete
+            progress.step("services", "completed" if services_complete else "partial")
+        return (f"Procedure: {self.script_id}.\n\n"
+                f"Discovered hosts reported by nmap: {progress.data['counts']['discovered_hosts']}.\n\n"
+                f"Inspected hosts: {progress.data['counts']['inspected_hosts']}.\n\n"
+                "See procedure_results.json and tool_calls.jsonl for observations and coverage limits.")
 
 
 class LanceRunner:
@@ -542,7 +593,8 @@ def make_runner(
             raise ValueError(f"script_id must be one of: {', '.join(sorted(SCRIPT_IDS))}")
         if provider is not None:
             raise ValueError("Scripted runs do not use a model provider")
-        default_calls, default_duration = (0 if script_id == "smoke-v1" else 1), 120.0
+        default_calls, default_duration = ((17, 600.0) if script_id == "service-inventory-v1"
+                                           else ((0 if script_id == "smoke-v1" else 1), 120.0))
     else:
         if provider is None or not callable(getattr(provider, "chat_with_tools", None)):
             raise ValueError("Vanilla runs require a model provider")
@@ -615,7 +667,7 @@ def main(argv=None) -> int:
         return 1
     print(runner.run_dir)
     status = result.get(args.kind)
-    return {"completed": 0, "stopped": 2, "budget_exceeded": 3}.get(status, 1)
+    return {"completed": 0, "stopped": 2, "budget_exceeded": 3, "partial": 4}.get(status, 1)
 
 
 if __name__ == "__main__":

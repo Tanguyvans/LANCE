@@ -1,9 +1,15 @@
 # Campagne D1/A1 : préparation, bilan et revue
 
-Cette extension prépare le pilote de **24 exécutions** et calcule son bilan à
-partir d'artefacts existants. Elle ne déploie rien et ne lance aucun audit.
+L'outillage de campagne prépare le pilote de **24 exécutions** et calcule son
+bilan à partir d'artefacts existants, sans déployer ni lancer d'audit. Le
+parcours guidé décrit plus bas orchestre quant à lui une paire réelle.
 Le [protocole](../../research/2026-09-27-agent-vs-automation/protocol.md) fixe les questions scientifiques ; le
 [guide CLI](agent-vs-automation-cli.md) décrit l'exécution d'un bras.
+
+Le [bilan du 15 octobre 2026](../../research/2026-09-27-agent-vs-automation/README.md#automatisations-et-comparaison-guidée--15-octobre-2026)
+conserve l'implémentation du parcours guidé, les incidents et une paire
+exploratoire réelle S1 avec Qwen 3.8 27B. Ce résultat unique ne valide pas une
+campagne ni une supériorité générale du modèle.
 
 ## Structure et responsabilités
 
@@ -53,9 +59,81 @@ le même laboratoire avec une réservation commune. Pour une campagne CLI,
 charger également `LANCE_LAB_LOCK=/var/lib/lance/lab.lock` et
 `LANCE_DEPLOYMENT_ROOT=/opt/nato-smartcity-iot/output/scenario_deployments`.
 
-Ce déploiement **ne lance pas la campagne**. Le périmètre D1/A1 reste accessible
-par CLI, avec inventaire public, modèle et budgets renseignés. L'inventaire
-Ansible local d'une autre machine ne détermine pas la destination du runner.
+Ce déploiement **ne lance pas la campagne**. Le périmètre D1/A1 est accessible
+par CLI ou par le parcours d’une paire décrit ci-dessous. L'inventaire Ansible
+local d'une autre machine ne détermine pas la destination du runner.
+
+## Comparer une paire depuis l’interface
+
+Dans **Automatisations → Comparer règles / LLM**, choisir un scénario public et
+un modèle disponible dans le registre. Le formulaire affiche le réseau et le
+nombre d’équipements TCP publics. Ce parcours n’applique aucun plafond de durée
+ou de coût, ni de délai maximal d’analyse par équipement. La durée et l’usage
+restent mesurés. Le nombre maximal d’appels d’outils est prérempli à 200 par
+audit ; il est ajustable, ainsi que l’ordre règles/LLM. Le bouton d’arrêt
+interrompt les deux audits et déclenche le nettoyage.
+
+L’API exige `max_duration_s=null` et `max_cost_usd=null` (ou leur absence).
+Le contrôleur active explicitement `comparison_unlimited` pour les deux
+workers ; ce choix et l’absence de délai par équipement sont archivés et
+contrôlés par le comparateur. Les autres modes, expériences CLI et campagnes
+conservent leurs contrats et leurs limites. Les délais techniques des requêtes
+réseau restent applicables. Les résultats historiques conservent leurs plafonds
+d’origine dans l’affichage et les exports.
+
+**Lancer la comparaison** appelle `POST /api/pipeline/start` avec
+`runner_kind="comparison"`. Le coordinateur applicatif n’autorise qu’une
+opération active par instance ; la réservation commune du labo couvre les deux
+bras, le nettoyage, l’évaluation et la publication du résultat terminal. Le
+contrôleur annonce l’état inactif avant de libérer cette réservation, pour
+permettre un déploiement en attente. Le lancement exige le contrôleur nato, la réservation
+configurée, Ansible/Nmap et une vérification SSH de l’identité `nato` ou
+`pve-nato` avant toute modification. Aucun repli vers un autre labo n’est prévu.
+
+Le contrôleur supprime explicitement le scénario avant **chaque** déploiement,
+puis réutilise les playbooks de déploiement, injection et vérification existants.
+Il sonde les ports TCP déclarés publiquement pour chaque rôle, conserve les
+observations et impose une surface identique avant le second audit. Une sonde
+incomplète ou un équipement TCP inaccessible bloque ce bras. Le parcours exige
+une topologie dont chaque équipement possède des services TCP publics connus,
+dans un même /24 ; les topologies non résolues ou multi-sous-réseaux ne sont pas
+proposées. Il ne constitue pas un inventaire exhaustif de tous les ports.
+
+Les deux workers `Pipeline` reçoivent exactement le même inventaire validé et
+les mêmes limites : `analysis-verification`, profil `full`, phases `[3,4]`,
+un worker, mémoire persistante désactivée et connaissances CVE figées. Seul le
+bras LLM construit un fournisseur. Le contrôleur conserve les identités du
+scénario et de la préparation séparément ; aucune vérité terrain n’est fournie
+aux workers. Après leur fin, il nettoie le scénario dans la réservation commune,
+puis appelle `compare_runs`, le comparateur CLI existant. Cette évaluation après
+nettoyage ne lance aucun outil réseau.
+
+Les résultats affichent confirmations correctes, confirmations incorrectes,
+manqués, précision, rappel, F1, spécificité et ressources par bras. Les écarts
+LLM−règles sont affichés uniquement si le comparateur accepte la paire. Une
+paire incomplète conserve ses bras présents et ses motifs, sans classement.
+Les mesures absentes et le F1 indéfini d’un contrôle sain restent distincts de
+zéro. Les durées des audits excluent attente, préparation et nettoyage ; les
+coûts concernent l’usage LLM déclaré ou estimé, hors infrastructure et travail
+humain. Un échec de nettoyage reste visible même si les audits sont comparables.
+
+`GET /api/comparisons/options` fournit les choix et la disponibilité du
+contrôleur ; `GET /api/comparisons` fournit l’historique paginé (10 par défaut,
+50 maximum), et `GET /api/comparisons/{id}` les étapes et résultats. Le lien
+`/#comparison/{id}` rouvre la paire ; `/{id}/download` sous l’API exporte son
+JSON. Les artefacts de contrôle sont conservés dans
+`output/policy_comparisons/{id}/` : identité et étapes `pair.json`, inventaire
+commun, précontrôles datés, sondes et journaux de préparation. Les dossiers
+d’audit restent dans `output/agent/`. Les demandes d’arrêt utilisent le mécanisme
+coopératif commun et nécessitent une session administrateur.
+
+Ce parcours crée **un essai déclaré par lancement**, sans remplacer les essais
+échoués ni lancer automatiquement une campagne ou une répétition. Les
+précontrôles couvrent les playbooks et la surface TCP publique, sans attester
+toutes les propriétés de la vérité terrain ni l’indépendance des scénarios.
+L’empreinte de configuration ne certifie pas l’état complet du système. La
+revue indépendante, les répétitions, l’alternance et l’analyse par famille
+restent nécessaires avant une conclusion scientifique.
 
 ## Décisions D1 en phase 4
 

@@ -60,3 +60,25 @@ Les comparaisons publiées donnent trois paires S1 comparables et quatre paires
 incomparables (S14 r1–r3, S15 r1 ; bras LLM à 200 appels). Les archives complètes
 et les précontrôles restent à réconcilier avant de remplir le manifeste.
 Voir le [journal détaillé](pilot-2026-10-preflight.md#récupération-des-artefacts-actions--2026-10-16).
+
+## Manifeste historique et évolution de l'application
+
+`pilot-2026-10.json` est le plan gelé du pilote d'octobre, distinct du modèle
+`pilot.example.json`. Son empreinte de ressources d'audit
+`b636f0a57a94badc6da6cbcda85656c31bf2a1e6b256d70bed1d411e6171f5c6`
+et ses limites restent celles de ce plan. La livraison du catalogue et de la
+comparaison guidée change les ressources applicatives ; elle ne constitue pas
+une nouvelle version de ce pilote et ne requalifie pas ses anciens essais.
+
+Le workflow `pilot-campaign.yml` refuse toujours une exécution si le checkout
+servi ne correspond pas à l'empreinte du manifeste, avant de produire les
+paramètres de déploiement. Ce pilote ne peut donc pas continuer sur le code
+actuel sans un plan expérimental distinct. Pour reproduire le plan historique,
+utiliser une révision compatible avec son empreinte ; pour une nouvelle
+campagne, geler un autre manifeste et un nouvel identifiant, puis conserver
+chaque version et ses artefacts. Ne pas remplacer l'empreinte historique pour
+faire accepter les nouveaux runs.
+
+`test_pilot_workflow.py` exerce le garde réel du workflow avec des ressources
+conformes et différentes. Il vérifie le refus avant tout paramètre de
+déploiement, plutôt que d'interdire toute évolution future du code de LANCE.

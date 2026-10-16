@@ -48,7 +48,7 @@ def test_baselines_reject_ambiguous_or_broad_scope(tmp_path, bad):
 
 def test_public_scope_validator_and_script_catalog():
     assert str(validate_target_network("192.168.100.0/24")) == "192.168.100.0/24"
-    assert SCRIPT_IDS == {"discovery-v1", "smoke-v1"}
+    assert SCRIPT_IDS == {"discovery-v1", "smoke-v1", "service-inventory-v1"}
 
 
 @pytest.mark.parametrize("kwargs", [
@@ -116,9 +116,15 @@ def test_smoke_script_completes_without_network_model_or_lab(tmp_path, monkeypat
     assert not (runner.run_dir / "tool_calls.jsonl").exists()
     assert "This is not an audit result" in (runner.run_dir / "run_summary.md").read_text()
     assert (runner.run_dir / "cost_summary.json").exists()
-    assert [event["type"] for event in events] == [
+    assert [event["type"] for event in events if not event["type"].startswith("procedure_")] == [
         "runner_started", "script_step", "runner_done", "pipeline_done",
     ]
+    results = json.loads((runner.run_dir / "procedure_results.json").read_text())
+    assert results["status"] == "completed"
+    assert results["schema_version"] == 1 and results["hosts"] == []
+    assert all(step["status"] == "completed" for step in results["steps"])
+    assert meta["procedure_version"] == results["procedure"]["version"] == "1.0.0"
+    assert meta["procedure_fingerprint"] == results["procedure"]["fingerprint"]
 
 
 @pytest.mark.parametrize("kwargs", [
@@ -383,7 +389,7 @@ def test_unavailable_nmap_never_completes_vanilla(tmp_path, monkeypatch):
     assert json.loads((runner.run_dir / "run_meta.json").read_text())["status"] == "failed"
 
 
-@pytest.mark.parametrize("status,expected", [("completed", 0), ("stopped", 2),
+@pytest.mark.parametrize("status,expected", [("completed", 0), ("partial", 4), ("stopped", 2),
                                               ("budget_exceeded", 3), ("failed", 1)])
 def test_cli_exit_status_reflects_terminal_result(tmp_path, monkeypatch, capsys, status, expected):
     class FakeRunner:
@@ -479,3 +485,276 @@ def test_cli_signal_reaches_active_nmap_and_archives_stop(tmp_path, monkeypatch)
     assert json.loads((runner.run_dir / "run_meta.json").read_text())["status"] == "stopped"
     evidence = json.loads((runner.run_dir / "tool_calls.jsonl").read_text().splitlines()[0])
     assert json.loads(evidence["result"])["cancelled"] is True
+
+
+def _inventory_runner(tmp_path, monkeypatch, cooperative, **kwargs):
+    monkeypatch.setattr(runtime, "RECON_TOOLS", [
+        _tool("nmap_discovery", lambda **kwargs: None), _tool("nmap_scan", lambda **kwargs: None),
+    ])
+    monkeypatch.setattr("src.agent.run_modes.run_cooperatively", cooperative)
+    return make_runner("scripted", target_network="192.168.100.0/24",
+                       script_id="service-inventory-v1", output_dir=tmp_path, **kwargs)
+
+
+def _nmap_text(addresses, *, services=""):
+    return "".join(f"Nmap scan report for {ip}\nHost is up (0.001s latency).\n{services}"
+                   for ip in addresses) + f"Nmap done: 256 IP addresses ({len(addresses)} hosts up)\n"
+
+
+def _procedure_results(runner):
+    return json.loads((runner.run_dir / "procedure_results.json").read_text())
+
+
+def test_service_inventory_uses_only_discovered_hosts_fixed_ports_and_executor_evidence(tmp_path, monkeypatch):
+    from src.agent.procedures import INVENTORY_PORTS
+    commands = []
+
+    def cooperative(command, *, timeout):
+        commands.append(command)
+        assert timeout <= 600
+        if "-sn" in command:
+            output = _nmap_text(["192.168.100.9", "192.168.100.2"])
+        else:
+            assert command[-3:-1] == ["-p", INVENTORY_PORTS]
+            output = _nmap_text([command[-1]], services="80/tcp open http nginx 1.26.1\n443/tcp closed https\n")
+        return output, "", 0, False, False
+
+    runner = _inventory_runner(tmp_path, monkeypatch, cooperative)
+    events = []
+    assert runner.provider is None
+    assert runner.run(stream_callback=events.append) == {"scripted": "completed"}
+    assert [cmd[-1] for cmd in commands] == ["192.168.100.0/24", "192.168.100.2", "192.168.100.9"]
+    results = _procedure_results(runner)
+    assert results["counts"] == {"hosts": 2, "discovered_hosts": 2, "inspected_hosts": 2, "services": 2}
+    assert results["coverage"]["services_complete"] is True
+    assert results["coverage"]["ports"] == INVENTORY_PORTS
+    assert results["errors"] == []
+    ledger = [json.loads(line) for line in (runner.run_dir / "tool_calls.jsonl").read_text().splitlines()]
+    assert results["evidence_refs"] == [entry["evidence_ref"] for entry in ledger]
+    for host in results["hosts"]:
+        assert host["services"][0]["port"] == 80
+        assert host["services"][0]["detail"] == "nginx 1.26.1"
+        assert host["services"][0]["evidence_refs"][0] in results["evidence_refs"]
+    assert all(step["status"] == "completed" for step in results["steps"])
+    assert any(e.get("step_id") == "services" and e.get("status") == "running" for e in events)
+    final_projection = [e for e in events if e["type"] == "procedure_results"][-1]
+    assert final_projection["results"] == results
+    assert events[-2]["type"] == "runner_done" and events[-1]["type"] == "pipeline_done"
+    cost = json.loads((runner.run_dir / "cost_summary.json").read_text())
+    assert cost["total_input_tokens"] == cost["total_output_tokens"] == cost["total_turns"] == 0
+    assert cost["total_cost_usd"] == 0
+
+
+def test_inventory_host_limit_is_partial_and_does_not_scan_seventeenth_host(tmp_path, monkeypatch):
+    commands = []
+    addresses = [f"192.168.100.{n}" for n in range(1, 19)]
+
+    def cooperative(command, *, timeout):
+        commands.append(command)
+        return _nmap_text(addresses if "-sn" in command else [command[-1]]), "", 0, False, False
+
+    runner = _inventory_runner(tmp_path, monkeypatch, cooperative)
+    assert runner.run() == {"scripted": "partial"}
+    assert len(commands) == 17
+    results = _procedure_results(runner)
+    assert results["counts"]["inspected_hosts"] == 16
+    assert results["coverage"]["host_limit_reached"] is True
+    assert results["coverage"]["skipped_hosts"] == ["192.168.100.17", "192.168.100.18"]
+    assert results["coverage"]["services_complete"] is False
+    assert "host_limit" in results["coverage"]["incomplete_reasons"]
+
+
+@pytest.mark.parametrize("interruption", ["calls", "stop", "deadline"])
+def test_inventory_interruption_keeps_prior_evidence_and_marks_real_steps(tmp_path, monkeypatch, interruption):
+    commands = []
+    stop = threading.Event()
+
+    def cooperative(command, *, timeout):
+        commands.append(command)
+        output = _nmap_text(["192.168.100.2", "192.168.100.3"] if "-sn" in command else [command[-1]],
+                            services="22/tcp open ssh OpenSSH\n")
+        if interruption == "deadline" and len(commands) == 2:
+            return output, "deadline", -1, True, False
+        return output, "", 0, False, False
+
+    def callback(event):
+        if interruption == "stop" and event.get("step_id") == "host-192.168.100.2" and event.get("status") == "completed":
+            stop.set()
+
+    runner = _inventory_runner(tmp_path, monkeypatch, cooperative,
+                               **({"max_tool_calls": 2} if interruption == "calls" else
+                                  {"max_duration_s": 1} if interruption == "deadline" else {}))
+    expected = "stopped" if interruption == "stop" else "budget_exceeded"
+    assert runner.run(stream_callback=callback, stop_event=stop) == {"scripted": expected}
+    assert len(commands) == 2
+    results = _procedure_results(runner)
+    assert results["status"] == expected
+    assert results["coverage"]["partial"] is True
+    assert len(results["evidence_refs"]) == 2
+    assert any(host["services"] for host in results["hosts"])
+    assert not any(step["status"] == "running" for step in results["steps"])
+    assert any(step["status"] == "stopped" for step in results["steps"])
+
+
+def test_inventory_failed_scan_keeps_partial_observations_without_claiming_success(tmp_path, monkeypatch):
+    def cooperative(command, *, timeout):
+        if "-sn" in command:
+            return _nmap_text(["192.168.100.2"]), "", 0, False, False
+        return "Nmap scan report for 192.168.100.2\nHost is up\n80/tcp open http nginx\n", "scan failed", 1, False, False
+
+    runner = _inventory_runner(tmp_path, monkeypatch, cooperative)
+    with pytest.raises(RuntimeError, match="no usable"):
+        runner.run()
+    results = _procedure_results(runner)
+    assert results["status"] == "failed" and results["counts"]["services"] == 1
+    assert results["counts"]["inspected_hosts"] == 0
+    assert results["errors"][0]["evidence_ref"] in results["evidence_refs"]
+    assert results["coverage"]["services_complete"] is False
+
+
+def test_inventory_never_executes_hostnames_outside_addresses_or_unconfirmed_hosts(tmp_path, monkeypatch):
+    commands = []
+
+    def cooperative(command, *, timeout):
+        commands.append(command)
+        if "-sn" in command:
+            output = (_nmap_text(["192.168.100.2", "192.168.88.1", "192.168.100.3;touch /tmp/no"])
+                      + "Nmap scan report for device (192.168.100.4)\nHost is up\n"
+                      + "Nmap scan report for 192.168.100.5\nHost seems down.\n")
+        else:
+            output = _nmap_text([command[-1]])
+        return output, "", 0, False, False
+
+    runner = _inventory_runner(tmp_path, monkeypatch, cooperative)
+    assert runner.run() == {"scripted": "partial"}
+    assert [cmd[-1] for cmd in commands] == ["192.168.100.0/24", "192.168.100.2"]
+    results = _procedure_results(runner)
+    assert results["coverage"]["rejected_host_reports"] == 3
+    assert "unconfirmed_host_state" in results["coverage"]["incomplete_reasons"]
+
+
+def test_structured_nmap_observations_survive_raw_excerpt_truncation(tmp_path, monkeypatch):
+    output = "x" * 4500 + "\n" + _nmap_text(["192.168.100.2"], services="443/tcp open https nginx\n")
+    monkeypatch.setattr(runtime, "RECON_TOOLS", [_tool("nmap_discovery", lambda **kwargs: None)])
+    monkeypatch.setattr("src.agent.run_modes.run_cooperatively",
+                        lambda command, *, timeout: (output, "", 0, False, False))
+    runner = make_runner("scripted", target_network="192.168.100.0/24",
+                         script_id="discovery-v1", output_dir=tmp_path)
+    assert runner.run() == {"scripted": "completed"}
+    results = _procedure_results(runner)
+    assert results["hosts"][0]["ip"] == "192.168.100.2"
+    assert results["hosts"][0]["services"][0]["port"] == 443
+    assert results["coverage"]["raw_output_truncated"] is True
+    assert results["coverage"]["observations_truncated"] is False
+    entry = json.loads((runner.run_dir / "tool_calls.jsonl").read_text().splitlines()[0])
+    raw = json.loads(entry["result"])
+    assert len(raw["stdout"]) == 4000 and "192.168.100.2" not in raw["stdout"]
+    assert raw["observations"]["hosts"][0]["ip"] == "192.168.100.2"
+
+
+def test_discovery_structured_host_limit_is_bounded_and_partial(tmp_path, monkeypatch):
+    from src.agent.procedure_observations import MAX_OBSERVATION_HOSTS
+    output = _nmap_text([f"192.168.{n // 250}.{n % 250 + 1}" for n in range(300)])
+    monkeypatch.setattr(runtime, "RECON_TOOLS", [_tool("nmap_discovery", lambda **kwargs: None)])
+    monkeypatch.setattr("src.agent.run_modes.run_cooperatively",
+                        lambda command, *, timeout: (output, "", 0, False, False))
+    runner = make_runner("scripted", target_network="192.168.0.0/16",
+                         script_id="discovery-v1", output_dir=tmp_path)
+    assert runner.run() == {"scripted": "partial"}
+    results = _procedure_results(runner)
+    assert len(results["hosts"]) == MAX_OBSERVATION_HOSTS
+    assert results["counts"]["discovered_hosts"] == 300
+    assert results["coverage"]["observations_truncated"] is True
+
+
+def test_inventory_zero_hosts_is_complete_empty_observation(tmp_path, monkeypatch):
+    commands = []
+
+    def cooperative(command, *, timeout):
+        commands.append(command)
+        return _nmap_text([]), "", 0, False, False
+
+    runner = _inventory_runner(tmp_path, monkeypatch, cooperative)
+    assert runner.run() == {"scripted": "completed"}
+    results = _procedure_results(runner)
+    assert len(commands) == 1
+    assert results["hosts"] == [] and results["coverage"]["services_complete"] is True
+
+
+def test_scan_of_discovered_host_without_matching_live_report_stays_partial(tmp_path, monkeypatch):
+    def cooperative(command, *, timeout):
+        # The second process exits normally but reports a different host. Its
+        # observations must never be attributed to the requested target.
+        output = _nmap_text(["192.168.100.2"] if "-sn" in command else ["192.168.100.3"],
+                            services="80/tcp open http nginx\n" if "-sn" not in command else "")
+        return output, "", 0, False, False
+
+    runner = _inventory_runner(tmp_path, monkeypatch, cooperative)
+    assert runner.run() == {"scripted": "partial"}
+    results = _procedure_results(runner)
+    assert [host["ip"] for host in results["hosts"]] == ["192.168.100.2"]
+    assert results["counts"]["services"] == results["counts"]["inspected_hosts"] == 0
+    assert results["coverage"]["services_complete"] is False
+    assert any(error["kind"] == "scan_incomplete" for error in results["errors"])
+    assert {step["id"]: step["status"] for step in results["steps"]} == {
+        "discovery": "completed", "services": "partial", "host-192.168.100.2": "partial",
+        "results": "completed"}
+
+
+def test_inventory_host_that_stops_answering_is_not_a_completed_empty_inspection(tmp_path, monkeypatch):
+    def cooperative(command, *, timeout):
+        if "-sn" in command:
+            output = _nmap_text(["192.168.100.2", "192.168.100.3"])
+        elif command[-1] == "192.168.100.2":
+            output = ("Note: Host seems down. If it is really up, but blocking our ping probes, try -Pn\n"
+                      "Nmap done: 1 IP address (0 hosts up) scanned in 3.00 seconds\n")
+        else:
+            # A successful empty inspection is different: the live host was
+            # actually scanned, with no selected TCP port observed open.
+            output = _nmap_text([command[-1]])
+        return output, "", 0, False, False
+
+    runner = _inventory_runner(tmp_path, monkeypatch, cooperative)
+    assert runner.run() == {"scripted": "partial"}
+    results = _procedure_results(runner)
+    assert results["counts"]["inspected_hosts"] == 1
+    assert results["counts"]["services"] == 0
+    assert results["coverage"]["services_complete"] is False
+    assert {step["id"]: step["status"] for step in results["steps"]} == {
+        "discovery": "completed", "services": "partial", "host-192.168.100.2": "partial",
+        "host-192.168.100.3": "completed", "results": "completed"}
+    assert [(error["kind"], error["target"]) for error in results["errors"]] == [
+        ("scan_incomplete", "192.168.100.2")]
+
+
+def test_inventory_missing_scanner_fails_before_network_and_persists_results(tmp_path, monkeypatch):
+    runner = _inventory_runner(tmp_path, monkeypatch, lambda *args, **kwargs: pytest.fail("No network expected"))
+    monkeypatch.setattr(runtime, "filter_unavailable_tools", lambda tools: (
+        [tool for tool in tools if tool["name"] == "nmap_discovery"], {"nmap_scan": "missing_command:nmap"}))
+    with pytest.raises(RuntimeError, match="nmap_scan is unavailable"):
+        runner.run()
+    results = _procedure_results(runner)
+    assert results["status"] == "failed" and results["evidence_refs"] == []
+    assert results["steps"][0]["status"] == "failed"
+    assert any("nmap_scan" in error.get("message", "") for error in results["errors"])
+
+
+def test_waiting_cancellation_persists_pending_network_steps(tmp_path, monkeypatch):
+    from src.benchmark.lab_lock import LabWaitCancelled
+
+    class Waiting:
+        def __enter__(self):
+            raise LabWaitCancelled("cancelled")
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr("src.agent.run_modes.reserve_lab", lambda **kwargs: Waiting())
+    runner = make_runner("scripted", target_network="192.168.100.0/24",
+                         script_id="service-inventory-v1", output_dir=tmp_path)
+    assert runner.run() == {"scripted": "stopped"}
+    results = _procedure_results(runner)
+    assert results["status"] == "stopped"
+    assert results["evidence_refs"] == []
+    assert {step["id"]: step["status"] for step in results["steps"]} == {
+        "discovery": "pending", "services": "pending", "results": "completed"}

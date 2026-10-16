@@ -15,7 +15,7 @@ run](../../src/agent/phases/README.md#graphe-et-frontières-propres-au-run).
 | `lance` | Pipeline de six phases et profils `auto`, `compact`, `full` | Requis pour un audit, sauf « déployer seulement » | Scénarios, déploiement, évaluation et rapports existants |
 | `rules` | Déploiement du scénario, analyse et vérification déterministes (phases 3 et 4) | Aucun | Scénarios publics ou architecture personnalisée, résultats par équipement |
 | `vanilla` | Une boucle modèle–outils bornée sur un CIDR explicite | Requis | Aucun déploiement ni score benchmark |
-| `scripted` | Procédures versionnées et déterministes `smoke-v1` (hors ligne) et `discovery-v1` (Nmap) | Aucun | Aucun déploiement ni score benchmark |
+| `scripted` | Procédures déterministes versionnées : diagnostic hors ligne, découverte des hôtes et inventaire TCP | Aucun | Aucun déploiement ni score benchmark |
 
 Les choix « scénario prédéfini/personnalisé/batch » restent **à l'intérieur de
 LANCE**. L'audit par règles partage les choix prédéfini/personnalisé ; il ne
@@ -23,6 +23,104 @@ propose pas de batch. Ils ne sont pas des modes concurrents de `vanilla` ou `scr
 `full` et `compact` qualifient l'orchestration du pipeline, pas le type de
 runner. Cette première extraction ne remplace pas le pipeline existant et ne
 promet pas des runs concurrents : l'API conserve un seul run actif par instance.
+
+## Catalogue et lancement guidé
+
+Le parcours **Comparer règles / LLM**, séparé du catalogue, prépare une paire
+contrôlée des phases 3–4. Voir le [guide de comparaison dans l’interface](../benchmark/agent-vs-automation-campaign.md#comparer-une-paire-depuis-linterface)
+pour ses conditions de remise en état, mesures et limites. Le score de ce parcours
+ne s’applique pas aux simples inventaires du catalogue.
+
+L’onglet **Automatisations** ouvre les **Résultats des exécutions** : un tableau
+filtrable par procédure et scénario ou réseau, paginé par dix exécutions. Il
+affiche les observations, la disponibilité d’une évaluation, la durée mesurée,
+les appels d’outils et le statut. Les diagnostics hors ligne sont masqués par
+défaut et peuvent être inclus explicitement. **Consulter** ouvre les résultats et
+les preuves, puis les étapes dans un panneau replié pour une exécution terminée.
+Le suivi d’une exécution en cours garde les étapes ouvertes.
+
+**Nouvelle exécution** et le bouton **Choisir une automatisation** du dashboard
+ouvrent le catalogue fourni par `GET /api/procedures`. Chaque fiche
+décrit son objectif, sa cible, ses étapes, les outils requis, ses effets et ses
+sorties. Le catalogue serveur porte un identifiant, une version et une empreinte
+de l’implémentation ; il ne charge aucun modèle. La disponibilité indique les
+exécutables présents sur le contrôleur, sans certifier l’accès au laboratoire.
+
+| Procédure | Cible et actions | Résultats |
+| --- | --- | --- |
+| **Découvrir les équipements** (`discovery-v1`) | Réseau IPv4 explicite, découverte Nmap `-n -sn` | Hôtes observés et traces ; services non inspectés |
+| **Inventorier les services** (`service-inventory-v1`) | Découverte puis identification TCP de **16 hôtes actifs observés au maximum**, dans le même CIDR | Hôtes, ports ouverts, noms et versions observés, couverture et preuves |
+| **Auditer un scénario automatiquement** (`rules-audit-v1`) | Scénario public déployable, puis analyse et vérification par règles | Constats et confirmations par équipement ; contrôles incomplets distincts |
+| **Vérifier le lancement hors ligne** (`smoke-v1`, rubrique Diagnostic) | Aucune cible ni opération réseau | Vérification du lancement, des étapes et de l’enregistrement |
+
+Choisir une fiche, renseigner le réseau ou le scénario, puis lancer. Les limites
+effectives sont préremplies et ajustables. L’audit de scénario précise les actions
+sur les services simulés et propose le nettoyage automatique final. Sa préparation
+peut supprimer les scénarios déjà présents dans le laboratoire partagé pour les
+remplacer par celui demandé, même si le nettoyage final est désactivé. Sa limite
+de temps porte sur les contrôles après déploiement, hors préparation et nettoyage ;
+elle ne borne pas la durée totale de l’opération. Le lancement utilise
+`POST /api/pipeline/start` avec les contrats existants ; aucune commande arbitraire
+ou import de fichier exécutable n’est accepté. Le dashboard avancé reste disponible.
+
+L’inventaire des services utilise les ports TCP fixes
+`21,22,23,53,80,443,445,554,1883,3306,5432,5672,6379,8000,8080,8443,8883,9000,9090,9200,27017`.
+Ses limites par défaut sont **17 appels et 600 secondes**. Chaque scan vise une
+adresse explicitement observée active par la découverte. Les hôtes silencieux et
+les autres ports restent hors couverture. Les bornes, erreurs, arrêts et pertes
+d’observations donnent des résultats incomplets explicites, jamais un audit sain.
+Un hôte découvert actif puis devenu silencieux pendant l’identification des
+services reste une inspection incomplète, même si Nmap termine avec un code zéro.
+Les observations structurées sont extraites avant la troncature des extraits texte.
+La découverte est plafonnée à 30 secondes par appel et chaque identification de
+services à 300 secondes, dans la limite du temps total encore disponible. Augmenter
+la durée totale ne relève pas ces plafonds par sonde.
+
+Le suivi affiche les étapes réellement observées et leur état, y compris l’attente
+du laboratoire et les fins non observées. Le bouton **Demander l’arrêt** utilise
+l’arrêt coopératif existant ; un playbook en cours peut encore devoir se terminer
+avant le nettoyage. Les résultats et l’historique restent consultables après
+rechargement. Une exécution historique est présentée séparément de la préparation
+d’un nouveau lancement.
+
+`GET /api/procedures/runs` fournit les résumés paginés ;
+`GET /api/procedures/runs/{id}` fournit les mesures d’une exécution publique.
+Les observations sont calculées depuis les artefacts structurés enregistrés,
+sans transformer les déclarations d’un audit en confirmations. Les mesures
+absentes restent indisponibles. La durée totale vient des horodatages de début
+et de fin ; une durée de secours issue des outils est signalée comme telle.
+Les durées cumulées des agents ne remplacent pas le temps réellement écoulé.
+Un lien `/#automation/{id}` ouvre directement les détails de l’exécution.
+
+La colonne **Évaluation par scénario** indique actuellement **Non évaluée** :
+ces procédures n’enregistrent pas de comparaison aux résultats attendus, ni de
+score de détection. Un nombre de services trouvés n’est pas un taux de réussite ;
+**Terminé** décrit la fin de l’exécution. Le scénario est affiché uniquement s’il
+est enregistré dans les métadonnées ; un réseau CIDR seul ne permet pas de le
+déduire. Les diagnostics affichent **Sans objet**. Cette vue permet donc de lire
+les observations et les ressources utilisées, sans établir un classement de
+qualité entre scénarios.
+
+`GET /api/runs/{id}/procedure-results` fournit les observations structurées des
+scripts et la projection de preuves commune des audits par règles. Les fichiers
+`procedure_results.json` (scripts) et `procedure_progress.json` (règles) conservent
+les étapes, le statut et l’identité de procédure enregistrée. Les événements SSE
+`procedure_step`, `procedure_results` et `procedure_progress` actualisent le suivi.
+Les anciennes exécutions sans ces fichiers restent lisibles dans le dashboard ;
+leur version n’est pas déduite du catalogue courant. Les runs scellés n’exposent
+pas ces résultats. Ces procédures ne constituent pas une expérience D1/A1 appariée.
+
+Pour lancer l’inventaire depuis le contrôleur d’un réseau autorisé :
+
+```bash
+python -m src.agent.run_modes scripted \
+  --script-id service-inventory-v1 --target-network CIDR_AUTORISE \
+  --max-tool-calls 17 --max-duration-s 600
+```
+
+Le code de sortie CLI `4` signale un résultat partiel, en plus des états déjà
+documentés ci-dessous. Les deux procédures réseau produisent un inventaire,
+sans score de vulnérabilité ni appel au modèle.
 
 ## Contrat API
 
@@ -89,7 +187,7 @@ de chevaucher un déploiement sur nato, sans faire d'un CIDR arbitraire un
 scénario de benchmark. La limite de durée comprend l'attente de ce verrou et
 les appels Nmap ; un arrêt terminal demande la terminaison coopérative du
 sous-processus. La CLI renvoie 0 si le run est terminé, 2 si arrêté, 3 si le
-budget est épuisé et 1 en cas d'échec.
+budget est épuisé, 4 si les résultats sont partiels et 1 en cas d'échec.
 
 ## Artefacts et lecture
 
@@ -128,7 +226,9 @@ découverte sur le CIDR d'exemple documentaire.
 Choisir **Audit par règles**, puis **Scénario** ou **Personnalisé** pour choisir
 l'architecture, la posture et les packs. **Lancer l'audit par règles** déploie
 et vérifie la préparation du scénario, exécute les phases 3 et 4, puis applique
-le choix de nettoyage automatique. Aucun fournisseur, modèle, catalogue de prix
+le choix de nettoyage automatique final. La préparation peut retirer les scénarios
+déjà présents, indépendamment de ce choix final ; elle utilise le même laboratoire
+partagé. Aucun fournisseur, modèle, catalogue de prix
 ou rapport LLM n'est utilisé. Les scénarios scellés restent réservés au contrôleur.
 
 Le moteur réutilise les scanners, l'agrégation et les décisions bornées de la

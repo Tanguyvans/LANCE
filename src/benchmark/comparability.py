@@ -80,8 +80,14 @@ def configuration_identity(
             return None, "experiment profile must be explicitly full with no overrides"
         if type(values["workers"]) is not int or values["workers"] != 1 or type(values["execution_ledger_version"]) is not int or values["execution_ledger_version"] != 2:
             return None, "unsupported experiment execution settings"
+        if "comparison_unlimited" in values:
+            if values["comparison_unlimited"] is not True or values["max_duration_s"] is not None or values.get("max_cost_usd") is not None:
+                return None, "invalid unlimited UI comparison settings"
+            policy_fields = (*policy_fields, "comparison_unlimited")
         for key in ("max_duration_s", "max_tool_calls"):
             value = values.get(key)
+            if key == "max_duration_s" and value is None and values.get("comparison_unlimited") is True:
+                continue
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
                 return None, f"experiment {key} must be positive and finite"
         for key in ("rules_version", "resource_manifest_sha256"):

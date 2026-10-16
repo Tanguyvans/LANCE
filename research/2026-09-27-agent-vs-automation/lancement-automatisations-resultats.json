@@ -1,0 +1,867 @@
+{
+  "schema_version": 1,
+  "revision": "2026-10-15 20:25 (Europe/Brussels, UTC+02:00)",
+  "scope": "Aggregate provenance from real nato runs; no raw vulnerability evidence or secrets committed",
+  "inventory": {
+    "id": "2026-10-15_123829_42ecb36bbe68",
+    "runner_kind": "scripted",
+    "procedure": {
+      "id": "service-inventory-v1",
+      "title": "Inventorier les services",
+      "version": "1.0.1",
+      "fingerprint": "c3f52edad0f20c14ce13c0a00d652c1ef3df1778ff332eecde13df1a639c9bc8"
+    },
+    "diagnostic": false,
+    "scenario": null,
+    "target": "192.168.100.0/28",
+    "status": "done",
+    "started_at": "2026-10-15T12:38:29.921507+02:00",
+    "duration_s": 165.87,
+    "duration_scope": "total",
+    "tool_calls": 5,
+    "tool_errors": 0,
+    "coverage": "collected",
+    "available": true,
+    "evaluation": {
+      "status": "not_evaluated",
+      "reason": "scenario_not_recorded"
+    },
+    "export_sha256": "b25fe334f726bbc89eba49a44922a9d91f352041a1c8cdca53e46a4be18c9874",
+    "export_url": "http://100.103.253.86:8502/api/procedures/runs/2026-10-15_123829_42ecb36bbe68",
+    "limitation": "Scenario was not recorded; inventory is not a vulnerability benchmark score."
+  },
+  "attempts": [
+    {
+      "schema_version": 1,
+      "id": "2026-10-15_133025_2ae16f333149",
+      "status": "incomplete",
+      "started_at": "2026-10-15T13:30:25.754095+00:00",
+      "finished_at": "2026-10-15T13:48:09.760900+00:00",
+      "config": {
+        "comparison_order": "rules-first",
+        "model": "qwen3.8:27b",
+        "provider": "ollama-umons",
+        "max_tool_calls": 200,
+        "max_duration_s": 600.0,
+        "scenario_id": "1",
+        "max_cost_usd": 2.0
+      },
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "arms": {
+        "rules": "2026-10-15_153237",
+        "llm": "2026-10-15_153753"
+      },
+      "cleanup": true,
+      "error": null,
+      "export_sha256": "c258f87162f8cb47df80d3e454e994afa2fe2768e04b018be7e626a37b8ccdc3",
+      "export_url": "http://100.103.253.86:8502/api/comparisons/2026-10-15_133025_2ae16f333149/download",
+      "interpretation": "Model connection failure; no interpretable Qwen quality result",
+      "comparable": false,
+      "incomparability_reasons": [
+        "llm: incomplete run, evidence or usage",
+        "llm: incomplete analysis"
+      ],
+      "ground_truth_sha256": "471a7db294f15a823aa2635eee317c436133b143816349a374fe9a03665214af",
+      "environment_scope": "Déploiement, injection, vérifications du playbook et disponibilité TCP ; pas une certification de toutes les propriétés attendues.",
+      "preflights": {
+        "rules": {
+          "status": "valid",
+          "checked_at": "2026-10-15T13:32:37.763294+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-rules/2026-10-15_153026"
+        },
+        "llm": {
+          "status": "valid",
+          "checked_at": "2026-10-15T13:37:52.819906+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-llm/2026-10-15_153537"
+        }
+      },
+      "measures": {
+        "rules": {
+          "status": "completed",
+          "metrics": {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "total_turns": 0,
+            "total_tool_calls": 73,
+            "total_tool_errors": 0,
+            "wall_clock_duration_s": 179.7,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 2,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.857,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.923,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 2,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.857,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.923,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": 11,
+            "confirmed.false_positives": 3,
+            "confirmed.false_negatives": 1,
+            "confirmed.precision": 0.786,
+            "confirmed.recall": 0.917,
+            "confirmed.f1": 0.846,
+            "confirmed.invalid_evidence": 0,
+            "llm_cost_per_confirmed_tp": 0.0
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity"
+          ],
+          "problems": [],
+          "cost_is_estimate": false
+        },
+        "llm": {
+          "status": "partial",
+          "metrics": {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "total_turns": 0,
+            "total_tool_calls": 59,
+            "total_tool_errors": 0,
+            "wall_clock_duration_s": 596.3,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 2,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.857,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.923,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 2,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.857,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.923,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": 0,
+            "confirmed.false_positives": 0,
+            "confirmed.false_negatives": 12,
+            "confirmed.precision": null,
+            "confirmed.recall": 0.0,
+            "confirmed.f1": 0.0,
+            "confirmed.invalid_evidence": 0,
+            "llm_cost_per_confirmed_tp": null
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity",
+            "confirmed.precision",
+            "llm_cost_per_confirmed_tp"
+          ],
+          "problems": [
+            "llm: incomplete run, evidence or usage",
+            "llm: incomplete analysis"
+          ],
+          "cost_is_estimate": true
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "2026-10-15_140213_cadeb8a36a7e",
+      "status": "incomplete",
+      "started_at": "2026-10-15T14:02:13.737625+00:00",
+      "finished_at": "2026-10-15T14:12:55.715275+00:00",
+      "config": {
+        "comparison_order": "rules-first",
+        "model": "MiniMax-M2.7",
+        "provider": "minimax",
+        "max_tool_calls": 200,
+        "max_duration_s": 600.0,
+        "scenario_id": "1",
+        "max_cost_usd": 2.0
+      },
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "arms": {
+        "rules": "2026-10-15_160426",
+        "llm": "2026-10-15_160944"
+      },
+      "cleanup": true,
+      "error": null,
+      "export_sha256": "98d2e062c31a68493a87240077c6c88a2dabe06daf0d2ac125c87444457c50bd",
+      "export_url": "http://100.103.253.86:8502/api/comparisons/2026-10-15_140213_cadeb8a36a7e/download",
+      "interpretation": "Wrong model selected; excluded from Qwen performance evidence",
+      "comparable": false,
+      "incomparability_reasons": [
+        "llm: incomplete run, evidence or usage",
+        "llm: incomplete analysis"
+      ],
+      "ground_truth_sha256": "471a7db294f15a823aa2635eee317c436133b143816349a374fe9a03665214af",
+      "environment_scope": "Déploiement, injection, vérifications du playbook et disponibilité TCP ; pas une certification de toutes les propriétés attendues.",
+      "preflights": {
+        "rules": {
+          "status": "valid",
+          "checked_at": "2026-10-15T14:04:26.874412+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-rules/2026-10-15_160213"
+        },
+        "llm": {
+          "status": "valid",
+          "checked_at": "2026-10-15T14:09:43.854540+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-llm/2026-10-15_160725"
+        }
+      },
+      "measures": {
+        "rules": {
+          "status": "completed",
+          "metrics": {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "total_turns": 0,
+            "total_tool_calls": 73,
+            "total_tool_errors": 0,
+            "wall_clock_duration_s": 178.8,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 2,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.857,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.923,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 2,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.857,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.923,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": 11,
+            "confirmed.false_positives": 3,
+            "confirmed.false_negatives": 1,
+            "confirmed.precision": 0.786,
+            "confirmed.recall": 0.917,
+            "confirmed.f1": 0.846,
+            "confirmed.invalid_evidence": 0,
+            "llm_cost_per_confirmed_tp": 0.0
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity"
+          ],
+          "problems": [],
+          "cost_is_estimate": false
+        },
+        "llm": {
+          "status": "partial",
+          "metrics": {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "total_turns": 0,
+            "total_tool_calls": 59,
+            "total_tool_errors": 0,
+            "wall_clock_duration_s": 172.4,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 2,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.857,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.923,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 2,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.857,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.923,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": 0,
+            "confirmed.false_positives": 0,
+            "confirmed.false_negatives": 12,
+            "confirmed.precision": null,
+            "confirmed.recall": 0.0,
+            "confirmed.f1": 0.0,
+            "confirmed.invalid_evidence": 0,
+            "llm_cost_per_confirmed_tp": null
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity",
+            "confirmed.precision",
+            "llm_cost_per_confirmed_tp"
+          ],
+          "problems": [
+            "llm: incomplete run, evidence or usage",
+            "llm: incomplete analysis"
+          ],
+          "cost_is_estimate": false
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "2026-10-15_151517_325e8127a530",
+      "status": "failed",
+      "started_at": "2026-10-15T15:15:17.120710+00:00",
+      "finished_at": "2026-10-15T15:33:03.421773+00:00",
+      "config": {
+        "comparison_order": "rules-first",
+        "model": "qwen3.8:27b",
+        "provider": "ollama-umons",
+        "max_tool_calls": 200,
+        "max_duration_s": 600.0,
+        "scenario_id": "1",
+        "max_cost_usd": 2.0
+      },
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "arms": {
+        "rules": "2026-10-15_171729",
+        "llm": "2026-10-15_172244"
+      },
+      "cleanup": true,
+      "error": "La comparaison a été interrompue (BudgetExceeded). Consultez la dernière étape et les traces.",
+      "export_sha256": "198fcaebbc33d2a8f38ad1d4067a05455c3c4a951f08dc11d6c955277c86076c",
+      "export_url": "http://100.103.253.86:8502/api/comparisons/2026-10-15_151517_325e8127a530/download",
+      "interpretation": "Duration ceiling reached during verification; no evaluable Qwen confirmation score",
+      "comparable": false,
+      "incomparability_reasons": [
+        "llm: incomplete run, evidence or usage",
+        "llm: missing evaluable stage artifacts"
+      ],
+      "ground_truth_sha256": "471a7db294f15a823aa2635eee317c436133b143816349a374fe9a03665214af",
+      "environment_scope": "Déploiement, injection, vérifications du playbook et disponibilité TCP ; pas une certification de toutes les propriétés attendues.",
+      "preflights": {
+        "rules": {
+          "status": "valid",
+          "checked_at": "2026-10-15T15:17:29.265260+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-rules/2026-10-15_171517"
+        },
+        "llm": {
+          "status": "valid",
+          "checked_at": "2026-10-15T15:22:44.576317+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-llm/2026-10-15_172029"
+        }
+      },
+      "measures": {
+        "rules": {
+          "status": "completed",
+          "metrics": {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "total_turns": 0,
+            "total_tool_calls": 73,
+            "total_tool_errors": 0,
+            "wall_clock_duration_s": 180.0,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 2,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.857,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.923,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 2,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.857,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.923,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": 11,
+            "confirmed.false_positives": 3,
+            "confirmed.false_negatives": 1,
+            "confirmed.precision": 0.786,
+            "confirmed.recall": 0.917,
+            "confirmed.f1": 0.846,
+            "confirmed.invalid_evidence": 0,
+            "llm_cost_per_confirmed_tp": 0.0
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity"
+          ],
+          "problems": [],
+          "cost_is_estimate": false
+        },
+        "llm": {
+          "status": "budget_exceeded",
+          "metrics": {
+            "total_cost_usd": 0.385629,
+            "total_tokens": 335809,
+            "total_turns": 21,
+            "total_tool_calls": 87,
+            "total_tool_errors": 2,
+            "wall_clock_duration_s": 600.0,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 5,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.706,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.828,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 5,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.706,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.828,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": null,
+            "confirmed.false_positives": null,
+            "confirmed.false_negatives": null,
+            "confirmed.precision": null,
+            "confirmed.recall": null,
+            "confirmed.f1": null,
+            "confirmed.invalid_evidence": null,
+            "llm_cost_per_confirmed_tp": null
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity",
+            "confirmed.true_positives",
+            "confirmed.false_positives",
+            "confirmed.false_negatives",
+            "confirmed.precision",
+            "confirmed.recall",
+            "confirmed.f1",
+            "confirmed.invalid_evidence",
+            "llm_cost_per_confirmed_tp"
+          ],
+          "problems": [
+            "llm: incomplete run, evidence or usage",
+            "llm: missing evaluable stage artifacts"
+          ],
+          "cost_is_estimate": true
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "2026-10-15_153427_21bd35c5f538",
+      "status": "failed",
+      "started_at": "2026-10-15T15:34:27.441354+00:00",
+      "finished_at": "2026-10-15T16:02:28.275207+00:00",
+      "config": {
+        "comparison_order": "rules-first",
+        "model": "qwen3.8:27b",
+        "provider": "ollama-umons",
+        "max_tool_calls": 200,
+        "max_duration_s": 1200.0,
+        "scenario_id": "1",
+        "max_cost_usd": 2.0
+      },
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "arms": {
+        "rules": "2026-10-15_173654",
+        "llm": "2026-10-15_174209"
+      },
+      "cleanup": true,
+      "error": "La comparaison a été interrompue (BudgetExceeded). Consultez la dernière étape et les traces.",
+      "export_sha256": "d0c9e781aa53e9109f1c7c349248d85a5faf74905b665efcb24552687a33bed1",
+      "export_url": "http://100.103.253.86:8502/api/comparisons/2026-10-15_153427_21bd35c5f538/download",
+      "interpretation": "Duration ceiling reached during verification; no evaluable Qwen confirmation score",
+      "comparable": false,
+      "incomparability_reasons": [
+        "llm: incomplete run, evidence or usage",
+        "llm: missing evaluable stage artifacts"
+      ],
+      "ground_truth_sha256": "471a7db294f15a823aa2635eee317c436133b143816349a374fe9a03665214af",
+      "environment_scope": "Déploiement, injection, vérifications du playbook et disponibilité TCP ; pas une certification de toutes les propriétés attendues.",
+      "preflights": {
+        "rules": {
+          "status": "valid",
+          "checked_at": "2026-10-15T15:36:54.357581+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-rules/2026-10-15_173441"
+        },
+        "llm": {
+          "status": "valid",
+          "checked_at": "2026-10-15T15:42:09.613419+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-llm/2026-10-15_173954"
+        }
+      },
+      "measures": {
+        "rules": {
+          "status": "completed",
+          "metrics": {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "total_turns": 0,
+            "total_tool_calls": 73,
+            "total_tool_errors": 0,
+            "wall_clock_duration_s": 179.7,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 2,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.857,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.923,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 2,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.857,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.923,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": 11,
+            "confirmed.false_positives": 3,
+            "confirmed.false_negatives": 1,
+            "confirmed.precision": 0.786,
+            "confirmed.recall": 0.917,
+            "confirmed.f1": 0.846,
+            "confirmed.invalid_evidence": 0,
+            "llm_cost_per_confirmed_tp": 0.0
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity"
+          ],
+          "problems": [],
+          "cost_is_estimate": false
+        },
+        "llm": {
+          "status": "budget_exceeded",
+          "metrics": {
+            "total_cost_usd": 1.049607,
+            "total_tokens": 941335,
+            "total_turns": 55,
+            "total_tool_calls": 125,
+            "total_tool_errors": 0,
+            "wall_clock_duration_s": 1200.0,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 9,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.571,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.727,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 7,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.632,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.774,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": null,
+            "confirmed.false_positives": null,
+            "confirmed.false_negatives": null,
+            "confirmed.precision": null,
+            "confirmed.recall": null,
+            "confirmed.f1": null,
+            "confirmed.invalid_evidence": null,
+            "llm_cost_per_confirmed_tp": null
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity",
+            "confirmed.true_positives",
+            "confirmed.false_positives",
+            "confirmed.false_negatives",
+            "confirmed.precision",
+            "confirmed.recall",
+            "confirmed.f1",
+            "confirmed.invalid_evidence",
+            "llm_cost_per_confirmed_tp"
+          ],
+          "problems": [
+            "llm: incomplete run, evidence or usage",
+            "llm: missing evaluable stage artifacts"
+          ],
+          "cost_is_estimate": true
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "2026-10-15_165709_11c3405c5607",
+      "status": "completed",
+      "started_at": "2026-10-15T16:57:09.397057+00:00",
+      "finished_at": "2026-10-15T17:25:33.523201+00:00",
+      "config": {
+        "comparison_order": "rules-first",
+        "model": "qwen3.8:27b",
+        "provider": "ollama-umons",
+        "max_tool_calls": 2000,
+        "max_duration_s": null,
+        "scenario_id": "1",
+        "max_cost_usd": null
+      },
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "arms": {
+        "rules": "2026-10-15_185920",
+        "llm": "2026-10-15_190434"
+      },
+      "cleanup": true,
+      "error": null,
+      "export_sha256": "95fe44533cc5634b02181d8dcdeecbce9b39311bb9eac782509b9cc9652f47f5",
+      "export_url": "http://100.103.253.86:8502/api/comparisons/2026-10-15_165709_11c3405c5607/download",
+      "interpretation": "Only complete comparable pair; descriptive n=1 result",
+      "comparable": true,
+      "incomparability_reasons": [],
+      "ground_truth_sha256": "471a7db294f15a823aa2635eee317c436133b143816349a374fe9a03665214af",
+      "environment_scope": "Déploiement, injection, vérifications du playbook et disponibilité TCP ; pas une certification de toutes les propriétés attendues.",
+      "preflights": {
+        "rules": {
+          "status": "valid",
+          "checked_at": "2026-10-15T16:59:20.941965+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-rules/2026-10-15_185709"
+        },
+        "llm": {
+          "status": "valid",
+          "checked_at": "2026-10-15T17:04:34.363478+00:00",
+          "devices_sha256": "a7973da465b76ba10fc948decad084cc9bc36e9748727fdee3f75bb1abe5dcc4",
+          "scope": "playbook-and-public-tcp-surface",
+          "preparation_dir": "preparation-llm/2026-10-15_190220"
+        }
+      },
+      "measures": {
+        "rules": {
+          "status": "completed",
+          "metrics": {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "total_turns": 0,
+            "total_tool_calls": 73,
+            "total_tool_errors": 0,
+            "wall_clock_duration_s": 179.8,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 2,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.857,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.923,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 2,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.857,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.923,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": 11,
+            "confirmed.false_positives": 3,
+            "confirmed.false_negatives": 1,
+            "confirmed.precision": 0.786,
+            "confirmed.recall": 0.917,
+            "confirmed.f1": 0.846,
+            "confirmed.invalid_evidence": 0,
+            "llm_cost_per_confirmed_tp": 0.0
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity"
+          ],
+          "problems": [],
+          "cost_is_estimate": false
+        },
+        "llm": {
+          "status": "completed",
+          "metrics": {
+            "total_cost_usd": 1.141787,
+            "total_tokens": 1029775,
+            "total_turns": 60,
+            "total_tool_calls": 132,
+            "total_tool_errors": 0,
+            "wall_clock_duration_s": 1239.9,
+            "specificity": null,
+            "negative_control_specificity": null,
+            "negative_control_violations": 0,
+            "candidates.true_positives": 12,
+            "candidates.false_positives": 5,
+            "candidates.false_negatives": 0,
+            "candidates.precision": 0.706,
+            "candidates.recall": 1.0,
+            "candidates.f1": 0.828,
+            "candidates.invalid_evidence": 0,
+            "filtered.true_positives": 12,
+            "filtered.false_positives": 5,
+            "filtered.false_negatives": 0,
+            "filtered.precision": 0.706,
+            "filtered.recall": 1.0,
+            "filtered.f1": 0.828,
+            "filtered.invalid_evidence": 0,
+            "confirmed.true_positives": 12,
+            "confirmed.false_positives": 3,
+            "confirmed.false_negatives": 0,
+            "confirmed.precision": 0.8,
+            "confirmed.recall": 1.0,
+            "confirmed.f1": 0.889,
+            "confirmed.invalid_evidence": 0,
+            "llm_cost_per_confirmed_tp": 0.09514891666666668
+          },
+          "undefined_metrics": [
+            "specificity",
+            "negative_control_specificity"
+          ],
+          "problems": [],
+          "cost_is_estimate": true
+        }
+      },
+      "public_environment": {
+        "scenario_id": "1",
+        "name": "Réseau plat",
+        "devices": [
+          {
+            "id": "s1-router",
+            "ip": "192.168.100.1",
+            "role": "router",
+            "services": [
+              {
+                "name": "ssh",
+                "port": 22,
+                "protocol": "tcp"
+              },
+              {
+                "name": "http",
+                "port": 80,
+                "protocol": "tcp"
+              }
+            ]
+          },
+          {
+            "id": "s1-mqtt",
+            "ip": "192.168.100.11",
+            "role": "mqtt_broker",
+            "services": [
+              {
+                "name": "mqtt",
+                "port": 1883,
+                "protocol": "tcp"
+              }
+            ]
+          },
+          {
+            "id": "s1-web",
+            "ip": "192.168.100.12",
+            "role": "web_server",
+            "services": [
+              {
+                "name": "http",
+                "port": 80,
+                "protocol": "tcp"
+              }
+            ]
+          },
+          {
+            "id": "s1-ssh",
+            "ip": "192.168.100.13",
+            "role": "ssh_server",
+            "services": [
+              {
+                "name": "ssh",
+                "port": 22,
+                "protocol": "tcp"
+              }
+            ]
+          }
+        ],
+        "target_network": "192.168.100.0/24",
+        "definition_sha256": "da669675bf249db3be13478b76561df57b84b1c11a3315c95d0474345a14b327",
+        "topology_sha256": "152014ba19bfc518d374f2909bcb344cf804d7b61c87ebae2716d0a82dc1b9dc"
+      },
+      "delta_llm_minus_rules": {
+        "total_cost_usd": 1.141787,
+        "total_tokens": 1029775,
+        "total_turns": 60,
+        "total_tool_calls": 59,
+        "total_tool_errors": 0,
+        "wall_clock_duration_s": 1060.1000000000001,
+        "specificity": null,
+        "negative_control_specificity": null,
+        "negative_control_violations": 0,
+        "candidates.true_positives": 0,
+        "candidates.false_positives": 3,
+        "candidates.false_negatives": 0,
+        "candidates.precision": -0.15100000000000002,
+        "candidates.recall": 0.0,
+        "candidates.f1": -0.09500000000000008,
+        "candidates.invalid_evidence": 0,
+        "filtered.true_positives": 0,
+        "filtered.false_positives": 3,
+        "filtered.false_negatives": 0,
+        "filtered.precision": -0.15100000000000002,
+        "filtered.recall": 0.0,
+        "filtered.f1": -0.09500000000000008,
+        "filtered.invalid_evidence": 0,
+        "confirmed.true_positives": 1,
+        "confirmed.false_positives": 0,
+        "confirmed.false_negatives": -1,
+        "confirmed.precision": 0.014000000000000012,
+        "confirmed.recall": 0.08299999999999996,
+        "confirmed.f1": 0.04300000000000004,
+        "confirmed.invalid_evidence": 0,
+        "llm_cost_per_confirmed_tp": 0.09514891666666668
+      },
+      "deployed_git_commit": "b8a415ab428a9eb8b3e064f17d8178315bb129c7"
+    }
+  ],
+  "limitations": [
+    "Single completed pair; retries are not independent campaign repetitions",
+    "Automatic ground truth and validators have not been independently adjudicated",
+    "Public TCP checks do not attest all runtime scenario properties",
+    "Cost is a generic token estimate, not observed UMONS billing",
+    "The served model alias does not identify immutable model weights"
+  ],
+  "ci": {
+    "git_commit": "b8a415ab428a9eb8b3e064f17d8178315bb129c7",
+    "url": "https://github.com/Tanguyvans/LANCE/actions/runs/38768357489",
+    "conclusion": "success",
+    "passed": 3972,
+    "skipped": 2,
+    "warnings": 2,
+    "duration_s": 460.04,
+    "log_sha256": "dad092c1a77c4ed127cd5fe65c61a304619734fe6c31788da9bfe3bf192dd74e"
+  }
+}

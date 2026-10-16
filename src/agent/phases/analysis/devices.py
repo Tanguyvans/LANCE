@@ -73,7 +73,7 @@ def project_scan(profile, scan_data: dict, device_id: str) -> dict:
 class AnalysisSetup:
     tools: list[dict]
     phase4_catalog: list[str]
-    timeout_s: float
+    timeout_s: float | None
 
 
 @dataclass(frozen=True)
@@ -350,9 +350,10 @@ def analyze_full_device(
     )
     variables["phase4_tool_catalog"] = ", ".join(phase4_tool_catalog)
     system_prompt = runtime.load_prompt("analyze_device", variables)
-    device_deadline = time.monotonic() + phase3_timeout_s
+    device_deadline = time.monotonic() + phase3_timeout_s if phase3_timeout_s is not None else None
     if context.max_duration_s is not None and context.run_started is not None:
-        device_deadline = min(device_deadline, context.run_started + context.max_duration_s)
+        audit_deadline = context.run_started + context.max_duration_s
+        device_deadline = min(device_deadline, audit_deadline) if device_deadline is not None else audit_deadline
     full_completion: dict = {}
     context.tracker.start_phase(f"analyze_{device_id}")
     result_text = context.provider.chat_with_tools(

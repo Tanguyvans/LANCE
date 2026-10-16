@@ -14,6 +14,7 @@
 <div id="header">
   <h1>NATO Smart City IoT</h1>
   <div id="view-nav" role="tablist" aria-label="Vue principale">
+    <button class="view-btn" data-view="procedures" role="tab" aria-selected="false" aria-controls="procedures-view">Automatisations</button>
     <button class="view-btn active" data-view="main" role="tab" aria-selected="true" aria-controls="main">Dashboard</button>
     <button class="view-btn" data-view="benchmark" role="tab" aria-selected="false" aria-controls="benchmark-view">Benchmark</button>
     <button class="view-btn" data-view="scenario-lab" role="tab" aria-selected="false" aria-controls="scenario-lab-view">Scenario Lab</button>
@@ -56,7 +57,8 @@
 
     <!-- Launch form -->
     <div class="sidebar-section" id="launch-section">
-      <h3>New Run</h3>
+      <h3>Nouvelle exécution</h3>
+      <button type="button" class="catalogue-shortcut" onclick="switchView('procedures'); ProcedureUI.setSection('launch')">Choisir une automatisation <span aria-hidden="true">→</span></button>
 
       <fieldset class="runner-choices" aria-label="Type d'exécution">
         <legend>Exécution</legend>
@@ -91,6 +93,7 @@
             <option value="">Choisir une procédure…</option>
             <option value="smoke-v1">Démo hors ligne · sans scan</option>
             <option value="discovery-v1">Découverte des hôtes</option>
+            <option value="service-inventory-v1">Inventaire des services TCP</option>
           </select>
           <p id="script-description" class="field-hint" aria-live="polite"></p>
         </div>
@@ -576,7 +579,102 @@
   </div>
 </div>
 
+<section id="procedures-view" class="procedures-view" hidden aria-labelledby="procedures-heading">
+  <header class="procedures-header">
+    <div><p class="procedure-eyebrow">LANCE / AUTOMATISATIONS</p><h2 id="procedures-heading">Résultats des automatisations</h2>
+      <p>Retrouvez ce que chaque procédure a observé, sur quelle cible et avec quelles ressources.</p></div>
+    <button type="button" id="procedure-refresh" class="procedure-secondary">Actualiser</button>
+  </header>
+  <nav class="procedure-sections" role="tablist" aria-label="Sections des automatisations">
+    <button id="procedure-tab-results" type="button" role="tab" aria-selected="true" aria-controls="procedure-overview" data-procedure-section="results">Résultats des exécutions</button>
+    <button id="procedure-tab-launch" type="button" role="tab" aria-selected="false" aria-controls="procedure-launcher" data-procedure-section="launch">Nouvelle exécution</button>
+    <button id="procedure-tab-comparison" type="button" role="tab" aria-selected="false" aria-controls="comparison-view">Comparer règles / LLM</button>
+  </nav>
+  <div id="procedure-catalogue-message" role="status" class="procedure-notice" hidden></div>
+  <section id="comparison-view" hidden aria-labelledby="comparison-heading">
+    <h3 id="comparison-heading">Comparer les règles et un agent LLM</h3>
+    <p class="procedure-help">Deux audits successifs du même scénario : analyse et vérification des failles. Le laboratoire est remis en état avant chaque audit, puis nettoyé. L’inventaire public, les outils, les validateurs et les limites sont communs.</p>
+    <p id="comparison-runtime" class="procedure-notice" hidden></p>
+    <form id="comparison-form" class="procedure-panel comparison-form">
+      <div class="comparison-fields"><label>Scénario public<select id="comparison-scenario" required><option value="">Chargement…</option></select></label><label>Modèle de l’agent<select id="comparison-model" required><option value="">Chargement…</option></select></label></div>
+      <p id="comparison-target" class="procedure-help"></p>
+      <details class="procedure-limits"><summary>Ordre des audits et appels d’outils</summary><div class="comparison-fields">
+        <label>Appels d’outils maximum par audit<input id="comparison-calls" type="number" min="1" max="2000" value="200" required></label>
+        <label>Ordre des audits<select id="comparison-order"><option value="rules-first">Règles puis agent LLM</option><option value="llm-first">Agent LLM puis règles</option></select></label>
+      </div></details>
+      <p class="procedure-help">Aucun plafond de durée ou de coût. Les audits poursuivent leurs étapes jusqu’à leur fin ou votre demande d’arrêt, dans la limite du nombre d’appels d’outils choisi.</p>
+      <p class="procedure-help">La préparation peut supprimer les scénarios déjà présents dans le labo partagé. Ce parcours couvre les scénarios publics avec équipements TCP dans un seul /24. Les vérifications de préparation ne certifient pas toutes les propriétés attendues.</p>
+      <p id="comparison-error" role="alert" class="procedure-error" hidden></p>
+      <div class="procedure-launch-row"><p>2 audits · profil complet · sans plafond de durée ou de coût · nettoyage final</p><button id="comparison-launch" class="procedure-primary" type="submit" disabled>Lancer la comparaison</button></div>
+    </form>
+    <div class="comparison-history-heading"><h3>Comparaisons enregistrées</h3><button type="button" class="procedure-secondary" id="comparison-refresh">Actualiser</button></div>
+    <p id="comparison-history-message" class="procedure-empty"></p>
+    <div class="procedure-overview-scroll"><table class="procedure-overview-table comparison-history"><thead><tr><th>Date / scénario</th><th>Modèle</th><th>Exécution</th><th>Comparabilité</th><th>Détails</th></tr></thead><tbody id="comparison-rows"></tbody></table></div>
+    <div class="procedure-pagination"><button id="comparison-prev" type="button" class="procedure-secondary" disabled>Précédentes</button><span id="comparison-page"></span><button id="comparison-next" type="button" class="procedure-secondary" disabled>Suivantes</button></div>
+    <section id="comparison-detail" class="procedure-detail" hidden aria-label="Résultat de la comparaison">
+      <div class="comparison-history-heading"><h3 id="comparison-detail-heading" tabindex="-1">Comparaison sélectionnée</h3><button id="comparison-stop" type="button" class="procedure-secondary" hidden>Demander l’arrêt</button></div>
+      <p id="comparison-context" class="procedure-help"></p><p id="comparison-outcome" class="procedure-notice" role="status"></p>
+      <div id="comparison-results"></div>
+      <details id="comparison-steps-panel" class="procedure-progress-details"><summary>Préparation, audits et nettoyage</summary><ol id="comparison-steps" class="procedure-timeline"></ol></details>
+    </section>
+  </section>
+  <div id="procedure-overview">
+    <div class="procedure-overview-toolbar">
+      <label>Procédure<select id="procedure-filter"><option value="">Toutes les procédures</option></select></label>
+      <label>Scénario ou réseau<select id="procedure-target-filter"><option value="">Toutes les cibles</option></select></label>
+      <label class="procedure-checkbox"><input id="procedure-include-diagnostics" type="checkbox"> Inclure les diagnostics hors ligne</label>
+      <div class="procedure-pagination" role="group" aria-label="Pagination des automatisations"><button id="procedure-prev" type="button" class="procedure-secondary" aria-label="Exécutions précédentes" disabled>‹</button><span id="procedure-page-info" role="status">Chargement…</span><button id="procedure-next" type="button" class="procedure-secondary" aria-label="Exécutions suivantes" disabled>›</button></div>
+    </div>
+    <p class="procedure-help procedure-overview-help">Les observations montrent ce qui a été trouvé. « Non évaluée » signifie qu’aucune comparaison aux résultats attendus du scénario n’a été enregistrée. Un état « Terminé » décrit l’exécution.</p>
+    <p id="procedure-overview-error" class="procedure-error" role="alert" hidden></p>
+    <p id="procedure-overview-empty" class="procedure-empty" hidden>Aucune exécution pour ces filtres. Choisissez « Nouvelle exécution » pour lancer une procédure.</p>
+    <div class="procedure-overview-scroll"><table class="procedure-overview-table"><caption>Exécutions sans modèle : observations, évaluation disponible et ressources utilisées.</caption><thead><tr><th scope="col">Procédure / Exécution</th><th scope="col">Scénario ou réseau</th><th scope="col">Observations</th><th scope="col">Évaluation par scénario</th><th scope="col">Durée</th><th scope="col">Appels d’outils</th><th scope="col">Statut</th><th scope="col"><span class="sr-only">Détails</span></th></tr></thead><tbody id="procedure-run-rows"></tbody></table></div>
+  </div>
+  <div id="procedure-launcher" class="procedure-layout" hidden>
+    <aside class="procedure-library" aria-label="Catalogue des procédures">
+      <h3>Procédures disponibles</h3><div id="procedure-catalogue"><p class="procedure-empty">Chargement du catalogue…</p></div>
+      <details class="procedure-diagnostics"><summary>Diagnostic de l’application</summary><div id="procedure-diagnostics"></div></details>
+    </aside>
+    <div class="procedure-workspace">
+      <article id="procedure-description" class="procedure-panel"><p class="procedure-empty">Sélectionnez une procédure pour voir ce qu’elle exécute.</p></article>
+      <form id="procedure-form" class="procedure-panel" hidden>
+        <div class="procedure-section-heading"><h3>Configurer la cible</h3></div>
+        <div id="procedure-network-field"><label for="procedure-network">Réseau IPv4 autorisé</label><input id="procedure-network" type="text" placeholder="ex. : 192.0.2.0/24" autocomplete="off" aria-describedby="procedure-network-help"><p id="procedure-network-help" class="procedure-help">Le format CIDR décrit un réseau : /24 regroupe 256 adresses. Saisissez le réseau de votre laboratoire autorisé. Les sondes restent dans ce réseau ; aucun scénario n’est déployé.</p></div>
+        <div id="procedure-scenario-field" hidden><label for="procedure-scenario">Scénario du laboratoire</label><select id="procedure-scenario"><option value="">Choisir un scénario public…</option></select>
+          <label class="procedure-checkbox"><input id="procedure-cleanup" type="checkbox" checked> Nettoyer les machines du scénario après l’audit</label></div>
+        <p id="procedure-offline-field" class="procedure-help" hidden>Ce diagnostic fonctionne sans cible réseau ni modèle.</p>
+        <div class="procedure-effects"><strong>Actions sur l’environnement</strong><p id="procedure-effects"></p></div>
+        <details class="procedure-limits"><summary>Ajuster les limites d’exécution</summary><div class="procedure-limit-grid">
+          <div><label for="procedure-duration" id="procedure-duration-label">Temps maximal (secondes)</label><input id="procedure-duration" type="number" min="1" max="3600" step="1" required></div>
+          <div id="procedure-calls-field"><label for="procedure-calls">Appels d’outils maximum</label><input id="procedure-calls" type="number" min="1" max="100" step="1" aria-describedby="procedure-calls-help"><p id="procedure-calls-help" class="procedure-help">Un appel correspond à une commande lancée par LANCE, par exemple une sonde Nmap. Un même équipement peut demander plusieurs appels.</p></div>
+        </div><p id="procedure-duration-help" class="procedure-help"></p><p class="procedure-help">Un arrêt ou une limite atteinte conserve les observations déjà obtenues et signale les contrôles incomplets.</p></details>
+        <div id="procedure-form-error" class="procedure-error" role="alert" hidden></div>
+        <div class="procedure-launch-row"><p id="procedure-launch-summary"></p><button type="submit" id="procedure-launch" class="procedure-primary">Lancer la procédure</button></div>
+      </form>
+    </div>
+  </div>
+  <section id="procedure-detail" class="procedure-detail" aria-label="Résultats de l’exécution sélectionnée" hidden>
+      <div class="procedure-detail-toolbar"><div id="procedure-record-description" tabindex="-1">Exécution sélectionnée</div><button id="procedure-close-detail" type="button" class="procedure-secondary">Fermer les détails</button></div>
+      <div id="procedure-run-summary"></div>
+      <section class="procedure-panel" aria-labelledby="procedure-results-heading">
+        <div class="procedure-section-heading"><h3 id="procedure-results-heading">Résultats et preuves</h3></div>
+        <div id="procedure-results"><p class="procedure-empty">Les observations apparaîtront ici.</p></div>
+      </section>
+      <details id="procedure-progress-details" class="procedure-progress-details">
+      <summary>Étapes de l’exécution</summary>
+      <section class="procedure-panel" aria-labelledby="procedure-follow-heading">
+        <div class="procedure-section-heading"><h3 id="procedure-follow-heading">Suivre l’exécution</h3><span id="procedure-status" class="procedure-status">En attente</span></div>
+        <p id="procedure-activity" class="procedure-help" role="status" aria-live="polite">Les étapes s’actualiseront au lancement.</p>
+        <ol id="procedure-steps" class="procedure-timeline"></ol>
+        <div class="procedure-run-actions"><button type="button" id="procedure-stop" class="procedure-secondary" hidden>Demander l’arrêt</button><button type="button" id="procedure-dashboard" class="procedure-secondary" hidden>Voir sur le dashboard</button></div>
+      </section>
+      </details>
+  </section>
+</section>
+
 <script src="/static/app.js"></script>
+<script src="/static/procedures.js"></script>
+<script src="/static/comparisons.js"></script>
 <script src="/static/activity.js"></script>
 <script src="/static/scenario_generator.js"></script>
 </body>

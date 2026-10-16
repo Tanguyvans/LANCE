@@ -4,11 +4,18 @@ Ce dossier regroupe les descriptions du système, les contrats retenus et les
 guides d'utilisation. Les hypothèses, revues bibliographiques et protocoles
 proposés sont regroupés dans les [dossiers de recherche](../research/README.md).
 Les [archives d'audit](#archives-historiques) décrivent des états passés.
+Le [rapport d'ensemble au 15 octobre 2026](../research/2026-10-15-bilan-projet/report.pdf)
+développe les objectifs, l'architecture et le graphe, les réseaux, la sécurité,
+l'application, les modèles et le benchmark, avec un bilan par volet. Il complète
+les contrats de référence ci-dessous.
 Le [rapport de recherche en PDF](../research/2026-09-27-agent-vs-automation/report.pdf)
 relie les diagnostics du benchmark et du contexte au protocole de comparaison
 LLM/règles ; les propositions restent distinctes de la référence implémentée.
 
 ## Organisation
+
+Pour lancer une découverte ou un audit sans modèle depuis l’interface, voir le
+[catalogue des procédures et le lancement guidé](architecture/run-modes.md#catalogue-et-lancement-guidé).
 
 | Dossier | Contenu |
 | --- | --- |
@@ -28,7 +35,8 @@ La [documentation du benchmark V1](benchmark/v1/README.md) est le point d'entré
 - [Évaluation](benchmark/v1/evaluation.md) : détection, preuves, intrusion et interprétation des métriques.
 - [Exécution](benchmark/v1/execution.md) : lancer un run, lire son statut, ses coûts et ses diagnostics.
 - [Guide CLI D1/A1](benchmark/agent-vs-automation-cli.md) : analyse et vérification sur inventaire public commun, évaluation et comparaison d'une paire.
-- [Guide de campagne](benchmark/agent-vs-automation-campaign.md) : politique D1 bornée, manifeste du pilote de 24 essais, bilan et revue indépendante des preuves.
+- [Calibration SSH V2](benchmark/agent-vs-automation-cli.md#calibration-ssh-v2) : contrat public, script et LLM bornés, pilote OpenSSH natif sur pve-nato, archivage complet et [qualification vérifiée](benchmark/agent-vs-automation-cli.md#qualification-native-vérifiée-le-15-octobre-2026), sans campagne M-T admise.
+- [Guide de campagne](benchmark/agent-vs-automation-campaign.md) : parcours d’une paire règles/LLM dans l’interface, politique D1 bornée, manifeste du pilote de 24 essais, bilan et revue indépendante des preuves.
 - [Index dérivé des étiquettes](benchmark/derived-index.md) : axes expérimentaux calculés depuis les vérités terrain (type, chaînage, surface, bruit), sans modifier catalogue ni vérités terrain.
 
 « V1 » nomme cette référence documentaire, pas une nouvelle version du catalogue

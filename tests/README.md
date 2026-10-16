@@ -7,6 +7,52 @@ GPU sont regroupés dans [model_training/tests/](../model_training/tests/).
 Ne pas confondre ces tests logiciels avec les
 [scénarios d’évaluation du benchmark](../docs/benchmark/v1/scenarios.md).
 
+`test_ssh_reference.py` qualifie le premier contrat SSH V2 avec le vrai exécuteur
+et l'adaptateur SSH existants, mais des entrées/sorties de processus simulées :
+contrôle protégé, lecture privée fraîche, identité/cible/session, erreurs,
+manquants, budget dépassé par la dernière sonde et archives complètes avec
+fichiers cachés. Le CLI d'évaluation est aussi exécuté sans connexion réseau.
+Ces tests ne mesurent ni serveur SSH réel ni performance LLM ; le résultat reste
+explicitement non admis pour une campagne M-T. Voir la
+[référence SSH V2](../docs/benchmark/agent-vs-automation-cli.md#calibration-ssh-v2).
+
+`test_ssh_reference_live.py` ajoute le dialogue multi-tours du vrai fournisseur
+et son enregistreur avec un client simulé, les pertes d'archives, les compteurs
+inconnus, les avis OpenSSH liés à la cible, le nettoyage par propriété, les
+archives interrompues et le lancement manuel réservé à nato/dev-2. Ces tests ne
+lancent ni Docker, ni serveur SSH, ni modèle réel.
+`test_ssh_reference_proxmox.py` vérifie les frontières de la fixture LXC native :
+identité de pve-nato avant transfert, refus d'une campagne active, allocation
+sans collision, propriété avant destruction, récupération partielle et arrêt
+avant allocation lorsque Qwen est indisponible. Les appels Proxmox sont simulés.
+Un test supplémentaire utilise le binaire OpenSSH présent, sans configuration
+existante ni ouverture de socket, pour vérifier le chemin absolu du programme
+lancé ; il est ignoré si ce binaire n'est pas installé.
+`test_ssh_reference_diagnostics.py` vérifie que l'inspection autorisée des
+préparations en échec ne publie que quatre champs filtrés et exclut les valeurs
+privées, y compris dans les erreurs et arguments de commandes.
+
+`test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
+des outils. `test_procedure_runs.py` couvre le tableau paginé des exécutions,
+les filtres, les mesures absentes, les artefacts invalides et la confidentialité
+des runs scellés. Les observations restent distinctes d’un score de benchmark.
+`test_procedures_ui.py` exerce les requêtes guidées, le tableau, les liens directs,
+les résultats, l’échappement des observations et les échecs historiques sans
+topologie, avec Node.js et un DOM simulé. `test_procedure_progress.py` couvre les étapes réelles,
+les contrôles incomplets, l’attente du laboratoire et la lecture bornée des
+artefacts publics. `test_run_modes.py` vérifie aussi l’inventaire TCP déterministe,
+ses limites de portée, d’hôtes, de temps et d’appels, les preuves et les arrêts.
+Ces vérifications ne lancent ni Nmap réel ni audit de laboratoire.
+
+`test_policy_pair_runner.py` simule la préparation et les audits d’une paire
+règles/LLM : inventaire et limites communs, oracle après les audits, changement
+de surface, arrêt, échec et nettoyage sous réservation. `test_comparisons_api.py`
+vérifie les contrats, l’exclusion mutuelle, les artefacts publics bornés et les
+refus de cibles non autorisées. `test_comparisons_ui.py` vérifie les mesures
+absentes, les contrôles sains, les écarts interdits et l’échappement des textes.
+Ces tests logiciels ne prouvent ni une remise en état physique ni un résultat
+scientifique de laboratoire.
+
 `test_run_graph_context.py` vérifie les graphes distincts de deux runs,
 les réinitialisations et mutations pondérées, les outils et prompts exécutés
 dans des threads, la restauration après exception et les entrées des six phases

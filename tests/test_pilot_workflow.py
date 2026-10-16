@@ -180,7 +180,25 @@ def test_workflow_uses_dispatch_preserves_lock_and_archives_after_failures(tmp_p
     assert "pilot-evidence" not in upload["with"]["path"]
 
 
-def test_audit_resource_freeze_is_unchanged():
-    from src.agent.audit_experiment import resource_manifest
+@pytest.mark.parametrize("matching_resources", [True, False])
+def test_pilot_freeze_gates_deployment_parameters(monkeypatch, capsys, matching_resources):
+    from src.agent import audit_experiment
+
     frozen = json.loads((ROOT / "benchmarks/experiments/policy-comparison/pilot-2026-10.json").read_text())
-    assert resource_manifest() == frozen["configuration"]["resource_manifest_sha256"]
+    expected = frozen["configuration"]["resource_manifest_sha256"]
+    observed = expected if matching_resources else ("0" if expected[0] != "0" else "1") + expected[1:]
+    monkeypatch.setattr(audit_experiment, "resource_manifest", lambda: observed)
+    monkeypatch.setattr("sys.argv", ["-", frozen["trials"][0]["trial_id"]])
+    monkeypatch.chdir(ROOT)
+    workflow = yaml.load((ROOT / ".github/workflows/pilot-campaign.yml").read_text(), Loader=yaml.BaseLoader)
+    script = next(s["run"] for s in workflow["jobs"]["trial"]["steps"] if s.get("id") == "trial")
+    # Exercise the actual workflow guard before it can export any deployment inputs.
+    configuration = script.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+    code = compile(configuration, "pilot-campaign.yml:trial-configuration", "exec")
+    if matching_resources:
+        exec(code, {})
+        assert "export TRIAL_ID=s1-r1" in capsys.readouterr().out
+    else:
+        with pytest.raises(AssertionError, match="audit resources differ from the campaign freeze"):
+            exec(code, {})
+        assert capsys.readouterr().out == ""

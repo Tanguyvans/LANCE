@@ -64,7 +64,7 @@ python -m src.agent --decision-policy rules \
   --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
   --max-cost-usd 2
 
-python -m src.agent --decision-policy llm --provider minimax --model MODELE_CHOISI \
+python -m src.agent --decision-policy llm --provider ollama-umons --model qwen3.8:27b \
   --experiment-scope analysis-verification --audit-inventory inventory.json \
   --execution-profile full --max-tool-calls 200 --max-duration-s 600 \
   --max-cost-usd 2
@@ -168,9 +168,281 @@ L'identité expérimentale utilise `policy_schema_version: 1` et le journal
 Les anciennes identités restent lisibles et séparées des nouvelles mesures.
 Les contrats sémantiques courants `strict-v3.16` / `evidence-v15` ne sont pas assouplis.
 
-L'API et l'interface ne lancent pas ce périmètre expérimental : l'API rejette
-explicitement ces paramètres au lieu de les ignorer. Le mode applicatif
+L’API générale rejette les paramètres expérimentaux bruts au lieu de les ignorer.
+Le parcours [Comparer règles / LLM](agent-vs-automation-campaign.md#comparer-une-paire-depuis-linterface)
+lance une paire contrôlée sur nato via `runner_kind="comparison"`, avec inventaire
+public construit par le contrôleur et remise en état avant chaque bras. Le mode applicatif
 [Audit par règles](../architecture/run-modes.md#audit-dun-scénario-par-règles)
 réutilise la politique sur un scénario déployé avec des résultats par équipement ;
 il ne constitue pas une paire D1/A1 contrôlée. Les garde-fous applicatifs ne constituent
 pas une isolation du système de fichiers pour une évaluation scellée.
+
+## Calibration SSH V2
+
+`benchmarks.experiments.ssh_reference` implémente un **contrat probatoire de calibration**
+pour `s_ssh_identifiants`, local et à carte complète. Son entrée est une tâche
+publique séparée, illustrée dans
+[briefing.example.json](../../benchmarks/experiments/ssh-reference/briefing.example.json).
+Ce fichier n'est pas l'`audit_inventory` du CLI D1/A1 ci-dessus ; le pilote réel
+ci-dessous utilise une politique LLM bornée, distincte des phases 3/4 complètes.
+Les phases, règles SSH et critères strict-v3
+de la campagne existante conservent leur comportement.
+
+Le [plan V2](../../research/2026-10-12-recentrage-corpus/README.md) définit la
+sélection scientifique ; cette section décrit les fonctions déjà implémentées.
+
+### Contrat public et adaptateur D1
+
+`validate_briefing` accepte uniquement la version, le scénario, l'instance,
+le CIDR, l'actif/IP/port, un dictionnaire public fini, une identité légitime de
+contrôle distincte et le chemin de l'objet. Les champs de posture F0/F1,
+d'identifiant gagnant ou de canari attendu sont refusés. Une validation de
+schéma ne constitue pas une attestation de séparation des fichiers privés.
+
+`bind_ssh_tool(run)` réutilise `wrap_tool` et `check_execution_limits` existants
+pour produire un callable SSH avec observations archivées et vérification de fin.
+`run_rules(briefing, wrapped_ssh_exec)` reçoit ce callable. Ce raccord opt-in ne
+modifie pas l’exécuteur gelé et ne construit ni fournisseur ni second pipeline :
+
+1. Effectuer la lecture par l'identité légitime de contrôle.
+2. Parcourir le dictionnaire public dans son ordre déclaré.
+3. Pour chaque essai, lire l'identité effective puis le même objet dans une
+   seule commande SSH ; comparer au contenu observable du contrôle.
+4. Arrêter après preuve d'accès faible ou épuisement du dictionnaire ; conserver
+   les références de toutes les opérations, refus et échecs compris.
+
+L'adaptateur ne reçoit jamais l'oracle. Chaque lecture utilise l'outil existant,
+son argument vectoriel SSH et son journal `tool_calls.jsonl`. Les limites sont
+vérifiées après chaque retour archivé, y compris la dernière sonde : une réponse
+réussie arrivée après l'échéance ne donne pas un succès. Ce contrôle reste
+coopératif ; il ne tue pas une opération déjà en vol. Une perte d'archivage
+propage `EvidenceWriteError`. L'appelant doit conserver la décision terminale
+renvoyée, y compris `failed`, `budget_exceeded` ou `stopped`.
+
+### Oracle privé et évaluation des traces
+
+L'oracle fourni séparément par le contrôleur comporte exactement
+`schema_version: 1`, `briefing_sha256` (fonction `audit_experiment.digest`),
+`intentional_flaws: 0` ou `1`, et `canary_sha256`. Ce dernier identifie les
+octets UTF-8 exacts de l'objet, nouvelle ligne comprise, renouvelé pour l'essai.
+L'évaluateur ne génère pas cet oracle à partir de la réponse de la politique.
+Le contrôleur reste responsable de l'état réel, de la fraîcheur et du reset.
+
+L'évaluation exige la cible et le port déclarés, une origine `runner`, le couple
+testé, la commande exacte, l'identité effective et la lecture de l'objet dans
+le même appel, puis corrobore le contenu avec l'empreinte privée :
+
+- **F1** : constat d'accès faible étayé et témoin légitime fonctionnel.
+- **F0** : chaque couple du dictionnaire explicitement refusé, témoin légitime
+  fonctionnel et aucun constat. Silence, timeout, refus réseau ou budget épuisé
+  ne suffisent pas.
+- **Manquants** : collecte ou décision terminale absente, ou référence de preuve
+  manquante, donnent `success: null`, sans remplacement par zéro. Une décision
+  `no_output` avec collecte intacte constitue un non-succès documenté.
+- **Contradiction d'oracle** : un accès faible prouvé dans une posture déclarée
+  F0 donne `oracle_conflict`, même si la politique omet de citer cet accès.
+
+Le CLI est un lecteur de fichiers, sans connexion ni déploiement :
+
+```bash
+python -m benchmarks.experiments.ssh_reference \
+  --briefing CHEMIN_BRIEFING_PUBLIC.json \
+  --oracle CHEMIN_ORACLE_PRIVE.json \
+  --ledger CHEMIN_RUN/tool_calls.jsonl \
+  --decision CHEMIN_DECISION_TERMINALE.json \
+  --output CHEMIN_EVALUATION.json
+```
+
+Code de sortie `0` : verdict probatoire disponible, succès ou non-succès ; `2` :
+issue inconnue ou entrée invalide. `status=completed` décrit la terminaison de
+la politique et peut accompagner `success=false` ; lire le verdict d'évaluation.
+
+**Le résultat exporte toujours `mt_admissible: false` et
+`measurement_status: evidence_only_not_admitted`.** Il n'atteste ni le budget
+réel d'un fournisseur, ni l'égalité des ressources entre bras, ni le reset, ni
+le déploiement, ni la provenance LLM. Il ne remplace donc pas l'évaluateur ou le
+comparateur strict-v3 et n'est pas une mesure M-T admise pour une campagne.
+
+### Archives et étapes restantes
+
+L'archivage complet existant `scripts/benchmark/pilot_support.py archive` peut
+conserver briefing, oracle privé, décision, évaluation et dossiers de runs avec
+fichiers cachés, traces et tentatives. Son manifeste identifie les octets
+effectivement archivés. Les tests vérifient cette réutilisation ; aucun transfert
+d'archive n'est effectué par l'évaluateur. L'archive d'expérience complète reste
+distincte de l'archive filtrée de soumission du benchmark.
+
+Les tests logiciels couvrent **l'exécuteur, l'adaptateur SSH et la boucle fournisseur
+réels avec I/O simulées**. Le contrôleur opt-in décrit ci-dessous permet désormais
+la qualification réelle. Son exécution doit être attestée par ses artefacts ; la
+présence du code ne démontre pas que l'essai a eu lieu. Le rôle Ansible SSH
+historique active plusieurs faiblesses et n'est pas utilisé par cette fixture.
+
+Le premier incrément sert à qualifier l'instrument, sans présumer d'un avantage
+LLM. Les métriques V2 proposées et le critère TP strict-v3 des objectifs doivent
+être alignés par un amendement avant le nouveau test confirmatoire. Les coûts
+et résultats de calibration restent séparés de ceux de la campagne historique.
+Le module reste sous `benchmarks/experiments/`, hors des ressources auditées
+gelées de `src/agent` et `src/benchmark`. Le test du gel du pilote reste inchangé ;
+un futur manifeste V2 devra aussi identifier la version de cet instrument.
+
+### Premier pilote SSH réel sur dev/2
+
+`benchmarks.experiments.ssh_reference_live` utilise l'infrastructure **Proxmox/LXC
+existante sur pve-nato**. Le contrôleur tourne sur nato-master ; le serveur
+OpenSSH réside dans un clone jetable du template Debian 9000. Il n'installe aucun
+runtime sur le maître, ne change ni pont, ni pare-feu, ni service de l'hôte et ne
+réinitialise aucun scénario existant. Le verrou commun couvre toute l'opération.
+
+Avant tout transfert, Ansible exige l'adresse Tailscale `100.76.206.65` de
+pve-nato. Le contrôleur de l'hyperviseur répète ce contrôle et vérifie Proxmox.
+Il réserve un VMID libre entre 7000 et 7099 et une IP disponible entre
+`192.168.100.220` et `.239`, sur le pont vmbr1 existant. Une autre charge active
+sur ce pont bloque l'allocation, à l'exception du maître identifié. Le template
+doit être non privilégié et posséder une seule interface. Le clone utilise
+256 Mio, un cœur, aucun nesting et aucune passerelle. La destruction exige le
+VMID borné et le nom dérivé de l'identifiant de propriété, vérifiés à nouveau.
+Les VM et configurations d'autres campagnes restent hors des opérations.
+
+Le pilote prévoit quatre bras : F0 script puis LLM, F1 LLM puis script. Avant
+chaque bras, le LXC est recréé et un précontrôle indépendant teste le témoin
+et tous les couples publics, puis relit l'objet par le témoin : une protection
+temporaire activée par les refus doit bloquer la qualification avant le bras.
+La fixture statique impose `PerSourcePenalties no` pour que les mauvaises
+authentifications du précontrôle ne modifient pas l'accès du bras suivant.
+Cette configuration concerne uniquement le service SSH du LXC jetable et ne
+constitue pas un scénario de défense adaptative. Voir le
+[contrat OpenSSH 10.0](https://github.com/openssh/openssh-portable/blob/V_10_0_P1/sshd_config.5).
+**F0 signifie zéro couple du dictionnaire accepté ;
+F1 exactement un couple accepté.** Ce n'est pas une affirmation d'absence de toute
+autre vulnérabilité d'OpenSSH ou du système. Les mots de passe hors dictionnaire
+sont aléatoires ; le compte root et les transferts SSH sont désactivés. L'objet
+privé et les identifiants de contrôle restent identiques au sein d'une paire et
+sont renouvelés entre les deux cas. Le port reste identique dans chaque paire.
+
+Les deux politiques utilisent le même `ssh_exec`, la même commande de lecture
+identité/objet, le même briefing et les mêmes plafonds d'appels SSH et de durée.
+La politique LLM réutilise `LLMProvider.chat_with_tools`, les contrôles de budget
+et `CostTracker` ; elle dispose uniquement de `ssh_probe(credential_index)` et
+`finish_assessment(finding, evidence_refs)`. Elle ne peut choisir ni autre cible,
+ni autre commande, ni accès aux fichiers privés du contrôleur. Ce périmètre mesure
+une décision bornée sur carte complète, pas le pipeline A1 entier ni l'adaptation
+à une architecture inconnue. Aucun oracle n'est transmis au fournisseur.
+
+Les plafonds initiaux **de calibration**, non validés statistiquement, sont huit
+appels SSH, 420 secondes par bras, douze tours modèle et un dollar de coût
+**estimé** observé. Ce pilote utilise exclusivement **`ollama-umons` /
+`qwen3.8:27b`** (`ssh_provider`, `ssh_model`). Le workflow et le contrôleur
+refusent un autre choix, sans repli automatique vers un autre fournisseur.
+Les requêtes et réponses visibles du fournisseur sont enregistrées par tentative,
+y compris les retries et leurs compteurs d'usage, sans en-têtes d'authentification
+ni raisonnement caché. L'absence de compteurs conserve tokens/coût inconnus dans
+la comparaison. Le coût facturé LLM reste `null` ; les estimations du catalogue
+ne mesurent ni facturation réelle, ni GPU, énergie ou effort humain. Pour un
+fournisseur par abonnement, son allocation comptable nulle n'est pas présentée
+comme un coût marginal mesuré : l'estimation monétaire exportée reste inconnue.
+
+Le lancement est **manuel** : après publication sur `dev/2`, choisir
+**Actions → Benchmark integrity → Run workflow**, branche `dev/2`, emplacement
+`dev-2`, et activer `ssh_reference`. Les validations et le déploiement du commit
+exact précèdent l'essai. Un push seul ne lance aucun essai SSH. La procédure
+conserve les preuves sur nato, sans téléversement automatique vers GitHub :
+
+L'intégration de cet incrément sur `main` suit la CI et le déploiement habituels
+via nato-master. Elle n'active pas l'expérience sur l'instance principale : le
+workflow SSH exige toujours un lancement manuel sur `dev/2`, l'instance `dev-2`
+et Qwen, puis le verrou commun. Le code applicatif et les ressources auditées
+gelées de `src/agent` et `src/benchmark` ne sont pas modifiés par cet incrément.
+
+**Prérequis sur nato :** `ansible-playbook`, `ssh`, `sshpass`, l'inventaire NATO
+déjà déployé et son accès Vault. Le contrôleur vérifie les binaires et la présence
+de Qwen dans le catalogue du fournisseur avant toute création d'environnement ;
+il n'installe aucun paquet ni service. Un prérequis absent
+produit une préparation bloquée, conservée dans `preconditions.json`, sans faux
+bras exécuté. Une panne UMONS est conservée dans les traces de précontrôle et
+ne déclenche aucun repli. Cette préparation peut être archivée sans appel à
+Proxmox lorsqu'aucune allocation n'a commencé. La commande hors ligne `seal` permet de
+sceller la collection après une récupération incomplète, sans déclarer le
+nettoyage réussi.
+
+```bash
+gh workflow run benchmark-integrity.yml --ref dev/2 -f slot=dev-2 -f ssh_reference=true \
+  -f ssh_provider=ollama-umons -f ssh_model=qwen3.8:27b
+```
+
+Pour diagnostiquer une tentative existante sans opérer le laboratoire, le champ
+manuel `ssh_inspect_experiment` accepte son identifiant `run-attempt`. Cette
+inspection, explicitement autorisée le 15 octobre 2026, affiche dans GitHub
+uniquement la classe d'erreur, l'utilitaire, le code de sortie et une cause issue
+d'une liste prédéfinie. Aucun texte brut, argument de commande, mot de passe,
+chemin privé ni contenu d'objet n'est publié. Les valeurs inconnues restent
+absentes ; le diagnostic ne remplace pas les preuves privées ni leur vérification.
+
+Les artefacts restent sous
+`/opt/lance-dev-2/output/ssh-reference/<workflow-run-id>-<attempt>/` : plan,
+briefing, oracle et configuration privés, identité du code et du template,
+requêtes/réponses Ansible, bail et configurations du LXC, reset par clone neuf,
+précontrôles et leurs traces, deux runs par cas, journal
+complet d'outils, prompts, échanges visibles du modèle, décisions, consommation,
+comparaisons et nettoyage. Chaque paire possède `evidence.tar.gz` et son manifeste
+SHA-256 ; `experiment-manifest.json` couvre aussi les fichiers du contrôleur.
+Les journaux GitHub ne publient qu'une projection sans mots de passe ni objet.
+
+Une étape `always()` récupère les ressources propres à l'essai et archive les
+collections partielles après interruption. Un bras absent reste absent, un échec
+de politique reste un non-succès, et un défaut d'archivage bloque l'exécution.
+Après arrêt brutal, la récupération doit encore pouvoir s'exécuter sur nato ;
+la perte du runner ou du disque ne constitue pas une archive distante. Les
+empreintes contrôlent les octets collectés, sans fournir de signature immuable.
+
+Vérification locale des fichiers et de tous les membres des archives :
+
+```bash
+python -m benchmarks.experiments.ssh_reference_live verify --output CHEMIN_ESSAI
+```
+
+Le verdict reste `mt_admissible: false`. Une paire par posture qualifie
+l'instrument ; elle ne permet ni intervalle de confiance ni conclusion sur une
+plus-value du LLM. L'amendement des métriques, la calibration des budgets et une
+campagne indépendante restent nécessaires avant une étude confirmatoire.
+
+### Qualification native vérifiée le 15 octobre 2026
+
+Le [lancement 38769747406](https://github.com/Tanguyvans/LANCE/actions/runs/38769747406)
+a validé et déployé sur Dev 2 le commit
+`63203a8dc77ebb9d4afcc1190b902c9da5e29d84`, puis exécuté les quatre bras
+sur les LXC jetables de pve-nato. La CI compte **3 933 tests réussis, deux ignorés
+et deux avertissements**. Les quatre précontrôles prouvent le témoin avant et
+après le dictionnaire ; les quatre verdicts satisfont le contrat de calibration.
+
+| Posture du dictionnaire | Politique | Verdict | Appels SSH | Durée du bras | Tokens entrée / sortie |
+| --- | --- | --- | ---: | ---: | ---: |
+| Aucun couple accepté | Script D1 | Correct | 4 | 0,3 s | 0 / 0 |
+| Aucun couple accepté | Qwen 3.8 27B | Correct | 4 | 17,7 s | 2 394 / 890 |
+| Un couple accepté | Qwen 3.8 27B | Correct | 4 | 17,9 s | 2 638 / 1 577 |
+| Un couple accepté | Script D1 | Correct | 4 | 0,3 s | 0 / 0 |
+
+Les durées excluent la création des LXC et les précontrôles. Les tokens sont
+ceux renvoyés par le fournisseur ; le coût facturé UMONS et le coût matériel ne
+sont pas mesurés. Les estimations tarifaires par défaut ne constituent pas une
+mesure monétaire. Il s'agit d'une répétition par posture, à carte complète et
+avec des actions bornées : aucun avantage ni adaptivité générale du LLM n'est
+démontré, et les résultats restent non admis pour une campagne confirmatoire.
+
+Le nettoyage et la vérification de **120 fichiers** ont réussi. La collection
+complète reste sur nato sous
+`/opt/lance-dev-2/output/ssh-reference/38769747406-1/`, avec le manifeste global
+et les deux archives `archives/<trial>/evidence.tar.gz` :
+
+| Paire | Posture | SHA-256 de l'archive |
+| --- | --- | --- |
+| `ssh-5886a4c5f365` | Aucun couple accepté | `c4bae7e920ce00a0568bb618d439805eab1af9672ec6d686580536e911c4c8e0` |
+| `ssh-18e6557623cf` | Un couple accepté | `1a97cb308454914ffbe8a249856c71b7cc489f94b6c0c8f53ed889b3f263ebd7` |
+
+Les tentatives précédentes restent distinctes et intactes. L'inspection filtrée
+a confirmé un lancement OpenSSH avec nom de programme relatif dans
+`38758419755-1`, puis des pénalités par source réellement appliquées dans
+`38767219662-1`. Cette dernière conserve ses trois non-succès et son succès LLM ;
+ils ne démontrent pas une meilleure politique, puisque la fixture ajoutait une
+protection temporaire non contrôlée. Les corrections et leurs tests concernent
+la fixture et son précontrôle, sans modifier l'évaluateur ni les anciens verdicts.

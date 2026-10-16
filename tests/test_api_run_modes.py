@@ -246,9 +246,12 @@ def test_offline_script_replays_the_same_journal_to_two_viewers(tmp_path, monkey
 
         seen = await asyncio.wait_for(asyncio.gather(receive(first), receive(second)), timeout=1)
         assert seen[0] == seen[1]
-        assert [event["type"] for event in seen[0]] == [
+        assert [event["type"] for event in seen[0] if not event["type"].startswith("procedure_")] == [
             "runner_started", "script_step", "runner_done", "pipeline_done",
         ]
+        snapshots = [event["results"] for event in seen[0] if event["type"] == "procedure_results"]
+        assert snapshots and snapshots[-1]["status"] == "completed"
+        assert snapshots[-1]["procedure"]["id"] == "smoke-v1"
         status = route.get_status()
         assert status["running"] is False
         assert status["run_status"] == "completed"

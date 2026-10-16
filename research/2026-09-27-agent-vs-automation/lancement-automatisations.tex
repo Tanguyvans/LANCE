@@ -1,0 +1,373 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\frenchsetup{SmallCapsFigTabCaptions=false}
+\usepackage{lmodern,microtype,amsmath}
+\usepackage[margin=22mm]{geometry}
+\usepackage{booktabs,array,tabularx,enumitem,xcolor}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=black,
+ pdftitle={Automatisations LANCE : interface et premier essai règles / Qwen},
+ pdfauthor={Projet LANCE},pdflang={fr-FR}}
+\urlstyle{same}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\code}[1]{\nolinkurl{#1}}
+\newcommand{\revision}{2026-10-15 20:25 (Europe/Brussels, UTC+02:00)}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{3em}
+\setlist{nosep,leftmargin=5mm,topsep=3pt}
+\clubpenalty=10000 \widowpenalty=10000
+\setcounter{tocdepth}{1}
+\title{Automatisations LANCE :\\interface et premier essai règles / Qwen\\
+ \large Du catalogue de procédures à une comparaison guidée sur S1}
+\author{Projet LANCE}
+\date{Dernière révision : \revision\\[4pt]
+ \small Implémentation livrée ; essai exploratoire réel, une seule paire comparable}
+\begin{document}
+\maketitle
+\begin{abstract}
+L'interface doit permettre de choisir une procédure, suivre ses étapes et lire
+ses résultats, puis de distinguer cette exécution d'une mesure comparative de
+sécurité. Le travail du 15 octobre 2026 a livré un catalogue intégré, un
+inventaire de services TCP, un historique consultable et le parcours
+\og Comparer règles / LLM\fg{}. Ce dernier réutilise les phases d'analyse et de
+vérification, restaure le scénario avant chaque méthode et conserve les échecs.
+Après rétablissement de l'accès à Qwen 3.8 27B et suppression des plafonds de coût
+et de durée dans ce parcours, une paire S1 s'est achevée : F1 des confirmations
+84,6\,\% pour les règles et 88,9\,\% pour Qwen, avec respectivement 11 et 12
+vrais positifs, et trois faux positifs chacun. Qwen a utilisé davantage d'appels
+et de temps. Ce résultat décrit cet essai seulement : la restauration n'est
+attestée que dans le périmètre des contrôles effectués, et les preuves n'ont pas
+encore fait l'objet d'une adjudication expérimentale indépendante.
+\end{abstract}
+\tableofcontents
+
+\clearpage
+\section{Question, vocabulaire et méthode}
+\subsection{Ce que l'on cherche à mesurer}
+La question est : à outils et entrées publiques communs, quelles différences
+observe-t-on entre une automatisation à règles et une politique assistée par un
+modèle de langage (LLM) pour l'audit autorisé d'un réseau d'objets connectés
+(IoT) ? Le laboratoire Proxmox héberge les machines ; le contrôleur LANCE
+orchestre les outils et les décisions. Un script n'est donc pas à lui seul une
+méthode d'analyse ou une expérience.
+
+Un \emph{outil} réalise une action technique ; une \emph{procédure} orchestre
+des étapes ; une \emph{politique} choisit les contrôles et leurs suites. Un
+\emph{scénario} décrit le laboratoire. Une \emph{paire} rassemble deux audits
+préparés selon le même protocole. Un inventaire de ports ne mesure pas la
+qualité d'un audit de vulnérabilités.
+
+\textbf{D1} désigne l'automatisation conditionnelle sans LLM (\code{rules}) ;
+\textbf{A1} utilise la même base déterministe, complétée par les décisions du
+LLM (\code{llm}). Les règles réagissent déjà aux observations. La paire porte
+sur les phases 3 et 4, analyse et vérification, et non sur les six phases du
+pipeline complet \cite{protocole,cli}.
+
+\subsection{Trois niveaux de preuve distincts}
+\begin{enumerate}
+\item \textbf{Revue initiale.} Trois revues spécialisées cybersécurité, réseau
+et expérience utilisateur ont examiné le code au commit \code{73369b0}.
+La synthèse de 11:35 proposait un catalogue et un contrôleur de paire ; elle
+n'avait exécuté aucun audit. Ses 133 puis 35 tests simulés et sa relecture de
+six pages sont conservés comme provenance historique dans le registre.
+\item \textbf{Validation logicielle.} Les implémentations successives ont été
+revues, testées et déployées sur Dev 1. La révision applicative finale est
+\code{b8a415ab428a9eb8b3e064f17d8178315bb129c7}. Sa CI (intégration continue)
+est réussie avant le dernier lancement réel : 3\,972 tests réussis, deux
+ignorés et deux avertissements en 460,04 secondes \cite{ci}.
+\item \textbf{Observation réelle.} L'inventaire puis les cinq tentatives de
+paire ont été lancés depuis l'interface du laboratoire nato. Une seule paire
+est complète et déclarée comparable par le protocole. Les métriques proviennent
+de ses artefacts, pas des tests simulés \cite{resultats}.
+\end{enumerate}
+
+Le registre \code{lancement-automatisations-sources.json} sépare l'ancienne
+revue de la révision actuelle. Le fichier \code{lancement-automatisations-resultats.json}
+conserve configurations, identifiants, empreintes et mesures agrégées. Les gros
+artefacts restent sur nato ; une empreinte identifie leur export sans en
+attester la validité scientifique. Aucune campagne répétée n'a été menée ici.
+
+\clearpage
+\section{Interface et procédures effectivement livrées}
+\subsection{Un parcours depuis l'objectif}
+La zone \textbf{Automatisations} comprend les résultats des exécutions, une
+nouvelle exécution et \textbf{Comparer règles / LLM}. L'utilisateur choisit
+une procédure, renseigne sa cible, examine les effets et lance. Les étapes,
+paramètres, erreurs, résultats et liens restent consultables dans l'historique.
+Le catalogue serveur décrit version, empreinte de l'implémentation, dépendances,
+portée, effets et sorties. Une relance produit un nouvel identifiant \cite{catalogue}.
+
+\begin{table}[htbp]\centering\small
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{35mm}YY@{}}
+\toprule
+Procédure intégrée & Travail effectué & Portée et effets annoncés \\
+\midrule
+Découvrir les équipements & Sondes Nmap sur un réseau IPv4 autorisé. & Hôtes qui répondent ; aucun score de vulnérabilités. \\
+Inventorier les services & Découverte puis identification sur 21 ports TCP prédéfinis. & Jusqu'à 16 hôtes observés ; autres ports et hôtes silencieux hors couverture. \\
+Auditer un scénario automatiquement & Préparation, analyse et vérification par règles. & Scénario public déployable ; préparation pouvant supprimer les scénarios présents ; contrôles actifs possibles. \\
+Vérifier le lancement hors ligne & Diagnostic d'événements et d'enregistrement. & Aucun accès réseau, appel modèle ou résultat de sécurité. \\
+\bottomrule
+\end{tabularx}
+\caption{Catalogue livré. TCP désigne ici les services accessibles par connexions réseau de ce type ; UDP n'est pas couvert par l'inventaire.}
+\end{table}
+
+Les outils existants sont encapsulés dans les procédures ; l'import libre de
+scripts ou de commandes n'a pas été ajouté. Les limites par défaut des procédures
+ordinaires restent distinctes de la comparaison guidée. Les interruptions et
+résultats partiels restent visibles ; une absence de mesure n'est pas un zéro.
+
+\subsection{Inventaire réel et lecture des résultats}
+Le run \code{2026-10-15_123829_42ecb36bbe68} a observé quatre hôtes et dix
+services TCP en cinq appels et 165,87 secondes, sur \code{192.168.100.0/28}.
+Il vérifie le chemin lancement--étapes--inventaire. Son artefact ne conserve
+pas d'identifiant de scénario : le contexte opérateur S1 ne suffit pas à en
+faire un résultat de benchmark S1. Les dix services de cet inventaire ne sont
+pas les douze vulnérabilités attendues de la paire finale.
+
+L'historique des procédures présente les sorties opérationnelles. La
+comparaison présente séparément vrais et faux positifs, failles manquées,
+précision, rappel, F1, appels, erreurs, temps et consommation modèle. Les écarts
+ne s'affichent que pour une paire comparable ; un contrôle sans faille attendue
+utilise la spécificité lorsqu'elle est définie. Le résultat peut être rouvert
+par lien et exporté en JSON (format de données structurées).
+
+\clearpage
+\section{Protocole guidé, limites et corrections du runtime}
+Le contrôleur réutilise le pipeline et \code{compare_runs}, plutôt que de
+créer un autre calcul de score \cite{paire,comparateur}. Il réserve le
+laboratoire partagé, vérifie la cible nato/pve-nato, puis :
+\begin{enumerate}
+\item fige le scénario public, l'inventaire public, l'ordre des méthodes et les
+paramètres communs ; les données de vérité terrain ne sont pas une entrée des politiques ;
+\item supprime puis redéploie les ressources du scénario avant chaque méthode,
+exécute injection et vérifications des playbooks, puis contrôle la surface TCP publique ;
+\item lance les phases 3--4 de chaque méthode avec le profil \code{full}, les
+mêmes outils et validateurs, et exige l'égalité des observations TCP des deux précontrôles ;
+\item nettoie le laboratoire, puis charge la vérité terrain après les deux
+audits, évalue les artefacts, persiste l'issue finale et libère la réservation.
+\end{enumerate}
+
+Ce chemin est limité aux scénarios publics compatibles avec la surface TCP
+prise en charge. Une égalité de hash de définition ne prouve pas l'égalité de
+l'état vivant. Les vérifications du playbook et des ports ne certifient pas
+toutes les permissions, données et propriétés de sécurité attendues.
+
+\subsection{Ce que signifiaient les limites de ressources}
+Les premiers formulaires imposaient 200 appels, 600 secondes et 2 dollars de
+consommation modèle estimée par audit. Ces plafonds pouvaient interrompre la
+vérification avant ses résultats. Le dernier parcours guidé envoie
+\code{max_duration_s=null} et \code{max_cost_usd=null}, sans plafond implicite
+de dix minutes par équipement. L'activation explicite
+\code{comparison_unlimited=true} reste propre à cette comparaison ; les
+autres contrats conservent leurs règles de limites existantes.
+
+Le nombre maximal d'appels demeure réglable de 1 à 2\,000. Il a été fixé à
+2\,000 pour les deux méthodes dans l'essai final. Les délais techniques d'une
+requête réseau, les limites internes des tours du modèle et l'arrêt manuel
+subsistent. L'absence de plafond de coût ou de durée ne signifie donc pas une
+exécution sans aucune borne technique. Les anciens runs affichent leurs vrais
+paramètres historiques.
+
+\subsection{Corrections et vérifications}
+Une correction garde la réservation jusqu'au nettoyage, à l'évaluation et à la
+publication de l'état final. Elle évite de déclarer le laboratoire disponible
+pendant cette finalisation et empêche un ancien worker de terminer une nouvelle
+opération. Un déploiement intermédiaire a été arrêté par le garde de laboratoire
+occupé ; cette observation a conduit au correctif \code{711f966}.
+
+La révision \code{b8a415a} a passé 126 tests ciblés, dont une paire simulée avec
+plafonds absents et la préservation des contrats bornés ordinaires, puis la suite
+CI complète citée en section 1. Le formulaire déployé, le suivi et le tableau
+final ont été vérifiés dans un navigateur. Ces tests ne valident ni chaque
+oracle de sécurité ni une performance expérimentale.
+
+\clearpage
+\section{Journal des essais et incidents}
+La table~\ref{tab:essais} conserve toutes les tentatives de paire du 15 octobre.
+Les identifiants sont en UTC ; les heures montrées par l'interface sont celles
+de Bruxelles (UTC+02:00). Ces relances de mise au point ne sont pas des répétitions
+indépendantes d'une campagne préenregistrée. Toutes déclarent un nettoyage réussi.
+
+\begin{table}[htbp]\centering\small
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{26mm}>{\raggedright\arraybackslash}p{27mm}Y@{}}
+\toprule
+Début UTC ; suffixe de paire & Modèle et plafonds & Issue et interprétation \\
+\midrule
+13:30:25\newline\code{2ae16f333149} & Qwen ; 200 appels, 600 s, 2 USD & Connexions modèle en échec ; zéro token, bras partiel. Non comparable ; aucun F1 Qwen interprétable. \\
+14:02:13\newline\code{cadeb8a36a7e} & MiniMax, sélection erronée ; 200, 600 s, 2 USD & Erreur HTTP 402. Modèle rejeté par l'utilisateur ; essai exclu des résultats Qwen. \\
+15:15:17\newline\code{325e8127a530} & Qwen ; 200, 600 s, 2 USD & Les quatre équipements sont analysés ; arrêt pendant la vérification au plafond de 600 s. Non comparable. \\
+15:34:27\newline\code{21bd35c5f538} & Qwen ; 200, 1\,200 s, 2 USD & Dix-neuf candidats proposés ; vérification incomplète au plafond de 1\,200 s. Non comparable. \\
+16:57:09\newline\code{11c3405c5607} & Qwen ; 2\,000 appels, durée et coût sans plafond & Deux bras complets, nettoyage réussi, comparaison admissible selon les contrôles du protocole. \\
+\bottomrule
+\end{tabularx}
+\caption{Préfixe commun des identifiants : \code{2026-10-15_}, suivi de l'heure \code{HHMMSS}, d'un souligné et du suffixe donné. Les USD sont des plafonds historiques sur une estimation, pas une facture observée.}
+\label{tab:essais}
+\end{table}
+
+\subsection{Accès à Qwen 3.8 27B}
+Le relais du fournisseur \code{ollama-umons} sur pve-nato ne répondait plus.
+L'opérateur a constaté l'absence d'écoute sur le port 11435 puis rétabli le
+tunnel SSH vers le service UMONS. Le catalogue des modèles et une réponse minimale
+de Qwen ont ensuite été vérifiés ; les tentatives suivantes ont effectivement
+consommé des tokens. La procédure de référence est conservée dans le guide
+UMONS, sans mot de passe ni clé dans cette étude \cite{umons}.
+
+La sélection intermédiaire de MiniMax est une erreur opératoire conservée pour
+la traçabilité ; elle ne constitue ni un remplacement autorisé de Qwen ni une
+observation de sa qualité. Le tunnel rétabli manuellement ne démontre pas une
+persistance après redémarrage. Aucune intervention de ce travail ne cible le
+homelab personnel.
+
+Les deux arrêts sur durée montrent que ces plafonds ont empêché ces runs
+d'aboutir. Ils ne prouvent pas que la seule suppression des plafonds cause le
+score final : les générations, le nombre d'appels autorisés et la version
+applicative ont aussi varié. Aucun score manquant n'est imputé à zéro.
+
+\clearpage
+\section{Résultats de la paire complète S1}
+Paire \code{2026-10-15_165709_11c3405c5607}, lancée depuis Dev 1 après CI
+réussie, sur la révision \code{b8a415a}. Scénario S1, réseau plat
+\code{192.168.100.0/24} : routeur, courtier MQTT (messagerie), serveur web et
+serveur SSH (accès distant). Les règles ont été exécutées en premier. Les
+précontrôles des deux méthodes sont valides dans leur portée et partagent le
+même hash d'inventaire TCP observé \cite{resultats}.
+
+\begin{table}[htbp]\centering
+\begin{tabularx}{\linewidth}{@{}Yrr@{}}
+\toprule
+Mesure & Règles D1 & Qwen A1 \\
+\midrule
+Vrais positifs confirmés (TP) & 11 & 12 \\
+Faux positifs confirmés (FP) & 3 & 3 \\
+Failles attendues manquées (FN) & 1 & 0 \\
+Précision des confirmations & 78,6\,\% & 80,0\,\% \\
+Rappel des confirmations & 91,7\,\% & 100,0\,\% \\
+F1 des confirmations & 84,6\,\% & 88,9\,\% \\
+Preuves confirmées marquées invalides & 0 & 0 \\
+Appels d'outils & 73 & 132 \\
+Erreurs d'outils & 0 & 0 \\
+Durée de l'audit & 179,8 s & 1\,239,9 s \\
+Tokens modèle & 0 & 1\,029\,775 \\
+Tours modèle & 0 & 60 \\
+Estimation générique de consommation LLM (USD) & 0 & 1,141787 \\
+\bottomrule
+\end{tabularx}
+\caption{Étage \code{confirmed} du comparateur. Les pourcentages sont affichés à une décimale depuis les métriques archivées. La spécificité est non définie pour cette paire.}
+\label{tab:resultats}
+\end{table}
+
+La précision vaut $TP/(TP+FP)$, le rappel $TP/(TP+FN)$ et
+$F1=2TP/(2TP+FP+FN)$. Le gain descriptif de F1 est de 4,3 points. Qwen confirme
+une vulnérabilité attendue supplémentaire ; les trois faux positifs persistent.
+Un rappel de 100\,\% n'implique donc pas un audit sans erreur. Les zéro preuves
+marquées invalides reflètent les validateurs automatiques, pas une expertise
+indépendante de chaque trace.
+
+Le bras règles est \code{2026-10-15_185920}, le bras Qwen
+\code{2026-10-15_190434}. Qwen a proposé 17 candidats et terminé la
+vérification ; le comparateur ne signale aucun motif d'incomparabilité. La paire
+va de 18:57:09 à 19:25:33, heure de Bruxelles, soit environ 28 min 24 s avec
+préparation et nettoyage. Les durées du tableau concernent uniquement les audits.
+Qwen prend environ 6,9 fois le temps des règles et 59 appels supplémentaires.
+
+\textbf{L'estimation de 1,141787 USD n'est pas une facture UMONS.} L'artefact
+LLM indique \code{cost_is_estimate=true} ; ce calcul générique dépend des
+comptages de tokens et ne mesure ni l'infrastructure, ni le développement, ni
+la revue humaine. Il ne s'agit pas d'un plafond réintroduit.
+
+\clearpage
+\section{Discussion, limites et suites expérimentales}
+\subsection{Ce que cet essai établit}
+L'exécution réelle vérifie qu'un utilisateur peut lancer une paire depuis
+l'interface, suivre les étapes et obtenir les deux audits, le nettoyage et un
+tableau comparatif persistant. Dans ce cas S1, la politique Qwen obtient un
+meilleur F1 de confirmations au prix d'un temps et d'un nombre d'appels plus
+élevés. Le statut logiciel \og comparable\fg{} est une décision du protocole
+courant, dans son périmètre de vérification explicite.
+
+\subsection{Ce qu'il reste à établir}
+\begin{itemize}
+\item \textbf{Validité des constats.} La vérité terrain et les validateurs
+automatiques n'ont pas été adjudiqués indépendamment pour cette paire. Les
+faux positifs et le désaccord D1/A1 exigent une lecture des observations brutes
+et de l'état de référence, avec procédure commune et si possible en aveugle.
+\item \textbf{État initial.} La recréation, les playbooks et la surface TCP
+apportent des observations, mais pas une certification exhaustive des permissions,
+versions, configurations et états internes. Les empreintes déclaratives ne
+remplacent pas ces vérifications.
+\item \textbf{Attribution et variabilité.} Un ordre fixe règles--LLM, un seul
+scénario public, une seule paire complète et plusieurs relances après incidents
+ne permettent ni intervalle de confiance ni conclusion générale. La version
+exacte des poids servis par l'alias \code{qwen3.8:27b} n'est pas figée par cet
+alias seul. Aucun bras supplémentaire n'isole l'adaptation du modèle.
+\item \textbf{Compétence et généralisation.} Règles et prompts contiennent
+des connaissances des simulateurs du laboratoire. Le résultat ne compare pas
+Qwen à toute automatisation possible ni à des scénarios réservés. Une
+comparaison de phases 3--4 n'est pas une évaluation de tout LANCE.
+\item \textbf{Couverture et ressources.} Aucun contrôle sain supplémentaire,
+aucune autre famille et aucun impact sur un réseau de production n'ont été
+mesurés. Le plafond d'appels est commun mais la consommation effective diffère.
+Le réglage de 2\,000 appels n'est pas une preuve d'équité universelle des ressources.
+\end{itemize}
+
+La prochaine expérience doit fixer avant exécution les versions, variantes,
+ordres, répétitions, critères de preuve et marges utiles. Elle doit inclure cas
+sains et familles pertinentes, conserver tous les échecs et faire relire les
+preuves. Les améliorations éventuelles de D1 doivent être gelées avant les
+variantes réservées. Les plafonds de coût et de durée ne sont pas nécessaires
+au parcours guidé demandé ; les consommations restent des observations utiles.
+
+\subsection{Conclusion}
+Le catalogue et la comparaison guidée répondent au problème de lancement et de
+lisibilité. Le premier essai S1 complet fournit un contraste descriptif favorable
+à Qwen sur le F1 des confirmations, avec davantage de ressources consommées.
+Il justifie l'examen des preuves et une campagne préparée ; il ne démontre pas
+une supériorité générale du LLM. Garder les règles ou réserver le modèle à
+certaines tâches reste une conclusion expérimentale recevable.
+
+\clearpage
+\section{Reproduction et sources primaires}
+Pour retrouver l'observation, ouvrir le lien de paire dans l'interface Dev 1 ou
+son export \code{/api/comparisons/2026-10-15_165709_11c3405c5607/download}.
+Les artefacts restent sous \code{output/policy_comparisons/} et
+\code{output/agent/} sur nato. Les droits et la disponibilité du laboratoire
+sont nécessaires ; aucun run n'est relancé par la lecture de cette étude.
+
+Pour reproduire un nouvel essai, utiliser la révision applicative indiquée,
+vérifier nato et le fournisseur UMONS, choisir S1, Qwen 3.8 27B, règles d'abord,
+2\,000 appels et les plafonds de coût/durée absents. Vérifier le scénario avant
+chaque méthode et conserver les nouvelles traces sous de nouveaux identifiants.
+Une relance ne doit pas être attendue au même score. Le registre JSON fournit
+les empreintes complètes, paramètres et références de CI ; les exports bruts ne
+sont pas ajoutés à Git.
+
+\begin{thebibliography}{99}\small\raggedright
+\phantomsection\addcontentsline{toc}{section}{Références}
+\bibitem{protocole} LANCE, \emph{Protocole scientifique D1/A1},
+\code{research/2026-09-27-agent-vs-automation/protocol.md}. Les extensions de campagne restent proposées.
+\bibitem{cli} LANCE, \emph{Comparaison règles / agent : premier incrément logiciel},
+\code{docs/benchmark/agent-vs-automation-cli.md}, version au commit \code{b8a415a}.
+\bibitem{catalogue} LANCE, \code{src/agent/procedures.py},
+\code{src/agent/run_modes.py}, \code{src/api/routes/procedures.py},
+\code{src/api/procedure_runs.py} et \code{src/static/procedures.js}, commit \code{b8a415a}.
+\bibitem{paire} LANCE, \code{src/benchmark/policy_pair_runner.py},
+\code{src/api/routes/comparisons.py}, \code{src/static/comparisons.js} et
+\code{docs/benchmark/agent-vs-automation-campaign.md}, commit \code{b8a415a}.
+\bibitem{comparateur} LANCE, \code{src/benchmark/compare_policies.py},
+\code{src/agent/audit_experiment.py}, \code{src/agent/pipeline.py},
+\code{src/agent/phases/analysis/devices.py}, commit \code{b8a415a}.
+\bibitem{ci} LANCE, workflow GitHub Actions de validation et déploiement Dev 1,
+\href{https://github.com/Tanguyvans/LANCE/actions/runs/38768357489}{run 38768357489},
+commit \code{b8a415ab428a9eb8b3e064f17d8178315bb129c7}, 15 octobre 2026.
+\bibitem{resultats} LANCE, export réel de la paire
+\code{2026-10-15_165709_11c3405c5607}, 15 octobre 2026,
+\href{http://100.103.253.86:8502/\#comparison/2026-10-15_165709_11c3405c5607}{résultat Dev 1}.
+Agrégats et empreintes : \code{lancement-automatisations-resultats.json} ; provenance et revue :
+\code{lancement-automatisations-sources.json} et \code{validation.md} du présent dossier.
+\bibitem{umons} LANCE, \emph{Accès aux modèles UMONS},
+\code{docs/guides/umons-llm.md}, procédure consultée le 15 octobre 2026.
+\end{thebibliography}
+\end{document}
