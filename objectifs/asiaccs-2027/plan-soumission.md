@@ -58,8 +58,11 @@ supérieure au seuil delta pré-enregistré, après correction de Holm.
 
 Contrôles obligatoires par campagne (proposition §6.4) : scénario sans
 faille, preuves invalides à rejeter des deux côtés, leurre à motif connu
-non exploitable, canari par instance. Un lot qui échoue à un contrôle est
-invalidé, pas interprété.
+non exploitable, canari par instance. Un défaut d’intégrité du laboratoire,
+de reset ou d’oracle invalide les essais
+concernés selon une règle préalable. Un faux positif ou un échec de politique
+sur un témoin correctement déployé reste un résultat valide, avec preuves et
+coûts ; il ne justifie pas la suppression du lot.
 
 Le pilote de développement existant (24 exécutions D1/A1,
 `benchmarks/experiments/policy-comparison/`) sert à valider la mesure et
@@ -89,12 +92,13 @@ N'entrent au papier que si E1-E3 sont bouclées et relues.
 Critères de décision du 2026-11-16, écrits à l'avance :
 
 - **Soumettre à AsiaCCS** si : au moins une condition prédite satisfait le
-  critère de décision en TP confirmés, contrôles négatifs propres, artefact
-  anonymisé prêt.
+  critère de décision en TP confirmés, intégrité des témoins négatifs attestée
+  et marges de faux positifs pré-enregistrées respectées, artefact anonymisé prêt.
 - **Soumettre quand même mais repositionné** (papier benchmark/mesure à
   résultat négatif) si : écart nul partout mais mesure propre et puissance
   suffisante pour borner l'écart. La contribution devient C1 + borne.
-- **Ne pas soumettre** si : aucun run évaluable, contrôle négatif en échec,
+- **Ne pas soumettre** si : aucun run évaluable, intégrité du laboratoire
+  ou de l’oracle non rétablie,
   ou effet porté par une seule famille. Repli : workshop printemps 2027,
   puis campagne complète pour EuroS&P 2028 ou revue (TDSC, Computers &
   Security).
@@ -130,3 +134,25 @@ travail lié (1). Appendices : Open Science (obligatoire), Ethical
 Considerations, détails de campagne. Chaque tableau de résultats renvoie
 aux runs du manifeste de campagne ; aucune valeur n'est écrite à la main
 sans identifiant de run.
+
+## 9. Suivi V2 consolidé
+
+Dernière révision : **2026-10-16 21:43 (Europe/Brussels, UTC+02:00)**.
+
+Le [plan V2](../../research/2026-10-12-recentrage-corpus/README.md) définit
+44 scénarios, 25 ensembles et 216 configurations proposées, organisés par six
+questions et cinq tâches mesurées. Cette sélection est distincte du pilote
+historique S1/S14/S15/S1h et ne constitue pas 44 familles indépendantes.
+
+La [qualification SSH native du 15 octobre](../../docs/benchmark/agent-vs-automation-cli.md#qualification-native-vérifiée-le-15-octobre-2026)
+est acquise dans son périmètre borné : script et Qwen corrects sur les deux
+postures, précontrôles, nettoyage et preuves référencées. Elle reste hors
+admission confirmatoire M-T et ne démontre aucun avantage général du LLM.
+
+Prochaine réalisation : **`s_mqtt_lecture`**, puis `s_api_organisations`,
+`s_mqtt_reprise` et `s_cache_identites`. Avant tout nouveau gel, adopter
+explicitement les mesures par tâche, leurs dénominateurs, les marges FP,
+effectifs, budgets et analyses. Les TP strict-v3 des objectifs et les mesures
+V2 proposées doivent être alignés par amendement ; aucun résultat historique
+n’est requalifié rétroactivement. Les dates et critères historiques ci-dessus
+restent traçables ; la consolidation n’annonce ni campagne exécutée ni gain.

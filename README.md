@@ -93,6 +93,7 @@ evaluation scenarios.
 
 - [Documentation index](docs/README.md)
 - [Research topics and conventions](research/README.md)
+- [V2 scenario plan and progress](research/2026-10-12-recentrage-corpus/README.md): proposed configurations, completed bounded SSH qualification, and MQTT as the next implementation.
 - [Research report: benchmark coverage, context and LLM contribution (PDF)](research/2026-09-27-agent-vs-automation/report.pdf) · [editable LaTeX](research/2026-09-27-agent-vs-automation/report.tex)
 - [Benchmark, scenarios and evaluation](docs/benchmark/v1/README.md)
 - [Pipeline structure](src/agent/phases/README.md)

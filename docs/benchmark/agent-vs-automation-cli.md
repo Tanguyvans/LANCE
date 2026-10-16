@@ -406,6 +406,13 @@ l'instrument ; elle ne permet ni intervalle de confiance ni conclusion sur une
 plus-value du LLM. L'amendement des métriques, la calibration des budgets et une
 campagne indépendante restent nécessaires avant une étude confirmatoire.
 
+Le [suivi V2 consolidé](../../research/2026-10-12-recentrage-corpus/README.md#avancement-consolidé)
+rattache cette qualification existante à `s_ssh_identifiants`, sans admettre
+la campagne confirmatoire. Les références structurées sont conservées sous
+`implementation_tracking.ssh_calibration` dans le plan de recherche.
+La prochaine réalisation V2 est `s_mqtt_lecture` ; aucun essai MQTT n’est
+attesté par le bilan SSH.
+
 ### Qualification native vérifiée le 15 octobre 2026
 
 Le [lancement 38769747406](https://github.com/Tanguyvans/LANCE/actions/runs/38769747406)
