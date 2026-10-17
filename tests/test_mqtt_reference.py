@@ -244,4 +244,3 @@ def test_cli_assesses_archived_evidence_without_network(tmp_path, monkeypatch, b
     (run.run_dir / "tool_calls.jsonl").unlink()
     missing = subprocess.run(command, capture_output=True, text=True)
     assert missing.returncode == 2 and json.loads(missing.stdout)["success"] is None
-
