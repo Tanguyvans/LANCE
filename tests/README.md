@@ -59,6 +59,9 @@ client simulé, les précontrôles de posture, l'absence des secrets de fixture
 dans le briefing et le fil fournisseur, les frontières du contrôleur invité
 LXC, l'intégrité des archives et le caractère manuel, réservé à nato/dev-2,
 du workflow. Ces tests ne lancent ni broker, ni LXC, ni modèle réel.
+`test_mqtt_reference_diagnostics.py` vérifie que l'inspection autorisée des
+essais MQTT en échec ne publie que classe d'erreur, utilitaire, code de
+retour et cause fixe, sans aucune valeur privée des preuves.
 
 `test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
 des outils. `test_procedure_runs.py` couvre le tableau paginé des exécutions,
