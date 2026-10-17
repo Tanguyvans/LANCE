@@ -43,6 +43,23 @@ lancé ; il est ignoré si ce binaire n'est pas installé.
 préparations en échec ne publie que quatre champs filtrés et exclut les valeurs
 privées, y compris dans les erreurs et arguments de commandes.
 
+`test_mqtt_reference.py` qualifie le premier contrat MQTT V2
+(`s_mqtt_lecture`) avec le vrai exécuteur et l'adaptateur `mqtt_listen`
+existants, mais des entrées/sorties de processus simulées : contrôle
+authentifié, surface publique, réception privée anonyme fraîche, refus et
+silence du broker, message public pris à tort pour une fuite, erreurs de
+transport, budget épuisé et oracle contradictoire. Le CLI d'évaluation est
+aussi exécuté sans connexion réseau, et les deux configurations de fixture
+ne diffèrent que par la ligne d'ACL de lecture privée anonyme. Ces tests ne
+mesurent ni broker réel ni performance LLM ; le résultat reste explicitement
+non admis pour une campagne M-T. Voir la
+[calibration MQTT V2](../benchmarks/experiments/mqtt-reference/README.md).
+`test_mqtt_reference_live.py` ajoute la boucle du vrai fournisseur avec un
+client simulé, les précontrôles de posture, l'absence des secrets de fixture
+dans le briefing et le fil fournisseur, les frontières du contrôleur invité
+LXC, l'intégrité des archives et le caractère manuel, réservé à nato/dev-2,
+du workflow. Ces tests ne lancent ni broker, ni LXC, ni modèle réel.
+
 `test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
 des outils. `test_procedure_runs.py` couvre le tableau paginé des exécutions,
 les filtres, les mesures absentes, les artefacts invalides et la confidentialité

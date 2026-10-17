@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "scenario_id": "s_mqtt_lecture",
+  "instance_id": "development-01",
+  "target_network": "192.0.2.0/24",
+  "target": {"asset_id": "broker", "ip": "192.0.2.18", "port": 1883},
+  "public_topic": "lance/public/status",
+  "private_topic": "lance/private/telemetry",
+  "control_credential": {"username": "auditor", "password": "development-control-only"},
+  "listen": {"count": 2, "timeout_s": 5}
+}
