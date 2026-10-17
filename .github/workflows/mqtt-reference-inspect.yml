@@ -1,0 +1,34 @@
+name: Inspect MQTT qualification (authorized filtered diagnostics)
+
+# Error class, utility, exit code, fixed cause only.
+# Complete private evidence remains on nato. This job never operates the lab.
+on:
+  workflow_call:
+    inputs:
+      experiment:
+        description: 'Existing MQTT qualification run-attempt on nato (digits-digits)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, nato-master]
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Read only the authorized diagnostic projection
+        shell: bash
+        env:
+          MQTT_EVIDENCE_RUN: ${{ inputs.experiment }}
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = nato-master
+          test "$GITHUB_REF" = refs/heads/dev/2
+          ip -o -4 addr show | grep -q '100\.103\.253\.86/'
+          /opt/lance-dev-2/venv/bin/python scripts/benchmark/mqtt_reference_diagnostics.py \
+            --experiment "$MQTT_EVIDENCE_RUN"
