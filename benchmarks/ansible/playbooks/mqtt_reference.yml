@@ -1,0 +1,53 @@
+# Disposable guest only; no master package/service/bridge configuration changes.
+- name: MQTT reference guest on the existing NATO laboratory
+  hosts: proxmox
+  gather_facts: false
+  tasks:
+    - name: Read target identity before any transfer or mutation
+      ansible.builtin.command: ip -j -4 addr
+      register: mqtt_pve_addresses
+      changed_when: false
+
+    - name: Require the authorized pve-nato identity
+      ansible.builtin.assert:
+        that:
+          - "'100.76.206.65' in (mqtt_pve_addresses.stdout | from_json | map(attribute='addr_info') | flatten | selectattr('local', 'defined') | map(attribute='local') | list)"
+          - "mqtt_reference_request.owner is match('^[0-9a-f]{32}$')"
+          - "mqtt_reference_request.operation in ['allocate', 'start', 'stop', 'cleanup']"
+
+    - name: Create this experiment's private controller directory
+      ansible.builtin.file:
+        path: "/var/lib/lance/mqtt-reference/{{ mqtt_reference_request.owner }}"
+        state: directory
+        mode: '0700'
+
+    - name: Copy the bounded guest controller
+      ansible.builtin.copy:
+        src: ../files/mqtt_reference_proxmox.py
+        dest: "/var/lib/lance/mqtt-reference/{{ mqtt_reference_request.owner }}/controller.py"
+        mode: '0700'
+
+    - name: Execute only the requested owned-guest operation
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "/var/lib/lance/mqtt-reference/{{ mqtt_reference_request.owner }}/controller.py"
+        stdin: "{{ mqtt_reference_request | to_json }}"
+      register: mqtt_reference_response
+      no_log: true
+
+    - name: Preserve the complete response on the NATO controller
+      ansible.builtin.copy:
+        content: "{{ mqtt_reference_response.stdout }}"
+        dest: "{{ mqtt_reference_result }}"
+        mode: '0600'
+      delegate_to: localhost
+      no_log: true
+
+    - name: Remove only this experiment's controller after successful cleanup
+      ansible.builtin.file:
+        path: "/var/lib/lance/mqtt-reference/{{ mqtt_reference_request.owner }}"
+        state: absent
+      when:
+        - mqtt_reference_request.operation == 'cleanup'
+        - (mqtt_reference_response.stdout | from_json).ok | bool

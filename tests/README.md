@@ -54,6 +54,11 @@ ne diffèrent que par la ligne d'ACL de lecture privée anonyme. Ces tests ne
 mesurent ni broker réel ni performance LLM ; le résultat reste explicitement
 non admis pour une campagne M-T. Voir la
 [calibration MQTT V2](../benchmarks/experiments/mqtt-reference/README.md).
+`test_mqtt_reference_live.py` ajoute la boucle du vrai fournisseur avec un
+client simulé, les précontrôles de posture, l'absence des secrets de fixture
+dans le briefing et le fil fournisseur, les frontières du contrôleur invité
+LXC, l'intégrité des archives et le caractère manuel, réservé à nato/dev-2,
+du workflow. Ces tests ne lancent ni broker, ni LXC, ni modèle réel.
 
 `test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
 des outils. `test_procedure_runs.py` couvre le tableau paginé des exécutions,

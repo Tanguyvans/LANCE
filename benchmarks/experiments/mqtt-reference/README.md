@@ -34,12 +34,20 @@ dans le laboratoire : `mt_admissible` reste `false` et le statut de mesure
 Depuis la racine, les tests de qualification logicielle se lancent avec :
 
 ```bash
-.venv/bin/python -m pytest -q tests/test_mqtt_reference.py
+.venv/bin/python -m pytest -q tests/test_mqtt_reference.py tests/test_mqtt_reference_live.py
 ```
 
 Ces tests utilisent le vrai adaptateur `mqtt_listen` et la frontière
 d'exécution commune, avec les entrées/sorties du processus `mosquitto_sub`
 simulées. Ils ne constituent ni un essai sur un broker réel, ni une mesure
-de performance d'un LLM, ni une qualification laboratoire : le pilote réel
-sur nato (contrôleur borné, quatre bras, archivage) reste le travail
-suivant, distinct du gel historique et de la campagne confirmatoire.
+de performance d'un LLM, ni une qualification laboratoire.
+
+Le contrôleur `benchmarks.experiments.mqtt_reference_live` et sa politique
+LLM bornée permettent un pilote Mosquitto réel sur nato, avec deux postures
+et quatre bras, un LXC neuf par bras, des précontrôles avant et après les
+sondes et un archivage scellé qui reste sur nato. Le lancement est manuel
+sur `dev/2` via le workflow `mqtt-reference.yml` (runner `nato-master`,
+verrou laboratoire partagé, fournisseur et modèle fixés) ; un push ne le
+déclenche pas. **Ce pilote n'a pas encore été exécuté** : aucun résultat
+réel script/LLM n'est attesté à ce stade, distinct du gel historique et de
+la campagne confirmatoire.

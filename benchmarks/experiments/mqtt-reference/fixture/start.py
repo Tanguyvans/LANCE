@@ -68,9 +68,24 @@ def mosquitto_command(config_path="/run/mosquitto/mosquitto.conf"):
     return ["/usr/sbin/mosquitto", "-c", config_path]
 
 
+def ensure_broker_binaries():
+    """Use the template's Mosquitto, or install it inside this disposable guest only."""
+    import shutil
+    if all(shutil.which(name) for name in ("mosquitto", "mosquitto_passwd", "mosquitto_pub")):
+        return "present"
+    env = {"DEBIAN_FRONTEND": "noninteractive", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"}
+    subprocess.run(["apt-get", "update", "-qq"], check=True, capture_output=True, timeout=300, env=env)
+    subprocess.run(["apt-get", "install", "-y", "-qq", "mosquitto", "mosquitto-clients"],
+                   check=True, capture_output=True, timeout=300, env=env)
+    if not all(shutil.which(name) for name in ("mosquitto", "mosquitto_passwd", "mosquitto_pub")):
+        raise RuntimeError("Mosquitto binaries unavailable in fixture guest")
+    return "installed_in_disposable_guest"
+
+
 def main():
     config = json.loads(Path("/fixture.json").read_text())
     _checked(config)
+    ensure_broker_binaries()
     runtime = Path("/run/mosquitto")
     runtime.mkdir(parents=True, mode=0o750, exist_ok=True)
     (runtime / "acl").write_text(build_acl(config))
