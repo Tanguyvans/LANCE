@@ -76,6 +76,24 @@ def test_missing_broker_system_user_is_classified():
     assert diagnostics.entry(utility='mosquitto', reason='mosquitto_system_user_unavailable') in result
 
 
+def test_seed_authorization_and_protocol_rejections_are_classified():
+    secret = 'NEVER_PUBLISH_THIS_CLIENT_OR_TOPIC'
+    result = diagnostics.broker_diagnostics('\n'.join([
+        f"Denied PUBLISH from {secret} (d0, q1, r1, m1, '{secret}', ... (64 bytes))",
+        f'Client {secret} disconnected, not authorised.',
+        f'ACL denying access to client with dangerous username "{secret}"',
+        f'Client {secret} disconnected due to protocol error.',
+    ]))
+    assert secret not in json.dumps(result)
+    expected = [
+        diagnostics.entry(utility='mosquitto', reason='mqtt_publish_acl_denied'),
+        diagnostics.entry(utility='mosquitto', reason='mqtt_connection_not_authorised'),
+        diagnostics.entry(utility='mosquitto', reason='mqtt_acl_access_denied'),
+        diagnostics.entry(utility='mosquitto', reason='mqtt_client_protocol_error'),
+    ]
+    assert result == expected
+
+
 def test_inspection_workflow_is_manual_and_shell_syntax_valid():
     root = Path(__file__).resolve().parents[1]
     path = root / '.github/workflows/mqtt-reference-inspect.yml'
