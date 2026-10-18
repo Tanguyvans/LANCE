@@ -68,6 +68,11 @@ les quatre lectures restent non prouvées. La réinspection classe une
 déconnexion pour erreur de protocole ; la documentation Mosquitto confirme
 qu'un plafond `max_keepalive 30` rejette les clients MQTT 3.1.1 par défaut
 à 60 secondes. Ce plafond propre à la fixture est donc retiré, sans changer
-les ACL. Aucun résultat réel script/LLM n'est attesté tant qu'un nouvel
+les ACL. Quatrième lancement le 18 octobre 2026
+(run `39145340752-1`) : même échec de publication du semeur avant tout bras,
+toujours sans lecture prouvée. Le semis est donc rendu déterministe
+(MQTT 3.1.1, identifiant client court explicite, keepalive 30) et ses
+échecs sont convertis en causes fixes classifiables, sans relayer stderr
+ni secrets. Aucun résultat réel script/LLM n'est attesté tant qu'un nouvel
 essai n'a pas réussi ; les tentatives échouées restent archivées telles
 quelles.
