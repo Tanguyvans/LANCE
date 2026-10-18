@@ -277,6 +277,29 @@ def test_fixture_waits_for_broker_before_seeding():
                                connect=connect, sleep=lambda _: None, monotonic=lambda: 99.0)
 
 
+def test_fixture_runtime_owned_by_broker_user(tmp_path):
+    import stat
+    module = _fixture_module()
+    config = {"listen_address": "127.0.0.1", "port": 1883, "public_topic": "lance/public/status",
+              "private_topic": "lance/private/telemetry", "control_user": "auditor"}
+    assert "user mosquitto" in module.build_config({**config, "intentional_flaws": 0})
+    runtime = tmp_path / "mosquitto"
+    runtime.mkdir(mode=0o750)
+    for name in ("mosquitto.conf", "acl", "passwd"):
+        (runtime / name).write_text(name)
+    calls = []
+    module.apply_runtime_ownership(
+        runtime, chown=lambda path, uid, gid: calls.append((path.name, uid, gid)),
+        getpwnam=lambda name: SimpleNamespace(pw_uid=999, pw_gid=998))
+    assert calls == [("mosquitto", 999, 998), ("mosquitto.conf", 999, 998),
+                     ("acl", 999, 998), ("passwd", 999, 998)]
+    assert stat.S_IMODE((runtime / "passwd").stat().st_mode) == 0o600
+    with pytest.raises(RuntimeError, match="system user unavailable"):
+        module.apply_runtime_ownership(
+            runtime, chown=lambda *args: pytest.fail("chown without broker user"),
+            getpwnam=lambda name: (_ for _ in ()).throw(KeyError(name)))
+
+
 def test_cli_assesses_archived_evidence_without_network(tmp_path, monkeypatch, briefing):
     run, tool, _ = execution(tmp_path / "run", monkeypatch, positive=False)
     decision = run_rules(briefing, tool)

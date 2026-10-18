@@ -57,5 +57,10 @@ avant tout précontrôle, aucun bras exécuté, preuves scellées sur nato
 DNS, et le broker n'a jamais écouté. La fixture utilise désormais la
 passerelle et le DNS du laboratoire, le proxy de cache `apt-cacher-ng`
 existant, et attend l'écoute réelle du broker avant de semer les canaris.
-Aucun résultat réel script/LLM n'est attesté tant qu'un nouvel essai n'a
-pas réussi ; la tentative échouée reste archivée telle quelle.
+Second lancement le 18 octobre 2026 (run `39119051336-1`) : l'installation
+passe, mais le broker sort avant le semis car il ne peut pas ouvrir son
+fichier de mots de passe, écrit sous root dans un répertoire `0750` alors
+qu'il abandonne ses privilèges. Le répertoire et ses fichiers sont donc
+attribués à l'utilisateur système `mosquitto` avant le démarrage. Aucun
+résultat réel script/LLM n'est attesté tant qu'un nouvel essai n'a pas
+réussi ; les tentatives échouées restent archivées telles quelles.
