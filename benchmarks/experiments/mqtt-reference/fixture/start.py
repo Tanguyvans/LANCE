@@ -69,7 +69,6 @@ password_file /run/mosquitto/passwd
 acl_file /run/mosquitto/acl
 persistence false
 allow_zero_length_clientid false
-max_keepalive 30
 message_size_limit 1024
 sys_interval 0
 log_dest stderr

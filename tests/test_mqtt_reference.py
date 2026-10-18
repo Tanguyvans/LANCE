@@ -229,6 +229,9 @@ def test_fixture_configs_differ_only_by_anonymous_private_read():
         broker = module.build_config({**config, "intentional_flaws": flaws})
         assert "persistence false" in broker  # Retained state purged at every reset.
         assert "allow_anonymous true" in broker
+        # Mosquitto clients default to MQTT 3.1.1 with keepalive 60; a lower
+        # broker maximum rejects their identifier before any ACL decision.
+        assert "max_keepalive" not in broker
 
 
 def _fixture_module():

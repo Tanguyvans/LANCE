@@ -50,6 +50,7 @@ BROKER_REASONS = {
     'ACL denying access': 'mqtt_acl_access_denied',
     'disconnected, not authorised': 'mqtt_connection_not_authorised',
     'Connection Refused: not authorised': 'mqtt_connection_not_authorised',
+    'Connection Refused: identifier rejected': 'mqtt_identifier_rejected',
     'disconnected due to protocol error': 'mqtt_client_protocol_error',
     'Connection refused': 'broker_connection_refused',
     'E: Unable to locate package': 'guest_package_unavailable',
