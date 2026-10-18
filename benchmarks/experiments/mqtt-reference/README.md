@@ -61,6 +61,13 @@ Second lancement le 18 octobre 2026 (run `39119051336-1`) : l'installation
 passe, mais le broker sort avant le semis car il ne peut pas ouvrir son
 fichier de mots de passe, écrit sous root dans un répertoire `0750` alors
 qu'il abandonne ses privilèges. Le répertoire et ses fichiers sont donc
-attribués à l'utilisateur système `mosquitto` avant le démarrage. Aucun
-résultat réel script/LLM n'est attesté tant qu'un nouvel essai n'a pas
-réussi ; les tentatives échouées restent archivées telles quelles.
+attribués à l'utilisateur système `mosquitto` avant le démarrage.
+Troisième lancement le 18 octobre 2026 (run `39121981477-1`) : le broker
+démarre et le précontrôle s'exécute, mais la publication du semeur échoue et
+les quatre lectures restent non prouvées. La réinspection classe une
+déconnexion pour erreur de protocole ; la documentation Mosquitto confirme
+qu'un plafond `max_keepalive 30` rejette les clients MQTT 3.1.1 par défaut
+à 60 secondes. Ce plafond propre à la fixture est donc retiré, sans changer
+les ACL. Aucun résultat réel script/LLM n'est attesté tant qu'un nouvel
+essai n'a pas réussi ; les tentatives échouées restent archivées telles
+quelles.

@@ -92,6 +92,10 @@ def test_seed_authorization_and_protocol_rejections_are_classified():
         diagnostics.entry(utility='mosquitto', reason='mqtt_client_protocol_error'),
     ]
     assert result == expected
+    identifier = diagnostics.broker_diagnostics(
+        f'Connection Refused: identifier rejected. {secret}')
+    assert identifier == [diagnostics.entry(
+        utility='mosquitto', reason='mqtt_identifier_rejected')]
 
 
 def test_inspection_workflow_is_manual_and_shell_syntax_valid():
