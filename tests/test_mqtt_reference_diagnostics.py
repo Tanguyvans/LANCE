@@ -71,6 +71,11 @@ def test_broker_exit_before_seeding_is_classified():
     assert diagnostics.entry(utility='mosquitto', reason='mosquitto_broker_not_listening_before_seeding') in result
 
 
+def test_missing_broker_system_user_is_classified():
+    result = diagnostics.broker_diagnostics('RuntimeError: Mosquitto system user unavailable in fixture guest')
+    assert diagnostics.entry(utility='mosquitto', reason='mosquitto_system_user_unavailable') in result
+
+
 def test_inspection_workflow_is_manual_and_shell_syntax_valid():
     root = Path(__file__).resolve().parents[1]
     path = root / '.github/workflows/mqtt-reference-inspect.yml'

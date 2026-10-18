@@ -10,7 +10,9 @@ It is never imported by the auditor policies under test.
 """
 import ipaddress
 import json
+import os
 from pathlib import Path
+import pwd
 import socket
 import subprocess
 import time
@@ -20,6 +22,7 @@ import time
 # benchmark guests; the disposable guest reaches it through the laboratory
 # gateway configured on its single interface.
 APT_PROXY_URL = "http://192.168.100.200:3142"
+BROKER_USER = "mosquitto"
 
 
 def _checked(config):
@@ -58,7 +61,8 @@ def build_config(config):
     address = config.get("listen_address", "127.0.0.1")
     if ipaddress.ip_address(address) not in ipaddress.ip_network("192.168.100.0/24") and address != "127.0.0.1":
         raise ValueError("Fixture listen address outside its laboratory")
-    return f"""listener {config.get('port', 1883)} {address}
+    return f"""user {BROKER_USER}
+listener {config.get('port', 1883)} {address}
 protocol mqtt
 allow_anonymous true
 password_file /run/mosquitto/passwd
@@ -99,6 +103,18 @@ def wait_for_broker(address, port, process, timeout_s=15, connect=None,
         sleep(0.25)
 
 
+def apply_runtime_ownership(runtime, chown=os.chown, getpwnam=pwd.getpwnam):
+    """Give the privilege-dropping broker its runtime directory and files."""
+    try:
+        account = getpwnam(BROKER_USER)
+    except KeyError as exc:
+        raise RuntimeError("Mosquitto system user unavailable in fixture guest") from exc
+    for path in (runtime, runtime / "mosquitto.conf", runtime / "acl", runtime / "passwd"):
+        if Path(path).exists():
+            chown(path, account.pw_uid, account.pw_gid)
+    (runtime / "passwd").chmod(0o600)
+
+
 def ensure_broker_binaries(proxy_path=Path("/etc/apt/apt.conf.d/99lance-apt-proxy")):
     """Use the template's Mosquitto, or install it inside this disposable guest only."""
     import shutil
@@ -128,6 +144,7 @@ def main():
     subprocess.run(["mosquitto_passwd", "-b", str(runtime / "passwd"),
                     "lance-seeder", config["seeder_password"]],
                    check=True, capture_output=True)
+    apply_runtime_ownership(runtime)
     broker = subprocess.Popen(mosquitto_command(str(runtime / "mosquitto.conf")))
     try:
         wait_for_broker(config.get("listen_address", "127.0.0.1"), config.get("port", 1883), broker)
