@@ -11,7 +11,15 @@ It is never imported by the auditor policies under test.
 import ipaddress
 import json
 from pathlib import Path
+import socket
 import subprocess
+import time
+
+
+# Local apt cache on the laboratory master (apt-cacher-ng), as used by the
+# benchmark guests; the disposable guest reaches it through the laboratory
+# gateway configured on its single interface.
+APT_PROXY_URL = "http://192.168.100.200:3142"
 
 
 def _checked(config):
@@ -68,11 +76,35 @@ def mosquitto_command(config_path="/run/mosquitto/mosquitto.conf"):
     return ["/usr/sbin/mosquitto", "-c", config_path]
 
 
-def ensure_broker_binaries():
+def apt_proxy_config():
+    return f'Acquire::http::Proxy "{APT_PROXY_URL}";\n'
+
+
+def wait_for_broker(address, port, process, timeout_s=15, connect=None,
+                    sleep=time.sleep, monotonic=time.monotonic):
+    """Wait until the freshly started broker accepts TCP, or fail closed."""
+    if connect is None:
+        connect = socket.create_connection
+    deadline = monotonic() + timeout_s
+    while True:
+        if process.poll() is not None:
+            raise RuntimeError("Mosquitto broker exited before seeding")
+        if monotonic() >= deadline:
+            raise RuntimeError("Mosquitto broker did not listen before seeding")
+        try:
+            with connect((address, port), timeout=1):
+                return
+        except OSError:
+            pass
+        sleep(0.25)
+
+
+def ensure_broker_binaries(proxy_path=Path("/etc/apt/apt.conf.d/99lance-apt-proxy")):
     """Use the template's Mosquitto, or install it inside this disposable guest only."""
     import shutil
     if all(shutil.which(name) for name in ("mosquitto", "mosquitto_passwd", "mosquitto_pub")):
         return "present"
+    Path(proxy_path).write_text(apt_proxy_config())
     env = {"DEBIAN_FRONTEND": "noninteractive", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"}
     subprocess.run(["apt-get", "update", "-qq"], check=True, capture_output=True, timeout=300, env=env)
     subprocess.run(["apt-get", "install", "-y", "-qq", "mosquitto", "mosquitto-clients"],
@@ -98,6 +130,7 @@ def main():
                    check=True, capture_output=True)
     broker = subprocess.Popen(mosquitto_command(str(runtime / "mosquitto.conf")))
     try:
+        wait_for_broker(config.get("listen_address", "127.0.0.1"), config.get("port", 1883), broker)
         for topic, payload in (("public_topic", "public_canary"),
                                ("private_topic", "private_canary")):
             subprocess.run(["mosquitto_pub", "-h", config.get("listen_address", "127.0.0.1"),

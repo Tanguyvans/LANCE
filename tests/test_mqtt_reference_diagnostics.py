@@ -64,6 +64,13 @@ def test_fixed_guest_refusal_reason_is_surfaced_without_free_text(tmp_path):
         diagnostics.entry('RuntimeError', reason='another_benchmark_guest_is_running')]
 
 
+def test_broker_exit_before_seeding_is_classified():
+    result = diagnostics.broker_diagnostics('RuntimeError: Mosquitto broker exited before seeding')
+    assert diagnostics.entry(utility='mosquitto', reason='mosquitto_broker_exited_before_seeding') in result
+    result = diagnostics.broker_diagnostics('RuntimeError: Mosquitto broker did not listen before seeding')
+    assert diagnostics.entry(utility='mosquitto', reason='mosquitto_broker_not_listening_before_seeding') in result
+
+
 def test_inspection_workflow_is_manual_and_shell_syntax_valid():
     root = Path(__file__).resolve().parents[1]
     path = root / '.github/workflows/mqtt-reference-inspect.yml'

@@ -48,6 +48,14 @@ et quatre bras, un LXC neuf par bras, des précontrôles avant et après les
 sondes et un archivage scellé qui reste sur nato. Le lancement est manuel
 sur `dev/2` via le workflow `mqtt-reference.yml` (runner `nato-master`,
 verrou laboratoire partagé, fournisseur et modèle fixés) ; un push ne le
-déclenche pas. **Ce pilote n'a pas encore été exécuté** : aucun résultat
-réel script/LLM n'est attesté à ce stade, distinct du gel historique et de
-la campagne confirmatoire.
+déclenche pas. Distinct du gel historique et de la campagne confirmatoire.
+
+Premier lancement réel le 17 octobre 2026 (run `39065457122-1`) : échec
+avant tout précontrôle, aucun bras exécuté, preuves scellées sur nato
+(32 fichiers vérifiés). L'inspection filtrée a établi la cause :
+`apt-get` échouait dans l'invité jetable (code 100), sans passerelle ni
+DNS, et le broker n'a jamais écouté. La fixture utilise désormais la
+passerelle et le DNS du laboratoire, le proxy de cache `apt-cacher-ng`
+existant, et attend l'écoute réelle du broker avant de semer les canaris.
+Aucun résultat réel script/LLM n'est attesté tant qu'un nouvel essai n'a
+pas réussi ; la tentative échouée reste archivée telle quelle.

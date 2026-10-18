@@ -37,6 +37,8 @@ GUEST_REASONS = {
     'unsupported_operation', 'operation_failed',
 }
 BROKER_REASONS = {
+    'Mosquitto broker exited before seeding': 'mosquitto_broker_exited_before_seeding',
+    'Mosquitto broker did not listen before seeding': 'mosquitto_broker_not_listening_before_seeding',
     'Address already in use': 'mosquitto_listen_address_in_use',
     'Cannot assign requested address': 'mosquitto_bind_address_unavailable',
     'unable to bind': 'mosquitto_listen_failed',

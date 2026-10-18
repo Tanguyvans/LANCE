@@ -182,6 +182,19 @@ def test_guest_controller_validates_fixture_and_lease(monkeypatch):
         guest.guest_owned({**lease, 'hostname': 'lance-ssh-' + 'a' * 12})
 
 
+def test_guest_network_uses_laboratory_gateway_and_dns():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        'mqtt_guest_controller_net', ROOT / 'benchmarks/ansible/files/mqtt_reference_proxmox.py')
+    guest = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guest)
+    # Laboratory apt path (group_vars benchmark_gateway/benchmark_dns); without
+    # it apt-get inside the disposable guest failed with exit code 100.
+    assert guest.LAB_GATEWAY == guest.LAB_DNS == '192.168.100.1'
+    assert guest.net0_spec({'ip': '192.168.100.220'}) == \
+        'name=eth0,bridge=vmbr1,ip=192.168.100.220/24,gw=192.168.100.1'
+
+
 def test_verify_archives_detects_unlisted_evidence(tmp_path):
     (tmp_path / 'trials').mkdir()
     (tmp_path / 'archives').mkdir()
