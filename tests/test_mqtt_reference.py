@@ -303,6 +303,36 @@ def test_fixture_runtime_owned_by_broker_user(tmp_path):
             getpwnam=lambda name: (_ for _ in ()).throw(KeyError(name)))
 
 
+def test_fixture_seed_uses_deterministic_client_and_fixed_failures():
+    module = _fixture_module()
+    config = {"listen_address": "192.168.100.220", "port": 1883,
+              "public_topic": "lance/public/status", "private_topic": "lance/private/telemetry",
+              "seeder_password": "fixture-only", "public_canary": "pub", "private_canary": "priv"}
+    commands = []
+    ok = SimpleNamespace(returncode=0, stderr="")
+    module.publish_seed(config, run=lambda argv, **kw: commands.append(argv) or ok)
+    assert len(commands) == 2
+    assert all(cmd[cmd.index("-i") + 1] == "lance-seeder" for cmd in commands)
+    assert all(cmd[cmd.index("-k") + 1] == "30" for cmd in commands)
+    assert all(cmd[cmd.index("-V") + 1] == "mqttv311" for cmd in commands)
+    secret = "NEVER_PUBLISH_SEED_STDERR"
+    refused = SimpleNamespace(returncode=5, stderr=f"Connection Refused: not authorised {secret}")
+    with pytest.raises(RuntimeError, match="MQTT seed publish not authorised") as caught:
+        module.publish_seed(config, run=lambda argv, **kw: refused)
+    assert secret not in str(caught.value)
+    assert module.classify_seed_failure(2, "Connection Refused: identifier rejected") == \
+        "MQTT seed publish identifier rejected"
+    assert module.classify_seed_failure(2, "Error: Protocol error") == \
+        "MQTT seed publish protocol error"
+
+    def timed_out(argv, **kw):
+        raise subprocess.TimeoutExpired(cmd=[secret], timeout=10)
+
+    with pytest.raises(RuntimeError, match="MQTT seed publish timed out") as timeout_caught:
+        module.publish_seed(config, run=timed_out)
+    assert secret not in str(timeout_caught.value)
+
+
 def test_cli_assesses_archived_evidence_without_network(tmp_path, monkeypatch, briefing):
     run, tool, _ = execution(tmp_path / "run", monkeypatch, positive=False)
     decision = run_rules(briefing, tool)

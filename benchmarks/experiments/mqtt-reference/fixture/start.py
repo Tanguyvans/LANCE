@@ -23,6 +23,8 @@ import time
 # gateway configured on its single interface.
 APT_PROXY_URL = "http://192.168.100.200:3142"
 BROKER_USER = "mosquitto"
+SEEDER_USER = "lance-seeder"
+SEEDER_CLIENT_ID = "lance-seeder"
 
 
 def _checked(config):
@@ -49,7 +51,7 @@ def build_acl(config):
               f"topic read {config['public_topic']}",
               f"topic read {config['private_topic']}",
               "# Fixture-only seeder; its credential never enters a public briefing.",
-              "user lance-seeder",
+              f"user {SEEDER_USER}",
               f"topic write {config['public_topic']}",
               f"topic write {config['private_topic']}", ""]
     return "\n".join(lines)
@@ -77,6 +79,48 @@ log_dest stderr
 
 def mosquitto_command(config_path="/run/mosquitto/mosquitto.conf"):
     return ["/usr/sbin/mosquitto", "-c", config_path]
+
+
+def seed_command(config, topic_key, payload_key):
+    """One retained publication with explicit, reproducible client settings."""
+    return ["mosquitto_pub", "-h", config.get("listen_address", "127.0.0.1"),
+            "-p", str(config.get("port", 1883)), "-V", "mqttv311",
+            "-i", SEEDER_CLIENT_ID, "-k", "30",
+            "-u", SEEDER_USER, "-P", config["seeder_password"],
+            "-t", config[topic_key], "-m", config[payload_key], "-r", "-q", "1"]
+
+
+_SEED_FAILURES = (
+    (("identifier rejected",), "MQTT seed publish identifier rejected"),
+    (("not authorised", "not authorized", "bad username or password", "bad username/password"),
+     "MQTT seed publish not authorised"),
+    (("timed out", "timeout"), "MQTT seed publish timed out"),
+    (("protocol error",), "MQTT seed publish protocol error"),
+    (("connection refused", "could not connect", "connection error"),
+     "MQTT seed publish connection failed"),
+)
+
+
+def classify_seed_failure(returncode, stderr):
+    """Fixed stage message only; raw stderr and credentials are never relayed."""
+    text = stderr.decode("utf-8", "replace") if isinstance(stderr, bytes) else str(stderr or "")
+    lowered = text.lower()
+    for markers, message in _SEED_FAILURES:
+        if any(marker in lowered for marker in markers):
+            return message
+    return "MQTT seed publish failed"
+
+
+def publish_seed(config, run=subprocess.run):
+    for topic_key, payload_key in (("public_topic", "public_canary"),
+                                   ("private_topic", "private_canary")):
+        try:
+            result = run(seed_command(config, topic_key, payload_key),
+                         capture_output=True, text=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("MQTT seed publish timed out") from None
+        if result.returncode:
+            raise RuntimeError(classify_seed_failure(result.returncode, result.stderr)) from None
 
 
 def apt_proxy_config():
@@ -141,19 +185,13 @@ def main():
                     config["control_user"], config["control_password"]],
                    check=True, capture_output=True)
     subprocess.run(["mosquitto_passwd", "-b", str(runtime / "passwd"),
-                    "lance-seeder", config["seeder_password"]],
+                    SEEDER_USER, config["seeder_password"]],
                    check=True, capture_output=True)
     apply_runtime_ownership(runtime)
     broker = subprocess.Popen(mosquitto_command(str(runtime / "mosquitto.conf")))
     try:
         wait_for_broker(config.get("listen_address", "127.0.0.1"), config.get("port", 1883), broker)
-        for topic, payload in (("public_topic", "public_canary"),
-                               ("private_topic", "private_canary")):
-            subprocess.run(["mosquitto_pub", "-h", config.get("listen_address", "127.0.0.1"),
-                            "-p", str(config.get("port", 1883)),
-                            "-u", "lance-seeder", "-P", config["seeder_password"],
-                            "-t", config[topic], "-m", config[payload], "-r", "-q", "1"],
-                           check=True, capture_output=True, timeout=10)
+        publish_seed(config)
     except Exception:
         broker.terminate()
         raise

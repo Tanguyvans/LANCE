@@ -37,6 +37,12 @@ GUEST_REASONS = {
     'unsupported_operation', 'operation_failed',
 }
 BROKER_REASONS = {
+    'MQTT seed publish identifier rejected': 'mqtt_seed_identifier_rejected',
+    'MQTT seed publish not authorised': 'mqtt_seed_not_authorised',
+    'MQTT seed publish connection failed': 'mqtt_seed_connection_failed',
+    'MQTT seed publish timed out': 'mqtt_seed_timed_out',
+    'MQTT seed publish protocol error': 'mqtt_seed_protocol_error',
+    'MQTT seed publish failed': 'mqtt_seed_failed',
     'Mosquitto system user unavailable in fixture guest': 'mosquitto_system_user_unavailable',
     'Mosquitto broker exited before seeding': 'mosquitto_broker_exited_before_seeding',
     'Mosquitto broker did not listen before seeding': 'mosquitto_broker_not_listening_before_seeding',

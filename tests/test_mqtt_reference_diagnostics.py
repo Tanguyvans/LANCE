@@ -71,6 +71,13 @@ def test_broker_exit_before_seeding_is_classified():
     assert diagnostics.entry(utility='mosquitto', reason='mosquitto_broker_not_listening_before_seeding') in result
 
 
+def test_seed_failure_stage_is_classified_without_stderr():
+    result = diagnostics.broker_diagnostics(
+        'RuntimeError: MQTT seed publish not authorised NEVER_PUBLISH_THIS_STDERR')
+    assert diagnostics.entry(utility='mosquitto', reason='mqtt_seed_not_authorised') in result
+    assert 'NEVER_PUBLISH_THIS_STDERR' not in json.dumps(result)
+
+
 def test_missing_broker_system_user_is_classified():
     result = diagnostics.broker_diagnostics('RuntimeError: Mosquitto system user unavailable in fixture guest')
     assert diagnostics.entry(utility='mosquitto', reason='mosquitto_system_user_unavailable') in result
