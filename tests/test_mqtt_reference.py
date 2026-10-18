@@ -231,6 +231,52 @@ def test_fixture_configs_differ_only_by_anonymous_private_read():
         assert "allow_anonymous true" in broker
 
 
+def _fixture_module():
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "benchmarks/experiments/mqtt-reference/fixture/start.py"
+    spec = importlib.util.spec_from_file_location("mqtt_fixture_start_net", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_fixture_apt_uses_laboratory_cache_proxy():
+    module = _fixture_module()
+    assert module.apt_proxy_config() == 'Acquire::http::Proxy "http://192.168.100.200:3142";\n'
+
+
+def test_fixture_waits_for_broker_before_seeding():
+    module = _fixture_module()
+    attempts = []
+    process = SimpleNamespace(poll=lambda: None)
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def connect(address, timeout):
+        attempts.append(address)
+        if len(attempts) < 3:
+            raise OSError("refused")
+        return Conn()
+
+    clock = {"now": 0.0}
+    module.wait_for_broker("192.168.100.220", 1883, process, timeout_s=15,
+                           connect=connect, sleep=lambda _: clock.update(now=clock["now"] + 0.25),
+                           monotonic=lambda: clock["now"])
+    assert attempts == [("192.168.100.220", 1883)] * 3
+    with pytest.raises(RuntimeError, match="exited before seeding"):
+        module.wait_for_broker("192.168.100.220", 1883, SimpleNamespace(poll=lambda: 1),
+                               connect=connect, sleep=lambda _: None, monotonic=lambda: 0.0)
+    with pytest.raises(RuntimeError, match="did not listen before seeding"):
+        module.wait_for_broker("192.168.100.220", 1883, process, timeout_s=0,
+                               connect=connect, sleep=lambda _: None, monotonic=lambda: 99.0)
+
+
 def test_cli_assesses_archived_evidence_without_network(tmp_path, monkeypatch, briefing):
     run, tool, _ = execution(tmp_path / "run", monkeypatch, positive=False)
     decision = run_rules(briefing, tool)

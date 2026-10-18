@@ -14,6 +14,10 @@ import sys
 import time
 
 OPERATIONS = []
+# Laboratory gateway/DNS (group_vars benchmark_gateway/benchmark_dns): the
+# disposable guest needs them for its in-guest apt path, like benchmark guests.
+LAB_GATEWAY = '192.168.100.1'
+LAB_DNS = '192.168.100.1'
 PUBLIC_TOPIC = 'lance/public/status'
 PRIVATE_TOPIC = 'lance/private/telemetry'
 FIXTURE_FIELDS = {'intentional_flaws', 'public_topic', 'private_topic', 'control_user',
@@ -130,6 +134,10 @@ def allocate(request, state):
     return lease
 
 
+def net0_spec(lease):
+    return f"name=eth0,bridge=vmbr1,ip={lease['ip']}/24,gw={LAB_GATEWAY}"
+
+
 def start_guest(request, lease):
     if guest_owned(lease) is not None:
         raise RuntimeError('fixture_guest_must_be_absent_before_reset')
@@ -137,8 +145,8 @@ def start_guest(request, lease):
     command('pct', 'clone', '9000', str(lease['vmid']), '--hostname', lease['hostname'], '--full', timeout=300)
     guest_owned(lease)
     command('pct', 'set', str(lease['vmid']), '--memory', '256', '--cores', '1',
-            '--features', 'nesting=0',
-            '--net0', f"name=eth0,bridge=vmbr1,ip={lease['ip']}/24")
+            '--features', 'nesting=0', '--nameserver', LAB_DNS,
+            '--net0', net0_spec(lease))
     command('pct', 'start', str(lease['vmid']))
     for _ in range(40):
         if command('pct', 'exec', str(lease['vmid']), '--', 'true', check=False).returncode == 0:
