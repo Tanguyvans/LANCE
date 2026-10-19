@@ -311,7 +311,8 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
 
     if service == "mqtt":
         p = port or 1883
-        base = ["mosquitto_sub", "-h", ip, "-p", str(p), "-t", "$SYS/#", "-C", "1", "--quiet", "-W", "5"]
+        base = ["mosquitto_sub", "-h", ip, "-p", str(p), "-t", "$SYS/#", "-C", "1", "--quiet", "-W", "5",
+                "-V", "mqttv311", "-I", "lance-listener-", "-k", "30"]
         anonymous = _run(base, timeout=10)
         auth = _run(base + ["-u", user, "-P", password], timeout=10)
         anon_observed = anonymous["return_code"] == 0 or bool(anonymous["stdout"].strip())
