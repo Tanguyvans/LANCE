@@ -20,7 +20,7 @@
 \newcommand{\scenariolink}[1]{\hyperref[scenario:#1]{\code{#1}}}
 \newcommand{\comparisonlink}[2]{\hyperlink{comparison:#1}{#2}}
 \newcommand{\Needspace}[1]{\par\begingroup\dimen0=\pagegoal\relax\advance\dimen0 by -\pagetotal\relax\dimen2=#1\relax\ifdim\dimen0<\dimen2\relax\newpage\fi\endgroup}
-\newcommand{\rev}{2026-10-16 21:43 (Europe/Brussels, UTC+02:00)}
+\newcommand{\rev}{2026-10-19 (Europe/Brussels, UTC+02:00)}
 \title{Plan V2 : questions, scénarios et comparaison des méthodes\\[4pt]\large De la question expérimentale aux scénarios et à leur réalisation}
 \author{Projet LANCE}
 \date{Dernière révision : \rev\\Statut : conception V2 et qualification SSH limitée ; gel confirmatoire à établir}
@@ -46,10 +46,10 @@ Les noms en \code{s_} identifient les propositions V2. Les références explicit
 \subsection{Méthode et statut des informations}
 La méthode combine l’inventaire reproductible des définitions du dépôt, une lecture ciblée des outils et fournisseurs, et la revue IoT/CTF figée : 40 sources primaires, dix propositions et quinze cas limites \cite{iotreview}. Elle structure des expériences proposées et rattache les résultats de calibration SSH déjà publiés dans la référence technique, sans nouvel essai ni nouvelle lecture des archives privées sur nato. Les sources inspectées, la commande de reproduction et les constats sur le catalogue figurent en annexe~\ref{sec:sources}.
 
-Les faits de code, hypothèses de gain, obligations de construction et futurs résultats sont distingués. Les profils d’admission confirmatoire restent à attester ; la qualification native SSH déjà obtenue est consignée séparément. Les termes vrai positif (TP), faux positif (FP) et faux négatif (FN) sont appliqués aux constats selon leur contrat de preuve, pas aux seules affirmations du rapport.
+Les faits de code, hypothèses de gain, obligations de construction et futurs résultats sont distingués. Les profils d’admission confirmatoire restent à attester ; les qualifications natives SSH et MQTT déjà obtenues sont consignées séparément. Les termes vrai positif (TP), faux positif (FP) et faux négatif (FN) sont appliqués aux constats selon leur contrat de preuve, pas aux seules affirmations du rapport.
 
 \subsection{Première décision de construction}
-Commencer par les preuves courantes, les contrôles applicables et le reset, avec \scenariolink{s_injection_preuves} pour la calibration hors ligne. Le lot comparatif suit \scenariolink{s_ssh_identifiants}, \scenariolink{s_mqtt_lecture}, \scenariolink{s_api_organisations}, \scenariolink{s_mqtt_reprise} et \scenariolink{s_cache_identites}, dans cet ordre. La qualification native du premier scénario est obtenue ; la prochaine réalisation est MQTT. Les questions de lecture n’ajoutent aucune dépendance technique. Les trois étapes et le chantier réseau parallèle restent décrits en section~\ref{sec:implementation-path}.
+Commencer par les preuves courantes, les contrôles applicables et le reset, avec \scenariolink{s_injection_preuves} pour la calibration hors ligne. Le lot comparatif suit \scenariolink{s_ssh_identifiants}, \scenariolink{s_mqtt_lecture}, \scenariolink{s_api_organisations}, \scenariolink{s_mqtt_reprise} et \scenariolink{s_cache_identites}, dans cet ordre. Les qualifications natives des deux premiers scénarios sont obtenues ; la prochaine réalisation est le contexte d’API. Les questions de lecture n’ajoutent aucune dépendance technique. Les trois étapes et le chantier réseau parallèle restent décrits en section~\ref{sec:implementation-path}.
 
 \section{Comparateurs, mesures et décision}
 \label{sec:estimands}
@@ -237,7 +237,7 @@ Fiches prioritaires : \scenariolink{s_injection_preuves}. Admission et calibrati
 
 Fiches prioritaires : \scenariolink{s_ssh_identifiants}, \scenariolink{s_mqtt_lecture}, \scenariolink{s_api_organisations}, \scenariolink{s_mqtt_reprise}, \scenariolink{s_cache_identites}. Référence simple, contexte, reprise puis état ; premier lot minimal pour situer un apport éventuel.
 
-\textbf{Construction restante :} SSH est qualifié dans son périmètre borné ; poursuivre par \scenariolink{s_mqtt_lecture} ; \scenariolink{s_api_organisations} sur objets/propriétaires paramétriques ; \scenariolink{s_mqtt_reprise} avec retour structuré ; \scenariolink{s_cache_identites} avec cache inter-identités et purge.
+\textbf{Construction restante :} SSH et MQTT sont qualifiés dans leur périmètre borné ; poursuivre par \scenariolink{s_api_organisations} sur objets/propriétaires paramétriques ; \scenariolink{s_mqtt_reprise} avec retour structuré ; \scenariolink{s_cache_identites} avec cache inter-identités et purge.
 
 \textbf{Ce que l’on teste :} \scenariolink{s_ssh_identifiants}, \scenariolink{s_mqtt_lecture} donnent une référence d'automatisation forte ; \scenariolink{s_api_organisations} teste attribution contextuelle ; \scenariolink{s_mqtt_reprise} teste révision après retour ; \scenariolink{s_cache_identites} teste séquence et attribution historique.
 
@@ -308,8 +308,8 @@ Fiches prioritaires : sélection guidée par une question, sans nouveaux types. 
 \textbf{Sortie technique :} Protocole séparé, oracle sans juge LLM seul et coût complet ; pas de types ajoutés aux 216.
 
 
-\subsection{Première comparaison : qualification SSH et gel restant}\label{sec:first-comparison}\hypertarget{sec:first-comparison}{}
-\textbf{Statut : qualification native obtenue ; admission et gel confirmatoire incomplets.} La première comparaison interactive reste \scenariolink{s_ssh_identifiants}, avant MQTT, contexte, reprise puis cache. Elle établit une référence terminale forte et vérifie l’instrument. Une D1 aussi bonne ou meilleure est une issue admissible ; ce cas ne mesure ni architecture inconnue, ni contrat nouveau, ni adaptation causale.
+\subsection{Première comparaison : qualifications SSH et MQTT, gel restant}\label{sec:first-comparison}\hypertarget{sec:first-comparison}{}
+\textbf{Statut : qualifications natives SSH et MQTT obtenues ; admission et gel confirmatoire incomplets.} La première comparaison interactive reste \scenariolink{s_ssh_identifiants}, suivie de \scenariolink{s_mqtt_lecture}, avant contexte, reprise et cache. Elle établit une référence terminale forte et vérifie l’instrument. Une D1 aussi bonne ou meilleure est une issue admissible ; ce cas ne mesure ni architecture inconnue, ni contrat nouveau, ni adaptation causale.
 
 \paragraph{Qualification réelle déjà obtenue.}
 Le workflow \href{https://github.com/Tanguyvans/LANCE/actions/runs/38769747406}{38769747406}
@@ -341,7 +341,38 @@ Les deux archives restent sous
 Le registre \code{implementation_tracking.ssh_calibration} du plan JSON conserve
 les identifiants de paires et leurs deux SHA-256 complets, reliés au bilan de
 référence. Les attestations des profils confirmatoires restent à établir.
-Le prochain scénario à construire est \scenariolink{s_mqtt_lecture}.
+
+\paragraph{Qualification MQTT obtenue.}
+Le workflow \href{https://github.com/Tanguyvans/LANCE/actions/runs/39239366068}{39239366068}
+a exécuté le 19 octobre 2026 le code \code{6dda69e} sur la même cible nato-master / Dev 2,
+avec un courtier Mosquitto jetable recréé avant chaque bras. Les cinq lancements
+antérieurs, en échec et conservés tels quels, ont permis de classer les causes
+avant que ce sixième lancement n'obtienne quatre bras valides : deux cas appariés, F0 (ACL protégeant la
+lecture privée) et F1 (une propriété de confidentialité violée intentionnellement),
+chacun exécuté par le script D1 et par Qwen 3.8 27B \cite{mqttqualification}.
+
+\begin{tabularx}{\textwidth}{@{}P{37mm}Y P{21mm}P{25mm}@{}}\toprule
+Posture & Politique et verdict & Lecture privée & Durée du bras\\\midrule
+Protégée F0 & Script D1 : correct & refusée & 15,0 s\\
+Protégée F0 & Qwen 3.8 27B : correct & refusée & 34,6 s\\
+Vulnérable F1 & Qwen 3.8 27B : correct & prouvée & 31,9 s\\
+Vulnérable F1 & Script D1 : correct & prouvée & 15,0 s\\\bottomrule
+\end{tabularx}
+
+Le contrôleur consigne quatre précontrôles valides, quatre verdicts corrects,
+120 fichiers vérifiés et deux archives scellées. Les durées excluent création
+et précontrôles. Qwen utilise la politique bornée \code{mqtt_listen} /
+\code{finish_assessment}, distincte du pipeline A1 complet. Une répétition par
+posture qualifie le dispositif ; le verdict reste
+\code{evidence_only_not_admitted}, \code{mt_admissible: false}. Les coûts
+facturés et la parité des fournisseurs ne sont pas attestés. Aucun avantage
+général du LLM, équivalence statistique ou adaptation causale n'est établi.
+
+Les archives restent sous
+\code{/opt/lance-dev-2/output/mqtt-reference/39239366068-1/} sur nato. Le
+registre \code{mqtt_calibration} du plan JSON renvoie aux deux empreintes
+d'archives et au bilan de référence ; les attestations confirmatoires restent
+à établir. Le prochain scénario à construire est \scenariolink{s_api_organisations}.
 
 \paragraph{Périmètre et unité.}
 Conserver uniquement \code{s_ssh_identifiants_t01} (F0) et \code{s_ssh_identifiants_t02} (F1), K2, $d=0$, B2, D1/A1. Un monde paramétré et une répétition donnent quatre exécutions, restaurées entre bras et sœurs. Le briefing public contient actif/port, politique interdisant l’accès faible, dictionnaire gelé, objet de lecture, identité légitime de contrôle marquée, outils et plafonds communs ; il ne révèle ni F ni l’entrée qui fonctionne. Le compte légitime de contrôle ne constitue pas une violation. L’oracle privé atteste configuration, autorisations, identité effective, objet frais, sessions et reset, sans fournir de solution aux bras.
@@ -379,11 +410,11 @@ Prévoir les conclusions : gain utile de réussite sous contraintes étayé si t
 \paragraph{Livrables et passage à la suite.}
 Le pilote SSH qualifie déjà le dispositif borné. Pour son admission confirmatoire, conserver et compléter : fixture SSH F0/F1 et objet témoin ; outils publics et oracle privé séparés ; D1 qualifiée ; adaptateur A1 à capacités communes ; reset/appariement/collecte ; calibration et manifeste gelé. L’archive reprend l’identité complète, les observations brutes et sessions, décisions, contrôles, oracle séparé, verdict, coûts, échecs et manifeste SHA-256 décrits en section~\ref{sec:worked-example}. La présente consolidation rattache la calibration SSH existante ; elle ne crée aucun nouvel essai ni archive de campagne.
 
-La qualification technique SSH permet de poursuivre \scenariolink{s_mqtt_lecture}, puis \scenariolink{s_api_organisations}, \scenariolink{s_mqtt_reprise} et \scenariolink{s_cache_identites} dans l’ordre existant. Le passage ne dépend pas d’une victoire LLM. Le réseau garde son chantier parallèle : geler trois briefings concrets K0/K1/K2, le masque K1, les graphes révélés et l’espace de découverte ; attester d’abord témoin direct/routé et un relais nécessaire, avec origine/sortie/session et refus du raccourci. Une validation Proxmox seule n’atteste pas la trajectoire de la politique.
+Les qualifications techniques SSH et MQTT permettent de poursuivre \scenariolink{s_api_organisations}, puis \scenariolink{s_mqtt_reprise} et \scenariolink{s_cache_identites} dans l’ordre existant. Le passage ne dépend pas d’une victoire LLM. Le réseau garde son chantier parallèle : geler trois briefings concrets K0/K1/K2, le masque K1, les graphes révélés et l’espace de découverte ; attester d’abord témoin direct/routé et un relais nécessaire, avec origine/sortie/session et refus du raccourci. Une validation Proxmox seule n’atteste pas la trajectoire de la politique.
 
 \subsection{Commencer maintenant}
 
-Conserver le schéma de preuve et les contrôles applicables. L’ordre initial est \scenariolink{s_ssh_identifiants}, \scenariolink{s_mqtt_lecture}, \scenariolink{s_api_organisations}, \scenariolink{s_mqtt_reprise} et \scenariolink{s_cache_identites} dans cet ordre ; SSH dispose déjà de sa qualification native bornée, et MQTT est la prochaine réalisation. Fournir pour chaque fiche le comparateur sans LLM, la sœur protégée, le contrôle légitime, l'oracle privé et les mêmes canaux de preuve publics, le reset et l'archive complète. \scenariolink{s_injection_preuves} est la calibration hors ligne de preuve/abstention ; elle peut précéder la réalisation interactive \scenariolink{s_injection_effet}. Le socle \scenariolink{s_ota_version} minimal est qualifié avant la variante \scenariolink{s_ota_contrat} à l’étape 3. Ne pas attendre les quinze EC ni le prototype réseau pour comparer les références locales.
+Conserver le schéma de preuve et les contrôles applicables. L’ordre initial est \scenariolink{s_ssh_identifiants}, \scenariolink{s_mqtt_lecture}, \scenariolink{s_api_organisations}, \scenariolink{s_mqtt_reprise} et \scenariolink{s_cache_identites} dans cet ordre ; SSH et MQTT disposent déjà de leur qualification native bornée, et le contexte d’API est la prochaine réalisation. Fournir pour chaque fiche le comparateur sans LLM, la sœur protégée, le contrôle légitime, l'oracle privé et les mêmes canaux de preuve publics, le reset et l'archive complète. \scenariolink{s_injection_preuves} est la calibration hors ligne de preuve/abstention ; elle peut précéder la réalisation interactive \scenariolink{s_injection_effet}. Le socle \scenariolink{s_ota_version} minimal est qualifié avant la variante \scenariolink{s_ota_contrat} à l’étape 3. Ne pas attendre les quinze EC ni le prototype réseau pour comparer les références locales.
 
 Après ce lot, construire le broker/actionneur de \scenariolink{s_mqtt_commande}, la session clôturée \scenariolink{s_session_cloturee} et la consommation durable \scenariolink{s_provisioning_rejeu} ; puis \scenariolink{s_edge_contrat}, \scenariolink{s_ota_contrat} sur contrats publics nouveaux. EC03 et EC12 sont les premiers prototypes réutilisant ces supports si une nouvelle question est retenue : ils restent hors score jusqu'à amendement. Le transfert distribué EC08 vient après les états locaux ; OSCORE, fragmentation, multi-image, migration et média après qualification de leurs fournisseurs.
 
@@ -400,7 +431,7 @@ Le pilote S1/S14/S15/S1h déjà configuré reste une campagne distincte avec bud
 \section{Limites et prochaines étapes}
 Les inventaires sont des constats sur les définitions, pas sur tous les services déployés. Les domaines techniques ne sont pas des familles statistiques ; les 24 cellules du noyau et les vingt ajouts sont des contrats candidats, pas une couverture complète ni des familles indépendantes attestées. Certaines propriétés demandent un nouveau fournisseur, un oracle d'état ou une instrumentation de l'origine réseau. Les simulations radio, cloud, OT et signatures limitent la portée des conclusions. Les résultats du pilote et ses coûts n'ont pas été réévalués dans cette révision.
 
-La livraison de conception regroupe 44 fiches dans 25 ensembles éditoriaux, avec rôle, parent, invariant, profil de complexité, mesures et priorité de construction. Les 25 retours IoT/cas limites possèdent un rattachement typé ; aucun nouveau contrat scoré n'est admis par héritage. Les 216 types et la charge conditionnelle sont conservés. Hors qualification native SSH consignée plus haut, les attestations de réalisation restent ouvertes ; les admissions confirmatoires restent vides : une source compilée, un profil décrit ou un oracle proposé n'est pas un résultat expérimental. La prochaine réalisation attendue est le contraste MQTT local avec référence compétente, sœur protégée, effet observé, reset et preuves indépendantes. La qualification SSH fournit un précédent technique ; elle ne ferme ni l’admission M-T ni le gel du nouveau test. Le résultat peut être favorable, nul ou défavorable au LLM.
+La livraison de conception regroupe 44 fiches dans 25 ensembles éditoriaux, avec rôle, parent, invariant, profil de complexité, mesures et priorité de construction. Les 25 retours IoT/cas limites possèdent un rattachement typé ; aucun nouveau contrat scoré n'est admis par héritage. Les 216 types et la charge conditionnelle sont conservés. Hors qualifications natives SSH et MQTT consignées plus haut, les attestations de réalisation restent ouvertes ; les admissions confirmatoires restent vides : une source compilée, un profil décrit ou un oracle proposé n'est pas un résultat expérimental. La prochaine réalisation attendue est le contexte d’API local avec référence compétente, sœur protégée, effet observé, reset et preuves indépendantes. Les qualifications SSH et MQTT fournissent un précédent technique ; elles ne ferment ni l’admission M-T ni le gel du nouveau test. Le résultat peut être favorable, nul ou défavorable au LLM.
 
 La nouvelle structure range les 44 fiches selon six questions de lecture, avec les détails en annexe. Elle conserve les 25 ensembles, contrats, mesures, priorités et noms descriptifs. Ce rangement ne fournit aucun résultat ni nouvel effet agrégé.
 
@@ -418,13 +449,14 @@ La nouvelle structure range les 44 fiches selon six questions de lecture, avec l
 \bibitem{networkcode} Dépôt LANCE, \code{benchmarks/ansible/playbooks/03_deploy_scenario.yml}, \code{04_inject_vulns.yml}, \code{06_verify.yml}, \code{benchmarks/ansible/files/benchmark_simulator.py} et \code{src/agent/core/executor.py}. Lecture ciblée du 15 octobre 2026 : routes du catalogue S13, bootstrap multi-relais, précontrôles Proxmox, réponses simulées et journalisation d’origine. Aucun déploiement ni parcours reproduit.
 \bibitem{iotreview} Revue complémentaire IoT/CTF LANCE, \code{revue-iot-ctf.tex}, \code{revue-iot-ctf.pdf} et registre \code{revue-iot-ctf.json}. Révision du 15 octobre 2026 à 11:44 (Europe/Brussels, UTC+02:00), validée documentairement à 11:48 : 40 sources primaires, dix IG et quinze EC. Sources, versions, sections réellement lues et limites dans ce registre ; aucun standard ni fournisseur exécuté. Les empreintes historiques restent attachées aux entrées de cette revue ; les artefacts gelés sont référencés dans le nouveau snapshot.
 \bibitem{sshqualification} Dépôt LANCE, \code{docs/benchmark/agent-vs-automation-cli.md}, section « Qualification native vérifiée le 15 octobre 2026 ». Workflow \href{https://github.com/Tanguyvans/LANCE/actions/runs/38769747406}{38769747406}, code exécuté \code{63203a8dc77ebb9d4afcc1190b902c9da5e29d84}, intégration \code{4f29d67}. Bilan existant consulté le 16 octobre : quatre bras, précontrôles, nettoyage, 120 fichiers et deux empreintes d’archives. Calibration locale bornée ; archives privées non réexpertisées pour cette consolidation.
-\bibitem{snapshot} Inventaire reproductible de cette révision : \code{benchmarks/experiments/research-review/coverage_snapshot.py}, \code{coverage-snapshot.json} et plan de conception \code{coverage-plan.json}. Révision V2 : 44 fiches regroupées dans 25 ensembles, profils de complexité et mesures par fiche ; types conservés, suivi SSH borné renseigné séparément et admission confirmatoire non acquise.
+\bibitem{mqttqualification} Dépôt LANCE, \code{docs/benchmark/agent-vs-automation-cli.md}, section « Qualification MQTT réelle vérifiée le 19 octobre 2026 », et \code{benchmarks/experiments/mqtt-reference/README.md}. Workflow \href{https://github.com/Tanguyvans/LANCE/actions/runs/39239366068}{39239366068}, code exécuté \code{6dda69e}, sixième lancement. Bilan : quatre bras valides sur Mosquitto jetable, cas F0/F1, quatre précontrôles, 120 fichiers, deux empreintes d’archives. Calibration locale bornée ; aucun avantage LLM établi.
+\bibitem{snapshot} Inventaire reproductible de cette révision : \code{benchmarks/experiments/research-review/coverage_snapshot.py}, \code{coverage-snapshot.json} et plan de conception \code{coverage-plan.json}. Révision V2 : 44 fiches regroupées dans 25 ensembles, profils de complexité et mesures par fiche ; types conservés, suivis SSH et MQTT bornés renseignés séparément et admission confirmatoire non acquise.
 \end{thebibliography}
 
 
 \appendix
 \section{Catalogue des scénarios par question}\label{sec:scenarios}\hypertarget{sec:scenarios}{}\label{sec:extension}
-Les fiches suivantes définissent les contrats proposés. SSH dispose de la qualification native bornée décrite au corps principal ; les admissions confirmatoires de ces fiches ne sont pas attestées. $F$ est le nombre privé de défauts intentionnels du périmètre contrôlé ; $d$ compte les relais intermédiaires nécessaires où s'exécutent les outils de contrôle pour atteindre le point de vérification, pas les routeurs traversés ; K0/K1/K2 décrit la carte initiale. La sortie réseau et le transport sont enregistrés séparément. La session terminale vers le service évalué, y compris la commande bornée prouvant l'accès SSH, ne compte pas comme un relais supplémentaire ; ses actions et sa provenance sont néanmoins journalisées. Aucun $d$ fini n'existe pour \scenariolink{s_reseau_inaccessible} bloqué. Les entrées privées, titres révélateurs et oracles ne sont pas accessibles aux politiques.
+Les fiches suivantes définissent les contrats proposés. SSH et MQTT disposent de la qualification native bornée décrite au corps principal ; les admissions confirmatoires de ces fiches ne sont pas attestées. $F$ est le nombre privé de défauts intentionnels du périmètre contrôlé ; $d$ compte les relais intermédiaires nécessaires où s'exécutent les outils de contrôle pour atteindre le point de vérification, pas les routeurs traversés ; K0/K1/K2 décrit la carte initiale. La sortie réseau et le transport sont enregistrés séparément. La session terminale vers le service évalué, y compris la commande bornée prouvant l'accès SSH, ne compte pas comme un relais supplémentaire ; ses actions et sa provenance sont néanmoins journalisées. Aucun $d$ fini n'existe pour \scenariolink{s_reseau_inaccessible} bloqué. Les entrées privées, titres révélateurs et oracles ne sont pas accessibles aux politiques.
 
 Les registres fixent unité et dénominateur ; chaque fiche précise son prédicat, ses observations et ses mesures secondaires. Chaque contraste conserve les outils, droits, possibilités de découverte et budgets pertinents, à l'exception du facteur explicitement modifié. Tous exigent un contrôle légitime opérationnel, une sœur protégée et un oracle sensible aux contre-exemples. Les témoins insuffisants sont des précontrôles supplémentaires sauf lorsqu'ils font déjà partie des types sélectionnés.
 

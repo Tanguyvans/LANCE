@@ -1,9 +1,9 @@
 {
   "schema_version": 11,
   "kind": "research_design_not_execution_manifest",
-  "status": "proposed_design_with_native_ssh_calibration_not_confirmatory",
+  "status": "proposed_design_with_native_ssh_and_mqtt_calibrations_not_confirmatory",
   "scope": "Candidate extension; current frozen pilot remains separate.",
-  "revision": "2026-10-16 21:43 Europe/Brussels UTC+02:00",
+  "revision": "2026-10-19 Europe/Brussels UTC+02:00",
   "domains": [
     {
       "id": "D01",
@@ -12548,7 +12548,7 @@
     }
   ],
   "implementation_tracking": {
-    "updated_at": "2026-10-16 21:43 (Europe/Brussels, UTC+02:00)",
+    "updated_at": "2026-10-19 (Europe/Brussels, UTC+02:00)",
     "scope": "Progress record separate from proposed experiment selection and admission attestations.",
     "ssh_calibration": {
       "status": "native_calibration_verified_not_confirmatory",
@@ -12629,10 +12629,27 @@
         "This consolidation reads existing records; it does not rerun or independently reverify private nato artifacts."
       ]
     },
-    "next_scenario": "s_mqtt_lecture",
+    "mqtt_calibration": {
+      "status": "native_calibration_verified_not_confirmatory",
+      "executed_on": "2026-10-19",
+      "scenario_id": "s_mqtt_lecture",
+      "selected_type_ids": ["s_mqtt_lecture_t01", "s_mqtt_lecture_t02"],
+      "workflow_run_id": 39239366068,
+      "workflow_url": "https://github.com/Tanguyvans/LANCE/actions/runs/39239366068",
+      "execution_commit": "6dda69e604aae8e2463296103197f2c0fd5b7ca5",
+      "reference_docs": [
+        "docs/benchmark/agent-vs-automation-cli.md#qualification-mqtt-reelle-verifiee-le-19-octobre-2026",
+        "benchmarks/experiments/mqtt-reference/README.md"
+      ],
+      "measurement_status": "evidence_only_not_admitted",
+      "mt_admissible": false,
+      "repetitions_per_posture": 1,
+      "scope": "Bounded mqtt_listen/finish_assessment policy; four valid arms on a real Mosquitto fixture; classified causes of five prior failed attempts retained in the reference.",
+      "confirmation_limits": "Single repetition per posture; operator-supplied oracle; reset and provider parity not attested; no LLM advantage established; costs are catalogue estimates."
+    },
+    "next_scenario": "s_api_organisations",
     "next_status": "planned_not_implemented_or_attested",
     "following_scenarios": [
-      "s_api_organisations",
       "s_mqtt_reprise",
       "s_cache_identites"
     ],

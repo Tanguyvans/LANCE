@@ -1,8 +1,8 @@
 # Plan V2 : questions, scénarios et réalisation
 
 **Cycle de vie : Actif** — étude commencée le **2026-10-12**.
-Dernière révision : **2026-10-16 21:43 (Europe/Brussels, UTC+02:00)**.
-Statut : **conception V2 consolidée ; qualification SSH native documentée, hors campagne confirmatoire**.
+Dernière révision : **2026-10-19 (Europe/Brussels, UTC+02:00)**.
+Statut : **conception V2 consolidée ; qualifications SSH et MQTT natives documentées, hors campagne confirmatoire**.
 
 ## Question et périmètre
 
@@ -143,7 +143,7 @@ restent à calibrer puis geler. Aucun nom, configuration, bras ou priorité ajou
 
 ## Avancement consolidé
 
-Dernière consolidation : **2026-10-16 21:43 (Europe/Brussels, UTC+02:00)**. La conception conserve les **44 scénarios,
+Dernière consolidation : **2026-10-19 (Europe/Brussels, UTC+02:00)**. La conception conserve les **44 scénarios,
 25 ensembles, 216 configurations et 456 bras conditionnels**. Les documents
 historiques et la revue IoT figée gardent leurs dates et leur portée.
 
@@ -151,8 +151,8 @@ historiques et la revue IoT figée gardent leurs dates et leur portée.
 | --- | --- | --- |
 | Organisation V2 et correspondance scénario/mesure/hypothèse | Conception structurée et contrôlée | Admission expérimentale par scénario |
 | `s_ssh_identifiants` | **Qualification native réussie le 15 octobre** : script et Qwen corrects sur les cas protégé/vulnérable | Métriques, effectifs et gel confirmatoire à établir |
-| `s_mqtt_lecture` | Contrat défini ; réalisation et qualification à faire | **Prochain scénario à construire après cette consolidation** |
-| `s_api_organisations`, `s_mqtt_reprise`, `s_cache_identites` | Contrats définis | Poursuivre dans cet ordre après MQTT |
+| `s_mqtt_lecture` | **Qualification réelle réussie le 19 octobre** : script et Qwen corrects sur les cas F0/F1 | Métriques, effectifs et gel confirmatoire à établir |
+| `s_api_organisations`, `s_mqtt_reprise`, `s_cache_identites` | Contrats définis | Poursuivre dans cet ordre ; `s_api_organisations` d'abord |
 | `s_injection_preuves` et parcours réseau | Préparation hors ligne et chantier parallèle distincts | Leurs propres contrôles restent requis |
 
 ### Qualification SSH déjà obtenue
@@ -176,17 +176,35 @@ calibration ne deviennent pas rétroactivement le budget B2. Cette consolidation
 reprend les sources existantes sans relancer les essais ni réexpertiser les
 archives privées sur nato. Les tentatives antérieures restent dans la référence.
 
+### Qualification MQTT déjà obtenue
+
+Le [workflow 39239366068](https://github.com/Tanguyvans/LANCE/actions/runs/39239366068)
+du 19 octobre, au code `6dda69e`, a exécuté les quatre bras de
+`s_mqtt_lecture` sur un Mosquitto réel dans des LXC jetables de pve-nato. Les
+cas F0 (aucune faille) et F1 (une faille) comparent script D1 et Qwen 3.8 27B ;
+les deux politiques satisfont le contrat dans les deux postures — refus prouvé
+de la lecture privée anonyme en F0, lecture du canari privé frais prouvée en F1
+—, sans faux positif. Les quatre précontrôles sont valides, les deux paires
+sont complètes, 120 fichiers et deux archives SHA-256 sont vérifiés. Les
+références détaillées et les limites sont dans
+[la référence technique](../../docs/benchmark/agent-vs-automation-cli.md#qualification-mqtt-réelle-vérifiée-le-19-octobre-2026)
+et le [suivi MQTT](../../benchmarks/experiments/mqtt-reference/README.md).
+
+Une répétition par posture, avec oracle fourni par l’opérateur, ne qualifie que
+l’instrument : `mt_admissible` reste `false`, la remise à zéro et la parité de
+fournisseur ne sont pas attestées, et aucun avantage du LLM n’est établi.
+
 ## Quoi construire maintenant
 
 Commencer par la préparation des preuves, les contrôles, le reset et la parité ;
 `s_injection_preuves` sert à la calibration hors ligne et conserve son travail propre.
-La qualification SSH étant acquise dans son périmètre borné, poursuivre par
-**`s_mqtt_lecture`, `s_api_organisations`, `s_mqtt_reprise`, `s_cache_identites`**,
-dans cet ordre. La campagne confirmatoire SSH reste à préparer séparément.
+Les qualifications SSH et MQTT étant acquises dans leur périmètre borné,
+poursuivre par **`s_api_organisations`, `s_mqtt_reprise`, `s_cache_identites`**,
+dans cet ordre. La campagne confirmatoire reste à préparer séparément.
 
 | Place | Travail | Scénarios prioritaires |
 | --- | --- | --- |
-| Étape 1 | Comparaison locale | SSH qualifié, puis les quatre scénarios ci-dessus |
+| Étape 1 | Comparaison locale | SSH et MQTT qualifiés, puis les trois scénarios ci-dessus |
 | Étape 2 | Séquences IoT | `s_mqtt_commande`, `s_session_cloturee`, `s_provisioning_rejeu` |
 | Étape 3 | Nouveaux contrats | `s_edge_contrat`, puis socle `s_ota_version` avant `s_ota_contrat` |
 | En parallèle | Parcours réseau | `s_reseau_distance`, après ses propres contrôles |
@@ -207,9 +225,10 @@ contrôles, les preuves, les verdicts et l’archive. Il ne contient aucun résu
 observé et n’ajoute aucun type ni bras.
 
 La [première comparaison et sa qualification](structuration-corpus.pdf#nameddest=sec%3Afirst-comparison)
-reste **`s_ssh_identifiants`**, K2, `d=0`, configurations `t01` protégée et `t02`
-vulnérable, D1/A1. La fixture réelle, la référence D1 et la politique LLM bornée ont déjà été
-qualifiées ; la portée exacte et les preuves sont consignées ci-dessus. Le
+commence par **`s_ssh_identifiants`**, puis **`s_mqtt_lecture`**, K2, `d=0`,
+configurations `t01` protégée et `t02` vulnérable, D1/A1. Les fixtures réelles,
+les références D1 et les politiques LLM bornées ont déjà été qualifiées sur les
+deux scénarios ; la portée exacte et les preuves sont consignées ci-dessus. Le
 pipeline A1 complet, l’admission M-T et le gel confirmatoire restent distincts.
 Le plan précise ensuite admission, split, gel et règle de gain utile de réussite avec
 garde-fous sur contrôles protégés, faux constats et coût.
@@ -217,19 +236,21 @@ garde-fous sur contrôles protégés, faux constats et coût.
 Les marges utiles, plafonds B2, effectifs et méthode d’incertitude restent
 **à calibrer puis geler** ; jusque-là, la portée est une calibration descriptive.
 Les faux constats ou coûts manquants ne valent pas zéro ; un garde-fou non établi rend la conclusion inconclusive. Une absence de différence significative ne prouve pas une équivalence ; les gains de coût restent publiés séparément. Le passage
-à MQTT, contexte, reprise et état dépend de la qualification technique, sans
+au contexte, à la reprise et à l’état dépend de la qualification technique, sans
 exiger une victoire LLM. Les noms et l’ordre de construction restent inchangés.
 
 ## Documents et reproduction
 
 - **[Plan V2 — PDF](structuration-corpus.pdf)** · [source LaTeX](structuration-corpus.tex) :
-  révision **2026-10-16 21:43 (Europe/Brussels, UTC+02:00)** ; corps principal
+  révision **2026-10-19 (Europe/Brussels, UTC+02:00)** ; corps principal
   centré sur les décisions, catalogue en annexe selon six questions.
-  Exemple MQTT complet, première comparaison SSH et liens internes entre fiches.
+  Exemple MQTT complet, première comparaison SSH et MQTT et liens internes entre fiches.
   Matrice complète scénario/benchmark/mesure/hypothèse ajoutée.
-  Consolidation de la qualification SSH existante et de la suite MQTT.
-  La révision précédente du 15 octobre à 14:49 comptait 58 pages relues ;
-  la vérification de cette nouvelle version est consignée en fin de README.
+  Consolidation des qualifications SSH et MQTT existantes ; la prochaine
+  réalisation est `s_api_organisations`.
+  La révision du 15 octobre à 14:49 comptait 58 pages relues ; celle du
+  16 octobre à 21:43 en comptait 59. La vérification de la présente version est
+  consignée en fin de README.
 - [Plan structuré](coverage-plan.json) : `question_organization` est la vue
   de lecture, `benchmark_mapping` définit la matrice pédagogique,
   `worked_example` et `first_implementation_comparison` précisent les
@@ -404,10 +425,11 @@ Muse ; aucun audit, run ni déploiement lancé pour cette révision.
 
 ## Suite et points ouverts
 
-1. Poursuivre avec `s_mqtt_lecture` après la qualification native SSH déjà obtenue,
-   puis `s_api_organisations`, `s_mqtt_reprise` et `s_cache_identites`. Préparer
-   séparément l’admission et le gel confirmatoire SSH ; utiliser `s_injection_preuves`
-   pour éprouver les conclusions démontrables et l'abstention hors ligne.
+1. Poursuivre avec `s_api_organisations`, puis `s_mqtt_reprise` et
+   `s_cache_identites`, les qualifications natives SSH et MQTT étant obtenues.
+   Préparer séparément l’admission et le gel confirmatoire ; utiliser
+   `s_injection_preuves` pour éprouver les conclusions démontrables et
+   l'abstention hors ligne.
 2. Renseigner les attestations de profils : candidats, branches, états,
    chemin témoin, coûts, contrôles causaux et reset. Aucun minimum d'actions
    sans certificat, aucune difficulté définie par le gagnant.
@@ -745,9 +767,37 @@ Empreintes de la version relue :
 - Plan : `f34e5f68e60b401490a9bbad4ecb345eb6112a41a166fbf45e6fbfd1ca495bdf`.
 - Snapshot : `d9587b64c44f7f7dba362866567916b54188b949aa3f8b0453672f7ce817f7b3`.
 
+## Validation de la consolidation MQTT du 19 octobre 2026
+
+- Rapport livré : **révision 2026-10-19 (Europe/Brussels, UTC+02:00)**,
+  **60 pages** ; source LaTeX éditable et PDF synchronisés.
+- Ajout : qualification MQTT réelle du 19 octobre dans la première
+  comparaison, tableau des quatre bras F0/F1 et nouvelle référence
+  bibliographique. La sélection reste **44 fiches, 25 ensembles,
+  216 configurations, 456 bras conditionnels et 24 types A0**.
+- Mise à jour des statuts : SSH et MQTT qualifiés dans leur périmètre borné ;
+  la prochaine réalisation devient `s_api_organisations`, puis
+  `s_mqtt_reprise` et `s_cache_identites`. Aucun résultat MQTT n'est admis en
+  campagne confirmatoire ; `mt_admissible` reste `false`.
+- Compilation réussie avec `latexmk -pdf` ; aucun renvoi, citation ou caractère
+  indéfini dans le journal. Le tableau MQTT et le paragraphe de qualification
+  ont été relus dans le PDF rendu.
+- Snapshot régénéré avec les empreintes de **115 sources** (dates et
+  empreintes des documents mis à jour) ; `--check` confirme les octets et les
+  décomptes.
+- Limite : rattachement de la qualification MQTT déjà publiée, sans nouvelle
+  expertise des archives privées sur nato ni nouveau run.
+
+Empreintes de la version relue :
+
+- LaTeX : `0da38307065610e6b3c57f2f6ad70ae10baafa0f40061ccb9ea9c9e4bb2b61da`.
+- PDF : `6fd08700f41a363f2bc01446a53348aa0ebde357da0376bde4d954dcdec9118b`.
+- Plan : `af673062123dec8d21a087559c99c7a1ef4e12941e4b63209e577fe59a8ac7a9`.
+- Snapshot : `21c93c381f929abe15308d41d5c35215a2d5e4fcae10d4e6fe6bd3970b11fdea`.
+
 ## Validation de la consolidation du 16 octobre 2026
-+
-+- Rapport livré : **révision 2026-10-16 21:43 (Europe/Brussels, UTC+02:00)**,
+
+- Rapport livré : **révision 2026-10-16 21:43 (Europe/Brussels, UTC+02:00)**,
 +  **59 pages** ; source LaTeX éditable et PDF synchronisés.
 +- Relecture indépendante : agent `v2_review`, clôturée le **2026-10-16 21:47
 +  (Europe/Brussels, UTC+02:00)**, sans réserve documentaire bloquante.

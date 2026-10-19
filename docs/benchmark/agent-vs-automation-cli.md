@@ -410,8 +410,8 @@ Le [suivi V2 consolidé](../../research/2026-10-12-recentrage-corpus/README.md#a
 rattache cette qualification existante à `s_ssh_identifiants`, sans admettre
 la campagne confirmatoire. Les références structurées sont conservées sous
 `implementation_tracking.ssh_calibration` dans le plan de recherche.
-La prochaine réalisation V2 est `s_mqtt_lecture` ; aucun essai MQTT n’est
-attesté par le bilan SSH.
+Le bilan SSH n'atteste aucun essai MQTT ; celui-ci est consigné séparément
+ci-dessous.
 
 ### Qualification native vérifiée le 15 octobre 2026
 
@@ -453,3 +453,49 @@ a confirmé un lancement OpenSSH avec nom de programme relatif dans
 ils ne démontrent pas une meilleure politique, puisque la fixture ajoutait une
 protection temporaire non contrôlée. Les corrections et leurs tests concernent
 la fixture et son précontrôle, sans modifier l'évaluateur ni les anciens verdicts.
+
+### Qualification MQTT réelle vérifiée le 19 octobre 2026
+
+Le [lancement 39239366068](https://github.com/Tanguyvans/LANCE/actions/runs/39239366068)
+a exécuté les quatre bras MQTT sur un Mosquitto réel, dans des LXC jetables de
+pve-nato, au commit `6dda69e`. Il concrétise le scénario `s_mqtt_lecture` du
+[plan V2](../../research/2026-10-12-recentrage-corpus/README.md) : deux cas
+appariés, **F0** (aucune faille) et **F1** (une faille), chacun avec les bras
+`rules` puis `llm`. La fixture ne diffère entre les postures que par une ligne
+d'ACL (lecture privée anonyme), et les canaris privés sont semés par un compte
+propre à la fixture, absent du briefing.
+
+| Cas | Politique | Verdict | Lecture privée anonyme | Témoin privé avant/après | Appels | Durée du bras | Tokens entrée / sortie |
+| --- | --- | --- | --- | --- | ---: | ---: | ---: |
+| F0 | Script D1 | Correct | Refusée | Prouvé / prouvé | 3 | 15,0 s | 0 / 0 |
+| F0 | Qwen 3.8 27B | Correct | Refusée | Prouvé / prouvé | 3 | 34,6 s | 2 547 / 982 |
+| F1 | Qwen 3.8 27B | Correct | Prouvée | Prouvé / prouvé | 3 | 31,9 s | 2 794 / 1 418 |
+| F1 | Script D1 | Correct | Prouvée | Prouvé / prouvé | 3 | 15,0 s | 0 / 0 |
+
+Les deux politiques satisfont le contrat dans les deux postures :
+`evidence_satisfies_contract`, aucun faux positif, aucune prise du message
+public pour une fuite privée, et `subscriptions_tested: 3` par bras. Les deux
+cas ont `paired_execution_complete: true` et `failures` est vide. Les quatre
+précontrôles sont valides. Le fournisseur `ollama-umons` et le modèle
+`qwen3.8:27b` sont présents au contrôle de catalogue, sans génération.
+
+Le contrôleur a vérifié **120 fichiers** et deux archives scellées :
+
+| Paire | SHA-256 de l'archive |
+| --- | --- |
+| `mqtt-0c27afad27d7` (F0) | `987de2a58844fb40046d2c00c4c662f9f7632eb7128027f16eb2c35858899b20` |
+| `mqtt-1884faebab31` (F1) | `a1d19027ec82ad560bd9062328cba67f0205267884aaaa9d8418c37ead8a1629` |
+
+La collection reste sur nato sous
+`/opt/lance-dev-2/output/mqtt-reference/39239366068-1/` ; rien n'est téléversé
+vers GitHub. Les durées et appels portent sur les bras et excluent la création
+des LXC et les précontrôles. Les coûts estimés (0,0055 et 0,0070 USD) sont des
+estimations du catalogue, pas une facture UMONS ni un coût matériel.
+
+**Portée :** une répétition par posture, un oracle fourni par l'opérateur, une
+remise à zéro et une parité de fournisseur non attestées. `mt_admissible` reste
+`false` et `measurement_status` reste `evidence_only_not_admitted`. Il s'agit
+d'une qualification d'instrument ; aucun avantage ni adaptivité du LLM n'est
+établi. Les cinq tentatives antérieures (17-18 octobre), leurs causes et leurs
+correctifs restent consignés dans le
+[suivi MQTT](../../benchmarks/experiments/mqtt-reference/README.md).

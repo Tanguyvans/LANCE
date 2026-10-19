@@ -36,6 +36,7 @@ La [documentation du benchmark V1](benchmark/v1/README.md) est le point d'entré
 - [Exécution](benchmark/v1/execution.md) : lancer un run, lire son statut, ses coûts et ses diagnostics.
 - [Guide CLI D1/A1](benchmark/agent-vs-automation-cli.md) : analyse et vérification sur inventaire public commun, évaluation et comparaison d'une paire.
 - [Qualification SSH V2](benchmark/agent-vs-automation-cli.md#qualification-native-vérifiée-le-15-octobre-2026) : quatre bras réels script/Qwen validés le 15 octobre ; portée de calibration bornée, hors campagne confirmatoire M-T.
+- [Qualification MQTT V2](benchmark/agent-vs-automation-cli.md#qualification-mqtt-réelle-vérifiée-le-19-octobre-2026) : quatre bras réels script/Qwen sur Mosquitto, cas F0/F1, validés le 19 octobre ; même portée bornée.
 - [Guide de campagne](benchmark/agent-vs-automation-campaign.md) : parcours d’une paire règles/LLM dans l’interface, politique D1 bornée, manifeste du pilote de 24 essais, bilan et revue indépendante des preuves.
 - [Index dérivé des étiquettes](benchmark/derived-index.md) : axes expérimentaux calculés depuis les vérités terrain (type, chaînage, surface, bruit), sans modifier catalogue ni vérités terrain.
 
@@ -50,9 +51,10 @@ analyse les limites du corpus et les contre-exemples de mesure ; ses proposition
 ne modifient pas le contrat de référence ci-dessus.
 
 Le [plan de recherche V2 et son suivi](../research/2026-10-12-recentrage-corpus/README.md)
-organise 44 scénarios et leurs configurations proposées. Il rattache la
-qualification SSH existante et désigne MQTT comme prochaine réalisation ;
-les propositions V2 restent distinctes du catalogue historique déployable.
+organise 44 scénarios et leurs configurations proposées. Il rattache les
+qualifications SSH et MQTT existantes et désigne `s_api_organisations` comme
+prochaine réalisation ; les propositions V2 restent distinctes du catalogue
+historique déployable.
 
 ## Architecture et développement
 

@@ -29,11 +29,11 @@ Aucun nouveau run ni déploiement n'a été lancé pendant cette reprise.
 ## Poursuite V2 distincte du pilote historique
 
 Le [plan V2 et son suivi](../../../research/2026-10-12-recentrage-corpus/README.md#avancement-consolidé)
-conservent la sélection proposée et rattachent la qualification SSH native
-réussie du 15 octobre. Cette qualification ne complète aucune paire manquante
-ci-dessus et n’admet pas une campagne confirmatoire M-T.
-**La prochaine réalisation V2 est `s_mqtt_lecture`** ; le blocage du manifeste
-historique reste conservé dans son propre périmètre.
+conservent la sélection proposée et rattachent les qualifications natives SSH
+(15 octobre) et MQTT (19 octobre). Elles ne complètent aucune paire manquante
+ci-dessus et n’admettent pas une campagne confirmatoire M-T.
+**La prochaine réalisation V2 est `s_api_organisations`** ; le blocage du
+manifeste historique reste conservé dans son propre périmètre.
 
 ## Modèle générique
 

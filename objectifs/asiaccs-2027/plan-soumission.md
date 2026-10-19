@@ -137,7 +137,7 @@ sans identifiant de run.
 
 ## 9. Suivi V2 consolidé
 
-Dernière révision : **2026-10-16 21:43 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-19 (Europe/Brussels, UTC+02:00)**.
 
 Le [plan V2](../../research/2026-10-12-recentrage-corpus/README.md) définit
 44 scénarios, 25 ensembles et 216 configurations proposées, organisés par six
@@ -145,14 +145,15 @@ questions et cinq tâches mesurées. Cette sélection est distincte du pilote
 historique S1/S14/S15/S1h et ne constitue pas 44 familles indépendantes.
 
 La [qualification SSH native du 15 octobre](../../docs/benchmark/agent-vs-automation-cli.md#qualification-native-vérifiée-le-15-octobre-2026)
-est acquise dans son périmètre borné : script et Qwen corrects sur les deux
-postures, précontrôles, nettoyage et preuves référencées. Elle reste hors
-admission confirmatoire M-T et ne démontre aucun avantage général du LLM.
+et la [qualification MQTT réelle du 19 octobre](../../docs/benchmark/agent-vs-automation-cli.md#qualification-mqtt-réelle-vérifiée-le-19-octobre-2026)
+sont acquises dans leur périmètre borné : script et Qwen corrects sur les deux
+postures, précontrôles, remise en état des ressources et preuves référencées.
+Elles restent hors admission confirmatoire M-T et ne démontrent aucun avantage
+général du LLM.
 
-Prochaine réalisation : **`s_mqtt_lecture`**, puis `s_api_organisations`,
-`s_mqtt_reprise` et `s_cache_identites`. Avant tout nouveau gel, adopter
-explicitement les mesures par tâche, leurs dénominateurs, les marges FP,
-effectifs, budgets et analyses. Les TP strict-v3 des objectifs et les mesures
+Prochaine réalisation : **`s_api_organisations`**, puis `s_mqtt_reprise` et
+`s_cache_identites`. Avant tout nouveau gel, adopter explicitement les mesures
+par tâche, leurs dénominateurs, les marges FP, effectifs, budgets et analyses. Les TP strict-v3 des objectifs et les mesures
 V2 proposées doivent être alignés par amendement ; aucun résultat historique
 n’est requalifié rétroactivement. Les dates et critères historiques ci-dessus
 restent traçables ; la consolidation n’annonce ni campagne exécutée ni gain.

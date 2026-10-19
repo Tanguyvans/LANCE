@@ -79,6 +79,26 @@ précontrôle sortent en code 2. La réinspection filtrée de l'essai scellé
 (19 octobre 2026) classe un rejet d'identifiant client par le broker ;
 l'outil `mqtt_listen` fixe donc désormais le protocole MQTT 3.1.1, un
 préfixe d'identifiant client explicite et un keepalive de 30 secondes,
-comme le semeur. Aucun résultat réel script/LLM n'est attesté tant qu'un
-nouvel essai n'a pas réussi ; les tentatives échouées restent archivées
-telles quelles.
+comme le semeur. Les tentatives échouées restent archivées telles quelles.
+
+Sixième lancement le 19 octobre 2026 (run `39239366068-1`, commit
+`6dda69e`) : **les quatre bras sont valides**. Deux cas appariés, F0
+(aucune faille) et F1 (une faille), exécutent chacun les bras `rules` puis
+`llm` sur un LXC neuf, avec trois souscriptions bornées par bras. En F0, les
+deux politiques refusent la lecture privée anonyme et satisfont le contrat
+protégé ; en F1, les deux prouvent la lecture anonyme du canari privé frais
+et satisfont le contrat vulnérable. Aucun faux positif ni constat non étayé.
+Les quatre précontrôles sont valides avec témoin privé prouvé avant et après
+la sonde ; `paired_execution_complete` vaut vrai pour les deux cas et
+`failures` est vide. Le contrôleur a vérifié **120 fichiers** et deux
+archives scellées (empreintes `987de2a5…` et `a1d19027…`). Coûts et durées,
+limités aux bras : règles 15,0 s et zéro appel fournisseur ; Qwen 3.8 27B
+34,6 s et 31,9 s, deux requêtes, 2 547/982 puis 2 794/1 418 tokens. Le
+fournisseur `ollama-umons` et le modèle sont présents au précontrôle.
+
+Ce lancement qualifie l'instrument sur un broker réel ; il ne constitue ni
+une campagne confirmatoire, ni une preuve d'avantage du LLM.
+`mt_admissible` reste `false`, le statut de mesure reste
+`evidence_only_not_admitted` et la portée reste une calibration logicielle
+avec oracle fourni par l'opérateur. Les preuves complètes restent sur nato
+sous `/opt/lance-dev-2/output/mqtt-reference/39239366068-1/`.
