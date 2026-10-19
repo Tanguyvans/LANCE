@@ -33,13 +33,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: mqtt-reference-dev2
+  group: lance-lab-dev2
   cancel-in-progress: false
 
 jobs:
   mqtt-trial:
     runs-on: [self-hosted, nato-master]
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       LANCE_LAB_LOCK: /var/lib/lance/lab.lock
       LANCE_MQTT_LOCK_HELD: "1"
@@ -79,7 +79,8 @@ jobs:
           assert state['commit'] == os.environ['EXPECTED_SHA']
           PY
           mkdir -p output/mqtt-reference
-          timeout --signal=TERM --kill-after=45s "$((300 + 1500 * MQTT_REPETITIONS))" \
+          # Four arms per repetition at 420 s each, plus fixture/preflight overhead.
+          timeout --signal=TERM --kill-after=45s "$((300 + 2400 * MQTT_REPETITIONS))" \
             venv/bin/python -m benchmarks.experiments.mqtt_reference_live run \
             --output "output/mqtt-reference/$TRIAL_NAME" \
             --provider "$MQTT_PROVIDER" --model "$MQTT_MODEL" --repetitions "$MQTT_REPETITIONS" \

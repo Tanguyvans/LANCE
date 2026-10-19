@@ -257,8 +257,10 @@ Code de sortie `0` : verdict probatoire disponible, succès ou non-succès ; `2`
 issue inconnue ou entrée invalide. `status=completed` décrit la terminaison de
 la politique et peut accompagner `success=false` ; lire le verdict d'évaluation.
 
-**Le résultat exporte toujours `mt_admissible: false` et
-`measurement_status: evidence_only_not_admitted`.** Il n'atteste ni le budget
+**L'évaluateur hors ligne `ssh_reference` / `mqtt_reference` exporte toujours
+`mt_admissible: false` et `measurement_status: evidence_only_not_admitted`.**
+Les harnais réels calculent désormais cette admission à partir de conditions
+nommées (voir ci-dessous). Cet évaluateur hors ligne n'atteste ni le budget
 réel d'un fournisseur, ni l'égalité des ressources entre bras, ni le reset, ni
 le déploiement, ni la provenance LLM. Il ne remplace donc pas l'évaluateur ou le
 comparateur strict-v3 et n'est pas une mesure M-T admise pour une campagne.
@@ -295,22 +297,35 @@ contrat `benchmarks.experiments.v2_campaign` :
   (dense) ou `gemma4:26b-a4b-it-q4_K_M` (MoE). Un autre fournisseur ou modèle
   est refusé avant tout accès à l'hôte ou au laboratoire ; aucun repli n'est
   tenté.
-- **Répétitions.** `--repetitions N` (1 à 5) exécute chaque posture N fois.
-  Chaque paire reçoit un bloc `experiment` stable (`id`, `trial_id`,
-  `family_id`, `instance_id`) écrit dans `run_meta.json`, avec la répétition
-  conservée dans `planned.json`.
+- **Répétitions.** `--repetitions N` exécute chaque posture N fois. Le CLI
+  accepte 1 à 5 ; les workflows manuels exposent 1 à 3. Les postures sont
+  entrelacées par répétition (F0 puis F1, puis F0 puis F1, etc.) et l'ordre des
+  bras est contrebalancé selon la parité de la répétition : pour F0,
+  `rules → llm` sur les répétitions impaires et `llm → rules` sur les paires ;
+  pour F1, l'inverse. L'ordre effectif est écrit dans `planned.json`
+  (`arm_order`, `arm_order_rule`). Chaque paire reçoit un bloc `experiment`
+  stable (`id`, `trial_id`, `family_id`, `posture`, `repetition`,
+  `instance_id`, `configuration_id`) écrit dans `run_meta.json`.
 - **Admission calculée.** Chaque paire évalue `paired_execution_complete`,
-  `run_meta_present`, `budget_parity`, `preflight_attested`, `evidence_integrity`,
-  `usage_complete` et `evaluation_available`. Le résultat de l'essai expose
-  `mt_admissible` et `unmet_conditions` ; le résultat global ajoute
-  `pair_conditions`, `strict_v3_metrics_adopted`, `configuration_uniformity`,
-  `independent_families` et `minimum_repetitions`. Ces verdicts de calibration
-  ne satisfont pas `strict_v3_metrics_adopted`, donc une campagne reste non
-  admise même quand toutes les autres conditions le sont.
+  `identity_present`, `run_meta_present`, `budget_parity`, `resource_parity`,
+  `preflight_attested` (statut valide et `briefing_sha256` lié à la paire),
+  `evidence_integrity` et `evaluation_available`. Le résultat de l'essai expose
+  `pair_admissible` et `unmet_conditions` ; `mt_admissible` est réservé au
+  résultat global de campagne. L'absence de compteurs d'usage n'exclut plus la
+  paire : seuls les métriques de jetons et de coût deviennent inconnues, et un
+  échec fournisseur reste un non-succès publié. Le résultat global ajoute
+  `pair_conditions`, `collection_complete` (aucune paire exclue, incomplète ou
+  dupliquée), `strict_v3_metrics_adopted`, `configuration_uniformity`,
+  `independent_families`, `posture_coverage` (F0 et F1 présents pour chaque
+  famille), `minimum_repetitions` (par famille et par posture) et
+  `unique_trials`. Ces verdicts de calibration ne satisfont pas
+  `strict_v3_metrics_adopted`, donc une campagne reste non admise même quand
+  toutes les autres conditions le sont.
 
 Le résumé hors ligne agrège plusieurs racines d'expérience et délègue
 l'inférence à `src.benchmark.inference.family_inference` (moyenne par famille,
-puis bootstrap et correction de Holm) :
+puis bootstrap et correction de Holm). L'inférence est calculée **séparément
+pour F0 et F1** et n'est jamais regroupée entre postures ni entre modèles :
 
 ```bash
 python -m benchmarks.experiments.v2_campaign \
@@ -320,12 +335,20 @@ python -m benchmarks.experiments.v2_campaign \
   --minimum-families 2 --minimum-repetitions 3
 ```
 
+`--minimum-families` vaut 2 par défaut et refuse une valeur inférieure ;
+`--minimum-repetitions` vaut 3 ; `--delta-threshold` est désactivé par défaut
+(aucun seuil n'est supposé gelé) ; `--seed` et `--campaign-id` sont optionnels.
 Le résumé distingue les paires incluses, exclues (condition non satisfaite
-nommée) et incomplètes ; il n'invente aucune mesure absente et n'exécute,
-ne téléverse ni ne modifie aucun enregistrement. Si plusieurs configurations
-(modèles) sont fournies, l'inférence est calculée séparément par configuration
-dans `by_configuration` et n'est jamais regroupée entre modèles ; l'admission
-globale signale alors `configuration_uniformity` comme non satisfaite.
+nommée), incomplètes et dupliquées ; il n'invente aucune mesure absente et
+n'exécute, ne téléverse ni ne modifie aucun enregistrement. Les taux descriptifs
+utilisent le dénominateur planifié `K/N` avec les bornes `[K/N, (K+N−M)/N]`, où
+`M` compte les issues planifiées mais non observables ; une valeur manquante
+n'est jamais convertie en zéro. Les résultats d'inférence portent
+`status: exploratory` tant que la procédure d'incertitude et les marges ne sont
+pas gelées. Si plusieurs configurations (modèles) sont fournies, l'inférence est
+calculée séparément par configuration dans `by_configuration` et n'est jamais
+regroupée entre modèles ; l'admission globale signale alors
+`configuration_uniformity` comme non satisfaite.
 
 ### Premier pilote SSH réel sur dev/2
 
@@ -345,7 +368,8 @@ doit être non privilégié et posséder une seule interface. Le clone utilise
 VMID borné et le nom dérivé de l'identifiant de propriété, vérifiés à nouveau.
 Les VM et configurations d'autres campagnes restent hors des opérations.
 
-Le pilote prévoit quatre bras : F0 script puis LLM, F1 LLM puis script. Avant
+Le pilote prévoit quatre bras par répétition : F0 et F1, chacune avec les deux
+politiques, l'ordre étant contrebalancé entre répétitions. Avant
 chaque bras, le LXC est recréé et un précontrôle indépendant teste le témoin
 et tous les couples publics, puis relit l'objet par le témoin : une protection
 temporaire activée par les refus doit bloquer la qualification avant le bras.
@@ -372,9 +396,11 @@ une décision bornée sur carte complète, pas le pipeline A1 entier ni l'adapta
 
 Les plafonds initiaux **de calibration**, non validés statistiquement, sont huit
 appels SSH, 420 secondes par bras, douze tours modèle et un dollar de coût
-**estimé** observé. Ce pilote utilise exclusivement **`ollama-umons` /
-`qwen3.8:27b`** (`ssh_provider`, `ssh_model`). Le workflow et le contrôleur
-refusent un autre choix, sans repli automatique vers un autre fournisseur.
+**estimé** observé. Ce pilote utilise exclusivement **`ollama-umons`**, avec
+un modèle du panneau déclaré : `qwen3.8:27b` (dense) ou
+`gemma4:26b-a4b-it-q4_K_M` (MoE)
+(`ssh_provider`, `ssh_model`). Le workflow et le contrôleur refusent tout autre
+fournisseur ou modèle, sans repli automatique.
 Les requêtes et réponses visibles du fournisseur sont enregistrées par tentative,
 y compris les retries et leurs compteurs d'usage, sans en-têtes d'authentification
 ni raisonnement caché. L'absence de compteurs conserve tokens/coût inconnus dans
@@ -392,12 +418,14 @@ conserve les preuves sur nato, sans téléversement automatique vers GitHub :
 L'intégration de cet incrément sur `main` suit la CI et le déploiement habituels
 via nato-master. Elle n'active pas l'expérience sur l'instance principale : le
 workflow SSH exige toujours un lancement manuel sur `dev/2`, l'instance `dev-2`
-et Qwen, puis le verrou commun. Le code applicatif et les ressources auditées
-gelées de `src/agent` et `src/benchmark` ne sont pas modifiés par cet incrément.
+et un modèle du panneau déclaré, puis le verrou commun. Le code applicatif et
+les ressources auditées gelées de `src/agent` et `src/benchmark` ne sont pas
+modifiés par cet incrément.
 
 **Prérequis sur nato :** `ansible-playbook`, `ssh`, `sshpass`, l'inventaire NATO
 déjà déployé et son accès Vault. Le contrôleur vérifie les binaires et la présence
-de Qwen dans le catalogue du fournisseur avant toute création d'environnement ;
+du modèle sélectionné dans le catalogue du fournisseur avant toute création
+d'environnement ;
 il n'installe aucun paquet ni service. Un prérequis absent
 produit une préparation bloquée, conservée dans `preconditions.json`, sans faux
 bras exécuté. Une panne UMONS est conservée dans les traces de précontrôle et
@@ -423,7 +451,7 @@ Les artefacts restent sous
 `/opt/lance-dev-2/output/ssh-reference/<workflow-run-id>-<attempt>/` : plan,
 briefing, oracle et configuration privés, identité du code et du template,
 requêtes/réponses Ansible, bail et configurations du LXC, reset par clone neuf,
-précontrôles et leurs traces, deux runs par cas, journal
+précontrôles et leurs traces, deux runs par paire et par répétition, journal
 complet d'outils, prompts, échanges visibles du modèle, décisions, consommation,
 comparaisons et nettoyage. Chaque paire possède `evidence.tar.gz` et son manifeste
 SHA-256 ; `experiment-manifest.json` couvre aussi les fichiers du contrôleur.
@@ -538,8 +566,9 @@ des LXC et les précontrôles. Les coûts estimés (0,0055 et 0,0070 USD) sont d
 estimations du catalogue, pas une facture UMONS ni un coût matériel.
 
 **Portée :** une répétition par posture, un oracle fourni par l'opérateur, une
-remise à zéro et une parité de fournisseur non attestées. `mt_admissible` reste
-`false` et `measurement_status` reste `evidence_only_not_admitted`. Il s'agit
+remise à zéro et une parité de fournisseur non attestées. Pour ce lancement
+historique, `mt_admissible` vaut `false` et `measurement_status` vaut
+`evidence_only_not_admitted`. Il s'agit
 d'une qualification d'instrument ; aucun avantage ni adaptivité du LLM n'est
 établi. Les cinq tentatives antérieures (17-18 octobre), leurs causes et leurs
 correctifs restent consignés dans le

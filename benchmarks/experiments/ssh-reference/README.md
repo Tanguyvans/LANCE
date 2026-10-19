@@ -39,11 +39,13 @@ résultat expérimental sur la plus-value d'un LLM.
 
 ## État de l'exécution réelle
 
-Le pilote utilise exclusivement **Qwen `qwen3.8:27b` via `ollama-umons`**.
-Le workflow et le contrôleur refusent un autre fournisseur ou modèle. Une panne
-UMONS bloque l'essai ; elle ne déclenche aucun repli vers MiniMax. La sélection
-erronée du lancement historique ci-dessous n'a produit aucun appel modèle :
-la préparation s'est arrêtée avant les quatre bras.
+Le pilote utilise exclusivement **`ollama-umons`**, avec un modèle du panneau
+déclaré : `qwen3.8:27b` (dense) ou `gemma4:26b-a4b-it-q4_K_M` (MoE). Les
+lancements historiques ci-dessous ont utilisé Qwen `qwen3.8:27b`. Le workflow
+et le contrôleur refusent tout autre fournisseur ou modèle. Une panne UMONS
+bloque l'essai ; elle ne déclenche aucun repli vers MiniMax. La sélection
+erronée d'un lancement historique n'a produit aucun appel modèle : la
+préparation s'est arrêtée avant les quatre bras.
 
 La **qualification native est terminée** : le
 [lancement 38769747406](https://github.com/Tanguyvans/LANCE/actions/runs/38769747406)
@@ -54,6 +56,14 @@ La CI de ce commit compte **3 933 tests réussis et deux ignorés**. Le
 conserve les mesures, les empreintes des deux archives et les limites. Les
 preuves complètes restent sur nato. Une répétition par posture qualifie cet
 instrument ; elle ne démontre pas une plus-value générale du LLM.
+
+Avec `--repetitions N`, les postures sont entrelacées par répétition (F0 puis
+F1) et l'ordre des bras est contrebalancé selon la parité de la répétition
+(`rules → llm` pour F0 aux répétitions impaires, l'inverse aux répétitions
+paires ; ordre symétrique pour F1). Le CLI accepte 1 à 5 répétitions, le
+workflow manuel 1 à 3. Chaque paire expose `pair_admissible` ; `mt_admissible`
+reste réservé au verdict de campagne, qui exige aussi des paires complètes,
+une couverture des deux postures et des identités uniques.
 
 Le lancement reste manuel sur `dev/2` et réservé à `dev-2`, y compris après
 intégration du code sur `main`. Le push sur `main` valide et déploie l'application
@@ -75,9 +85,9 @@ La collection de préparation reste sur nato sous
 La fixture utilise désormais le **LXC natif de pve-nato** via Ansible et le
 template Debian 9000 déjà présents dans le laboratoire. Docker n'est plus un
 prérequis du pilote ; aucun moteur temporaire ni service système n'a été installé.
-Le contrôleur vérifie les outils et le catalogue Qwen avant toute allocation,
-refuse une autre charge active sur vmbr1 et exige la propriété du LXC avant de
-le détruire. Le code de nettoyage Docker reste réservé aux anciennes tentatives.
+Le contrôleur vérifie les outils et la présence du modèle sélectionné avant
+toute allocation, refuse une autre charge active sur vmbr1 et exige la
+propriété du LXC avant de le détruire. Le code de nettoyage Docker reste réservé aux anciennes tentatives.
 La CI et le déploiement de l'adaptation native `9bfc6b1` ont réussi. Son
 [premier lancement](https://github.com/Tanguyvans/LANCE/actions/runs/38758419755)
 a vérifié le catalogue Qwen depuis nato, puis s'est arrêté avant les bras :

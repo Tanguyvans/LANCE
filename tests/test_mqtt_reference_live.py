@@ -226,3 +226,6 @@ def test_workflow_is_manual_dev2_only_and_keeps_evidence_local():
     assert 'mqtt_reference_live run' in text and 'mqtt_reference_live recover' in text
     assert 'upload-artifact' not in text
     assert 'ollama-umons' in text and 'qwen3.8:27b' in text
+    assert '$((300 + 2400 * MQTT_REPETITIONS))' in text
+    assert document['jobs']['mqtt-trial']['timeout-minutes'] == 180
+    assert document['concurrency']['group'] == 'lance-lab-dev2'

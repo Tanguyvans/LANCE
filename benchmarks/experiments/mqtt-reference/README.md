@@ -47,11 +47,15 @@ de performance d'un LLM, ni une qualification laboratoire.
 
 Le contrôleur `benchmarks.experiments.mqtt_reference_live` et sa politique
 LLM bornée permettent un pilote Mosquitto réel sur nato, avec deux postures
-et quatre bras, un LXC neuf par bras, des précontrôles avant et après les
-sondes et un archivage scellé qui reste sur nato. Le lancement est manuel
-sur `dev/2` via le workflow `mqtt-reference.yml` (runner `nato-master`,
-verrou laboratoire partagé, fournisseur et modèle fixés) ; un push ne le
-déclenche pas. Distinct du gel historique et de la campagne confirmatoire.
+et quatre bras par répétition, un LXC neuf par bras, des précontrôles avant et
+après les sondes et un archivage scellé qui reste sur nato. Le lancement est
+manuel sur `dev/2` via le workflow `mqtt-reference.yml` (runner `nato-master`,
+verrou laboratoire partagé, fournisseur `ollama-umons` fixé et modèle choisi
+dans le panneau déclaré) ; un push ne le déclenche pas. Les postures sont
+entrelacées par répétition et l'ordre des bras est contrebalancé selon la
+parité de la répétition. Le CLI accepte 1 à 5 répétitions, le workflow 1 à 3.
+Chaque paire expose `pair_admissible` ; `mt_admissible` reste réservé au
+verdict de campagne. Distinct du gel historique et de la campagne confirmatoire.
 
 Premier lancement réel le 17 octobre 2026 (run `39065457122-1`) : échec
 avant tout précontrôle, aucun bras exécuté, preuves scellées sur nato

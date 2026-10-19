@@ -1,7 +1,7 @@
 # Plan V2 : questions, scénarios et réalisation
 
 **Cycle de vie : Actif** — étude commencée le **2026-10-12**.
-Dernière révision : **2026-10-19 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-19 16:14 (Europe/Brussels, UTC+02:00)**.
 Statut : **conception V2 consolidée ; qualifications SSH et MQTT natives documentées, hors campagne confirmatoire**.
 
 ## Question et périmètre
@@ -766,6 +766,33 @@ Empreintes de la version relue :
 - PDF : `a7c3d7aeef9d826139ba75dce53533833e1f463c9e7b108d352726773f28de5a`.
 - Plan : `f34e5f68e60b401490a9bbad4ecb345eb6112a41a166fbf45e6fbfd1ca495bdf`.
 - Snapshot : `d9587b64c44f7f7dba362866567916b54188b949aa3f8b0453672f7ce817f7b3`.
+
+## Validation du contrat de campagne V2 du 19 octobre 2026
+
+- Rapport livré : **révision 2026-10-19 16:14 (Europe/Brussels, UTC+02:00)**,
+  **61 pages** ; source LaTeX éditable et PDF synchronisés.
+- Revue à trois volets (code, méthode, documentation) de la campagne V2 ;
+  constats convergents sur le regroupement des postures, le dénominateur,
+  l'admission de paire, les gardes faux positifs/contrôles et l'ordre des bras.
+- Ajout : sous-section **2.8 Contrat de campagne V2 et revue de conception**
+  (identité et ordre, conditions d'admission de paire et de campagne,
+  dénominateur planifié, bornes, inférence séparée par posture et par modèle,
+  statut exploratoire). Le résumé et le statut mentionnent les qualifications
+  SSH et MQTT ainsi que le gel confirmatoire encore ouvert.
+- Mise en œuvre associée : schéma `v2-campaign-v2`, `pair_admissible` au niveau
+  de la paire et `mt_admissible` réservé à la campagne, ordre contrebalancé et
+  postures entrelacées, `--delta-threshold` désactivé par défaut. La référence
+  technique et les README des deux harnais sont mis à jour.
+- Limite : révision de conception et de contrat, sans nouvel essai, sans
+  admission confirmatoire et sans modification des archives privées sur nato.
+  Les seuils et l'unité d'indépendance restent à figer.
+
+Empreintes de la version relue :
+
+- LaTeX : `8ecd6931f5cc75ddbf806f81e7cde79495c16753cbaa60796333f78a7cbb234f`.
+- PDF : `2e25230056096fafb39b9e9a1382ed7efc87d613eee6de35583663fb5032dd3e`.
+- Plan : `af673062123dec8d21a087559c99c7a1ef4e12941e4b63209e577fe59a8ac7a9`.
+- Snapshot : `b01f93e37d4f55c1b9f6b2b427be1d51010ee65f86720248cdcbf9c5e1387779`.
 
 ## Validation de la consolidation MQTT du 19 octobre 2026
 

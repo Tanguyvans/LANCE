@@ -114,7 +114,7 @@ def test_missing_provider_usage_remains_unknown_in_comparison(tmp_path, monkeypa
     metrics = result['arms']['llm']['metrics']
     assert metrics['usage_complete'] is False
     assert metrics['input_tokens'] is metrics['estimated_cost_usd'] is metrics['billed_cost_usd'] is None
-    assert result['paired_execution_complete'] is False and result['mt_admissible'] is False
+    assert result['paired_execution_complete'] is False and result['pair_admissible'] is False
 
 
 def test_native_target_uses_authorized_laboratory_scope(tmp_path, monkeypatch, setup):
@@ -374,3 +374,7 @@ def test_workflow_is_manual_local_and_shell_syntax_valid(tmp_path):
     assert 'test "$SSH_PROVIDER" = ollama-umons' in text
     assert 'qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M' in text
     assert '--repetitions "$SSH_REPETITIONS"' in text
+    # Worst case is four arms per repetition at 420 s, plus fixture overhead.
+    assert '$((300 + 2400 * SSH_REPETITIONS))' in text
+    assert workflow['jobs']['ssh-trial']['timeout-minutes'] == '180'
+    assert workflow['concurrency']['group'] == 'lance-lab-dev2'

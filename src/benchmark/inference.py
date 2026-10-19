@@ -55,7 +55,7 @@ def holm_adjust(p_values: dict[str, float]) -> dict[str, float]:
 
 
 def family_inference(families: dict[str, list[dict]], metrics: tuple[str, ...], *,
-                     delta_threshold: float = 0.05,
+                     delta_threshold: float | None = None,
                      seed: int = DEFAULT_SEED) -> dict:
     """Per-metric inference over family-mean paired deltas (llm - rules).
 
@@ -82,7 +82,9 @@ def family_inference(families: dict[str, list[dict]], metrics: tuple[str, ...], 
         result["family_means"] = family_means_by_metric[metric]
         if result.get("available"):
             result["p_value_holm"] = adjusted[metric]
-            result["ci95_excludes_delta"] = result["ci95_low"] > delta_threshold
+            # No threshold is assumed: the design freezes delta_min later.
+            if delta_threshold is not None:
+                result["ci95_excludes_delta"] = result["ci95_low"] > delta_threshold
     any_available = any(r.get("available") for r in per_metric.values())
     return {
         "available": any_available,

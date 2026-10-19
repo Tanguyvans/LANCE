@@ -19,6 +19,7 @@ benchmarks/
 ├── packs/                # Propriétés et failles composables
 ├── scenarios_manual/     # Laboratoires hors catalogue officiel
 ├── ansible/              # Déploiement, vérification et nettoyage
+├── experiments/          # Harnais réels SSH et MQTT, campagne V2 et résumés
 └── tools/                # Composition et validation des données
 ```
 

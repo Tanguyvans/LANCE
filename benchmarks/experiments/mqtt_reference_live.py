@@ -238,9 +238,11 @@ def comparison(trial, arms, family_id=SCENARIO_ID):
             'billed_cost_usd': 0 if policy == 'rules' else None,
         }}
         evidence[policy]['usage_complete'] = usage_complete
-    admission = v2.pair_admission(evidence)
+    planned = json.loads((trial / 'planned.json').read_text()) if (trial / 'planned.json').is_file() else {}
+    experiment = planned.get('experiment') or {}
+    admission = v2.pair_admission(evidence, experiment=experiment, planned=planned)
     result = {'schema_version': 1, 'scope': 'real MQTT qualification, not a confirmatory M-T campaign',
-              'family_id': family_id, 'mt_admissible': admission['met'],
+              'family_id': family_id, 'pair_admissible': admission['met'],
               'unmet_conditions': admission['unmet'], 'conditions': admission['conditions'],
               'arms': policies, 'paired_execution_complete': set(arms) == {'rules', 'llm'}}
     write_json(trial / 'comparison-mqtt.json', result)
@@ -252,13 +254,18 @@ def run_case(root, backend, flaws, args, metadata, repetition=1):
     trial = root / 'trials' / trial_id
     trial.mkdir(parents=True)
     control, config = case_configuration(flaws)
-    experiment = v2.trial_identity(metadata['campaign_id'], SCENARIO_ID, flaws, repetition)
+    experiment = v2.trial_identity(metadata['campaign_id'], SCENARIO_ID, flaws, repetition,
+                                   configuration_id=f"{metadata['provider']}:{metadata['model']}")
     trial_metadata = {**metadata, 'experiment': experiment}
     write_json(trial / 'fixture-private.json', config)
     write_json(trial / 'controller.json', trial_metadata)
-    order = ['rules', 'llm'] if flaws == 0 else ['llm', 'rules']
+    # The posture fixes the baseline order; parity counterbalances it across
+    # repetitions so that a first-passage effect is not confounded with posture.
+    order = v2.arm_order(flaws, repetition)
     write_json(trial / 'planned.json', {'trial_id': trial_id, 'intentional_flaws': flaws,
-                                        'repetition': repetition, 'experiment': experiment, 'arm_order': order})
+                                        'repetition': repetition, 'experiment': experiment,
+                                        'arm_order': order,
+                                        'arm_order_rule': 'posture order on odd repetitions, reversed on even'})
     public, oracle, arms = None, None, {}
     try:
         for policy in order:
@@ -361,10 +368,14 @@ def run_experiment(args):
     write_json(root / 'ownership.json', {'owner': owner, 'backend': 'proxmox-lxc', 'resources_may_exist': False})
     backend = Proxmox(root, owner)
     results = []
-    planned = [(flaws, repetition) for flaws in (0, 1) for repetition in range(1, repetitions + 1)]
+    # Interleave postures by repetition instead of running every F0 then every F1.
+    planned = v2.planned_cases(repetitions)
     write_json(root / 'plan.json', {'purpose': 'instrument qualification', 'intentional_flaws': [0, 1],
                                    'policies': ['rules', 'llm'], 'repetitions': repetitions,
-                                   'scenario_id': SCENARIO_ID, 'planned_arms': 2 * len(planned)})
+                                   'scenario_id': SCENARIO_ID, 'planned_arms': 2 * len(planned),
+                                   'planned_pairs': len(planned),
+                                   'arm_order_rule': 'posture order on odd repetitions, reversed on even',
+                                   'posture_order': ['f1' if flaws else 'f0' for flaws, _ in planned]})
     try:
         commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
         config = {'provider': args.provider, 'model': args.model,
@@ -402,15 +413,26 @@ def run_experiment(args):
         metadata['backend'] = 'proxmox-lxc'
         metadata['allocation'] = backend.prepare()
         write_json(root / 'controller.json', metadata)
+        failures = []
         for flaws, repetition in planned:
-            results.append(run_case(root, backend, flaws, args, metadata, repetition))
+            try:
+                results.append(run_case(root, backend, flaws, args, metadata, repetition))
+            except Exception as exc:
+                # One failed pair must not erase the pairs already collected.
+                failure = {'intentional_flaws': flaws, 'repetition': repetition,
+                           'error_type': type(exc).__name__}
+                failures.append(failure)
+                write_json(root / 'failures' / f'{flaws}-r{repetition}.json', failure)
         admission = v2.campaign_admission(
-            [{'met': case['mt_admissible']} for case in results],
-            families=1, repetitions={SCENARIO_ID: repetitions}, configurations=[config])
+            [{'met': case['pair_admissible']} for case in results],
+            families=1,
+            repetitions={SCENARIO_ID: {'f0': repetitions, 'f1': repetitions}},
+            configurations=[config], excluded=len(failures))
         write_json(root / 'results.json', {'schema_version': 1, 'purpose': 'instrument qualification',
                    'scenario_id': SCENARIO_ID, 'repetitions': repetitions,
                    'mt_admissible': admission['mt_admissible'],
-                   'admission_unmet': admission['unmet'], 'admission': admission, 'cases': results})
+                   'admission_unmet': admission['unmet'], 'admission': admission,
+                   'cases': results, 'failures': failures})
         return 0
     except BaseException as exc:
         write_json(root / 'controller-failure.json', {'error_type': type(exc).__name__})
