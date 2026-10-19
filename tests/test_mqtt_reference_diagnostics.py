@@ -114,8 +114,8 @@ def _preflight_record(sequence, topic, result, username=None, password=None):
             'execution_origin': 'runner'}
 
 
-def _mqtt_result(returncode, topic, stdout='', attested=True):
-    result = {'return_code': returncode, 'stdout': stdout, 'stderr': 'NEVER_PUBLISH_STDERR'}
+def _mqtt_result(returncode, topic, stdout='', attested=True, stderr='NEVER_PUBLISH_STDERR'):
+    result = {'return_code': returncode, 'stdout': stdout, 'stderr': stderr}
     if attested:
         result['execution_attestation'] = {'protocol': 'TCP', 'host': '192.0.2.18', 'port': 1883,
                                            'topic': topic, 'output_format': 'mosquitto-json-v1'}
@@ -153,6 +153,37 @@ def test_preflight_ledger_projects_only_bounded_outcomes(tmp_path):
                           reason='mqtt_preflight_control_private_after_attestation_invalid')]
     assert secret not in json.dumps(result)
     assert '192.0.2.18' not in json.dumps(result) and private not in json.dumps(result)
+
+
+def test_preflight_unexpected_codes_use_only_fixed_stderr_reasons(tmp_path):
+    secret = 'NEVER_PUBLISH_PREFLIGHT_STDERR'
+    public, private = 'lance/public/status', 'lance/private/telemetry'
+    trial = tmp_path / 'trials' / 'trial-stderr'
+    preflight = trial / 'preflight' / 'rules'
+    preflight.mkdir(parents=True)
+    (trial / 'briefing.json').write_text(json.dumps({
+        'target': {'ip': '192.0.2.18', 'port': 1883}, 'public_topic': public,
+        'private_topic': private,
+        'control_credential': {'username': 'auditor', 'password': 'x'}}))
+    records = [
+        _preflight_record(1, private, _mqtt_result(
+            2, private, stderr=f'Connection error: Connection Refused: identifier rejected. {secret}'),
+            'auditor', 'x'),
+        _preflight_record(2, public, _mqtt_result(
+            2, public, stderr=f'Error: Protocol Error {secret}')),
+        _preflight_record(3, private, _mqtt_result(
+            7, private, stderr=f'Error: The connection was lost. {secret}')),
+    ]
+    (preflight / 'tool_calls.jsonl').write_text('\n'.join(json.dumps(r) for r in records))
+    result = diagnostics.inspect(tmp_path)
+    assert result == [
+        diagnostics.entry(utility='mosquitto_sub', returncode=2,
+                          reason='mqtt_preflight_control_private_identifier_rejected'),
+        diagnostics.entry(utility='mosquitto_sub', returncode=2,
+                          reason='mqtt_preflight_anonymous_public_protocol_error'),
+        diagnostics.entry(utility='mosquitto_sub', returncode=7,
+                          reason='mqtt_preflight_anonymous_private_connection_failed')]
+    assert secret not in json.dumps(result)
 
 
 def test_preflight_ledger_rejects_mismatched_and_malformed_records(tmp_path):
