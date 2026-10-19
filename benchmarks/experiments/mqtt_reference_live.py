@@ -26,14 +26,17 @@ from benchmarks.experiments.mqtt_reference import (
 from benchmarks.experiments.mqtt_reference_llm import run_llm
 from benchmarks.experiments.mqtt_reference_proxmox import Proxmox, Fixture as ProxmoxFixture
 from benchmarks.experiments.ssh_reference_llm import RecordingClient
+from benchmarks.experiments import v2_campaign as v2
 from scripts.benchmark.pilot_support import archive_trial
 from src.agent.audit_experiment import digest, resource_manifest
 from src.agent.cost_tracker import CostTracker
 
 
 ROOT = Path(__file__).resolve().parents[2]
-PROVIDER = 'ollama-umons'
-MODEL = 'qwen3.8:27b'
+PROVIDER = v2.PROVIDER
+MODEL = v2.DEFAULT_MODEL
+MODEL_PANEL = v2.MODEL_PANEL
+SCENARIO_ID = 's_mqtt_lecture'
 PUBLIC_TOPIC = 'lance/public/status'
 PRIVATE_TOPIC = 'lance/private/telemetry'
 PORT = 1883
@@ -203,10 +206,18 @@ def run_arm(public, oracle, policy, directory, args, metadata):
     return evaluation
 
 
-def comparison(trial, arms):
+def comparison(trial, arms, family_id=SCENARIO_ID):
     policies = {}
+    evidence = {}
     for policy, directory in arms.items():
         evaluation = json.loads((directory / 'evaluation.json').read_text())
+        attestation = trial / 'preflight' / policy / 'attestation.json'
+        evidence[policy] = {'run_meta': json.loads((directory / 'run_meta.json').read_text())
+                            if (directory / 'run_meta.json').is_file() else {},
+                            'evaluation': evaluation,
+                            'preflight': json.loads(attestation.read_text())
+                            if attestation.is_file() else {},
+                            'usage_complete': None}
         costs = json.loads((directory / 'cost_summary.json').read_text())
         wire_path = directory / 'provider-wire.jsonl'
         wire = [json.loads(line) for line in wire_path.read_text().splitlines()] if wire_path.is_file() else []
@@ -226,21 +237,28 @@ def comparison(trial, arms):
             'estimated_cost_usd': costs['total_cost_usd'] if estimate_available else None,
             'billed_cost_usd': 0 if policy == 'rules' else None,
         }}
+        evidence[policy]['usage_complete'] = usage_complete
+    admission = v2.pair_admission(evidence)
     result = {'schema_version': 1, 'scope': 'real MQTT qualification, not a confirmatory M-T campaign',
-              'mt_admissible': False, 'arms': policies, 'paired_execution_complete': set(arms) == {'rules', 'llm'}}
+              'family_id': family_id, 'mt_admissible': admission['met'],
+              'unmet_conditions': admission['unmet'], 'conditions': admission['conditions'],
+              'arms': policies, 'paired_execution_complete': set(arms) == {'rules', 'llm'}}
     write_json(trial / 'comparison-mqtt.json', result)
     return result
 
 
-def run_case(root, backend, flaws, args, metadata):
+def run_case(root, backend, flaws, args, metadata, repetition=1):
     trial_id = 'mqtt-' + uuid4().hex[:12]
     trial = root / 'trials' / trial_id
     trial.mkdir(parents=True)
     control, config = case_configuration(flaws)
+    experiment = v2.trial_identity(metadata['campaign_id'], SCENARIO_ID, flaws, repetition)
+    trial_metadata = {**metadata, 'experiment': experiment}
     write_json(trial / 'fixture-private.json', config)
-    write_json(trial / 'controller.json', metadata)
+    write_json(trial / 'controller.json', trial_metadata)
     order = ['rules', 'llm'] if flaws == 0 else ['llm', 'rules']
-    write_json(trial / 'planned.json', {'trial_id': trial_id, 'intentional_flaws': flaws, 'arm_order': order})
+    write_json(trial / 'planned.json', {'trial_id': trial_id, 'intentional_flaws': flaws,
+                                        'repetition': repetition, 'experiment': experiment, 'arm_order': order})
     public, oracle, arms = None, None, {}
     try:
         for policy in order:
@@ -256,7 +274,7 @@ def run_case(root, backend, flaws, args, metadata):
                 directory = allocate_run(root / 'runs')
                 arms[policy] = directory
                 (trial / f'{policy}_dir.txt').write_text(str(directory.resolve()) + '\n')
-                run_arm(public, oracle, policy, directory, args, metadata)
+                run_arm(public, oracle, policy, directory, args, trial_metadata)
             finally:
                 fixture.close()
         return comparison(trial, arms)
@@ -332,8 +350,10 @@ def public_summary(root):
 
 
 def run_experiment(args):
-    if (args.provider, args.model) != (PROVIDER, MODEL):
-        raise ValueError('This MQTT pilot requires ollama-umons / qwen3.8:27b; no provider fallback')
+    v2.require_model(args.provider, args.model, pilot='MQTT')
+    repetitions = getattr(args, 'repetitions', 1)
+    if not 1 <= repetitions <= 5:
+        raise ValueError('repetitions must stay between 1 and 5 for a bounded calibration')
     require_nato()
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -341,21 +361,24 @@ def run_experiment(args):
     write_json(root / 'ownership.json', {'owner': owner, 'backend': 'proxmox-lxc', 'resources_may_exist': False})
     backend = Proxmox(root, owner)
     results = []
+    planned = [(flaws, repetition) for flaws in (0, 1) for repetition in range(1, repetitions + 1)]
     write_json(root / 'plan.json', {'purpose': 'instrument qualification', 'intentional_flaws': [0, 1],
-                                   'policies': ['rules', 'llm'], 'planned_arms': 4})
+                                   'policies': ['rules', 'llm'], 'repetitions': repetitions,
+                                   'scenario_id': SCENARIO_ID, 'planned_arms': 2 * len(planned)})
     try:
-        metadata = {'schema_version': 1, 'git_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        config = {'provider': args.provider, 'model': args.model,
+                  'budgets': {key: getattr(args, key) for key in ('max_tool_calls', 'max_duration_s', 'max_cost_usd', 'max_turns')}}
+        metadata = {'schema_version': 1, 'git_commit': commit, 'campaign_id': v2.default_campaign_id('mqtt', commit),
                     'resource_manifest_sha256': resource_manifest(ROOT), 'host': socket.gethostname(),
                     'platform': platform.platform(), 'python': platform.python_version(),
-                    'started_at': datetime.now(timezone.utc).isoformat(), 'mt_admissible': False}
+                    'started_at': datetime.now(timezone.utc).isoformat(), **config}
         source_files = [ROOT / 'benchmarks/ansible/files/mqtt_reference_proxmox.py',
                         ROOT / 'benchmarks/ansible/playbooks/mqtt_reference.yml',
                         *ROOT.glob('benchmarks/experiments/mqtt_reference*.py'),
                         *ROOT.glob('benchmarks/experiments/mqtt-reference/fixture/*')]
         metadata['implementation_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                              for path in source_files if path.is_file()}
-        metadata['provider'], metadata['model'] = args.provider, args.model
-        metadata['budgets'] = {key: getattr(args, key) for key in ('max_tool_calls', 'max_duration_s', 'max_cost_usd', 'max_turns')}
         write_json(root / 'controller.json', metadata)
         prerequisites = {name: shutil.which(name) is not None for name in ('ansible-playbook', 'mosquitto_sub')}
         write_json(root / 'preconditions.json', {'status': 'binaries_present' if all(prerequisites.values()) else 'blocked',
@@ -364,25 +387,30 @@ def run_experiment(args):
             raise RuntimeError('Missing runtime prerequisites; no environment creation attempted')
         from src.agent.provider import LLMProvider
         try:
-            provider = LLMProvider(PROVIDER, MODEL)
+            provider = LLMProvider(args.provider, args.model)
             catalogue = provider.client.with_options(timeout=15, max_retries=0).models.list()
-            available = any(item.id == MODEL for item in catalogue.data)
-            write_json(root / 'provider-preflight.json', {'provider': PROVIDER, 'model': MODEL,
+            available = any(item.id == args.model for item in catalogue.data)
+            write_json(root / 'provider-preflight.json', {'provider': args.provider, 'model': args.model,
                                                         'available': available, 'purpose': 'catalogue only; no model generation'})
             if not available:
-                raise RuntimeError('Selected Qwen model not present at configured UMONS endpoint')
+                raise RuntimeError('Selected model not present at configured UMONS endpoint')
         except Exception as exc:
             write_json(root / 'provider-preflight-error.json', {'error_type': type(exc).__name__,
-                       'status_code': getattr(exc, 'status_code', None), 'provider': PROVIDER, 'model': MODEL})
+                       'status_code': getattr(exc, 'status_code', None), 'provider': args.provider, 'model': args.model})
             raise
         write_json(root / 'ownership.json', {'owner': owner, 'backend': 'proxmox-lxc', 'resources_may_exist': True})
         metadata['backend'] = 'proxmox-lxc'
         metadata['allocation'] = backend.prepare()
         write_json(root / 'controller.json', metadata)
-        for flaws in (0, 1):
-            results.append(run_case(root, backend, flaws, args, metadata))
+        for flaws, repetition in planned:
+            results.append(run_case(root, backend, flaws, args, metadata, repetition))
+        admission = v2.campaign_admission(
+            [{'met': case['mt_admissible']} for case in results],
+            families=1, repetitions={SCENARIO_ID: repetitions}, configurations=[config])
         write_json(root / 'results.json', {'schema_version': 1, 'purpose': 'instrument qualification',
-                   'mt_admissible': False, 'cases': results})
+                   'scenario_id': SCENARIO_ID, 'repetitions': repetitions,
+                   'mt_admissible': admission['mt_admissible'],
+                   'admission_unmet': admission['unmet'], 'admission': admission, 'cases': results})
         return 0
     except BaseException as exc:
         write_json(root / 'controller-failure.json', {'error_type': type(exc).__name__})
@@ -400,7 +428,9 @@ def main():
     parser.add_argument('command', choices=['run', 'recover', 'verify', 'summary', 'seal'])
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--provider', choices=[PROVIDER], default=PROVIDER)
-    parser.add_argument('--model', choices=[MODEL], default=MODEL)
+    parser.add_argument('--model', choices=list(MODEL_PANEL), default=MODEL)
+    parser.add_argument('--repetitions', type=int, default=1,
+                        help='Independent repetitions per posture (bounded 1-5)')
     parser.add_argument('--max-tool-calls', type=int, default=8)
     parser.add_argument('--max-duration-s', type=float, default=420)
     parser.add_argument('--max-cost-usd', type=float, default=1)

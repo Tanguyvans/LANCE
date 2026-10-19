@@ -28,8 +28,11 @@ conservés semés par un compte propre à la fixture, jamais présent dans le
 briefing ; `persistence false` garde cet état en mémoire, donc la
 destruction/recréation de la fixture purge les messages conservés. Le
 reset, la parité des bras et la provenance du modèle restent à attester
-dans le laboratoire : `mt_admissible` reste `false` et le statut de mesure
-`evidence_only_not_admitted`, comme pour la calibration SSH.
+dans le laboratoire. L'admission est calculée à partir de conditions nommées
+(voir `benchmarks.experiments.v2_campaign`) ; une exécution de calibration ne
+satisfait pas `strict_v3_metrics_adopted` et une répétition par posture ne
+satisfait pas `minimum_repetitions`, donc `mt_admissible` reste `false` avec le
+statut de mesure `evidence_only_not_admitted`, comme pour la calibration SSH.
 
 Depuis la racine, les tests de qualification logicielle se lancent avec :
 
@@ -98,7 +101,8 @@ fournisseur `ollama-umons` et le modèle sont présents au précontrôle.
 
 Ce lancement qualifie l'instrument sur un broker réel ; il ne constitue ni
 une campagne confirmatoire, ni une preuve d'avantage du LLM.
-`mt_admissible` reste `false`, le statut de mesure reste
+L'admission calculée reste `false` (une répétition par posture, métriques
+strict-v3 non adoptées), le statut de mesure reste
 `evidence_only_not_admitted` et la portée reste une calibration logicielle
 avec oracle fourni par l'opérateur. Les preuves complètes restent sur nato
 sous `/opt/lance-dev-2/output/mqtt-reference/39239366068-1/`.

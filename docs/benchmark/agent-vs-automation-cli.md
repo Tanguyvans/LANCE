@@ -286,6 +286,47 @@ Le module reste sous `benchmarks/experiments/`, hors des ressources auditées
 gelées de `src/agent` et `src/benchmark`. Le test du gel du pilote reste inchangé ;
 un futur manifeste V2 devra aussi identifier la version de cet instrument.
 
+### Répétitions, panneau de modèles et résumé V2
+
+Les deux harnais réels (`ssh_reference_live`, `mqtt_reference_live`) partagent le
+contrat `benchmarks.experiments.v2_campaign` :
+
+- **Panneau déclaré.** Seul `ollama-umons` est accepté, avec `qwen3.8:27b`
+  (dense) ou `gemma4:26b-a4b-it-q4_K_M` (MoE). Un autre fournisseur ou modèle
+  est refusé avant tout accès à l'hôte ou au laboratoire ; aucun repli n'est
+  tenté.
+- **Répétitions.** `--repetitions N` (1 à 5) exécute chaque posture N fois.
+  Chaque paire reçoit un bloc `experiment` stable (`id`, `trial_id`,
+  `family_id`, `instance_id`) écrit dans `run_meta.json`, avec la répétition
+  conservée dans `planned.json`.
+- **Admission calculée.** Chaque paire évalue `paired_execution_complete`,
+  `run_meta_present`, `budget_parity`, `preflight_attested`, `evidence_integrity`,
+  `usage_complete` et `evaluation_available`. Le résultat de l'essai expose
+  `mt_admissible` et `unmet_conditions` ; le résultat global ajoute
+  `pair_conditions`, `strict_v3_metrics_adopted`, `configuration_uniformity`,
+  `independent_families` et `minimum_repetitions`. Ces verdicts de calibration
+  ne satisfont pas `strict_v3_metrics_adopted`, donc une campagne reste non
+  admise même quand toutes les autres conditions le sont.
+
+Le résumé hors ligne agrège plusieurs racines d'expérience et délègue
+l'inférence à `src.benchmark.inference.family_inference` (moyenne par famille,
+puis bootstrap et correction de Holm) :
+
+```bash
+python -m benchmarks.experiments.v2_campaign \
+  --root output/ssh-reference/RUN_SSH \
+  --root output/mqtt-reference/RUN_MQTT \
+  --output output/v2-summary.json \
+  --minimum-families 2 --minimum-repetitions 3
+```
+
+Le résumé distingue les paires incluses, exclues (condition non satisfaite
+nommée) et incomplètes ; il n'invente aucune mesure absente et n'exécute,
+ne téléverse ni ne modifie aucun enregistrement. Si plusieurs configurations
+(modèles) sont fournies, l'inférence est calculée séparément par configuration
+dans `by_configuration` et n'est jamais regroupée entre modèles ; l'admission
+globale signale alors `configuration_uniformity` comme non satisfaite.
+
 ### Premier pilote SSH réel sur dev/2
 
 `benchmarks.experiments.ssh_reference_live` utilise l'infrastructure **Proxmox/LXC
@@ -401,8 +442,12 @@ Vérification locale des fichiers et de tous les membres des archives :
 python -m benchmarks.experiments.ssh_reference_live verify --output CHEMIN_ESSAI
 ```
 
-Le verdict reste `mt_admissible: false`. Une paire par posture qualifie
-l'instrument ; elle ne permet ni intervalle de confiance ni conclusion sur une
+Le verdict d'admission est calculé à partir de conditions nommées, et non fixé
+d'avance (voir [Répétitions, panneau de modèles et résumé V2](#répétitions-panneau-de-modèles-et-résumé-v2)).
+Une paire par posture qualifie l'instrument sans satisfaire
+`minimum_repetitions`, et les verdicts de calibration ne satisfont pas
+`strict_v3_metrics_adopted` : la campagne reste non admise et le résultat nomme
+ces conditions. Elle ne permet ni intervalle de confiance ni conclusion sur une
 plus-value du LLM. L'amendement des métriques, la calibration des budgets et une
 campagne indépendante restent nécessaires avant une étude confirmatoire.
 

@@ -162,6 +162,17 @@ def test_live_pilot_rejects_other_models_before_host_or_lab_access(monkeypatch, 
         live.run_experiment(args)
 
 
+@pytest.mark.parametrize('model', live.MODEL_PANEL)
+def test_declared_model_panel_passes_the_model_gate(model):
+    assert live.v2.require_model(live.PROVIDER, model, pilot='MQTT') == model
+
+
+def test_repetitions_stay_bounded():
+    with pytest.raises(ValueError, match='between 1 and 5'):
+        live.run_experiment(SimpleNamespace(provider=live.PROVIDER, model=live.MODEL,
+                                            repetitions=6, output=Path('/unused')))
+
+
 def test_guest_controller_validates_fixture_and_lease(monkeypatch):
     import importlib.util
     spec = importlib.util.spec_from_file_location(

@@ -22,10 +22,15 @@ on:
         options: [ollama-umons]
         default: ollama-umons
       ssh_model:
-        description: 'Qwen model for the manual SSH qualification'
+        description: 'Model for the manual SSH qualification (declared V2 panel)'
         type: choice
-        options: ['qwen3.8:27b']
+        options: ['qwen3.8:27b', 'gemma4:26b-a4b-it-q4_K_M']
         default: qwen3.8:27b
+      ssh_repetitions:
+        description: 'Independent repetitions per posture'
+        type: choice
+        options: ['1', '2', '3']
+        default: '1'
       ssh_inspect_experiment:
         description: 'Manually inspect authorized filtered diagnostics from an existing SSH run-attempt'
         type: string
@@ -177,6 +182,7 @@ jobs:
     with:
       provider: ${{ inputs.ssh_provider }}
       model: ${{ inputs.ssh_model }}
+      repetitions: ${{ inputs.ssh_repetitions }}
 
   ssh-inspect:
     if: >-

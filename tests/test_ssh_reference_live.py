@@ -275,8 +275,19 @@ def test_wrong_runner_is_refused_before_any_command(monkeypatch):
 @pytest.mark.parametrize('provider,model', [('minimax', 'MiniMax-M2.7'), ('ollama-umons', 'other-model')])
 def test_live_pilot_rejects_other_models_before_host_or_lab_access(monkeypatch, provider, model):
     monkeypatch.setattr(live, 'require_nato', lambda: pytest.fail('Must reject before host access'))
-    with pytest.raises(ValueError, match='requires ollama-umons / qwen3.8:27b'):
+    with pytest.raises(ValueError, match='no provider fallback'):
         live.run_experiment(SimpleNamespace(provider=provider, model=model))
+
+
+@pytest.mark.parametrize('model', live.MODEL_PANEL)
+def test_declared_model_panel_passes_the_model_gate(model):
+    # Admission is a pure gate: no host or lab access happens inside it.
+    assert live.v2.require_model(live.PROVIDER, model, pilot='SSH') == model
+
+
+def test_repetitions_stay_bounded():
+    with pytest.raises(ValueError, match='between 1 and 5'):
+        live.run_experiment(SimpleNamespace(provider=live.PROVIDER, model=live.MODEL, repetitions=6))
 
 
 def test_label_scoped_cleanup_never_touches_other_containers(tmp_path, monkeypatch):
@@ -352,7 +363,8 @@ def test_workflow_is_manual_local_and_shell_syntax_valid(tmp_path):
     assert 'inputs.ssh_reference == true' in guard and "inputs.slot == 'dev-2'" in guard
     inputs = ci['on']['workflow_dispatch']['inputs']
     assert inputs['ssh_provider']['options'] == ['ollama-umons']
-    assert inputs['ssh_model']['options'] == ['qwen3.8:27b']
+    assert inputs['ssh_model']['options'] == ['qwen3.8:27b', 'gemma4:26b-a4b-it-q4_K_M']
+    assert inputs['ssh_repetitions']['options'] == ['1', '2', '3']
     for step in workflow['jobs']['ssh-trial']['steps']:
         if 'run' in step:
             subprocess.run(['bash', '-n'], input=step['run'], text=True, check=True)
@@ -360,4 +372,5 @@ def test_workflow_is_manual_local_and_shell_syntax_valid(tmp_path):
     assert 'flock -x 9' in text and 'test "$RUNNER_NAME" = nato-master' in text
     assert 'if: always()' in text and ' recover --output ' in text
     assert 'test "$SSH_PROVIDER" = ollama-umons' in text
-    assert 'test "$SSH_MODEL" = qwen3.8:27b' in text
+    assert 'qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M' in text
+    assert '--repetitions "$SSH_REPETITIONS"' in text

@@ -11,6 +11,10 @@ on:
       model:
         required: true
         type: string
+      repetitions:
+        required: false
+        type: string
+        default: '1'
 
 permissions:
   contents: read
@@ -22,7 +26,7 @@ concurrency:
 jobs:
   ssh-trial:
     runs-on: [self-hosted, nato-master]
-    timeout-minutes: 35
+    timeout-minutes: 90
     env:
       LANCE_LAB_LOCK: /var/lib/lance/lab.lock
       LANCE_SSH_LOCK_HELD: "1"
@@ -31,8 +35,9 @@ jobs:
       PYTHONUNBUFFERED: "1"
       SSH_PROVIDER: ${{ inputs.provider }}
       SSH_MODEL: ${{ inputs.model }}
+      SSH_REPETITIONS: ${{ inputs.repetitions }}
     steps:
-      - name: Execute four real SSH arms under the shared lock
+      - name: Execute the planned SSH arms under the shared lock
         shell: bash
         run: |
           set -euo pipefail
@@ -41,7 +46,13 @@ jobs:
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF" = refs/heads/dev/2
           test "$SSH_PROVIDER" = ollama-umons
-          test "$SSH_MODEL" = qwen3.8:27b
+          case "$SSH_MODEL" in
+            qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M) ;;
+            *) echo "Model outside the declared V2 panel" >&2; exit 1 ;;
+          esac
+          case "$SSH_REPETITIONS" in 1|2|3) ;; *)
+            echo "Repetitions must be 1, 2 or 3" >&2; exit 1 ;;
+          esac
           exec 9>>/var/lib/lance/lab.lock
           flock -x 9
           cd /opt/lance-dev-2
@@ -55,10 +66,10 @@ jobs:
           assert state['commit'] == os.environ['EXPECTED_SHA']
           PY
           mkdir -p output/ssh-reference
-          timeout --signal=TERM --kill-after=45s 1500 \
+          timeout --signal=TERM --kill-after=45s "$((300 + 1500 * SSH_REPETITIONS))" \
             venv/bin/python -m benchmarks.experiments.ssh_reference_live run \
             --output "output/ssh-reference/$TRIAL_NAME" \
-            --provider "$SSH_PROVIDER" --model "$SSH_MODEL" \
+            --provider "$SSH_PROVIDER" --model "$SSH_MODEL" --repetitions "$SSH_REPETITIONS" \
             --max-tool-calls 8 --max-duration-s 420 --max-cost-usd 1 --max-turns 12 \
             > "output/ssh-reference/$TRIAL_NAME.console.log" 2>&1
 
