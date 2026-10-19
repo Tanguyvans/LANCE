@@ -124,6 +124,11 @@ class TestBuildSubprocessFunction:
         fn(broker="192.168.88.100")
         cmd = mock_run.call_args[0][0]
         assert cmd[:3] == ["mosquitto_sub", "-F", "%j"]
+        # Deterministic client settings: brokers may reject the build-dependent
+        # default identifier/protocol (CONNACK identifier rejected).
+        for flag, value in (("-V", "mqttv311"), ("-I", "lance-listener-"), ("-k", "30")):
+            index = cmd.index(flag)
+            assert cmd[index:index + 2] == [flag, value]
         assert "-h" in cmd
         assert "192.168.88.100" in cmd
         assert "-t" in cmd

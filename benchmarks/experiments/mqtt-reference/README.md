@@ -73,6 +73,12 @@ les ACL. Quatrième lancement le 18 octobre 2026
 toujours sans lecture prouvée. Le semis est donc rendu déterministe
 (MQTT 3.1.1, identifiant client court explicite, keepalive 30) et ses
 échecs sont convertis en causes fixes classifiables, sans relayer stderr
-ni secrets. Aucun résultat réel script/LLM n'est attesté tant qu'un nouvel
-essai n'a pas réussi ; les tentatives échouées restent archivées telles
-quelles.
+ni secrets. Cinquième lancement le 18 octobre 2026
+(run `39160168417-1`) : le semis passe, mais les quatre souscriptions du
+précontrôle sortent en code 2. La réinspection filtrée de l'essai scellé
+(19 octobre 2026) classe un rejet d'identifiant client par le broker ;
+l'outil `mqtt_listen` fixe donc désormais le protocole MQTT 3.1.1, un
+préfixe d'identifiant client explicite et un keepalive de 30 secondes,
+comme le semeur. Aucun résultat réel script/LLM n'est attesté tant qu'un
+nouvel essai n'a pas réussi ; les tentatives échouées restent archivées
+telles quelles.

@@ -214,7 +214,7 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
             }
             # Attest framing only when the actual fixed command requests the
             # escaped JSON format. Never infer it from received payload text.
-            if list(fixed_args) == ["-F", "%j"]:
+            if list(fixed_args)[:2] == ["-F", "%j"]:
                 execution_attestation["output_format"] = "mosquitto-json-v1"
         result = _run(cmd, timeout=effective_timeout)
 
