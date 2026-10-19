@@ -123,6 +123,27 @@ def _record_result(record):
     return result if isinstance(result, dict) else None
 
 
+_STDERR_OUTCOMES = (
+    (('identifier rejected',), 'identifier_rejected'),
+    (('not authorised', 'not authorized', 'bad username or password', 'bad username/password'),
+     'not_authorised'),
+    (('timed out', 'timeout'), 'timed_out'),
+    (('protocol error',), 'protocol_error'),
+    (('connection refused', 'connection was lost', 'connection error', 'could not connect'),
+     'connection_failed'),
+)
+
+
+def _stderr_outcome(stderr):
+    """Fixed outcome only; raw client stderr is never relayed."""
+    text = stderr.decode('utf-8', 'replace') if isinstance(stderr, bytes) else str(stderr or '')
+    lowered = text.lower()
+    for markers, outcome in _STDERR_OUTCOMES:
+        if any(marker in lowered for marker in markers):
+            return outcome
+    return 'unexpected_return_code'
+
+
 def _framing_outcome(stdout, topic):
     if not isinstance(stdout, str):
         return 'framing_invalid'
@@ -208,7 +229,7 @@ def _preflight_diagnostics(root, read):
             elif returncode == 5:
                 outcome = 'broker_refused'
             elif returncode not in (0, 27):
-                outcome = 'unexpected_return_code'
+                outcome = _stderr_outcome(result.get('stderr'))
             else:
                 attestation = result.get('execution_attestation')
                 if (not isinstance(attestation, dict) or attestation.get('protocol') != 'TCP'
