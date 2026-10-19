@@ -1589,6 +1589,25 @@ def _semantic_output_supports_finding(
     return proof["status"] == "EXPLOITED" and proof["evidence_level"] >= 2
 
 
+def _semantic_records_support_finding(finding: dict | None, records: list[dict]) -> bool:
+    """Recompute the proof contract over correlated records.
+
+    Some properties (mass assignment) need a successful write and a later
+    read-back. Each call stays attributable through its recorded evidence ref.
+    """
+    if not records:
+        return False
+    proof = synthesize_exploit_result(
+        {**(finding or {}), "type": canonicalize(str((finding or {}).get("type") or ""))},
+        [{
+            "tool": _canonical_tool_name(record.get("tool", "")),
+            "args": record.get("args") or {},
+            "result": _tool_result_data(record),
+        } for record in records],
+    )
+    return proof["status"] == "EXPLOITED" and proof["evidence_level"] >= 2
+
+
 def _tool_call_outcome(record: dict, finding: dict | None = None) -> bool | None:
     """Return a conservative, tool-specific exploitation success verdict."""
     result = _tool_result_data(record)
@@ -2772,14 +2791,17 @@ def evaluate(
         supported = set()
         for index, finding in enumerate(findings):
             records = _matching_tool_calls(finding, tool_calls)
-            valid = _coerce_evidence_level(finding) >= 2 and any(
-                _tool_call_outcome(record, finding) is True
-                and isinstance(_tool_result_data(record), dict)
-                and _semantic_output_supports_finding(
-                    str(record.get("tool") or ""), _tool_result_data(record), finding,
-                    args=record.get("args"),
+            valid = _coerce_evidence_level(finding) >= 2 and (
+                any(
+                    _tool_call_outcome(record, finding) is True
+                    and isinstance(_tool_result_data(record), dict)
+                    and _semantic_output_supports_finding(
+                        str(record.get("tool") or ""), _tool_result_data(record), finding,
+                        args=record.get("args"),
+                    )
+                    for record in records
                 )
-                for record in records
+                or _semantic_records_support_finding(finding, records)
             )
             finding["_proof_status"] = "accepted" if valid else ("rejected" if records else "missing")
             if valid:
