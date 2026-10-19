@@ -53,8 +53,11 @@ exécutables présents sur le contrôleur, sans certifier l’accès au laborato
 | **Auditer un scénario automatiquement** (`rules-audit-v1`) | Scénario public déployable, puis analyse et vérification par règles | Constats et confirmations par équipement ; contrôles incomplets distincts |
 | **Vérifier le lancement hors ligne** (`smoke-v1`, rubrique Diagnostic) | Aucune cible ni opération réseau | Vérification du lancement, des étapes et de l’enregistrement |
 
-Choisir une fiche, renseigner le réseau ou le scénario, puis lancer. Les limites
-effectives sont préremplies et ajustables. L’audit de scénario précise les actions
+Choisir une fiche, renseigner le réseau ou le scénario, puis lancer. Les procédures
+réseau simples ont des limites préremplies et ajustables ; l’audit de scénario par
+règles n’envoie aucune limite si les champs restent vides, et le pipeline interactif
+n’applique ni plafond d’appels ni délai d’analyse par équipement. Les expériences
+contrôlées, elles, conservent leurs limites enregistrées. L’audit de scénario précise les actions
 sur les services simulés et propose le nettoyage automatique final. Sa préparation
 peut supprimer les scénarios déjà présents dans le laboratoire partagé pour les
 remplacer par celui demandé, même si le nettoyage final est désactivé. Sa limite
@@ -233,9 +236,9 @@ ou rapport LLM n'est utilisé. Les scénarios scellés restent réservés au con
 
 Le moteur réutilise les scanners, l'agrégation et les décisions bornées de la
 politique `rules`, avec le profil `full`, un worker de scan et une source CVE
-figée. Les limites par défaut sont de 200 appels d'outils et 600 secondes de
-contrôles après le déploiement ; l'API accepte jusqu'à 2 000 appels et 3 600
-secondes. Le déploiement conserve son propre délai et la réservation commune
+figée. Aucune limite d'appels d'outils ni de durée des contrôles n'est appliquée
+par défaut ; si l'opérateur en fixe une, l'API accepte jusqu'à 2 000 appels et
+3 600 secondes. Le déploiement conserve son propre délai et la réservation commune
 du laboratoire reste détenue pendant l'ensemble de l'opération.
 
 Les sondes `ssh-audit` omettent le test de débit des connexions pour éviter de
@@ -259,7 +262,7 @@ La destination et le port restent ceux du constat ; seule une connexion observé
 et attribuée à cette destination peut confirmer le résultat.
 
 ```json
-{"runner_kind":"rules","scenario_id":"1","max_tool_calls":200,"max_duration_s":600,"auto_teardown":true}
+{"runner_kind":"rules","scenario_id":"1","auto_teardown":true}
 ```
 
 Pour une architecture personnalisée, remplacer `scenario_id` par `architecture`,

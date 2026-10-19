@@ -171,7 +171,7 @@ const ProcedureUI = (() => {
     byId('procedure-scenario').required = procedure.target_kind === 'scenario';
     byId('procedure-offline-field').hidden = procedure.target_kind !== 'none';
     byId('procedure-effects').textContent = procedure.effects;
-    byId('procedure-duration').value = procedure.defaults.max_duration_s;
+    byId('procedure-duration').value = procedure.defaults.max_duration_s ?? '';
     byId('procedure-duration-label').textContent = procedure.runner_kind === 'rules' ? 'Temps maximal des contrôles (secondes)' : 'Temps maximal (secondes)';
     byId('procedure-duration-help').textContent = procedure.runner_kind === 'rules'
       ? 'Cette limite couvre l’analyse et la vérification. L’attente du laboratoire, le déploiement et le nettoyage peuvent prolonger la durée totale.'
@@ -197,12 +197,24 @@ const ProcedureUI = (() => {
       if (!values.scenario) throw new Error('Choisissez un scénario public déployable.');
       body.scenario_id = values.scenario; body.auto_teardown = values.cleanup;
     }
-    if (!Number.isSafeInteger(values.duration) || values.duration < 1 || values.duration > 3600) throw new Error('Le temps maximal doit être compris entre 1 et 3 600 secondes.');
-    body.max_duration_s = values.duration;
+    // Empty fields mean no ceiling; only the rules audit accepts them.
+    const empty = value => value === '' || value === null || value === undefined;
+    if (!empty(values.duration)) {
+      const duration = Number(values.duration);
+      if (!Number.isSafeInteger(duration) || duration < 1 || duration > 3600) throw new Error('Le temps maximal doit être compris entre 1 et 3 600 secondes.');
+      body.max_duration_s = duration;
+    } else if (procedure.runner_kind !== 'rules') {
+      throw new Error('Le temps maximal doit être compris entre 1 et 3 600 secondes.');
+    }
     if (procedure.target_kind !== 'none') {
       const max = procedure.runner_kind === 'rules' ? 2000 : 100;
-      if (!Number.isSafeInteger(values.calls) || values.calls < 1 || values.calls > max) throw new Error(`Le nombre d’appels doit être compris entre 1 et ${max}.`);
-      body.max_tool_calls = values.calls;
+      if (!empty(values.calls)) {
+        const calls = Number(values.calls);
+        if (!Number.isSafeInteger(calls) || calls < 1 || calls > max) throw new Error(`Le nombre d’appels doit être compris entre 1 et ${max}.`);
+        body.max_tool_calls = calls;
+      } else if (procedure.runner_kind !== 'rules') {
+        throw new Error(`Le nombre d’appels doit être compris entre 1 et ${max}.`);
+      }
     }
     return body;
   }
@@ -214,7 +226,7 @@ const ProcedureUI = (() => {
     let body;
     try {
       body = buildRequest(state.selected, {network: byId('procedure-network').value.trim(), scenario: byId('procedure-scenario').value,
-        cleanup: byId('procedure-cleanup').checked, duration: Number(byId('procedure-duration').value), calls: Number(byId('procedure-calls').value)});
+        cleanup: byId('procedure-cleanup').checked, duration: byId('procedure-duration').value.trim(), calls: byId('procedure-calls').value.trim()});
     } catch (error) { message(error.message, true); return; }
     state.starting = true; lockForm();
     try {

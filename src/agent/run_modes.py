@@ -563,8 +563,8 @@ def make_runner(
             pipeline_kwargs["decision_policy"] = "rules"
             pipeline_kwargs["phases"] = [3, 4]
             execution_profile = "full"
-            max_tool_calls = 200 if max_tool_calls is None else max_tool_calls
-            max_duration_s = 600 if max_duration_s is None else max_duration_s
+            # Interactive rules audits run without a default action or time
+            # ceiling; explicit limits stay available when a caller needs one.
         from src.agent.pipeline import Pipeline
         pipeline = Pipeline(
             provider=provider, scenario_id=scenario_id,

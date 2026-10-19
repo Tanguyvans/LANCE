@@ -147,8 +147,8 @@
       <div id="rules-config" hidden>
         <p class="field-hint">Déploie le scénario choisi, analyse ses équipements puis vérifie les vulnérabilités détectées. Résultats sur le graphe, sans modèle.</p>
         <div class="simple-limits">
-          <div><label for="inp-rules-max-calls">Appels d'outils max.</label><input id="inp-rules-max-calls" type="number" min="1" max="2000" step="1" value="200"></div>
-          <div><label for="inp-rules-duration">Durée des contrôles (s)</label><input id="inp-rules-duration" type="number" min="1" max="3600" step="1" value="600"></div>
+          <div><label for="inp-rules-max-calls">Appels d'outils max.</label><input id="inp-rules-max-calls" type="number" min="1" max="2000" step="1" placeholder="Sans limite"></div>
+          <div><label for="inp-rules-duration">Durée des contrôles (s)</label><input id="inp-rules-duration" type="number" min="1" max="3600" step="1" placeholder="Sans limite"></div>
         </div>
       </div>
       <div id="execution-profile-config">
@@ -645,7 +645,7 @@
         <p id="procedure-offline-field" class="procedure-help" hidden>Ce diagnostic fonctionne sans cible réseau ni modèle.</p>
         <div class="procedure-effects"><strong>Actions sur l’environnement</strong><p id="procedure-effects"></p></div>
         <details class="procedure-limits"><summary>Ajuster les limites d’exécution</summary><div class="procedure-limit-grid">
-          <div><label for="procedure-duration" id="procedure-duration-label">Temps maximal (secondes)</label><input id="procedure-duration" type="number" min="1" max="3600" step="1" required></div>
+          <div><label for="procedure-duration" id="procedure-duration-label">Temps maximal (secondes)</label><input id="procedure-duration" type="number" min="1" max="3600" step="1" placeholder="Sans limite"></div>
           <div id="procedure-calls-field"><label for="procedure-calls">Appels d’outils maximum</label><input id="procedure-calls" type="number" min="1" max="100" step="1" aria-describedby="procedure-calls-help"><p id="procedure-calls-help" class="procedure-help">Un appel correspond à une commande lancée par LANCE, par exemple une sonde Nmap. Un même équipement peut demander plusieurs appels.</p></div>
         </div><p id="procedure-duration-help" class="procedure-help"></p><p class="procedure-help">Un arrêt ou une limite atteinte conserve les observations déjà obtenues et signale les contrôles incomplets.</p></details>
         <div id="procedure-form-error" class="procedure-error" role="alert" hidden></div>

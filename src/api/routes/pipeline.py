@@ -183,10 +183,13 @@ class StartRequest(BaseModel):
                 raise ValueError("Rules audits execute analysis and verification (phases 3 and 4)")
             if self.execution_profile not in {"auto", "full"}:
                 raise ValueError("Rules audits use the full deterministic profile")
-            self.max_tool_calls = 200 if self.max_tool_calls is None else self.max_tool_calls
-            self.max_duration_s = 600 if self.max_duration_s is None else self.max_duration_s
-            if self.max_tool_calls > 2000 or not math.isfinite(self.max_duration_s) or self.max_duration_s > 3600:
-                raise ValueError("Rules audit limits are at most 2000 calls and 3600 audit seconds")
+            # Interactive rules audits run without a default action or time
+            # ceiling; a caller may still set an explicit one.
+            if self.max_tool_calls is not None and self.max_tool_calls > 2000:
+                raise ValueError("Rules audit limits are at most 2000 calls")
+            if self.max_duration_s is not None and (
+                    not math.isfinite(self.max_duration_s) or self.max_duration_s > 3600):
+                raise ValueError("Rules audit duration is at most 3600 seconds")
             self.execution_profile = "full"
             return self
         if self.runner_kind == "vanilla" and not (self.model and self.provider):
@@ -389,6 +392,10 @@ def _pipeline_thread(req: StartRequest):
             execution_profile=req.execution_profile,
             max_tool_calls=req.max_tool_calls if req.runner_kind == "rules" else None,
             max_duration_s=req.max_duration_s if req.runner_kind == "rules" else None,
+            # Interactive launches are not bounded by the per-device analysis
+            # deadline; controlled experiments keep their recorded limits.
+            **({"unlimited_device_timeout": True}
+               if req.runner_kind in {"lance", "rules"} else {}),
         )
 
         pending_pipeline_done: dict[str, Any] | None = None

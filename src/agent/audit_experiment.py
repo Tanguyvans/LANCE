@@ -112,8 +112,8 @@ def validate_configuration(*, decision_policy, experiment_scope, inventory,
                 raise ValueError("Scenario rules audits require rules and no experimental inventory")
             if execution_profile != "full" or list(phases or []) != [3, 4]:
                 raise ValueError("Scenario rules audits require full and phases 3 4")
-            if max_tool_calls is None or max_duration_s is None or max_cost_usd is not None:
-                raise ValueError("Scenario rules audits require action/time limits and no model budget")
+            if max_cost_usd is not None:
+                raise ValueError("Scenario rules audits require no model budget")
             return None
         if decision_policy != "llm" or inventory is not None:
             raise ValueError("rules and audit_inventory require experiment_scope=analysis-verification")
@@ -141,7 +141,8 @@ def resource_manifest(root: Path | None = None) -> str:
     return hasher.hexdigest()
 
 
-def analysis_limits(*, comparison_unlimited: bool = False) -> dict:
+def analysis_limits(*, comparison_unlimited: bool = False,
+                    device_timeout_unlimited: bool = False) -> dict:
     """Capture effective environment-dependent recovery settings, without secrets."""
     from src.agent.phases.analysis.block_recovery import block_config
     try:
@@ -149,4 +150,5 @@ def analysis_limits(*, comparison_unlimited: bool = False) -> dict:
         timeout = max(30.0, timeout) if math.isfinite(timeout) else 240.0
     except ValueError:
         timeout = 240.0
-    return {"device_timeout_s": None if comparison_unlimited else timeout, "block_recovery": block_config()}
+    unlimited = comparison_unlimited or device_timeout_unlimited
+    return {"device_timeout_s": None if unlimited else timeout, "block_recovery": block_config()}

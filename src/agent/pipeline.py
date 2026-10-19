@@ -105,6 +105,7 @@ class Pipeline(
         max_tool_calls: int | None = None,
         max_duration_s: float | None = None,
         comparison_unlimited: bool = False,  # Opt-in reserved for the guided public pair controller.
+        unlimited_device_timeout: bool = False,  # Interactive runs: no per-device analysis deadline.
     ):
         from src.agent.audit_experiment import validate_configuration
         self.rules_scenario_audit = (
@@ -133,6 +134,7 @@ class Pipeline(
         self.experiment_scope = experiment_scope
         self.max_duration_s = max_duration_s
         self.comparison_unlimited = comparison_unlimited
+        self.unlimited_device_timeout = unlimited_device_timeout
         if self.audit_inventory is not None:
             target_network = self.audit_inventory["target_network"]
             manage_scenario = False
@@ -571,6 +573,14 @@ class Pipeline(
             f"CVEs: {lab['cve_count']}, Top risk: {lab['top_risk']}"
         )
 
+        # Analysis limits apply to every run: an interactive audit may opt out
+        # of the per-device deadline, while the controlled experiments keep it.
+        from src.agent.audit_experiment import analysis_limits
+        self.experiment_analysis_limits = analysis_limits(
+            comparison_unlimited=self.comparison_unlimited,
+            device_timeout_unlimited=self.unlimited_device_timeout,
+        )
+
         # Save run metadata (git commit, model) for traceability
         run_meta = {
             # Explicit planned configuration for reproducible aggregation.
@@ -607,8 +617,7 @@ class Pipeline(
             **runtime.metric_contract_metadata(),
         }
         if self.experiment_scope:
-            from src.agent.audit_experiment import digest, resource_manifest, analysis_limits, POLICY_SCHEMA_VERSION, RULES_VERSION
-            self.experiment_analysis_limits = analysis_limits(comparison_unlimited=self.comparison_unlimited)
+            from src.agent.audit_experiment import digest, resource_manifest, POLICY_SCHEMA_VERSION, RULES_VERSION
             run_meta.update({
                 "policy_schema_version": POLICY_SCHEMA_VERSION,
                 "decision_policy": self.decision_policy,
@@ -626,6 +635,8 @@ class Pipeline(
             from src.agent.audit_experiment import RULES_VERSION
             run_meta.update({"runner_kind": "rules", "decision_policy": "rules",
                              "audit_scope": "scenario-analysis-verification", "rules_version": RULES_VERSION})
+        if self.unlimited_device_timeout:
+            run_meta["unlimited_device_timeout"] = True
         contract_hash = getattr(self.execution_context, "contract_hash", None)
         if not contract_hash and self.execution_context is not None:
             try:

@@ -50,7 +50,7 @@ _PROCEDURES = (
         "scope": "Analyse et vérification par règles, sans modèle. Scénarios publics déployables uniquement.",
         "effects": "Le laboratoire est partagé : la préparation peut supprimer les machines des scénarios déjà présents avant de déployer le scénario choisi, même si le nettoyage après audit est désactivé. Certains contrôles modifient l’état des services simulés. Le nettoyage après audit supprime les machines du scénario choisi lorsqu’il est activé.",
         "dependencies": ["ansible-playbook"],
-        "defaults": {"max_tool_calls": 200, "max_duration_s": 600},
+        "defaults": {},
         "steps": [{"id": "deployment", "label": "Préparer le scénario"},
                   {"id": "analysis", "label": "Analyser les équipements"},
                   {"id": "verification", "label": "Vérifier les constats"},

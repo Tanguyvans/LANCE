@@ -88,6 +88,8 @@ def test_closing_results_clears_direct_link_and_invalid_routes_stay_closed():
      {"runner_kind": "scripted", "script_id": "service-inventory-v1", "target_network": "192.0.2.0/24", "max_duration_s": 600, "max_tool_calls": 17}),
     ("rules-audit-v1", {"scenario": "1", "cleanup": True, "duration": 600, "calls": 200},
      {"runner_kind": "rules", "scenario_id": "1", "auto_teardown": True, "max_duration_s": 600, "max_tool_calls": 200}),
+    ("rules-audit-v1", {"scenario": "1", "cleanup": True, "duration": "", "calls": ""},
+     {"runner_kind": "rules", "scenario_id": "1", "auto_teardown": True}),
 ])
 def test_guided_launch_sends_only_the_existing_runner_contract(identifier, values, expected):
     program = f"return ProcedureUI.buildRequest({json.dumps(get_procedure(identifier))}, {json.dumps(values)});"

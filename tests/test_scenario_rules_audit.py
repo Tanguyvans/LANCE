@@ -32,7 +32,7 @@ def test_rules_request_needs_no_model_and_captures_limits(selection):
     request = route.StartRequest(runner_kind="rules", **selection)
     assert request.model is request.provider is None
     assert request.execution_profile == "full"
-    assert request.max_tool_calls == 200 and request.max_duration_s == 600
+    assert request.max_tool_calls is None and request.max_duration_s is None
 
 
 @pytest.mark.parametrize("positive, interruption", [(False, None), (True, None), (False, "deploy"), (False, "stop"), (False, "budget")])
@@ -223,7 +223,8 @@ def test_api_worker_selects_rules_without_constructing_provider(tmp_path, monkey
                                          "stop_event": threading.Event(), "phases_done": []})
     route._pipeline_thread(route.StartRequest(runner_kind="rules", scenario_id="1"))
     assert captured["kind"] == "rules" and captured["provider"] is None
-    assert captured["max_tool_calls"] == 200 and captured["max_duration_s"] == 600
+    assert captured["max_tool_calls"] is None and captured["max_duration_s"] is None
+    assert captured["unlimited_device_timeout"] is True
     phase = next(event for event in events if event["type"] == "phase_done")
     assert phase["runner_kind"] == "rules" and phase["run_dir"] == str(tmp_path)
     evaluation = next(event for event in events if event["type"] == "evaluation_done")

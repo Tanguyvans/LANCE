@@ -66,6 +66,17 @@ await startRulesAudit();
                                  "max_tool_calls": 200, "max_duration_s": 600}]
 
 
+def test_rules_launch_without_limits_sends_no_budget_fields():
+    view = dashboard("""
+setRunnerView('rules');document.getElementById('sel-scenario').value='1';
+document.getElementById('inp-rules-max-calls').value='';
+document.getElementById('inp-rules-duration').value='';
+document.getElementById('cb-teardown').checked=true;
+await startRulesAudit();
+""")
+    assert view["payloads"] == [{"runner_kind": "rules", "scenario_id": "1", "auto_teardown": True}]
+
+
 def test_device_projection_labels_confirmations_and_does_not_mark_unchecked_nodes_healthy():
     projection = {"schema_version": 1, "available": True, "topology": {"nodes": [], "edges": []},
                   "devices": [

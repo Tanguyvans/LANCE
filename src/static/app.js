@@ -1701,8 +1701,10 @@ async function startRulesAudit() {
   }
   for (const [id, field] of [['inp-rules-max-calls', 'max_tool_calls'], ['inp-rules-duration', 'max_duration_s']]) {
     const element = document.getElementById(id);
+    // An empty field means no limit; the run only stops on an explicit cap.
+    if (element.value === '') continue;
     if (!element.checkValidity() || !Number.isSafeInteger(Number(element.value)) || Number(element.value) <= 0) {
-      addLog({type: 'error', message: 'Les limites de contrôles doivent être des entiers positifs.'});
+      addLog({type: 'error', message: 'Les limites de contrôles, si renseignées, doivent être des entiers positifs.'});
       return;
     }
     body[field] = Number(element.value);
