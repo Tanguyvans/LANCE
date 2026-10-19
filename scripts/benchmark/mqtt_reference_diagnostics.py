@@ -75,6 +75,10 @@ BROKER_REASONS = {
 }
 
 
+PREFLIGHT_CHECKS = ('control_private', 'anonymous_public',
+                    'anonymous_private', 'control_private_after')
+
+
 def entry(error=None, utility=None, returncode=None, reason='unclassified'):
     return {'error_type': error if error in ERRORS else None,
             'utility': utility if utility in UTILITIES else None,
@@ -106,6 +110,117 @@ def broker_diagnostics(log):
             if f"No such file or directory: '{utility}'" in line:
                 value = entry(error[1], utility, reason='guest_startup_utility_missing')
         diagnostics.append(value)
+    return diagnostics
+
+
+def _record_result(record):
+    result = record.get('result')
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except ValueError:
+            return None
+    return result if isinstance(result, dict) else None
+
+
+def _framing_outcome(stdout, topic):
+    if not isinstance(stdout, str):
+        return 'framing_invalid'
+    present = False
+    for line in stdout.split('\n'):
+        if not line.strip():
+            continue
+        try:
+            message = json.loads(line)
+        except ValueError:
+            return 'framing_invalid'
+        if (not isinstance(message, dict)
+                or set(message) != {'tst', 'topic', 'qos', 'retain', 'payload'}
+                or not isinstance(message['tst'], str) or not isinstance(message['topic'], str)
+                or type(message['qos']) is not int or message['qos'] not in (0, 1, 2)
+                or type(message['retain']) is not int or message['retain'] not in (0, 1)
+                or not isinstance(message['payload'], str)):
+            return 'framing_invalid'
+        present = present or message['topic'] == topic
+    return 'messages_present' if present else 'no_messages'
+
+
+def _preflight_diagnostics(root, read):
+    """Project preflight tool outcomes; never emit args, topics or payloads."""
+    diagnostics = []
+    for ledger in sorted((root / 'trials').glob('*/preflight/*/tool_calls.jsonl')):
+        trial = ledger.parents[2]
+        try:
+            briefing = json.loads(read(trial / 'briefing.json'))
+            target = briefing['target']
+            expected_topics = {
+                'control_private': briefing['private_topic'],
+                'anonymous_public': briefing['public_topic'],
+                'anonymous_private': briefing['private_topic'],
+                'control_private_after': briefing['private_topic']}
+            control = briefing['control_credential']
+            if not (isinstance(target['ip'], str) and type(target['port']) is int
+                    and all(isinstance(value, str) for value in expected_topics.values())
+                    and isinstance(control['username'], str) and isinstance(control['password'], str)):
+                raise ValueError
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            diagnostics.append(entry(utility='python3', reason='mqtt_preflight_briefing_unavailable'))
+            continue
+        try:
+            records = [json.loads(line) for line in read(ledger).splitlines() if line.strip()]
+        except ValueError:
+            diagnostics.append(entry(utility='mosquitto_sub', reason='mqtt_preflight_ledger_invalid'))
+            continue
+        if not records:
+            diagnostics.append(entry(utility='mosquitto_sub', reason='mqtt_preflight_ledger_empty'))
+            continue
+        records = [record for _, record in sorted(
+            enumerate(records),
+            key=lambda item: (0, item[1]['sequence'], item[0])
+            if isinstance(item[1], dict) and type(item[1].get('sequence')) is int
+            else (1, 0, item[0]))]
+        for index, record in enumerate(records[:len(PREFLIGHT_CHECKS)]):
+            check = PREFLIGHT_CHECKS[index]
+            result = _record_result(record) if isinstance(record, dict) else None
+            returncode = result.get('return_code') if result is not None else None
+            if type(returncode) is not int or isinstance(returncode, bool):
+                returncode = None
+            args = record.get('args') if isinstance(record, dict) else None
+            topic = expected_topics[check]
+            authenticated = check in ('control_private', 'control_private_after')
+            bound = (isinstance(record, dict) and record.get('tool') == 'mqtt_listen'
+                     and record.get('execution_origin') == 'runner' and isinstance(args, dict)
+                     and args.get('broker') == target['ip'] and args.get('port') == target['port']
+                     and args.get('topic') == topic
+                     and ((args.get('username') == control['username']
+                           and args.get('password') == control['password'])
+                          if authenticated else
+                          (not args.get('username') and not args.get('password'))))
+            error = None
+            if not bound:
+                outcome = 'binding_mismatch'
+            elif result is None:
+                outcome = 'result_invalid'
+            elif result.get('error') or result.get('error_kind') or result.get('success') is False:
+                outcome, error = 'result_error', result.get('exception_type')
+            elif returncode is None:
+                outcome = 'result_invalid'
+            elif returncode == 5:
+                outcome = 'broker_refused'
+            elif returncode not in (0, 27):
+                outcome = 'unexpected_return_code'
+            else:
+                attestation = result.get('execution_attestation')
+                if (not isinstance(attestation, dict) or attestation.get('protocol') != 'TCP'
+                        or attestation.get('output_format') != 'mosquitto-json-v1'
+                        or attestation.get('host') != target['ip']
+                        or attestation.get('port') != target['port']
+                        or attestation.get('topic') != topic):
+                    outcome = 'attestation_invalid'
+                else:
+                    outcome = _framing_outcome(result.get('stdout'), topic)
+            diagnostics.append(entry(error, 'mosquitto_sub', returncode,
+                                     f'mqtt_preflight_{check}_{outcome}'))
     return diagnostics
 
 
@@ -141,6 +256,7 @@ def inspect(root):
             diagnostics.append(entry(utility='pct', reason='fixture_absent_during_cleanup'))
         if 'broker_log' in response.get('result', {}) and not response['result']['broker_log'].strip():
             diagnostics.append(entry(utility='journalctl', reason='startup_journal_unavailable'))
+    diagnostics.extend(_preflight_diagnostics(root, read))
     # stop/recovery can record the same failure more than once.
     return [json.loads(value) for value in dict.fromkeys(json.dumps(item, sort_keys=True) for item in diagnostics)]
 

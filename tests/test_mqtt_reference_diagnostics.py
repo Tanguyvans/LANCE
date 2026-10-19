@@ -105,6 +105,77 @@ def test_seed_authorization_and_protocol_rejections_are_classified():
         utility='mosquitto', reason='mqtt_identifier_rejected')]
 
 
+def _preflight_record(sequence, topic, result, username=None, password=None):
+    args = {'broker': '192.0.2.18', 'port': 1883, 'topic': topic, 'count': 2, 'timeout': 5}
+    if username is not None:
+        args.update(username=username, password=password)
+    return {'sequence': sequence, 'tool': 'mqtt_listen', 'args': args,
+            'result': json.dumps(result), 'evidence_ref': f'tc-{sequence}',
+            'execution_origin': 'runner'}
+
+
+def _mqtt_result(returncode, topic, stdout='', attested=True):
+    result = {'return_code': returncode, 'stdout': stdout, 'stderr': 'NEVER_PUBLISH_STDERR'}
+    if attested:
+        result['execution_attestation'] = {'protocol': 'TCP', 'host': '192.0.2.18', 'port': 1883,
+                                           'topic': topic, 'output_format': 'mosquitto-json-v1'}
+    return result
+
+
+def test_preflight_ledger_projects_only_bounded_outcomes(tmp_path):
+    secret = 'NEVER_PUBLISH_PREFLIGHT_SECRET'
+    public, private = 'lance/public/status', 'lance/private/telemetry'
+    trial = tmp_path / 'trials' / 'trial-x'
+    preflight = trial / 'preflight' / 'rules'
+    preflight.mkdir(parents=True)
+    (trial / 'briefing.json').write_text(json.dumps({
+        'target': {'ip': '192.0.2.18', 'port': 1883}, 'public_topic': public,
+        'private_topic': private,
+        'control_credential': {'username': 'auditor', 'password': secret}}))
+    framed = json.dumps({'tst': '2026-10-18T00:00:00+02:00', 'topic': public,
+                         'qos': 0, 'retain': 1, 'payload': secret}) + '\n'
+    records = [
+        _preflight_record(1, private, _mqtt_result(27, private), 'auditor', secret),
+        _preflight_record(2, public, _mqtt_result(0, public, framed)),
+        _preflight_record(3, private, _mqtt_result(5, private)),
+        _preflight_record(4, private, _mqtt_result(0, private, attested=False), 'auditor', secret),
+    ]
+    (preflight / 'tool_calls.jsonl').write_text('\n'.join(json.dumps(r) for r in records))
+    result = diagnostics.inspect(tmp_path)
+    assert result == [
+        diagnostics.entry(utility='mosquitto_sub', returncode=27,
+                          reason='mqtt_preflight_control_private_no_messages'),
+        diagnostics.entry(utility='mosquitto_sub', returncode=0,
+                          reason='mqtt_preflight_anonymous_public_messages_present'),
+        diagnostics.entry(utility='mosquitto_sub', returncode=5,
+                          reason='mqtt_preflight_anonymous_private_broker_refused'),
+        diagnostics.entry(utility='mosquitto_sub', returncode=0,
+                          reason='mqtt_preflight_control_private_after_attestation_invalid')]
+    assert secret not in json.dumps(result)
+    assert '192.0.2.18' not in json.dumps(result) and private not in json.dumps(result)
+
+
+def test_preflight_ledger_rejects_mismatched_and_malformed_records(tmp_path):
+    public, private = 'lance/public/status', 'lance/private/telemetry'
+    trial = tmp_path / 'trials' / 'trial-y'
+    preflight = trial / 'preflight' / 'rules'
+    preflight.mkdir(parents=True)
+    (trial / 'briefing.json').write_text(json.dumps({
+        'target': {'ip': '192.0.2.18', 'port': 1883}, 'public_topic': public,
+        'private_topic': private,
+        'control_credential': {'username': 'auditor', 'password': 'x'}}))
+    mismatch = _preflight_record(1, private, _mqtt_result(27, private), 'auditor', 'x')
+    mismatch['args']['broker'] = '198.51.100.9'
+    malformed = _preflight_record(2, public, _mqtt_result(27, public, 'not-json\n'))
+    (preflight / 'tool_calls.jsonl').write_text(
+        json.dumps(mismatch) + '\n' + json.dumps(malformed))
+    assert diagnostics.inspect(tmp_path) == [
+        diagnostics.entry(utility='mosquitto_sub', returncode=27,
+                          reason='mqtt_preflight_control_private_binding_mismatch'),
+        diagnostics.entry(utility='mosquitto_sub', returncode=27,
+                          reason='mqtt_preflight_anonymous_public_framing_invalid')]
+
+
 def test_inspection_workflow_is_manual_and_shell_syntax_valid():
     root = Path(__file__).resolve().parents[1]
     path = root / '.github/workflows/mqtt-reference-inspect.yml'
