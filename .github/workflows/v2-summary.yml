@@ -1,0 +1,57 @@
+name: V2 offline campaign summary
+
+# Read-only aggregation of sealed experiment roots. No lab access, no model
+# call, no deployment: it only reads the evidence already produced on nato and
+# writes an aggregate summary outside the evidence trees.
+on:
+  workflow_call:
+    inputs:
+      ssh_experiment:
+        description: 'Sealed SSH qualification run-attempt on nato (digits-digits)'
+        required: true
+        type: string
+      mqtt_experiment:
+        description: 'Sealed MQTT qualification run-attempt on nato (digits-digits)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  summarize:
+    runs-on: [self-hosted, nato-master]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Summarize the two sealed roots on nato
+        shell: bash
+        env:
+          SSH_EVIDENCE_RUN: ${{ inputs.ssh_experiment }}
+          MQTT_EVIDENCE_RUN: ${{ inputs.mqtt_experiment }}
+          SUMMARY_OUTPUT: ${{ runner.temp }}/v2-summary
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = nato-master
+          test "$GITHUB_REF" = refs/heads/dev/2
+          ip -o -4 addr show | grep -q '100\.103\.253\.86/'
+          for value in "$SSH_EVIDENCE_RUN" "$MQTT_EVIDENCE_RUN"; do
+            printf '%s' "$value" | grep -qE '^[0-9]+-[0-9]+$'
+          done
+          mkdir -p "$SUMMARY_OUTPUT"
+          /opt/lance-dev-2/venv/bin/python -m benchmarks.experiments.v2_campaign \
+            --root "/opt/lance-dev-2/output/ssh-reference/$SSH_EVIDENCE_RUN" \
+            --root "/opt/lance-dev-2/output/mqtt-reference/$MQTT_EVIDENCE_RUN" \
+            --output "$SUMMARY_OUTPUT/v2-summary.json" \
+            --minimum-families 2 --minimum-repetitions 3
+          cat "$SUMMARY_OUTPUT/v2-summary.json"
+      - name: Upload the aggregate summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/v2-summary/v2-summary.json
+          if-no-files-found: error
+          retention-days: 30

@@ -1,8 +1,10 @@
 """V2 campaign identity, admission and offline summary contracts."""
 import json
 from pathlib import Path
+import subprocess
 
 import pytest
+import yaml
 
 from benchmarks.experiments import v2_campaign as v2
 
@@ -357,3 +359,22 @@ def test_cli_writes_a_summary_without_an_invented_threshold(tmp_path):
     entry = next(iter(written['by_configuration'].values()))
     if entry['inference']['f0']['metrics']['tool_calls'].get('available'):
         assert 'ci95_excludes_delta' not in entry['inference']['f0']['metrics']['tool_calls']
+
+
+def test_summary_workflow_is_manual_read_only_and_shell_syntax_valid():
+    root = Path(__file__).resolve().parents[1]
+    path = root / '.github/workflows/v2-summary.yml'
+    workflow = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+    assert set(workflow['on']) == {'workflow_call'}
+    assert workflow['jobs']['summarize']['runs-on'] == ['self-hosted', 'nato-master']
+    script = workflow['jobs']['summarize']['steps'][1]['run']
+    assert 'test "$RUNNER_NAME" = nato-master' in script
+    assert 'refs/heads/dev/2' in script
+    assert 'v2_campaign' in script and '--minimum-families 2' in script
+    assert '--delta-threshold' not in script
+    subprocess.run(['bash', '-n'], input=script, text=True, check=True)
+    ci = yaml.load((root / '.github/workflows/benchmark-integrity.yml').read_text(),
+                   Loader=yaml.BaseLoader)
+    guard = ci['jobs']['v2-summary']['if']
+    assert "github.event_name == 'workflow_dispatch'" in guard
+    assert 'inputs.v2_ssh_experiment' in guard and 'inputs.v2_mqtt_experiment' in guard

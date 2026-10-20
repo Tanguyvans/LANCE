@@ -39,6 +39,14 @@ on:
         description: 'Manually inspect authorized filtered diagnostics from an existing MQTT run-attempt'
         type: string
         default: ''
+      v2_ssh_experiment:
+        description: 'SSH run-attempt joined into the offline V2 summary (empty = skip)'
+        type: string
+        default: ''
+      v2_mqtt_experiment:
+        description: 'MQTT run-attempt joined into the offline V2 summary (empty = skip)'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -201,3 +209,12 @@ jobs:
     uses: ./.github/workflows/mqtt-reference-inspect.yml
     with:
       experiment: ${{ inputs.mqtt_inspect_experiment }}
+
+  v2-summary:
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev/2' &&
+      inputs.v2_ssh_experiment != '' && inputs.v2_mqtt_experiment != ''
+    uses: ./.github/workflows/v2-summary.yml
+    with:
+      ssh_experiment: ${{ inputs.v2_ssh_experiment }}
+      mqtt_experiment: ${{ inputs.v2_mqtt_experiment }}
