@@ -38,6 +38,10 @@ Current submission objective: [AsiaCCS 2027](objectifs/asiaccs-2027/README.md)
 (round 2, 11 December 2026) — target, proven-contribution requirements and the
 16 November 2026 go/no-go decision criteria.
 
+Resuming work: [current state and task plan](objectifs/ETAT-COURANT.md) — where
+the repository stands, what is ready, what runs in parallel and what is strictly
+sequential.
+
 ## Quick Start
 
 Use **Python 3.12**, the version validated by the test workflow.
