@@ -107,6 +107,23 @@ def test_real_provider_loop_shared_mqtt_executor_and_complete_wire(tmp_path, mon
 
 
 @pytest.mark.parametrize('positive', [False, True], ids=['protected', 'vulnerable'])
+def test_llm_arm_runs_without_an_elapsed_time_ceiling(tmp_path, monkeypatch, setup, positive):
+    # The pilot measures cost and duration without capping them, so the arm must
+    # reach the provider with no duration budget instead of failing on None.
+    public, config, args = setup
+    args.max_duration_s = None
+    monkeypatch.setattr(recon_tools, '_run', process_for(config, positive))
+    provider = provider_for(positive)
+    client = provider.client
+    provider.client = RecordingClient(client, tmp_path)
+    run = live.new_run(tmp_path, 'llm', args)
+    assert run.max_duration_s is None
+    decision = run_llm(public, bind_mqtt_tool(run), run, provider)
+    assert decision['status'] == 'completed' and decision['finding'] is positive
+    assert len(client.requests) == 4
+
+
+@pytest.mark.parametrize('positive', [False, True], ids=['protected', 'vulnerable'])
 def test_preflight_accepts_matching_real_posture(tmp_path, monkeypatch, setup, positive):
     public, config, args = setup
     monkeypatch.setattr(recon_tools, '_run', process_for(config, positive))

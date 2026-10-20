@@ -145,7 +145,11 @@ def run_llm(briefing, execute, run, provider):
             SYSTEM_PROMPT, user, tools, max_turns=run.max_turns, max_tokens=4096,
             cost_tracker=run.tracker, stream_callback=event_callback,
             required_tool='finish_assessment', terminate_after_tool='finish_assessment',
-            strict_required_tool=True, deadline=run._run_started + run.max_duration_s,
+            # No elapsed-time ceiling by default: adding None to the start time
+            # is a TypeError, so the deadline is only built when one was asked for.
+            strict_required_tool=True,
+            deadline=(run._run_started + run.max_duration_s
+                      if run.max_duration_s is not None else None),
             max_data_tool_calls=run.max_tool_calls, repeat_guard=True,
         )
         (run.run_dir / 'model-final.txt').write_text(text or '', encoding='utf-8')

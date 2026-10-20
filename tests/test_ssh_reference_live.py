@@ -160,6 +160,23 @@ def test_provider_failure_before_ssh_is_a_retained_non_success(tmp_path, monkeyp
     assert json.loads((directory / 'decision.json').read_text())['status'] == 'failed'
 
 
+@pytest.mark.parametrize('positive', [False, True], ids=['protected', 'vulnerable'])
+def test_llm_arm_runs_without_an_elapsed_time_ceiling(tmp_path, monkeypatch, setup, positive):
+    # The pilot measures cost and duration without capping them, so the arm must
+    # reach the provider with no duration budget instead of failing on None.
+    public, config, args = setup
+    args.max_duration_s = None
+    monkeypatch.setattr(recon_tools, '_run', process_for(public, config, positive))
+    provider = provider_for(positive)
+    client = provider.client
+    provider.client = RecordingClient(client, tmp_path)
+    run = live.new_run(tmp_path, 'llm', args)
+    assert run.max_duration_s is None
+    decision = run_llm(public, live.bind_ssh_tool(run), run, provider)
+    assert decision['status'] == 'completed' and decision['finding'] is positive
+    assert len(client.requests) == 5
+
+
 def test_llm_final_response_after_deadline_is_not_success(tmp_path, monkeypatch, setup):
     public, config, args = setup
     monkeypatch.setattr(recon_tools, '_run', process_for(public, config, False))
