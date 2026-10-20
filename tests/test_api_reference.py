@@ -223,6 +223,86 @@ def test_protected_disclosure_conflicts_with_the_oracle(tmp_path, server):
     assert result["success"] is None
 
 
+def test_llm_policy_uses_the_same_tool_and_reaches_the_collection_boundary(tmp_path, server):
+    from benchmarks.experiments.api_reference_llm import run_llm
+
+    for positive in (False, True):
+        briefing = briefing_for(server(positive))
+        root = base_url(briefing)
+        run = SimpleNamespace(
+            run_dir=tmp_path / f"llm-{int(positive)}", max_tool_calls=12, max_duration_s=None,
+            max_turns=8, _artifact_log_lock=threading.Lock(), _tool_call_count=0,
+            _run_started=time.monotonic(), _execution_limit_reason=None,
+            experiment_scope="analysis-verification", context={"target_subnet": "127.0.0.0/8"},
+            decision_policy="llm", tracker=SimpleNamespace(max_cost_usd=None, check_budget=lambda: None),
+        )
+        run.run_dir.mkdir(parents=True)
+        tool = bind_http_tool(run)
+
+        class Provider:
+            def chat_with_tools(self, system, user, tools, **kwargs):
+                by_name = {item['name']: item['function'] for item in tools}
+                refs = []
+
+                def call(**kwargs):
+                    outcome = by_name['http_request'](**kwargs)
+                    refs.append(outcome['evidence_ref'])
+                    return outcome
+
+                policy = call(url=root + '/v1/policy')
+                inventory = call(url=root + '/v1/objects')
+                session = call(url=root + '/v1/session', method='POST',
+                               headers={'Content-Type': 'application/json'},
+                               body=json.dumps(briefing['control_credential']))
+                token = json.loads(session['result']['body'])['token']
+                headers = {'Authorization': f"Bearer {token}"}
+                assert json.loads(policy['result']['body'])['schema_version'] == 1
+                for item in json.loads(inventory['result']['body'])['objects']:
+                    call(url=root + f"/v1/objects/{item['id']}", headers=headers)
+                collection = call(url=root + '/v1/collections/col-north', headers=headers)
+                leaked = any(member.get('canary') == PRIVATE_CANARY
+                             for member in json.loads(collection['result']['body'])['objects'])
+                by_name['finish_assessment'](finding=leaked, evidence_refs=refs)
+                return 'finished'
+
+        decision = run_llm(briefing, tool, run, Provider())
+        records = [json.loads(line) for line in (run.run_dir / 'tool_calls.jsonl').read_text().splitlines()]
+        result = evaluate_trial(briefing, oracle_for(briefing, positive), records, decision)
+        assert decision['status'] == 'completed'
+        assert decision['finding'] is positive
+        assert result['success'] is True
+        assert result['private_disclosed'] is positive
+        assert result['boundary_coverage']['collection_cross'] is positive
+        assert result['boundary_coverage']['object_foreign'] is True
+        assert (run.run_dir / 'prompt.json').is_file()
+
+
+def test_llm_policy_rejects_a_finding_it_did_not_observe(tmp_path, server):
+    from benchmarks.experiments.api_reference_llm import run_llm
+
+    briefing = briefing_for(server(True))
+    root = base_url(briefing)
+    run = SimpleNamespace(
+        run_dir=tmp_path / 'llm-unobserved', max_tool_calls=12, max_duration_s=None,
+        max_turns=8, _artifact_log_lock=threading.Lock(), _tool_call_count=0,
+        _run_started=time.monotonic(), _execution_limit_reason=None,
+        experiment_scope="analysis-verification", context={"target_subnet": "127.0.0.0/8"},
+        decision_policy="llm", tracker=SimpleNamespace(max_cost_usd=None, check_budget=lambda: None),
+    )
+    run.run_dir.mkdir(parents=True)
+    tool = bind_http_tool(run)
+
+    class Provider:
+        def chat_with_tools(self, system, user, tools, **kwargs):
+            by_name = {item['name']: item['function'] for item in tools}
+            offer = by_name['finish_assessment'](finding=True, evidence_refs=['tc-not-observed'])
+            assert offer == {'ok': False, 'error_kind': 'invalid_assessment_references'}
+            return 'refused'
+
+    decision = run_llm(briefing, tool, run, Provider())
+    assert decision['status'] == 'no_output' and decision['finding'] is False
+
+
 def test_postures_differ_by_one_authorization_decision():
     module = _fixture_module()
     protected = module._checked(fixture_config(False))

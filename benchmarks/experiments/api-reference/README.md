@@ -80,12 +80,20 @@ vérifier que la frontière est franchissable et que l'évaluateur la compte.
 Aucun modèle n'a été appelé, aucune campagne n'est admise, `mt_admissible`
 reste `false` et le statut reste `evidence_only_not_admitted`.
 
+La politique LLM bornée est dans
+[api_reference_llm.py](../api_reference_llm.py) : elle ne reçoit que le
+briefing public, appelle le même outil `http_request`, ne peut pas dépasser
+`request_budget`, et ne peut déclarer un constat qu'avec des références de
+preuve qu'elle a réellement observées. Les tests la font tourner avec un
+fournisseur scripté, pas avec un modèle : la comparaison réelle reste à
+faire.
+
 ## Ce qui reste à construire
 
 - Le harnais vivant (LXC jetable par bras sur `pve-nato`, précontrôles,
-  archivage scellé) et la politique LLM bornée, sur le modèle de
-  [mqtt_reference_live.py](../mqtt_reference_live.py) et
-  [mqtt_reference_llm.py](../mqtt_reference_llm.py).
+  archivage scellé), sur le modèle de
+  [mqtt_reference_live.py](../mqtt_reference_live.py) : contrôleur invité,
+  playbook Ansible et workflow `nato-master` dédiés.
 - Le compteur de requêtes borné (`request_budget`) doit être branché sur le
   budget d'exécution commun, et le budget économique mesuré sans plafond.
 - La calibration des seuils C06 (couverture, faux positifs) reste après le
