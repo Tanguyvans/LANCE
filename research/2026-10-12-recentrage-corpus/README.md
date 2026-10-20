@@ -152,7 +152,7 @@ historiques et la revue IoT figée gardent leurs dates et leur portée.
 | Organisation V2 et correspondance scénario/mesure/hypothèse | Conception structurée et contrôlée | Admission expérimentale par scénario |
 | `s_ssh_identifiants` | **Qualification native réussie le 15 octobre** ; **pilote à 3 répétitions le 20 octobre** : 6 paires admissibles | Variabilité mesurée ; effectifs et gel confirmatoire à établir |
 | `s_mqtt_lecture` | **Qualification réelle réussie le 19 octobre** ; **pilote à 3 répétitions le 20 octobre** : 6 paires admissibles | Variabilité mesurée ; effectifs et gel confirmatoire à établir |
-| `s_api_organisations` | **Incrément logiciel le 20 octobre** : contrat public, fixture paramétrique, baseline déclarée et évaluateur vérifiés hors ligne ; aucun modèle appelé | Harnais vivant et politique LLM bornée, puis pilote |
+| `s_api_organisations` | **Pilote de référence le 20 octobre** (contrat v2, `qwen3.8:27b`) : en F1 le script déclaré échoue, le LLM prouve `collection_cross` sans faux positif en F0 ; non admis (une famille, une répétition) | Deuxième famille, trois répétitions, seuils C06 |
 | `s_mqtt_reprise`, `s_cache_identites` | Contrats définis | Après `s_api_organisations` |
 | `s_injection_preuves` et parcours réseau | Préparation hors ligne et chantier parallèle distincts | Leurs propres contrôles restent requis |
 
