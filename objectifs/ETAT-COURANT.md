@@ -9,14 +9,17 @@ non**. Voir [l'objectif AsiaCCS 2027](asiaccs-2027/README.md) et
 
 ## Où en est le dépôt
 
-`main` est à `9a283f8`, **CI verte et déployée sur nato**. `dev/2` suit `main`
-au même commit. Les deux pilotes V2 (SSH et MQTT, 3 répétitions, `qwen3.8:27b`)
-ont été exécutés et sont exploitables.
+`main` est à `006356c`. `dev/2` suit `main` jusqu'à `ca1279f` : tout nouveau
+pilote exige de reporter `main` sur `dev/2` d'abord. Les deux pilotes V2 (SSH
+et MQTT, 3 répétitions, `qwen3.8:27b`) ont été exécutés et sont exploitables.
 
 Derniers travaux livrés :
 
 | Commit | Contenu | Vérification |
 | --- | --- | --- |
+| `006356c` | Politique LLM bornée pour `s_api_organisations` : même outil, budget de requêtes, preuves observées obligatoires | 4223 tests passés ; un test de temporisation instable sous `-n 4`, vert seul |
+| `f7956ce` | Incrément hors ligne `s_api_organisations` : contrat, fixture paramétrique, baseline déclarée, évaluateur | 4223 tests passés ; comparaison script contre exploration, hors ligne |
+| `ca1279f` | Résultats du panneau MoE consignés | CI verte |
 | `9a283f8` | Job `v2-summary` : agrégation en lecture seule des deux racines sur nato | CI verte, 4209 tests |
 | `74c218a` | Correction : les bras LLM V2 démarrent sans plafond de durée | 4208 tests, pilotes SSH et MQTT rejoués |
 | `4e82f6f` | Tests CI : 297 s → 149 s séquentiel, 85 s avec `-n 4` | CI verte, 4204 tests |
@@ -77,6 +80,20 @@ reste non satisfaite parce que SSH et MQTT sont deux configurations distinctes �
 une configuration inclut le commit, les empreintes d'implémentation du harnais
 et les budgets, pas seulement le modèle. Chaque groupe ne contient donc qu'une
 famille, alors que `family_inference` en exige deux indépendantes.
+
+### Comparaison script / LLM (`s_api_organisations`)
+
+Le bras script est la **matrice rôle/objet/organisation déclarée**, exécutée
+telle quelle : politique et inventaire publics, un jeton, une lecture par
+objet. Sa limite est déclarée d'avance — il s'arrête à la frontière objet
+et ne lit aucune collection — donc ce n'est pas une règle retirée.
+Le bras LLM reçoit les mêmes entrées et le même outil `http_request`.
+
+Hors ligne, le script réussit en posture protégée et s'arrête en posture
+vulnérable ; l'exploration franchit la frontière `collection_cross` en F1
+sans faux positif en F0. L'évaluateur recalcule la divulgation depuis le
+journal d'outils, jamais depuis la décision. Aucun modèle n'a encore été
+appelé : c'est une qualification logicielle, pas une mesure.
 
 ## Ce qui manque pour avancer
 
@@ -153,7 +170,7 @@ pilote tourne, ou avant lui.
 
 | Tâche | Pourquoi c'est parallélisable | Où |
 | --- | --- | --- |
-| **`s_api_organisations`** | Prochaine réalisation V2 prévue. Contrat défini, harnais à construire. Aucun accès labo requis pour la conception et les tests. | `coverage-plan.json`, plan V2 |
+| **`s_api_organisations`, harnais vivant** | Contrat, fixture, baseline déclarée, évaluateur et politique LLM faits hors ligne (`f7956ce`, `006356c`). Reste le contrôleur invité, le playbook et le workflow. Aucun accès labo requis pour les tests. | `benchmarks/experiments/api-reference/` |
 | **Précision S15** | Les 5 faux positifs confirmés (SSH routeur, `/docs`) se traitent en lisant `04_exploitation.json` du run `2026-10-19_205307` sur nato. | nato, API |
 | **Artefact anonymisé AsiaCCS** | Exigé par l'appendice Open Science. Bloquant en cas d'absence et long à préparer. | [plan](asiaccs-2027/plan-soumission.md) §6 |
 | **Squelette du papier** | Structure, contributions, bibliographie. | [plan](asiaccs-2027/plan-soumission.md) |
@@ -201,3 +218,4 @@ cours.
 - [Objectif AsiaCCS 2027](asiaccs-2027/README.md) et [plan de soumission](asiaccs-2027/plan-soumission.md)
 - [Plan V2 et avancement consolidé](../research/2026-10-12-recentrage-corpus/README.md#avancement-consolidé)
 - [Guide CLI et qualification des harnais](../docs/benchmark/agent-vs-automation-cli.md)
+- [Comparaison script/LLM `s_api_organisations`](../benchmarks/experiments/api-reference/README.md)
