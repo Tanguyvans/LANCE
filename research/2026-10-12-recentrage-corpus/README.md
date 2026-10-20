@@ -223,6 +223,20 @@ confiance confirmatoire ni conclusion sur un avantage d’un bras. Le même
 protocole reste à exécuter avec `gemma4:26b-a4b-it-q4_K_M` avant d’arrêter des
 marges, un `delta_min` ou une unité d’indépendance.
 
+Le résumé hors ligne agrégé des deux racines (job `v2-summary`, run
+[39479954747](https://github.com/Tanguyvans/LANCE/actions/runs/39479954747))
+compte 12 paires planifiées, observées et incluses, sans exclusion, doublon ni
+paire incomplète. Il **ne calcule aucun intervalle** : `configuration_uniformity`
+reste non satisfaite et chaque configuration ne contient qu’une famille. La
+raison est structurelle — une configuration inclut le commit, les empreintes
+d’implémentation du harnais et les budgets, donc SSH et MQTT sont deux
+configurations distinctes même avec le même modèle. `family_inference` exige
+deux familles indépendantes par configuration.
+
+Conséquence pour la suite : aucune campagne ne produira d’intervalle tant qu’un
+harnais ne couvre pas **au moins deux scénarios**. Le panneau de modèles ne
+change pas ce fait ; il sépare seulement les configurations.
+
 Une panne d’instrument a été observée puis corrigée pendant ce pilote : le
 premier passage SSH était vert alors que les six bras LLM échouaient avant le
 premier appel fournisseur, à cause d’une addition `None + float` sur une

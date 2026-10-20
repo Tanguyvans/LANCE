@@ -60,12 +60,27 @@ Rappel de portée : ces six paires par famille établissent que **les deux
 instruments mesurent**, pas qu'un bras surpasse l'autre. `mt_admissible` reste
 `false` et les verdicts ne satisfont toujours pas `strict_v3_metrics_adopted`.
 
+### Résumé hors ligne des deux familles (run `39479954747`)
+
+12 paires planifiées, observées et incluses ; aucune exclue, incomplète ou
+dupliquée. Taux de succès 1,0 pour les deux bras dans les deux postures, aucun
+faux positif, contrôles prouvés 3/3.
+
+**Aucun intervalle n'est calculé**, et c'est structurel : `configuration_uniformity`
+reste non satisfaite parce que SSH et MQTT sont deux configurations distinctes —
+une configuration inclut le commit, les empreintes d'implémentation du harnais
+et les budgets, pas seulement le modèle. Chaque groupe ne contient donc qu'une
+famille, alors que `family_inference` en exige deux indépendantes.
+
 ## Ce qui manque pour avancer
 
-Les pilotes donnent désormais la variabilité inter-répétitions. Il reste à
-exécuter le même protocole avec le modèle MoE
-(`gemma4:26b-a4b-it-q4_K_M`), puis à lire le résumé hors ligne agrégé des deux
-familles (`v2-summary`).
+Les pilotes donnent la variabilité inter-répétitions pour `qwen3.8:27b`. Il
+reste le modèle MoE (`gemma4:26b-a4b-it-q4_K_M`).
+
+Point de conception à trancher : **aucune campagne ne produira d'intervalle tant
+qu'un harnais ne couvre pas au moins deux scénarios.** Ajouter des modèles ou
+des répétitions ne change rien à cette condition. C'est la prochaine décision de
+fond, avant les marges et `delta_min`.
 
 ## Conditions de démarrage d'une session
 
@@ -151,6 +166,7 @@ cours.
 | Avancer `dev/2` sur `main` | ~~immédiat~~ | **Fait** le 2026-10-20 |
 | Pilotes SSH et MQTT, `qwen3.8:27b` | ~~immédiat~~ | **Faits** le 2026-10-20 |
 | Pilotes SSH et MQTT, modèle MoE | immédiat | Prêt |
+| Deuxième scénario par harnais (condition d'un intervalle) | **avant** marges et `delta_min` | Nouveau, à trancher |
 | Marges, `delta_min`, unité d'indépendance | **après** le pilote | Volontairement reporté |
 | Soumission AsiaCCS ou repli | **2026-11-16** | Critères dans le plan |
 | Soumission | **2026-12-11 (AoE)** | — |

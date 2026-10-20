@@ -350,6 +350,16 @@ calculée séparément par configuration dans `by_configuration` et n'est jamais
 regroupée entre modèles ; l'admission globale signale alors
 `configuration_uniformity` comme non satisfaite.
 
+Une configuration n'est pas seulement le modèle : elle comprend aussi le commit
+Git, l'empreinte du manifeste de ressources, les empreintes d'implémentation du
+harnais et les budgets. Deux familles mesurées par **deux harnais différents**
+sont donc deux configurations distinctes, même avec le même modèle. Le résumé
+les sépare, chacune ne contient alors qu'une famille, et `family_inference`
+refuse de calculer un intervalle — il en faut au moins deux indépendantes. Une
+campagne ne produit d'inférence par famille que si **au moins deux scénarios
+partagent le même harnais** ; SSH et MQTT, instruments distincts, ne se
+regroupent pas. Le résumé reste descriptif dans ce cas et le dit.
+
 ### Premier pilote SSH réel sur dev/2
 
 `benchmarks.experiments.ssh_reference_live` utilise l'infrastructure **Proxmox/LXC
