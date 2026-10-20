@@ -204,12 +204,20 @@ Les douze paires sont admissibles, sans échec de contrôleur, Proxmox ou Docker
 et tous les bras réussissent le contrat. Le coût et la durée sont mesurés, sans
 plafond économique.
 
-| Famille | Bras | Appels | Durée | Requêtes | Jetons | Coût estimé |
+| Famille | Modèle | Appels | Durée | Requêtes | Jetons | Coût estimé |
 | --- | --- | --- | --- | --- | --- | --- |
 | SSH | règles | 3–4 | 0,2–0,3 s | 0 | 0 | 0 $ |
-| SSH | LLM | 4 | 14,0–73,7 s | 2–3 | 3 461–5 126 | 0,0066–0,0079 $ |
+| SSH | `qwen3.8:27b` | 4 | 14,0–73,7 s | 2–3 | 3 461–5 126 | 0,0066–0,0079 $ |
+| SSH | `gemma4:26b-a4b-it-q4_K_M` | 4 | 19,5–69,8 s | 5–6 | 7 528–10 176 | 0,0124–0,0172 $ |
 | MQTT | règles | 3 | 15,0 s | 0 | 0 | 0 $ |
-| MQTT | LLM | 3 | 23,7–37,3 s | 2–3 | 3 051–6 408 | 0,0040–0,0097 $ |
+| MQTT | `qwen3.8:27b` | 3 | 23,7–37,3 s | 2–3 | 3 051–6 408 | 0,0040–0,0097 $ |
+| MQTT | `gemma4:26b-a4b-it-q4_K_M` | 3 | 33,9–44,4 s | 4 | 6 808–8 244 | 0,0118–0,0156 $ |
+
+Les deux modèles du panneau réussissent les six paires de chaque famille. Le
+MoE ([SSH 39480713050](https://github.com/Tanguyvans/LANCE/actions/runs/39480713050),
+[MQTT 39482737529](https://github.com/Tanguyvans/LANCE/actions/runs/39482737529))
+coûte environ le double du dense pour le même résultat, avec deux fois plus de
+requêtes fournisseur et 1,3 à 1,7 fois la durée.
 
 Coefficients de variation inter-répétitions du bras LLM, calculés sur trois
 valeurs par posture : SSH F0 durée 92,3 %, coût 7,0 %, jetons 5,9 % ; SSH F1
@@ -219,9 +227,8 @@ contre 16,6 s et 16,7 s ensuite, attribuable à un chargement de modèle à froi
 les autres séries restent entre 6 % et 46 %.
 
 Ces chiffres sont descriptifs. Trois répétitions ne produisent ni intervalle de
-confiance confirmatoire ni conclusion sur un avantage d’un bras. Le même
-protocole reste à exécuter avec `gemma4:26b-a4b-it-q4_K_M` avant d’arrêter des
-marges, un `delta_min` ou une unité d’indépendance.
+confiance confirmatoire ni conclusion sur un avantage d’un bras, même après
+avoir couvert les deux modèles du panneau.
 
 Le résumé hors ligne agrégé des deux racines (job `v2-summary`, run
 [39479954747](https://github.com/Tanguyvans/LANCE/actions/runs/39479954747))

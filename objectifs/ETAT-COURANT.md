@@ -36,12 +36,18 @@ Deux pilotes réels, 3 répétitions × 2 postures, `qwen3.8:27b` via
 `ollama-umons`. Toutes les paires sont admissibles, aucun échec de contrôleur,
 aucun échec Proxmox.
 
-| Famille | Run | Bras | Succès | Appels outils | Plage de durée | Requêtes | Plage de jetons | Plage de coût |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| SSH | `39465619725-1` | règles | 6/6 | 3–4 | 0,3 s | 0 | 0 | 0 $ |
-| SSH | `39465619725-1` | LLM | 6/6 | 4 | 14,0–73,7 s | 2–3 | 3 461–5 126 | 0,006–0,008 $ |
-| MQTT | `39467657683-1` | règles | 6/6 | 3 | 15,0 s | 0 | 0 | 0 $ |
-| MQTT | `39467657683-1` | LLM | 6/6 | 3 | 23,7–37,3 s | 2–3 | 3 051–6 408 | 0,004–0,010 $ |
+| Famille | Modèle | Run | Bras | Succès | Appels | Plage de durée | Requêtes | Jetons | Plage de coût |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SSH | — | `39465619725-1` | règles | 6/6 | 3–4 | 0,2–0,4 s | 0 | 0 | 0 $ |
+| SSH | `qwen3.8:27b` | `39465619725-1` | LLM | 6/6 | 4 | 14,0–73,7 s | 2–3 | 3 461–5 126 | 0,006–0,008 $ |
+| SSH | `gemma4:26b-a4b-it` | `39480713050-1` | LLM | 6/6 | 4 | 19,5–69,8 s | 5–6 | 7 528–10 176 | 0,012–0,017 $ |
+| MQTT | — | `39467657683-1` | règles | 6/6 | 3 | 15,0 s | 0 | 0 | 0 $ |
+| MQTT | `qwen3.8:27b` | `39467657683-1` | LLM | 6/6 | 3 | 23,7–37,3 s | 2–3 | 3 051–6 408 | 0,004–0,010 $ |
+| MQTT | `gemma4:26b-a4b-it` | `39482737529-1` | LLM | 6/6 | 3 | 33,9–44,4 s | 4 | 6 808–8 244 | 0,012–0,016 $ |
+
+Le modèle MoE coûte environ le double du dense et prend 1,3 à 1,7 fois plus de
+temps, avec deux fois plus de requêtes fournisseur, pour le même résultat. Le
+panneau est désormais couvert sur les deux familles.
 
 Variabilité inter-répétitions du bras LLM (n = 3 par posture) :
 
@@ -74,13 +80,20 @@ famille, alors que `family_inference` en exige deux indépendantes.
 
 ## Ce qui manque pour avancer
 
-Les pilotes donnent la variabilité inter-répétitions pour `qwen3.8:27b`. Il
-reste le modèle MoE (`gemma4:26b-a4b-it-q4_K_M`).
+Le panneau de modèles est couvert : les deux modèles réussissent partout, le
+MoE coûtant environ le double. La variabilité inter-répétitions est mesurée
+pour les deux.
 
-Point de conception à trancher : **aucune campagne ne produira d'intervalle tant
-qu'un harnais ne couvre pas au moins deux scénarios.** Ajouter des modèles ou
-des répétitions ne change rien à cette condition. C'est la prochaine décision de
-fond, avant les marges et `delta_min`.
+Deux décisions de fond restent, dans cet ordre :
+
+1. **Trancher la cible** : le succès est saturé (les deux bras réussissent les
+   douze paires), donc la mesure primaire du plan de soumission — l'écart en
+   vrais positifs confirmés strict-v3, testé en supériorité — n'est pas
+   atteignable avec ces fixtures. Soit on défend le **coût à résultat non
+   inférieur** (C3), soit on construit des scénarios où les règles échouent (C2).
+2. **Deux scénarios par harnais** : aucune campagne ne produira d'intervalle
+   tant qu'un harnais ne couvre pas au moins deux scénarios. Ajouter des modèles
+   ou des répétitions n'y change rien.
 
 ## Conditions de démarrage d'une session
 
