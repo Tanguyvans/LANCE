@@ -62,7 +62,8 @@ des corrections générales, ciblées et testables. Mettre à jour les tests et 
 guides concernés, sans dupliquer leur contenu ici.
 
 Valider les changements avec les tests pertinents ; la suite complète se lance avec
-`python -m pytest -q tests model_training/tests`. Vérifier aussi `git diff --check`
+`python -m pytest -q tests model_training/tests`, ou avec des workers pour gagner
+du temps (`-p xdist -n 4`). Vérifier aussi `git diff --check`
 et, pour l'interface, le rendu dans un navigateur. Indiquer ce qui a été vérifié
 et les limites restantes. Les runs de laboratoire, déploiements, commits et pushes
 nécessaires à la tâche demandée peuvent être effectués sans nouvelle confirmation,

@@ -40,4 +40,7 @@ def test_ci_runs_both_test_roots():
     )
     step = next(step for step in workflow["jobs"]["contracts-and-scenarios"]["steps"]
                 if step.get("name") == "Run test suite")
-    assert step["run"].split() == ["python", "-m", "pytest", "-q", "tests", "model_training/tests"]
+    # Both roots must be named; the trailing worker flags are a wall-clock
+    # trade and do not change what is collected.
+    assert step["run"].split()[:5] == ["python", "-m", "pytest", "-q", "tests"]
+    assert "model_training/tests" in step["run"].split()

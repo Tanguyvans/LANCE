@@ -173,7 +173,7 @@ def test_full_code_checks_and_worker_oracle_guard_remain_enforced():
     config = workflow("benchmark-integrity.yml")
     steps = {step["name"]: step for step in config["jobs"]["contracts-and-scenarios"]["steps"]}
     tests = steps["Run test suite"]
-    assert tests["run"] == "python -m pytest -q tests model_training/tests"
+    assert tests["run"] == "python -m pytest -q tests model_training/tests -p xdist -n 4"
     for name in ["Run test suite", "Validate generated ground truths", "Validate benchmark deployment syntax"]:
         assert steps[name]["if"] == "steps.scope.outputs.full == 'true'"
     assert "if" not in steps["Reject whitespace errors"]

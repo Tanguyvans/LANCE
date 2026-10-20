@@ -156,7 +156,11 @@ def test_followup_handles_malformed_model_ports_without_crashing(followup, ports
 
 
 @pytest.mark.parametrize("subnets,expected", [("192.0.2.0/24", [HOST]), ("", [])])
-def test_discovery_collector_applies_scope_in_target_network_mode(tmp_path, subnets, expected):
+def test_discovery_collector_applies_scope_in_target_network_mode(tmp_path, monkeypatch,
+                                                                   subnets, expected):
+    # The collector only filters IPs. Reading the attack surface through the
+    # real tool loads the whole lab graph; declare the known surface instead.
+    monkeypatch.setattr(runtime, "get_attack_surface", lambda: json.dumps([]))
     exploits = tmp_path / "04_exploits"
     exploits.mkdir()
     (exploits / "result.json").write_text(json.dumps({"new_hosts_discovered": [

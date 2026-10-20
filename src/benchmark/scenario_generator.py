@@ -78,8 +78,11 @@ def _yaml_bytes(value: Any) -> bytes:
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    # The catalogue is re-read on every blueprint lookup, so use libyaml's C
+    # loader when it is available: same parser semantics, several times faster.
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
     try:
-        value = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        value = yaml.load(path.read_text(encoding="utf-8"), Loader=loader) or {}
     except (OSError, UnicodeError, yaml.YAMLError) as exc:
         raise ScenarioGeneratorError(f"Invalid YAML artifact: {path.name}") from exc
     if not isinstance(value, dict):
