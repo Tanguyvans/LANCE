@@ -112,8 +112,29 @@ diagnostic : `other:404` ×12 et `other:401` ×4 sur 16 requêtes, aucun appel
 documentée entre dans le briefing pour que la comparaison mesure la
 couverture d'autorisation et non la devinette de chemins.
 
-Le pilote de référence est celui qui suit le contrat v2 ; les deux
-lancements v1 restent consignés comme instrumentation, jamais comme mesure.
+Le pilote de référence sous contrat v2 (run 39491860391) donne, sur le
+laboratoire réel :
+
+| Posture | Bras | Constat | Divulgation prouvée | Couverture | Succès | Appels | Coût estimé |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| F0 (protégée) | script | non | non | objet | oui | 5 | 0 $ |
+| F0 (protégée) | LLM | non | non | objet + `collection_own` | oui | 11 | 0,032 $ |
+| F1 (vulnérable) | script | non | non | objet | non | 5 | 0 $ |
+| F1 (vulnérable) | LLM | oui | oui (`collection_cross`) | objet + collection croisée | oui | 10 | 0,036 $ |
+
+La différence est **la couverture d'autorisation**, pas le nombre de
+requêtes : le script déclaré s'arrête à la frontière objet et échoue en
+F1 ; le modèle, lui, lit la politique publiée (qui dit que chaque membre
+est admis pour lui-même), suit la collection, et ne produit aucun faux
+positif en F0. Dans les deux postures il a d'abord essayé des
+identifiants de collection inexistants (`404`) avant d'en déduire un
+valide : l'adaptation est visible dans le journal, pas seulement dans la
+conclusion.
+
+Ce pilote reste **non admis** : une famille, une répétition, métriques
+strict-v3 non adoptées, couverture de posture et provenance du fournisseur
+non attestées. Les deux lancements v1 restent consignés comme
+instrumentation, jamais comme mesure.
 
 ## Harnais vivant
 

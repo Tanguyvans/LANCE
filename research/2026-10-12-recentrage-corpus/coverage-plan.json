@@ -12651,7 +12651,7 @@
       "confirmation_limits": "Single repetition per posture; operator-supplied oracle; reset and provider parity not attested; no LLM advantage established; costs are catalogue estimates."
     },
     "api_organisations_offline_increment": {
-      "status": "live_harness_run_instrument_only",
+      "status": "pilot_measured_not_admitted",
       "recorded_on": "2026-10-20 (Europe/Brussels, UTC+02:00)",
       "scenario_id": "s_api_organisations",
       "artifacts": [
@@ -12668,9 +12668,23 @@
       "declared_baseline": "Matrice rôle/objet/organisation paramétrique sur l'inventaire public ; s'arrête à la frontière objet par contrat ; aucune règle retirée.",
       "flaw": "Une collection lisible ne réapplique pas la règle d'organisation propre à chaque membre.",
       "verified_offline": "La baseline réussit en posture protégée et s'arrête en posture vulnérable ; un bras d'exploration déterministe franchit collection_cross en F1 sans faux positif en F0. Aucun modèle n'a été appelé.",
-      "live_harness": "Exécuté deux fois le 2026-10-20 sur nato-master (qwen3.8:27b, une répétition, coût et durée mesurés sans plafond) ; runs 39488014997 et 39490088126. Les deux bras LLM ont fait 13 à 16 requêtes toutes hors contrat (404/401) faute de surface documentée dans le briefing : instrumentation seulement, aucune mesure d'aptitude.",
-      "not_attested": "Pilote de référence sous contrat v2 non encore exécuté ; parité des LXC jetables, reset, provenance du fournisseur et toute admission de campagne restent ouverts.",
-      "contract_v2": "La surface publique documentée (méthodes, chemins, objet de chaque route, identiques à GET /v1/policy) entre dans le briefing ; sans elle la comparaison mesurait la devinette de chemins."
+      "live_harness": "Exécuté quatre fois le 2026-10-20 sur nato-master (qwen3.8:27b, une répétition, coût et durée mesurés sans plafond). Les deux premiers lancements (39488014997, 39490088126) n'ont produit que du 404/401 faute de surface documentée : instrumentation seulement.",
+      "not_attested": "Deuxième famille, trois répétitions par posture, métriques strict-v3, parité des LXC jetables, reset et provenance du fournisseur restent ouverts.",
+      "contract_v2": "La surface publique documentée (méthodes, chemins, objet de chaque route, identiques à GET /v1/policy) entre dans le briefing ; sans elle la comparaison mesurait la devinette de chemins.",
+      "reference_pilot": {
+        "run": "39491860391",
+        "contract": "api-reference-calibration-v2",
+        "F0": {
+          "rules": "succès, couverture objet, 5 appels, 0 $",
+          "llm": "succès, aucune divulgation, couverture objet + collection_own, 11 appels, 0,032 $"
+        },
+        "F1": {
+          "rules": "échec déclaré (required_assessment_not_proven), 5 appels, 0 $",
+          "llm": "succès, divulgation prouvée par collection_cross, 10 appels, 0,036 $"
+        },
+        "observed": "Le modèle lit la politique publiée, suit la collection et franchit la frontière inter-organisation en F1 sans faux positif en F0 ; quatre 404 sur des identifiants de collection devinés précèdent la découverte.",
+        "admission": "non admis : une famille, une répétition, strict-v3 non adoptées, posture et provenance non attestées."
+      }
     },
     "next_scenario": "s_api_organisations",
     "next_status": "implemented_offline_not_lab_attested",

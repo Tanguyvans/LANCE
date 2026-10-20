@@ -92,8 +92,18 @@ Le bras LLM reçoit les mêmes entrées et le même outil `http_request`.
 Hors ligne, le script réussit en posture protégée et s'arrête en posture
 vulnérable ; l'exploration franchit la frontière `collection_cross` en F1
 sans faux positif en F0. L'évaluateur recalcule la divulgation depuis le
-journal d'outils, jamais depuis la décision. Aucun modèle n'a encore été
-appelé : c'est une qualification logicielle, pas une mesure.
+journal d'outils, jamais depuis la décision.
+
+Le **pilote de référence sur nato** (run 39491860391, `qwen3.8:27b`,
+contrat v2) donne le cas d'usage cherché : le script déclaré échoue en F1
+(`required_assessment_not_proven`) ; le modèle lit la politique publiée,
+suit la collection, prouve la divulgation inter-organisation
+(`collection_cross`) et ne produit aucun faux positif en F0. Coût estimé
+0,032 $ (F0) et 0,036 $ (F1), 10–11 appels. Les deux premiers lancements
+n'ont produit que du 404/401 : le briefing ne documentait aucune route, et
+la comparaison mesurait la devinette de chemins. Le contrat v2 documente la
+surface publiée, identique à `GET /v1/policy`. Le pilote reste **non
+admis** (une famille, une répétition, strict-v3 non adoptées).
 
 ## Ce qui manque pour avancer
 
@@ -170,7 +180,7 @@ pilote tourne, ou avant lui.
 
 | Tâche | Pourquoi c'est parallélisable | Où |
 | --- | --- | --- |
-| **`s_api_organisations`, harnais vivant** | Contrat, fixture, baseline déclarée, évaluateur et politique LLM faits hors ligne (`f7956ce`, `006356c`). Reste le contrôleur invité, le playbook et le workflow. Aucun accès labo requis pour les tests. | `benchmarks/experiments/api-reference/` |
+| **`s_api_organisations`, pilote v2** | Contrat v2, fixture, baseline, évaluateur, politique LLM, harnais vivant et premier pilote réel faits ; reste la deuxième famille, les répétitions et l'attestation de posture. | `benchmarks/experiments/api-reference/` |
 | **Précision S15** | Les 5 faux positifs confirmés (SSH routeur, `/docs`) se traitent en lisant `04_exploitation.json` du run `2026-10-19_205307` sur nato. | nato, API |
 | **Artefact anonymisé AsiaCCS** | Exigé par l'appendice Open Science. Bloquant en cas d'absence et long à préparer. | [plan](asiaccs-2027/plan-soumission.md) §6 |
 | **Squelette du papier** | Structure, contributions, bibliographie. | [plan](asiaccs-2027/plan-soumission.md) |
