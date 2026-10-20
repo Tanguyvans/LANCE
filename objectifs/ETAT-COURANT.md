@@ -9,7 +9,8 @@ non**. Voir [l'objectif AsiaCCS 2027](asiaccs-2027/README.md) et
 
 ## Où en est le dépôt
 
-`main` et `dev/2` sont à `52c2fbc`. Le pilote de référence de
+`main` et `dev/2` sont alignés (`git log -1 --oneline`) : reporter `main` sur
+`dev/2` avant tout nouveau pilote. Le pilote de référence de
 `s_api_organisations` (contrat v2) est exécuté ; les deux pilotes V2 (SSH et
 MQTT, 3 répétitions, `qwen3.8:27b`) restent exploitables.
 
