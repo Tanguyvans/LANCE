@@ -1,6 +1,6 @@
 # État courant : point de reprise
 
-**Dernière mise à jour : 2026-10-20 19:50 (Europe/Brussels, UTC+02:00).**
+**Dernière mise à jour : 2026-10-20 23:34 (Europe/Brussels, UTC+02:00).**
 Cette page sert de point d'entrée pour reprendre le travail rapidement dans une
 nouvelle session. Elle ne remplace pas les documents de référence : elle dit
 **où on en est**, **ce qui est prêt**, et **ce qui peut être fait en parallèle ou
@@ -9,9 +9,9 @@ non**. Voir [l'objectif AsiaCCS 2027](asiaccs-2027/README.md) et
 
 ## Où en est le dépôt
 
-`main` est à `006356c`. `dev/2` suit `main` jusqu'à `ca1279f` : tout nouveau
-pilote exige de reporter `main` sur `dev/2` d'abord. Les deux pilotes V2 (SSH
-et MQTT, 3 répétitions, `qwen3.8:27b`) ont été exécutés et sont exploitables.
+`main` et `dev/2` sont à `52c2fbc`. Le pilote de référence de
+`s_api_organisations` (contrat v2) est exécuté ; les deux pilotes V2 (SSH et
+MQTT, 3 répétitions, `qwen3.8:27b`) restent exploitables.
 
 Derniers travaux livrés :
 
@@ -225,6 +225,7 @@ cours.
 
 ## Voir aussi
 
+- [Pistes de la plateforme](PISTES.md) : idées au-delà du scénario courant, avec leur barre d'honnêteté
 - [Objectif AsiaCCS 2027](asiaccs-2027/README.md) et [plan de soumission](asiaccs-2027/plan-soumission.md)
 - [Plan V2 et avancement consolidé](../research/2026-10-12-recentrage-corpus/README.md#avancement-consolidé)
 - [Guide CLI et qualification des harnais](../docs/benchmark/agent-vs-automation-cli.md)
