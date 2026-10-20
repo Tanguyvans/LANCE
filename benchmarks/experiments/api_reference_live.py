@@ -20,7 +20,8 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from benchmarks.experiments.api_reference import (
-    CONTRACT, _response, bind_http_tool, evaluate_trial, route_profile, run_rules, validate_briefing,
+    CONTRACT, DOCUMENTED_ROUTES, _response, bind_http_tool, evaluate_trial, route_profile,
+    run_rules, validate_briefing,
 )
 from benchmarks.experiments.api_reference_llm import run_llm
 from benchmarks.experiments.api_reference_proxmox import Proxmox, Fixture as ProxmoxFixture
@@ -115,7 +116,9 @@ def build_briefing(trial_id, address, control, network='192.168.100.0/24'):
     return {'schema_version': 1, 'scenario_id': SCENARIO_ID, 'instance_id': trial_id,
             'target_network': network,
             'target': {'asset_id': 'fleet-api', 'ip': address, 'port': PORT},
-            'control_credential': control, 'request_budget': REQUEST_BUDGET}
+            'control_credential': control,
+            'documented_routes': [dict(route) for route in DOCUMENTED_ROUTES],
+            'request_budget': REQUEST_BUDGET}
 
 
 def oracle_for(public, flaws, config, identity):

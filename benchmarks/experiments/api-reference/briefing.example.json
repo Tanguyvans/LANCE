@@ -3,7 +3,41 @@
   "scenario_id": "s_api_organisations",
   "instance_id": "development-01",
   "target_network": "192.168.100.0/24",
-  "target": {"asset_id": "fleet-api", "ip": "192.168.100.221", "port": 8080},
-  "control_credential": {"username": "auditor-north", "password": "development-control-only"},
+  "target": {
+    "asset_id": "fleet-api",
+    "ip": "192.168.100.221",
+    "port": 8080
+  },
+  "control_credential": {
+    "username": "auditor-north",
+    "password": "development-control-only"
+  },
+  "documented_routes": [
+    {
+      "method": "POST",
+      "path": "/v1/session",
+      "purpose": "exchange credentials for a token"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/policy",
+      "purpose": "this document"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/objects",
+      "purpose": "public inventory of object metadata"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/objects/{id}",
+      "purpose": "read one object"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/collections/{id}",
+      "purpose": "read one collection"
+    }
+  ],
   "request_budget": 24
 }

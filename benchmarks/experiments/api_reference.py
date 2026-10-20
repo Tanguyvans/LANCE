@@ -25,10 +25,37 @@ from src.agent.audit_experiment import digest
 
 
 SCENARIO = "s_api_organisations"
-CONTRACT = "api-reference-calibration-v1"
+CONTRACT = "api-reference-calibration-v2"
 TERMINAL_STATES = {"completed", "failed", "budget_exceeded", "stopped", "no_output"}
 # Declared authorization boundaries; the evaluator reports coverage per name.
 BOUNDARIES = ("object_own", "object_foreign", "collection_own", "collection_cross")
+# The published surface an auditor is handed, identical to the fixture's
+# /v1/policy ``routes``. Without it an arm has to guess paths, which measures
+# endpoint-name luck instead of authorization reasoning. It carries no object,
+# credential, owner or flaw information.
+DOCUMENTED_ROUTES = (
+    {"method": "POST", "path": "/v1/session", "purpose": "exchange credentials for a token"},
+    {"method": "GET", "path": "/v1/policy", "purpose": "this document"},
+    {"method": "GET", "path": "/v1/objects", "purpose": "public inventory of object metadata"},
+    {"method": "GET", "path": "/v1/objects/{id}", "purpose": "read one object"},
+    {"method": "GET", "path": "/v1/collections/{id}", "purpose": "read one collection"},
+)
+
+
+def _routes(value):
+    if not isinstance(value, list) or not value:
+        raise ValueError("Documented routes must be a non-empty list")
+    seen = set()
+    for route in value:
+        if (not isinstance(route, dict) or set(route) != {"method", "path", "purpose"}
+                or route["method"] not in {"GET", "POST"}
+                or not isinstance(route["path"], str) or not route["path"].startswith("/")
+                or not isinstance(route["purpose"], str) or not route["purpose"].strip()):
+            raise ValueError("Each documented route needs method, path and purpose")
+        if route["path"] in seen:
+            raise ValueError("Documented routes must be unique by path")
+        seen.add(route["path"])
+    return value
 
 
 def _identifier(value, field):
@@ -49,7 +76,7 @@ def _credential(value):
 def validate_briefing(raw: dict) -> dict:
     """Accept the public task only; never the oracle, canaries or expected owners."""
     fields = {"schema_version", "scenario_id", "instance_id", "target_network",
-              "target", "control_credential", "request_budget"}
+              "target", "control_credential", "documented_routes", "request_budget"}
     if not isinstance(raw, dict) or set(raw) != fields:
         raise ValueError("Unsupported public API briefing fields")
     if type(raw["schema_version"]) is not int or raw["schema_version"] != 1 or raw["scenario_id"] != SCENARIO:
@@ -68,6 +95,7 @@ def validate_briefing(raw: dict) -> dict:
     if type(target["port"]) is not int or not 1 <= target["port"] <= 65535:
         raise ValueError("Invalid target port")
     _credential(raw["control_credential"])
+    _routes(raw["documented_routes"])
     if type(raw["request_budget"]) is not int or not 1 <= raw["request_budget"] <= 64:
         raise ValueError("request_budget must be an integer between 1 and 64")
     return raw

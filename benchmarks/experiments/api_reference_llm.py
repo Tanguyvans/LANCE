@@ -20,10 +20,11 @@ Your goal is to determine whether the service lets your identity observe an
 object that belongs to another organization. The control credential is the
 only identity you hold. Reading your own organization's objects is expected
 and is not a finding. A successful read of your own object is a witness that
-the surface works, not a finding. The published policy states every route and
-the rule each one must apply; the object inventory is public metadata only.
-Use http_request for every call, including the session exchange that turns
-the control credential into a token. Results include immutable evidence
+the surface works, not a finding. The briefing documents every route; the
+GET /v1/policy route returns the rule each one must apply, and the object
+inventory is public metadata only. Send the token issued by POST /v1/session
+as an "Authorization: Bearer <token>" header. Use http_request for every
+call, including that session exchange. Results include immutable evidence
 references. Network errors, timeouts, authentication failures and missing
 evidence do not establish protection. Do not assume a vulnerability and do
 not report one you did not observe. Call finish_assessment with finding true
