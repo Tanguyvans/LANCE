@@ -79,12 +79,13 @@ jobs:
           assert state['commit'] == os.environ['EXPECTED_SHA']
           PY
           mkdir -p output/mqtt-reference
-          # Four arms per repetition at 420 s each, plus fixture/preflight overhead.
+          # Cost and duration are recorded, not capped. The outer timeout only
+          # kills a stuck process; the arm itself is bounded by tool calls/turns.
           timeout --signal=TERM --kill-after=45s "$((300 + 2400 * MQTT_REPETITIONS))" \
             venv/bin/python -m benchmarks.experiments.mqtt_reference_live run \
             --output "output/mqtt-reference/$TRIAL_NAME" \
             --provider "$MQTT_PROVIDER" --model "$MQTT_MODEL" --repetitions "$MQTT_REPETITIONS" \
-            --max-tool-calls 8 --max-duration-s 420 --max-cost-usd 1 --max-turns 12 \
+            --max-tool-calls 8 --max-turns 12 \
             > "output/mqtt-reference/$TRIAL_NAME.console.log" 2>&1
 
       - name: Recover owned resources and verify local evidence

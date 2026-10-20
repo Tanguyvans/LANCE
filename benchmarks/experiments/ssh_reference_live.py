@@ -468,13 +468,20 @@ def main():
     parser.add_argument('--repetitions', type=int, default=1,
                         help='Independent repetitions per posture (bounded 1-5)')
     parser.add_argument('--max-tool-calls', type=int, default=8)
-    parser.add_argument('--max-duration-s', type=float, default=420)
-    parser.add_argument('--max-cost-usd', type=float, default=1)
+    # Cost and duration are measured, never capped: a V2 pilot must observe
+    # what the policy actually spends instead of truncating it at a ceiling.
+    parser.add_argument('--max-duration-s', type=float, default=None,
+                        help='Optional elapsed-time ceiling; unset measures without capping')
+    parser.add_argument('--max-cost-usd', type=float, default=None,
+                        help='Optional observed-cost ceiling; unset measures without capping')
     parser.add_argument('--max-turns', type=int, default=12)
     args = parser.parse_args()
-    if (not 4 <= args.max_tool_calls <= 32 or not 0 < args.max_duration_s <= 1200
-            or not 0 < args.max_cost_usd <= 10 or not 2 <= args.max_turns <= 32):
-        parser.error('Invalid finite calibration budgets')
+    if (not 4 <= args.max_tool_calls <= 32
+            or not 2 <= args.max_turns <= 32
+            or (args.max_duration_s is not None
+                and not 0 < args.max_duration_s <= 1200)
+            or (args.max_cost_usd is not None and not 0 < args.max_cost_usd <= 10)):
+        parser.error('Invalid calibration budgets: duration and cost stay optional')
     if args.command == 'verify':
         print(json.dumps({'verified_files': verify_archives(args.output)}))
         return 0

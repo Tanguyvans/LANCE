@@ -386,7 +386,7 @@ privé et les identifiants de contrôle restent identiques au sein d'une paire e
 sont renouvelés entre les deux cas. Le port reste identique dans chaque paire.
 
 Les deux politiques utilisent le même `ssh_exec`, la même commande de lecture
-identité/objet, le même briefing et les mêmes plafonds d'appels SSH et de durée.
+identité/objet, le même briefing et les mêmes bornes d'appels SSH et de tours.
 La politique LLM réutilise `LLMProvider.chat_with_tools`, les contrôles de budget
 et `CostTracker` ; elle dispose uniquement de `ssh_probe(credential_index)` et
 `finish_assessment(finding, evidence_refs)`. Elle ne peut choisir ni autre cible,
@@ -394,9 +394,13 @@ ni autre commande, ni accès aux fichiers privés du contrôleur. Ce périmètre
 une décision bornée sur carte complète, pas le pipeline A1 entier ni l'adaptation
 à une architecture inconnue. Aucun oracle n'est transmis au fournisseur.
 
-Les plafonds initiaux **de calibration**, non validés statistiquement, sont huit
-appels SSH, 420 secondes par bras, douze tours modèle et un dollar de coût
-**estimé** observé. Ce pilote utilise exclusivement **`ollama-umons`**, avec
+Le coût et la durée sont **mesurés, jamais plafonnés** : un pilote V2 doit observer
+ce que la politique dépense réellement, pas la tronquer à un seuil. `CostTracker`
+enregistre toujours l'usage déclaré ou estimé, et `--max-cost-usd` /
+`--max-duration-s` restent disponibles pour un appelant qui veut explicitement une
+borne, sans valeur par défaut. Les bornes qui définissent l'instrument restent
+huit appels SSH et douze tours modèle ; elles décrivent la décision bornée, pas un
+budget économique. Ce pilote utilise exclusivement **`ollama-umons`**, avec
 un modèle du panneau déclaré : `qwen3.8:27b` (dense) ou
 `gemma4:26b-a4b-it-q4_K_M` (MoE)
 (`ssh_provider`, `ssh_model`). Le workflow et le contrôleur refusent tout autre

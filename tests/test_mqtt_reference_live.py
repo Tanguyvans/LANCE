@@ -220,6 +220,7 @@ def test_verify_archives_detects_unlisted_evidence(tmp_path):
 def test_workflow_is_manual_dev2_only_and_keeps_evidence_local():
     path = ROOT / '.github/workflows/mqtt-reference.yml'
     text = path.read_text()
+    assert '--max-cost-usd' not in text and '--max-duration-s' not in text
     document = yaml.safe_load(text)
     assert 'workflow_dispatch' in document[True]  # YAML parses the `on` key as True.
     assert 'nato-master' in text and 'refs/heads/dev/2' in text

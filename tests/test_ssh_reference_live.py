@@ -374,7 +374,8 @@ def test_workflow_is_manual_local_and_shell_syntax_valid(tmp_path):
     assert 'test "$SSH_PROVIDER" = ollama-umons' in text
     assert 'qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M' in text
     assert '--repetitions "$SSH_REPETITIONS"' in text
-    # Worst case is four arms per repetition at 420 s, plus fixture overhead.
+    # Cost and duration are measured, never capped by the workflow.
+    assert '--max-cost-usd' not in text and '--max-duration-s' not in text
     assert '$((300 + 2400 * SSH_REPETITIONS))' in text
     assert workflow['jobs']['ssh-trial']['timeout-minutes'] == '180'
     assert workflow['concurrency']['group'] == 'lance-lab-dev2'
