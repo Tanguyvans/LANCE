@@ -20,7 +20,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from benchmarks.experiments.api_reference import (
-    CONTRACT, _response, bind_http_tool, evaluate_trial, run_rules, validate_briefing,
+    CONTRACT, _response, bind_http_tool, evaluate_trial, route_profile, run_rules, validate_briefing,
 )
 from benchmarks.experiments.api_reference_llm import run_llm
 from benchmarks.experiments.api_reference_proxmox import Proxmox, Fixture as ProxmoxFixture
@@ -282,6 +282,10 @@ def comparison(trial, arms, family_id=SCENARIO_ID):
             'billed_cost_usd': 0 if policy == 'rules' else None,
         }}
         evidence[policy]['usage_complete'] = usage_complete
+        briefing_path = directory / 'briefing.json'
+        if briefing_path.is_file():
+            policies[policy]['observed_routes'] = route_profile(
+                read_ledger(directory), json.loads(briefing_path.read_text()))
     planned = json.loads((trial / 'planned.json').read_text()) if (trial / 'planned.json').is_file() else {}
     experiment = planned.get('experiment') or {}
     admission = v2.pair_admission(evidence, experiment=experiment, planned=planned)

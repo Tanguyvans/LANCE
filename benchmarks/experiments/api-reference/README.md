@@ -111,9 +111,8 @@ durée sont mesurés sans plafond.
 ## Ce qui reste à construire
 
 - Le premier lancement réel sur nato, et la lecture de ses coûts.
-- La calibration des seuils C06 (couverture, faux positifs) après le pilote.
-- La calibration des seuils C06 (couverture, faux positifs) reste après le
-  pilote, jamais avant.
+- La calibration des seuils C06 (couverture, faux positifs), après le pilote
+  et jamais avant.
 - Le reset, la parité des bras et la provenance du fournisseur restent à
   attester en laboratoire.
 

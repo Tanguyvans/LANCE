@@ -219,6 +219,25 @@ def run_rules(briefing: dict, execute) -> dict:
     return decision
 
 
+def route_profile(records: list | None, public: dict) -> dict:
+    """Count the declared routes the ledger reached, by status, without bodies.
+
+    This is instrument telemetry for the job log: it shows where an arm went
+    without revealing payloads, canaries or the oracle.
+    """
+    profile: dict[str, int] = {}
+    for record in records or []:
+        if not isinstance(record, dict) or not _bound(record, public):
+            continue
+        route = _route(record)
+        status = _response(record)[0]
+        name = "unparsed" if route is None else (
+            "inventory" if route == ("object", None) else route[0])
+        key = f"{name}:{status if status is not None else 'unreachable'}"
+        profile[key] = profile.get(key, 0) + 1
+    return dict(sorted(profile.items()))
+
+
 def evaluate_trial(briefing: dict, oracle: dict, records: list | None, decision: dict | None) -> dict:
     """Score the trial from the ledger; the decision is never trusted alone."""
     public = validate_briefing(briefing)

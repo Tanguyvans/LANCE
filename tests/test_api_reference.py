@@ -11,7 +11,7 @@ import pytest
 
 from src.agent.audit_experiment import digest
 from benchmarks.experiments.api_reference import (
-    CONTRACT, base_url, bind_http_tool, evaluate_trial, run_rules, validate_briefing,
+    CONTRACT, base_url, bind_http_tool, evaluate_trial, route_profile, run_rules, validate_briefing,
 )
 
 CONTROL_CANARY = "fresh-control-canary"
@@ -174,6 +174,19 @@ def test_adaptation_crosses_the_collection_boundary_only_when_the_flaw_exists(tm
         assert result["boundary_coverage"]["collection_cross"] is positive
         assert result["success"] is True
         assert not result["false_positive"]
+
+
+def test_route_profile_counts_reached_routes_without_bodies(tmp_path, server):
+    briefing = briefing_for(server(False))
+    run, tool = execution(tmp_path)
+    run_rules(briefing, tool)
+    profile = route_profile(ledger(run), briefing)
+    # The session exchange is instrumented too, and the foreign read is a denial.
+    assert profile == {"inventory:200": 1, "object:200": 1, "object:403": 1,
+                       "policy:200": 1, "session:200": 1}
+    # Only the declared target counts: an off-target call is not instrumented.
+    assert route_profile([{"tool": "http_request", "args": {"url": "http://10.0.0.1:8080/v1/policy"},
+                           "result": {"status_code": 200, "body": "{}"}}], briefing) == {}
 
 
 def test_public_contract_rejects_private_answer_fields():
