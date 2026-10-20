@@ -1,6 +1,6 @@
 # État courant : point de reprise
 
-**Dernière mise à jour : 2026-10-20 13:45 (Europe/Brussels, UTC+02:00).**
+**Dernière mise à jour : 2026-10-20 19:50 (Europe/Brussels, UTC+02:00).**
 Cette page sert de point d'entrée pour reprendre le travail rapidement dans une
 nouvelle session. Elle ne remplace pas les documents de référence : elle dit
 **où on en est**, **ce qui est prêt**, et **ce qui peut être fait en parallèle ou
@@ -9,13 +9,16 @@ non**. Voir [l'objectif AsiaCCS 2027](asiaccs-2027/README.md) et
 
 ## Où en est le dépôt
 
-`main` est à `4e82f6f`, **CI verte et déployée sur nato**. Rien n'est en cours
-côté code. `dev/2` suit `main` au même commit.
+`main` est à `9a283f8`, **CI verte et déployée sur nato**. `dev/2` suit `main`
+au même commit. Les deux pilotes V2 (SSH et MQTT, 3 répétitions, `qwen3.8:27b`)
+ont été exécutés et sont exploitables.
 
 Derniers travaux livrés :
 
 | Commit | Contenu | Vérification |
 | --- | --- | --- |
+| `9a283f8` | Job `v2-summary` : agrégation en lecture seule des deux racines sur nato | CI verte, 4209 tests |
+| `74c218a` | Correction : les bras LLM V2 démarrent sans plafond de durée | 4208 tests, pilotes SSH et MQTT rejoués |
 | `4e82f6f` | Tests CI : 297 s → 149 s séquentiel, 85 s avec `-n 4` | CI verte, 4204 tests |
 | `70d9031` | Cette page de reprise | CI verte |
 | `29a3f6b` | Coût et durée des harnais V2 **mesurés, plus plafonnés** | 4204 tests verts, CI + déploiement nato |
@@ -27,16 +30,42 @@ Le parcours interactif et les harnais V2 mesurent désormais le coût et la dur�
 sans les tronquer (`29a3f6b`). Les bornes d'action (8 appels SSH, 12 tours)
 restent : elles définissent l'instrument borné, pas un budget économique.
 
+## Résultats des pilotes (2026-10-20)
+
+Deux pilotes réels, 3 répétitions × 2 postures, `qwen3.8:27b` via
+`ollama-umons`. Toutes les paires sont admissibles, aucun échec de contrôleur,
+aucun échec Proxmox.
+
+| Famille | Run | Bras | Succès | Appels outils | Plage de durée | Requêtes | Plage de jetons | Plage de coût |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SSH | `39465619725-1` | règles | 6/6 | 3–4 | 0,3 s | 0 | 0 | 0 $ |
+| SSH | `39465619725-1` | LLM | 6/6 | 4 | 14,0–73,7 s | 2–3 | 3 461–5 126 | 0,006–0,008 $ |
+| MQTT | `39467657683-1` | règles | 6/6 | 3 | 15,0 s | 0 | 0 | 0 $ |
+| MQTT | `39467657683-1` | LLM | 6/6 | 3 | 23,7–37,3 s | 2–3 | 3 051–6 408 | 0,004–0,010 $ |
+
+Variabilité inter-répétitions du bras LLM (n = 3 par posture) :
+
+| Famille / posture | Durée CV | Coût CV | Jetons CV |
+| --- | --- | --- | --- |
+| SSH F0 | 92,3 % | 7,0 % | 5,9 % |
+| SSH F1 | 6,4 % | 17,9 % | 21,8 % |
+| MQTT F0 | 27,8 % | 46,1 % | 25,6 % |
+| MQTT F1 | 10,2 % | 34,7 % | 35,6 % |
+
+Le CV de durée SSH F0 (92 %) vient d'une **première répétition à 73,7 s**
+contre 16,6 et 16,7 s ensuite : c'est un chargement de modèle à froid, pas une
+variabilité de politique. Les autres séries restent entre 6 % et 46 %.
+
+Rappel de portée : ces six paires par famille établissent que **les deux
+instruments mesurent**, pas qu'un bras surpasse l'autre. `mt_admissible` reste
+`false` et les verdicts ne satisfont toujours pas `strict_v3_metrics_adopted`.
+
 ## Ce qui manque pour avancer
 
-Deux qualifications réelles existent (SSH le 15 octobre, MQTT le 19 octobre),
-mais chacune ne compte **qu'une répétition par posture**. Elles qualifient
-l'instrument sans admettre de campagne : `mt_admissible` reste `false` et les
-verdicts de calibration ne satisfont pas `strict_v3_metrics_adopted`.
-
-Le pilote V2 (3 répétitions × 2 postures × SSH + MQTT × 2 modèles) produira la
-variabilité inter-répétitions. C'est **le chiffre qui manque** avant toute
-décision sur les marges, les effectifs ou le gel.
+Les pilotes donnent désormais la variabilité inter-répétitions. Il reste à
+exécuter le même protocole avec le modèle MoE
+(`gemma4:26b-a4b-it-q4_K_M`), puis à lire le résumé hors ligne agrégé des deux
+familles (`v2-summary`).
 
 ## Conditions de démarrage d'une session
 
@@ -49,9 +78,8 @@ décision sur les marges, les effectifs ou le gel.
   ```
 - **Cible d'exécution** : nato / `pve-nato` via le runner `nato-master`
   uniquement. Le homelab personnel est hors périmètre.
-- **Blocage levé le 2026-10-20** : `dev/2` a été avancé à `4e82f6f` par
-  fast-forward, avec CI et redéploiement de `dev-2`. Les workflows SSH et MQTT
-  peuvent démarrer. Un futur commit sur `main` doit à nouveau être reporté sur
+- **Blocage levé le 2026-10-20** : `dev/2` suit `main` (`9a283f8`), CI verte et
+  `dev-2` redéployé. Un futur commit sur `main` doit à nouveau être reporté sur
   `dev/2` avant tout nouveau pilote.
 
 ## Plan de travail
@@ -63,29 +91,32 @@ mesures.
 
 1. ~~**Avancer `dev/2` sur `main`**~~ — **fait le 2026-10-20** : `dev/2` est à
    `4e82f6f`, CI verte et `dev-2` redéployé.
-2. **Pilote SSH** — 3 répétitions, `qwen3.8:27b` :
+2. ~~**Pilote SSH**~~ — **fait le 2026-10-20** : run `39465619725`, 6 paires
+   admissibles, un premier passage invalidé par un `TypeError` corrigé en
+   `74c218a`.
+3. ~~**Pilote MQTT**~~ — **fait le 2026-10-20** : run `39467657683`, 6 paires
+   admissibles.
+4. **Pilote SSH + MQTT avec le modèle MoE** (`gemma4:26b-a4b-it-q4_K_M`), le
+   seul reste à exécuter. Le panneau est verrouillé à ces deux modèles ;
+   l'inférence reste séparée par configuration, jamais regroupée.
    ```bash
    gh workflow run benchmark-integrity.yml --ref dev/2 -f slot=dev-2 \
      -f ssh_reference=true -f ssh_provider=ollama-umons \
-     -f ssh_model=qwen3.8:27b -f ssh_repetitions=3
-   ```
-3. **Pilote MQTT** — workflow séparé, même verrou laboratoire :
-   ```bash
+     -f ssh_model=gemma4:26b-a4b-it-q4_K_M -f ssh_repetitions=3
    gh workflow run mqtt-reference.yml --ref dev/2 \
-     -f provider=ollama-umons -f model=qwen3.8:27b -f repetitions=3
+     -f provider=ollama-umons -f model=gemma4:26b-a4b-it-q4_K_M -f repetitions=3
    ```
-   Il partage le verrou `lance-lab-dev2` avec SSH : **jamais en parallèle**.
-4. **Pilote SSH + MQTT avec le modèle MoE** (`gemma4:26b-a4b-it-q4_K_M`),
-   après les deux précédents. Le panneau est verrouillé à ces deux modèles ;
-   l'inférence reste séparée par configuration, jamais regroupée.
-5. **Résumé hors ligne** des racines d'expérience :
+5. **Résumé hors ligne** des deux racines scellées, depuis GitHub Actions
+   (les racines restent sur nato) :
    ```bash
-   python -m benchmarks.experiments.v2_campaign \
-     --root output/ssh-reference/RUN_SSH --root output/mqtt-reference/RUN_MQTT \
-     --output output/v2-summary.json --minimum-families 2 --minimum-repetitions 3
+   gh workflow run benchmark-integrity.yml --ref dev/2 \
+     -f v2_ssh_experiment=39465619725-1 -f v2_mqtt_experiment=39467657683-1
    ```
+   Le job `v2-summary` est en lecture seule et publie `v2-summary.json` en
+   artefact.
 6. **Lire la variabilité** inter-répétitions et en déduire l'effectif
-   confirmatoire.
+   confirmatoire. Les chiffres de `qwen3.8:27b` sont déjà dans la section
+   « Résultats des pilotes » ci-dessus.
 
 ### Travail parallèle
 
@@ -118,15 +149,18 @@ cours.
 | Décision | Échéance | État |
 | --- | --- | --- |
 | Avancer `dev/2` sur `main` | ~~immédiat~~ | **Fait** le 2026-10-20 |
-| Lancer le pilote SSH 3 répétitions | immédiat | Prêt |
+| Pilotes SSH et MQTT, `qwen3.8:27b` | ~~immédiat~~ | **Faits** le 2026-10-20 |
+| Pilotes SSH et MQTT, modèle MoE | immédiat | Prêt |
 | Marges, `delta_min`, unité d'indépendance | **après** le pilote | Volontairement reporté |
 | Soumission AsiaCCS ou repli | **2026-11-16** | Critères dans le plan |
 | Soumission | **2026-12-11 (AoE)** | — |
 
 ## Limites à ne pas oublier
 
-- Une répétition par posture ne produit ni intervalle de confiance ni conclusion
-  sur un avantage du LLM.
+- Trois répétitions par posture produisent une variabilité descriptive, pas un
+  intervalle de confiance confirmatoire.
+- Le pilote a montré que « run vert » ne vaut pas « mesure exploitable » : le
+  premier passage SSH était vert alors que les six bras LLM avaient échoué.
 - Les verdicts de calibration ne satisfont jamais `strict_v3_metrics_adopted` :
   une campagne reste non admise même quand toutes les autres conditions le sont.
 - Le coût facturé UMONS et le coût matériel ne sont pas mesurés ; les

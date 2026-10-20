@@ -143,15 +143,15 @@ restent à calibrer puis geler. Aucun nom, configuration, bras ou priorité ajou
 
 ## Avancement consolidé
 
-Dernière consolidation : **2026-10-19 (Europe/Brussels, UTC+02:00)**. La conception conserve les **44 scénarios,
+Dernière consolidation : **2026-10-20 (Europe/Brussels, UTC+02:00)**. La conception conserve les **44 scénarios,
 25 ensembles, 216 configurations et 456 bras conditionnels**. Les documents
 historiques et la revue IoT figée gardent leurs dates et leur portée.
 
 | Élément | État établi | Suite |
 | --- | --- | --- |
 | Organisation V2 et correspondance scénario/mesure/hypothèse | Conception structurée et contrôlée | Admission expérimentale par scénario |
-| `s_ssh_identifiants` | **Qualification native réussie le 15 octobre** : script et Qwen corrects sur les cas protégé/vulnérable | Métriques, effectifs et gel confirmatoire à établir |
-| `s_mqtt_lecture` | **Qualification réelle réussie le 19 octobre** : script et Qwen corrects sur les cas F0/F1 | Métriques, effectifs et gel confirmatoire à établir |
+| `s_ssh_identifiants` | **Qualification native réussie le 15 octobre** ; **pilote à 3 répétitions le 20 octobre** : 6 paires admissibles | Variabilité mesurée ; effectifs et gel confirmatoire à établir |
+| `s_mqtt_lecture` | **Qualification réelle réussie le 19 octobre** ; **pilote à 3 répétitions le 20 octobre** : 6 paires admissibles | Variabilité mesurée ; effectifs et gel confirmatoire à établir |
 | `s_api_organisations`, `s_mqtt_reprise`, `s_cache_identites` | Contrats définis | Poursuivre dans cet ordre ; `s_api_organisations` d'abord |
 | `s_injection_preuves` et parcours réseau | Préparation hors ligne et chantier parallèle distincts | Leurs propres contrôles restent requis |
 
@@ -193,6 +193,41 @@ et le [suivi MQTT](../../benchmarks/experiments/mqtt-reference/README.md).
 Une répétition par posture, avec oracle fourni par l’opérateur, ne qualifie que
 l’instrument : `mt_admissible` reste `false`, la remise à zéro et la parité de
 fournisseur ne sont pas attestées, et aucun avantage du LLM n’est établi.
+
+### Pilote à trois répétitions du 2026-10-20
+
+Deux workflows réels au code `74c218a` ont exécuté trois répétitions par posture,
+soit six paires par famille, avec `qwen3.8:27b` via `ollama-umons` :
+[SSH 39465619725](https://github.com/Tanguyvans/LANCE/actions/runs/39465619725)
+et [MQTT 39467657683](https://github.com/Tanguyvans/LANCE/actions/runs/39467657683).
+Les douze paires sont admissibles, sans échec de contrôleur, Proxmox ou Docker,
+et tous les bras réussissent le contrat. Le coût et la durée sont mesurés, sans
+plafond économique.
+
+| Famille | Bras | Appels | Durée | Requêtes | Jetons | Coût estimé |
+| --- | --- | --- | --- | --- | --- | --- |
+| SSH | règles | 3–4 | 0,2–0,3 s | 0 | 0 | 0 $ |
+| SSH | LLM | 4 | 14,0–73,7 s | 2–3 | 3 461–5 126 | 0,0066–0,0079 $ |
+| MQTT | règles | 3 | 15,0 s | 0 | 0 | 0 $ |
+| MQTT | LLM | 3 | 23,7–37,3 s | 2–3 | 3 051–6 408 | 0,0040–0,0097 $ |
+
+Coefficients de variation inter-répétitions du bras LLM, calculés sur trois
+valeurs par posture : SSH F0 durée 92,3 %, coût 7,0 %, jetons 5,9 % ; SSH F1
+6,4 %, 17,9 %, 21,8 % ; MQTT F0 27,8 %, 46,1 %, 25,6 % ; MQTT F1 10,2 %,
+34,7 %, 35,6 %. La valeur SSH F0 provient d’une première répétition à 73,7 s
+contre 16,6 s et 16,7 s ensuite, attribuable à un chargement de modèle à froid ;
+les autres séries restent entre 6 % et 46 %.
+
+Ces chiffres sont descriptifs. Trois répétitions ne produisent ni intervalle de
+confiance confirmatoire ni conclusion sur un avantage d’un bras. Le même
+protocole reste à exécuter avec `gemma4:26b-a4b-it-q4_K_M` avant d’arrêter des
+marges, un `delta_min` ou une unité d’indépendance.
+
+Une panne d’instrument a été observée puis corrigée pendant ce pilote : le
+premier passage SSH était vert alors que les six bras LLM échouaient avant le
+premier appel fournisseur, à cause d’une addition `None + float` sur une
+échéance devenue sans plafond. Le statut du job ne prouve donc pas qu’une mesure
+existe ; seuls les compteurs d’usage le montrent.
 
 ## Quoi construire maintenant
 
