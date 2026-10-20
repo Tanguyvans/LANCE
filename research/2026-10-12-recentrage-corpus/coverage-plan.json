@@ -12660,7 +12660,8 @@
       "declared_baseline": "Matrice rôle/objet/organisation paramétrique sur l'inventaire public ; s'arrête à la frontière objet par contrat ; aucune règle retirée.",
       "flaw": "Une collection lisible ne réapplique pas la règle d'organisation propre à chaque membre.",
       "verified_offline": "La baseline réussit en posture protégée et s'arrête en posture vulnérable ; un bras d'exploration déterministe franchit collection_cross en F1 sans faux positif en F0. Aucun modèle n'a été appelé.",
-      "not_attested": "Harnais vivant, parité des LXC jetables, reset, provenance du fournisseur et toute admission de campagne restent ouverts."
+      "live_harness": "Prêt mais non exécuté : LXC jetable par bras, précontrôle de posture, archivage scellé et workflow manuel dev/2 sur nato-master.",
+      "not_attested": "Premier lancement réel, parité des LXC jetables, reset, provenance du fournisseur et toute admission de campagne restent ouverts."
     },
     "next_scenario": "s_api_organisations",
     "next_status": "implemented_offline_not_lab_attested",

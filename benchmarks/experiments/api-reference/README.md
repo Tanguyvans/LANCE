@@ -88,14 +88,30 @@ preuve qu'elle a réellement observées. Les tests la font tourner avec un
 fournisseur scripté, pas avec un modèle : la comparaison réelle reste à
 faire.
 
+## Harnais vivant
+
+[api_reference_live.py](../api_reference_live.py) qualifie l'instrument sur
+un LXC jetable par bras, sur `pve-nato` uniquement : un précontrôle atteste
+la posture privée avant chaque bras (inventaire, lecture de son propre
+objet, refus de l'objet étranger, divulgation de collection conforme au
+posture, témoin de contrôle après les sondes), puis les deux bras tournent
+et les preuves sont scellées, archivées et vérifiées.
+
+- Contrôleur invité : [api_reference_proxmox.py](../../ansible/files/api_reference_proxmox.py).
+- Playbook : [api_reference.yml](../../ansible/playbooks/api_reference.yml).
+- Workflow manuel `dev/2` : [api-reference.yml](../../../.github/workflows/api-reference.yml),
+  runner `nato-master`, verrou laboratoire partagé, aucun téléversement.
+
+Les identifiants (organisations, utilisateurs, objets, collections) sont
+tirés au sort à chaque essai : le nom de la solution n'est jamais réutilisé
+d'un essai à l'autre. Les budgets LLM restent `--max-tool-calls 16` et
+`--max-turns 16`, avec `request_budget` comme plafond de requêtes ; coût et
+durée sont mesurés sans plafond.
+
 ## Ce qui reste à construire
 
-- Le harnais vivant (LXC jetable par bras sur `pve-nato`, précontrôles,
-  archivage scellé), sur le modèle de
-  [mqtt_reference_live.py](../mqtt_reference_live.py) : contrôleur invité,
-  playbook Ansible et workflow `nato-master` dédiés.
-- Le compteur de requêtes borné (`request_budget`) doit être branché sur le
-  budget d'exécution commun, et le budget économique mesuré sans plafond.
+- Le premier lancement réel sur nato, et la lecture de ses coûts.
+- La calibration des seuils C06 (couverture, faux positifs) après le pilote.
 - La calibration des seuils C06 (couverture, faux positifs) reste après le
   pilote, jamais avant.
 - Le reset, la parité des bras et la provenance du fournisseur restent à
