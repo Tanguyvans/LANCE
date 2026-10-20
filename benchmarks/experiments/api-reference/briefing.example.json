@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "scenario_id": "s_api_organisations",
+  "instance_id": "development-01",
+  "target_network": "192.168.100.0/24",
+  "target": {"asset_id": "fleet-api", "ip": "192.168.100.221", "port": 8080},
+  "control_credential": {"username": "auditor-north", "password": "development-control-only"},
+  "request_budget": 24
+}

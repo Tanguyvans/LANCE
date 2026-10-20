@@ -2300,8 +2300,8 @@
       "estimand": "verification",
       "status": "proposed",
       "stage_evidence": {
-        "defined_contract": null,
-        "validated_offline": null,
+        "defined_contract": "2026-10-20 : contrat public api-reference-calibration-v1 (politique, inventaire, identité de contrôle, budget de requêtes).",
+        "validated_offline": "2026-10-20 : fixture paramétrique, baseline déclarée et évaluateur vérifiés hors ligne ; aucun modèle appelé, aucun laboratoire.",
         "deployment_attested": null,
         "evaluated_with_evidence": null
       },
@@ -2328,7 +2328,7 @@
         "architecture": "API multi-tenant directement accessible",
         "task": "targeted_audit",
         "priority": "comparaison-locale",
-        "implementation_status": "planned_not_implemented_or_attested",
+        "implementation_status": "implemented_offline_not_lab_attested",
         "mechanism_family_independence": "Not established; shared simulators/templates remain clustered.",
         "competent_baseline_contract": "Matrice rôle/objet/organisation paramétrique, avec extraction des identifiants depuis les entrées publiques.",
         "implementation_dependency": "Généraliser les fixtures du catalogue S15 sans conserver ses routes/objets en solution codée ; isoler un défaut.",
@@ -12548,7 +12548,7 @@
     }
   ],
   "implementation_tracking": {
-    "updated_at": "2026-10-19 (Europe/Brussels, UTC+02:00)",
+    "updated_at": "2026-10-20 (Europe/Brussels, UTC+02:00)",
     "scope": "Progress record separate from proposed experiment selection and admission attestations.",
     "ssh_calibration": {
       "status": "native_calibration_verified_not_confirmatory",
@@ -12647,8 +12647,23 @@
       "scope": "Bounded mqtt_listen/finish_assessment policy; four valid arms on a real Mosquitto fixture; classified causes of five prior failed attempts retained in the reference.",
       "confirmation_limits": "Single repetition per posture; operator-supplied oracle; reset and provider parity not attested; no LLM advantage established; costs are catalogue estimates."
     },
+    "api_organisations_offline_increment": {
+      "status": "implemented_offline_not_lab_attested",
+      "recorded_on": "2026-10-20 (Europe/Brussels, UTC+02:00)",
+      "scenario_id": "s_api_organisations",
+      "artifacts": [
+        "benchmarks/experiments/api_reference.py",
+        "benchmarks/experiments/api-reference/fixture/start.py",
+        "benchmarks/experiments/api-reference/README.md",
+        "tests/test_api_reference.py"
+      ],
+      "declared_baseline": "Matrice rôle/objet/organisation paramétrique sur l'inventaire public ; s'arrête à la frontière objet par contrat ; aucune règle retirée.",
+      "flaw": "Une collection lisible ne réapplique pas la règle d'organisation propre à chaque membre.",
+      "verified_offline": "La baseline réussit en posture protégée et s'arrête en posture vulnérable ; un bras d'exploration déterministe franchit collection_cross en F1 sans faux positif en F0. Aucun modèle n'a été appelé.",
+      "not_attested": "Harnais vivant, parité des LXC jetables, reset, provenance du fournisseur et toute admission de campagne restent ouverts."
+    },
     "next_scenario": "s_api_organisations",
-    "next_status": "planned_not_implemented_or_attested",
+    "next_status": "implemented_offline_not_lab_attested",
     "following_scenarios": [
       "s_mqtt_reprise",
       "s_cache_identites"
