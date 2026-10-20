@@ -1,6 +1,6 @@
 # État courant : point de reprise
 
-**Dernière mise à jour : 2026-10-20 12:10 (Europe/Brussels, UTC+02:00).**
+**Dernière mise à jour : 2026-10-20 13:45 (Europe/Brussels, UTC+02:00).**
 Cette page sert de point d'entrée pour reprendre le travail rapidement dans une
 nouvelle session. Elle ne remplace pas les documents de référence : elle dit
 **où on en est**, **ce qui est prêt**, et **ce qui peut être fait en parallèle ou
@@ -9,13 +9,15 @@ non**. Voir [l'objectif AsiaCCS 2027](asiaccs-2027/README.md) et
 
 ## Où en est le dépôt
 
-`main` est à `29a3f6b`, **CI verte et déployée sur nato**. Rien n'est en cours
-côté code.
+`main` est à `4e82f6f`, **CI verte et déployée sur nato**. Rien n'est en cours
+côté code. `dev/2` suit `main` au même commit.
 
 Derniers travaux livrés :
 
 | Commit | Contenu | Vérification |
 | --- | --- | --- |
+| `4e82f6f` | Tests CI : 297 s → 149 s séquentiel, 85 s avec `-n 4` | CI verte, 4204 tests |
+| `70d9031` | Cette page de reprise | CI verte |
 | `29a3f6b` | Coût et durée des harnais V2 **mesurés, plus plafonnés** | 4204 tests verts, CI + déploiement nato |
 | `c0c0568` | Tri des collections multi-principaux dans les preuves de portée | CI verte |
 | `0dec6cf` | Validateur `broken_access_control` (contrat `evidence-v16`) | Run S15 : FN 0, rappel 1,0, F1 0,545 |
@@ -47,11 +49,10 @@ décision sur les marges, les effectifs ou le gel.
   ```
 - **Cible d'exécution** : nato / `pve-nato` via le runner `nato-master`
   uniquement. Le homelab personnel est hors périmètre.
-- **Blocage connu** : les workflows SSH et MQTT exigent la branche `dev/2` et un
-  commit exact. `origin/dev/2` est encore à `6dda69e`, soit **huit commits en
-  retard** sur `main` (il ignore notamment `29a3f6b`, `c0c0568`, `0dec6cf`,
-  `b232059`). Un fast-forward est possible. **Rien ne peut être lancé avant
-  cette mise à jour.**
+- **Blocage levé le 2026-10-20** : `dev/2` a été avancé à `4e82f6f` par
+  fast-forward, avec CI et redéploiement de `dev-2`. Les workflows SSH et MQTT
+  peuvent démarrer. Un futur commit sur `main` doit à nouveau être reporté sur
+  `dev/2` avant tout nouveau pilote.
 
 ## Plan de travail
 
@@ -60,8 +61,8 @@ décision sur les marges, les effectifs ou le gel.
 Ces étapes dépendent les unes des autres ; les paralléliser invaliderait les
 mesures.
 
-1. **Avancer `dev/2` sur `main`** (`29a3f6b`). Fast-forward possible.
-   Sans cela, aucun pilote ne peut démarrer.
+1. ~~**Avancer `dev/2` sur `main`**~~ — **fait le 2026-10-20** : `dev/2` est à
+   `4e82f6f`, CI verte et `dev-2` redéployé.
 2. **Pilote SSH** — 3 répétitions, `qwen3.8:27b` :
    ```bash
    gh workflow run benchmark-integrity.yml --ref dev/2 -f slot=dev-2 \
@@ -116,8 +117,8 @@ cours.
 
 | Décision | Échéance | État |
 | --- | --- | --- |
-| Avancer `dev/2` sur `main` | immédiat | Confirmation utilisateur requise (branche partagée) |
-| Lancer le pilote SSH 3 répétitions | après l'étape 1 | Prêt |
+| Avancer `dev/2` sur `main` | ~~immédiat~~ | **Fait** le 2026-10-20 |
+| Lancer le pilote SSH 3 répétitions | immédiat | Prêt |
 | Marges, `delta_min`, unité d'indépendance | **après** le pilote | Volontairement reporté |
 | Soumission AsiaCCS ou repli | **2026-11-16** | Critères dans le plan |
 | Soumission | **2026-12-11 (AoE)** | — |
