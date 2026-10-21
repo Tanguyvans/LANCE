@@ -372,8 +372,9 @@ class ScriptedInterpreter:
         if action.startswith("read:"):
             return self.reply("read_message", {"message_id": action.split(":", 1)[1]}, index)
         refs = self.evidence()
-        verdicts = {key: {"verdict": value, "evidence_ref": refs.get(key, "0" * 64)}
-                    for key, value in self.verdicts.items()}
+        verdicts = [{"message_id": key, "verdict": value,
+                     "evidence_ref": refs.get(key, "0" * 64)}
+                    for key, value in self.verdicts.items()]
         return self.reply("finish_interpretation",
                           {"verdicts": verdicts, "conclusion": self.conclusion}, index)
 
@@ -459,6 +460,10 @@ def test_the_llm_arm_prompt_carries_no_oracle(tmp_path, monkeypatch):
     prompt = json.loads((tmp_path / "prompt.json").read_text())
     assert [tool["name"] for tool in prompt["tools"]] == ["read_message",
                                                           "finish_interpretation"]
+    # The close tool must not need a free-form nested object: an endpoint that
+    # cannot express it fails every request, and the arm measures nothing.
+    verdicts = prompt["tools"][1]["input_schema"]["properties"]["verdicts"]
+    assert verdicts["type"] == "array" and "additionalProperties" not in verdicts
     assert "oracle" not in json.dumps(prompt["user"]).lower()
     wire = (tmp_path / "provider-wire.jsonl").read_text()
     assert oracle["dossier_sha256"] not in wire and "NOT_ARCHIVED" not in wire

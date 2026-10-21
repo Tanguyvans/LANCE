@@ -8,13 +8,11 @@ Run:  python3 build.py
 """
 
 import functools
-import io
 import json
 import os
 import pathlib
 import subprocess
 import tempfile
-import csv
 
 from PIL import ImageFont
 
@@ -124,8 +122,10 @@ RULE_Y = 3.62                     # crimson rule under the title
 BODY_Y = 4.45
 BODY_BOTTOM = 14.55
 CAP_RULE_Y = 14.82                # hairline that opens the caption band
-CAP_Y, CAP_H = 14.90, 1.55
-SUB_Y, SUB_H = 16.50, 0.62
+CAP_Y, CAP_H = 14.88, 2.40        # holds two lines at CAP_SIZE
+CAP_SIZE = 21                     # fixed: a caption that resizes is not a band
+CAP_ADVANCE = 0.92                # line advance at CAP_SIZE, in cm
+SUB_H = 0.50
 FOOT_Y = 17.90
 
 slides = []
@@ -168,6 +168,26 @@ def box(text, x, y, w, h, size=18, color=INK, fill="none", bold=False,
         italic=italic, align=align, valign=valign, margin=margin,
         line=line, preset=preset,
         autoFit="none",
+    )
+
+
+def sized(text, x, y, w, h, size, color=INK, bold=False, align="left",
+          valign="middle", italic=False):
+    """Emit `text` at exactly `size`, bypassing fit_size.
+
+    Lists and headings must hold one size across their items: routing them
+    through fit_size lets the longest string shrink and leaves two sizes
+    adjacent in the same list. Used only where the size has been checked
+    against the box by hand.
+    """
+    add(
+        "shape",
+        name=f"Fixed-{len(ops)}",
+        text=text,
+        x=f"{x}cm", y=f"{y}cm", width=f"{w}cm", height=f"{h}cm",
+        font=FONT, size=size, color=color, bold=bold, italic=italic,
+        align=align, valign=valign, margin="0cm", fill="none", line="none",
+        preset="rect", autoFit="none",
     )
 
 
@@ -222,11 +242,28 @@ def page(title, notes="", seconds=60, sect=None, chrome=True):
 
 
 def caption(text, sub=None):
-    """The fixed bottom band: hairline, takeaway, optional support line."""
+    """The fixed bottom band: hairline, takeaway, optional support line.
+
+    The takeaway is set at CAP_SIZE regardless of length: `fit_size` would
+    shrink a long caption below the 15 pt body it summarises and break the
+    hierarchy. Length is handled by the band height instead.
+    """
     stem(ML, CAP_RULE_Y, CW, 0.03, LINE)
-    box(text, ML, CAP_Y, CW, CAP_H, 21, R, bold=True, valign="top")
+    add(
+        "shape",
+        name=f"Caption-{s}",
+        text=text,
+        x=f"{ML}cm", y=f"{CAP_Y}cm", width=f"{CW}cm", height=f"{CAP_H}cm",
+        font=FONT, size=CAP_SIZE, color=R, bold=True,
+        align="left", valign="top", margin="0cm", fill="none", line="none",
+        preset="rect", autoFit="none",
+    )
     if sub:
-        box(sub, ML, SUB_Y, CW, SUB_H, 13.5, M, valign="top")
+        # The support line hangs directly under the takeaway, so it follows the
+        # number of lines the takeaway actually takes.
+        n = len(_wrap(text, (CW - 0.24) * CM / 1.18, CAP_SIZE, True))
+        box(sub, ML, CAP_Y + n * CAP_ADVANCE + 0.26, CW, SUB_H, 13.5, M,
+            valign="top")
 
 
 def footer():
@@ -248,9 +285,9 @@ stem(ML, 9.25, CW, 0.03, LINE)
 box("Progress report — NATO SPS G6259", 3.35, 9.65, 20, 1.0, 18, R, bold=True)
 box("23 October 2026  ·  Université de Mons, ILIA", 3.35, 10.75, 20, 0.8, 15, M)
 
-panel(ML, 13.35, 11.6, 1.55, ROSE, ROSE)
-stem(ML + 0.6, 13.95, 0.5, 0.14)
-box("Status: work in progress.", ML + 1.2, 13.4, 10.2, 1.45, 14, M,
+panel(ML, 13.30, 12.6, 1.60, ROSE, ROSE, "rect")
+stem(ML, 13.30, 0.14, 1.60, R)
+box("Status: work in progress.", ML + 0.95, 13.30, 11.2, 1.60, 14, M,
     italic=True)
 picture(LOGO, 26.95, 1.40, 5.2, 5.2 * 463 / 1351, "SMart ILIA — UMONS")
 
@@ -258,12 +295,11 @@ picture(LOGO, 26.95, 1.40, 5.2, 5.2 * 463 / 1351, "SMart ILIA — UMONS")
 page("The objective",
      "One sentence on the left, three commitments on the right. Do not read "
      "the three rows aloud; they qualify the sentence, they do not repeat it. "
-     "Close on the last line: training is not on the critical path.",
+     "Close on the last line.",
      seconds=60, sect=0)
 
 box("An auditor that explores, identifies, verifies and reports.",
     TEXT_X, 5.40, TEXT_W, 4.2, 40, INK, bold=True, valign="top")
-stem(TEXT_X, 10.10, 2.6, 0.10)
 
 for i, (head, sub) in enumerate([
     ("Under which conditions", "rather than which model prevails"),
@@ -295,9 +331,11 @@ for i, (head, desc, fill, lc, accent) in enumerate(roles):
     y = 4.70 + i * 3.10
     panel(ML, y, CW, 2.88, fill, lc, "rect")
     stem(ML, y, 0.42, 2.88, accent)
-    box(head, ML + 1.15, y, 8.2, 2.88, 23, accent if accent != M else INK,
+    # Head and description share one station across all three rows: the column
+    # boundary is what makes this a table rather than two disconnected columns.
+    box(head, ML + 1.15, y, 6.0, 2.88, 23, accent if accent != M else INK,
         bold=True)
-    box(desc, ML + 9.60, y, CW - 10.4, 2.88, 15, M)
+    box(desc, ML + 7.55, y, CW - 8.35, 2.88, 15, M)
     if i < 2:
         # Short, axis-aligned link in the accent column: a connector across
         # the gap would cut the box corners.
@@ -314,7 +352,7 @@ page("What constitutes a finding",
      "is visible. The bottom band is the second half of the rule.",
      seconds=80, sect=1)
 
-PW = 14.2
+PW = cw(6)          # the counter-panels are a 6 + 6 split of the grid
 panel(ML, 4.75, PW, 6.05, GRAY, LINE)
 box("“I have read another organisation's data.”",
     ML + 0.7, 5.30, PW - 1.4, 1.9, 17, M, italic=True, align="center")
@@ -347,9 +385,9 @@ page("Current status",
      "bars carry no difference.",
      seconds=50, sect=2)
 
-box("Both approaches succeed on every configuration.",
-    ML, 4.42, 22.0, 1.85, 26, INK, bold=True, valign="top")
-stem(ML, 6.25, 2.6, 0.10)
+sized("Both approaches succeed on every configuration.",
+      ML, BODY_Y, 26.6, 1.30, 26, INK, bold=True, valign="top")
+stem(ML, 6.02, 2.6, 0.10)
 
 for i, (label, color) in enumerate([("Rule-based", M), ("Model-based", R)]):
     y = 7.05 + i * 3.55
@@ -385,8 +423,9 @@ for i, (code, prop, test) in enumerate(cards):
     x = ML + col * (CARD_W + 0.63)
     y = 4.75 + row * 4.35
     h6 = code == "H6"
-    panel(x, y, CARD_W, 3.95, ROSE if h6 else GRAY, R if h6 else LINE)
-    box(code, x + 0.6, y + 0.38, 1.7, 0.85, 26, R if h6 else R, bold=True)
+    # Square: the six cards are a table, like the cells on slide 7.
+    panel(x, y, CARD_W, 3.95, ROSE if h6 else GRAY, R if h6 else LINE, "rect")
+    box(code, x + 0.6, y + 0.38, 1.7, 0.85, 26, R if h6 else INK, bold=True)
     box(prop, x + 2.35, y + 0.42, CARD_W - 2.9, 0.80, 15,
         R if h6 else INK, bold=True)
     stem(x + 0.6, y + 1.45, CARD_W - 1.2, 0.03, R if h6 else LINE)
@@ -399,12 +438,12 @@ footer()
 page("A control task before testing the model",
      "The gate is the condition of interpretation for everything else, and it "
      "binds both arms. Read the matrix by cells: the only cell that opens the "
-     "register is the bottom right one.",
+     "register is the one where both arms pass — script check and model check.",
      seconds=70, sect=2)
 
 box("A control task, simple enough to be solved without inference.   Both "
     "approaches are required to pass.",
-    ML, 4.38, CW, 1.40, 17, M, valign="top")
+    ML, BODY_Y, CW, 1.40, 17, M, valign="top")
 
 HX, HW = 7.55, (RIGHT - 7.55 - 0.55) / 2
 for j, lab in enumerate(["model ✗", "model ✓"]):
@@ -413,23 +452,25 @@ for j, lab in enumerate(["model ✗", "model ✓"]):
 
 cells = [
     # row label, column index, verdict, colour, fill, accent
+    # rows are `script`, columns are `model`
     (0, 0, "a defect in the instrument", R, ROSE, R),
-    (0, 1, "a gain, or a coverage gap", INK, GRAY, LINE),
+    (0, 1, "valid — the hypotheses may be read", GREEN, BLUE, GREEN),
     (1, 0, "beyond the reach of this instrument", M, GRAY, LINE),
-    (1, 1, "valid — the hypotheses may be read", GREEN, BLUE, GREEN),
+    (1, 1, "a gain, or a coverage gap", INK, GRAY, LINE),
 ]
 for ri, (row, col, verdict, color, fill, accent) in enumerate(cells):
-    y = 6.45 + row * 3.45
+    y = 6.45 + row * 3.85
     x = HX + col * (HW + 0.55)
-    panel(x, y, HW, 3.10, fill, R if fill == ROSE else LINE, "rect")
-    stem(x, y, 0.14, 3.10, accent)
-    box(verdict, x + 0.75, y, HW - 1.35, 3.10, 19, color, bold=(color != M))
+    panel(x, y, HW, 3.55, fill, R if fill == ROSE else LINE, "rect")
+    stem(x, y, 0.14, 3.55, accent)
+    box(verdict, x + 0.75, y, HW - 1.35, 3.55, 19, color, bold=(color != M))
 
 for row, lab in enumerate(["script ✓", "script ✗"]):
-    y = 6.45 + row * 3.45
-    box(lab, ML, y, 4.85, 3.10, 17, M, bold=True, align="right")
+    y = 6.45 + row * 3.85
+    box(lab, ML, y, 4.85, 3.55, 17, M, bold=True, align="right")
 
-caption("Only the fourth outcome permits the hypotheses to be read.",
+caption("Only a control that the script and the model both pass permits the "
+        "hypotheses to be read.",
         "Implemented and tested offline. The laboratory run remains outstanding.")
 footer()
 
@@ -469,25 +510,28 @@ steps = [
     ("3", "Build the scenario families for H2, H3 and H4"),
     ("4", "Deploy a reproducible platform"),
 ]
-LW = cw(7)
+LW = cx(8) - ML - 0.70        # up to the ask panel, less its gutter
 for i, (num, head) in enumerate(steps):
-    y = 5.00 + i * 2.40
-    box(num, ML, y, 1.2, 1.55, 22, R, bold=True)
-    box(head, ML + 1.95, y, LW - 2.0, 1.55, 20, INK)
+    y = 4.95 + i * 2.60
+    sized(num, ML, y, 1.2, 1.55, 22, R, bold=True)
+    sized(head, ML + 1.95, y, LW - 1.95, 1.55, 20, INK)
     if i < len(steps) - 1:
         stem(ML + 1.95, y + 1.80, LW - 1.95, 0.03, LINE)
 
 RX, RW = cx(8), cw(4)
-panel(RX, 4.95, RW, 5.05, ROSE, ROSE)
-stem(RX, 4.95, 0.14, 5.05, R)
-box("Forms of support requested", RX + 0.85, 5.25, RW - 1.6, 0.85, 15, R,
-    bold=True)
-box("access to real vendor artifacts\n\nan adversarial review of the register",
-    RX + 0.85, 6.20, RW - 1.6, 3.5, 16, INK, valign="top")
+panel(RX, 4.95, RW, 8.20, ROSE, ROSE)
+stem(RX, 4.95, 0.14, 8.20, R)
+sized("Support requested", RX + 0.85, 5.22, RW - 1.7, 0.95, 17, R, bold=True)
+# Two parallel items, each on its own ruled row: the separator " · " cannot
+# survive a wrap, so the parallel form is the separator.
+for i, item in enumerate(["access to real vendor artifacts",
+                          "an adversarial review of the register"]):
+    y = 6.45 + i * 2.45
+    stem(RX + 0.85, y + 0.40, 0.45, 0.11, R)
+    sized(item, RX + 1.60, y, RW - 1.90, 2.10, 16, INK, valign="top")
 
-stem(RX, 10.70, RW, 0.03, LINE)
-box("AsiaCCS 2027 — submission deadline\n11 December 2026 (AoE).",
-    RX, 10.95, RW, 1.5, 13, M, valign="top")
+caption("Order follows conditions, not dates.",
+        "AsiaCCS 2027 — submission deadline 11 December 2026 (AoE).")
 footer()
 
 # ----------------------------------------------------------- Reserve slide
@@ -507,10 +551,17 @@ for i, g in enumerate(gaps):
     col = 0 if i < 4 else 1
     row = i if i < 4 else i - 4
     x = ML + col * (GW + 1.6)
-    y = 5.10 + row * 2.55
+    # The right column holds one row fewer, so it is offset by half a pitch:
+    # that centres it against the left column and the gap reads as deliberate.
+    y = 5.05 + row * 2.45 + (0 if col == 0 else 1.225)
     stem(x, y + 0.30, 0.55, 0.12, R)
-    box(g, x + 1.05, y, GW - 1.1, 1.55, 16, INK, valign="top")
-    stem(x, y + 1.85, GW, 0.03, LINE)
+    sized(g, x + 1.05, y, GW - 1.05, 2.00, 16, INK, valign="top")
+    # No divider under the last row of a column: it would read as an empty cell.
+    if row < (3 if col == 0 else 2):
+        stem(x, y + 1.95, GW, 0.03, LINE)
+
+caption("A benchmark that states its gaps is stronger than one that "
+        "claims full coverage.")
 footer()
 
 # ------------------------------------------------------------------ build

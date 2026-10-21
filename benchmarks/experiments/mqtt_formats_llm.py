@@ -29,7 +29,8 @@ Call read_message once per message identifier to obtain its presentation, as
 received, together with an immutable evidence reference. Then call
 finish_interpretation with exactly three things:
 
-1. one verdict per message, each citing the evidence reference of its own read;
+1. one verdict per message, as a list of entries carrying the message identifier,
+   the verdict and the evidence reference of that message's own read;
 2. one conclusion for the dossier;
 3. no other field.
 
@@ -81,16 +82,26 @@ def run_llm(dossier, run, provider, journal=None):
                 "presentation": body}
 
     def finish_interpretation(verdicts, conclusion):
+        """One entry per message, as a flat list.
+
+        A free-form object keyed by identifier would be a nested schema the
+        provider has to support; the list keeps the call to shapes every
+        endpoint accepts, so a failed close is about the dossier, not about
+        the tool contract.
+        """
         check_execution_limits(run)
         if conclusion not in VERDICTS:
             return {"ok": False, "error_kind": "invalid_conclusion"}
-        if not isinstance(verdicts, dict) or set(verdicts) != set(identifiers):
-            return {"ok": False, "error_kind": "incomplete_interpretation",
-                    "expected_ids": identifiers}
-        cited = set()
-        for message_id, entry in verdicts.items():
-            if not isinstance(entry, dict) or set(entry) != {"verdict", "evidence_ref"}:
-                return {"ok": False, "error_kind": "invalid_verdict_shape",
+        if not isinstance(verdicts, list):
+            return {"ok": False, "error_kind": "invalid_verdict_shape"}
+        decided, cited = {}, set()
+        for entry in verdicts:
+            if not isinstance(entry, dict) or set(entry) != {"message_id", "verdict",
+                                                             "evidence_ref"}:
+                return {"ok": False, "error_kind": "invalid_verdict_shape"}
+            message_id = entry["message_id"]
+            if message_id in decided:
+                return {"ok": False, "error_kind": "repeated_message",
                         "message_id": message_id}
             if entry["verdict"] not in VERDICTS:
                 return {"ok": False, "error_kind": "invalid_verdict",
@@ -98,11 +109,15 @@ def run_llm(dossier, run, provider, journal=None):
             if observed.get(entry["evidence_ref"]) != message_id:
                 return {"ok": False, "error_kind": "unbound_evidence",
                         "message_id": message_id}
+            decided[message_id] = {"verdict": entry["verdict"],
+                                   "evidence_ref": entry["evidence_ref"]}
             cited.add(entry["evidence_ref"])
+        if set(decided) != set(identifiers):
+            return {"ok": False, "error_kind": "incomplete_interpretation",
+                    "expected_ids": identifiers}
         if len(cited) != len(identifiers):
             return {"ok": False, "error_kind": "shared_evidence"}
-        decision.update(status="completed", conclusion=conclusion,
-                        verdicts={key: dict(value) for key, value in verdicts.items()})
+        decision.update(status="completed", conclusion=conclusion, verdicts=decided)
         return {"ok": True, "success": True}
 
     tools = [
@@ -120,14 +135,18 @@ def run_llm(dossier, run, provider, journal=None):
                          "that do not come from a read of that message are refused."),
          "input_schema": {"type": "object",
                           "properties": {
-                              "verdicts": {"type": "object",
-                                           "additionalProperties": {
+                              "verdicts": {"type": "array",
+                                           "items": {
                                                "type": "object",
                                                "properties": {
+                                                   "message_id": {
+                                                       "type": "string",
+                                                       "enum": identifiers},
                                                    "verdict": {"type": "string",
                                                                "enum": list(VERDICTS)},
                                                    "evidence_ref": {"type": "string"}},
-                                               "required": ["verdict", "evidence_ref"],
+                                               "required": ["message_id", "verdict",
+                                                            "evidence_ref"],
                                                "additionalProperties": False}},
                               "conclusion": {"type": "string", "enum": list(VERDICTS)}},
                           "required": ["verdicts", "conclusion"],

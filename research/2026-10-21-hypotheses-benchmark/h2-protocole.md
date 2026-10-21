@@ -1,10 +1,11 @@
 # Protocole H2 — hétérogénéité de représentation
 
-**Statut.** `harnais hors ligne prêt` — protocole, corpus gelé de huit fixtures,
-oracle privé, les deux bras et le recompte sont écrits et testés hors ligne ;
-aucun run sur nato.
+**Statut.** `harnais hors ligne prêt, aucun run lisible` — protocole, corpus gelé de
+huit fixtures, oracle privé, les deux bras et le recompte sont écrits et
+testés hors ligne. Deux passages sur nato ont rendu des défauts d'instrument,
+corrigés ; aucun ne mesure le modèle.
 **Date.** 2026-10-21 (Europe/Brussels, UTC+02:00). Dernière révision :
-**2026-10-21 22:37 (Europe/Brussels, UTC+02:00)**.
+**2026-10-22 00:12 (Europe/Brussels, UTC+02:00)**.
 **Portée.** Ce document fixe le contraste, la mesure et l'oracle de H2. Il ne
 déclare aucun résultat de modèle ; la seule mesure publiée ci-dessous est celle
 du bras règles sur le corpus, qui définit la référence à battre.
@@ -157,7 +158,33 @@ lecture fixe la référence que la prédiction doit dépasser :
 | `variant/normalized` | 2/2 | la normalisation suffit, le schéma ne coûte rien |
 
 Ces chiffres sont une propriété du harnais, pas un résultat de modèle : ils
-disent seulement que le contraste est instrumenté. La prédiction devient
+disent seulement que le contraste est instrumenté.
+
+## Passages sur nato
+
+**2026-10-21, run `39673128559` — `TypeError`, aucun résultat.** Le contrôleur
+s'arrête à la première fixture. Deux défauts d'instrument : le bras règles
+n'écrivait pas son fichier de réponse, donc le recompte le lisait comme un bras
+clos sans décision — le score des parseurs déclarés serait apparu comme un
+échec total ; et le lanceur appelait le compteur de routage en mémoire de V0
+avec un répertoire. La défaillance du contrôleur publie désormais sa classe
+d'erreur et ses cadres de code, jamais un traceback qui pourrait citer un
+message.
+
+**2026-10-21, run `39674488111` — aucun résultat, défaut d'instrument.** Les
+deux bras s'exécutent, mais les 24 bras LLM rendent six `providererror` par
+invocation et aucune réponse : le routage publié ne portait que
+`cause=providererror` et `response_type=providererror`, donc pas la cause. Deux
+corrections : le routage publie `error_kind` et `status_code`, et l'outil de
+clôture ne demande plus un objet libre indexé par identifiant — une forme
+imbriquée que l'extrémité du fournisseur ne sait pas exprimer, et qui fait
+échouer *toutes* les requêtes. Les verdicts sont une liste plate. Le bras
+règles, lui, rend `1.0` sur les trois groupes couverts et `0.0` sur
+`variant/raw`, comme hors ligne.
+
+Ces deux passages ne mesurent rien sur le modèle et ne comptent pas comme des
+résultats de H2. Ils disent seulement que le harnais n'était pas encore
+lisible. La prédiction devient
 falsifiable ainsi — le bras LLM doit faire **strictement mieux que 0/2** sur
 `variant/raw` et rester à **2/2** sur les trois autres groupes. Un gain en vue
 normalisée serait un résultat de H4, pas de H2.

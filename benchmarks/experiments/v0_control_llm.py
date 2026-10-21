@@ -20,7 +20,8 @@ budgets. No other brokers, topics or credentials are available.
 """
 
 
-ROUTING_FIELDS = ("event", "reason", "response_type", "finish_reason", "cause", "accepted")
+ROUTING_FIELDS = ("event", "reason", "response_type", "finish_reason", "cause",
+                  "accepted", "error_kind", "status_code")
 
 
 def routing(events):
@@ -38,6 +39,8 @@ def routing(events):
             value = event.get(field)
             if isinstance(value, bool):
                 value = "true" if value else "false"
+            elif isinstance(value, int):
+                value = str(value)
             if not isinstance(value, str):
                 continue
             key = f"{field}={value}"
