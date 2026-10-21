@@ -8,7 +8,7 @@ ne le font pas ?
 aucune fixture, aucun run.
 
 **Dates.** Étude ouverte et classée le 2026-10-21 (Europe/Brussels, UTC+02:00).
-Dernière révision : **2026-10-21 11:12 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-21 11:40 (Europe/Brussels, UTC+02:00)**.
 
 ## Principe
 
@@ -36,10 +36,11 @@ V0 n'est **pas une hypothèse sur le modèle**. C'est la condition
 d'interprétation de tout le reste : sans elle, aucun résultat n'est lisible.
 Le protocole complet — tâche de contrôle soluble sans inférence, seuil `X`,
 instance tenue à l'écart, conditions d'arrêt — est dans
-[v0-protocole.md](v0-protocole.md). Le contrôle est implémenté et testé hors
-ligne (`benchmarks/experiments/v0_control.py`, `v0_control_llm.py`,
-`tests/test_v0_control.py`) ; la fixture multi-sujet et le run sur nato restent
-à construire.
+[v0-protocole.md](v0-protocole.md). Le contrôle est implémenté, testé hors
+ligne et doté d'un lanceur nato (`v0_control.py`, `v0_control_llm.py`,
+`v0_control_live.py`, `tests/test_v0_control.py`, workflow `v0-control.yml`) ;
+il n'a pas encore été exécuté, et `dev/2` doit être aligné sur `main` avant le
+premier passage.
 
 | Observation | Lecture | Action |
 | --- | --- | --- |

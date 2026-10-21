@@ -66,8 +66,12 @@ retour et cause fixe, sans aucune valeur privée des preuves.
 les deux bras exécutent une procédure publique dans l'ordre déclaré, l'oracle
 lie une charge utile distincte par étape, et la mesure recalculée depuis le
 journal distingue étape sautée, référence inventée, charge utile périmée et
-budget épuisé. Le broker et le fournisseur sont simulés ; aucun run nato n'a
-lieu ici. Voir le [protocole V0](../research/2026-10-21-hypotheses-benchmark/v0-protocole.md).
+budget épuisé. Le même fichier couvre le lanceur nato hors réseau : briefing en
+32 étapes alternant les deux abonnements de la fixture, précontrôle qui refuse
+un canari absent, exécution du bras règles mesurée depuis le journal, et
+lecture des quatre issues. Le broker, le fournisseur et Proxmox sont simulés ;
+aucun run nato n'a lieu ici. Voir le
+[protocole V0](../research/2026-10-21-hypotheses-benchmark/v0-protocole.md).
 
 `test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
 des outils. `test_procedure_runs.py` couvre le tableau paginé des exécutions,

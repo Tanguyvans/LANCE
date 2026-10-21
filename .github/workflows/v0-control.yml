@@ -1,0 +1,121 @@
+name: V0 fidelity control (manual dev2)
+
+# Manual validity gate only. It measures whether both arms execute the same
+# public procedure; it feeds no admission and publishes nothing. Evidence
+# stays on nato. Run it from dev/2, like every other laboratory controller.
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Fixed provider (only ollama-umons is accepted)
+        required: true
+        default: ollama-umons
+        type: choice
+        options:
+          - ollama-umons
+      model:
+        description: Model from the declared V2 panel
+        required: true
+        default: qwen3.8:27b
+        type: choice
+        options:
+          - qwen3.8:27b
+          - gemma4:26b-a4b-it-q4_K_M
+      steps:
+        description: Declared steps per arm (near the 32-call harness maximum)
+        required: true
+        default: '32'
+        type: choice
+        options:
+          - '8'
+          - '16'
+          - '24'
+          - '32'
+      repetitions:
+        description: Independent repetitions per arm
+        required: true
+        default: '3'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lance-lab-dev2
+  cancel-in-progress: false
+
+jobs:
+  v0-control:
+    runs-on: [self-hosted, nato-master]
+    timeout-minutes: 240
+    env:
+      LANCE_LAB_LOCK: /var/lib/lance/lab.lock
+      TRIAL_NAME: ${{ github.run_id }}-${{ github.run_attempt }}
+      EXPECTED_SHA: ${{ github.sha }}
+      PYTHONUNBUFFERED: "1"
+      V0_PROVIDER: ${{ inputs.provider }}
+      V0_MODEL: ${{ inputs.model }}
+      V0_STEPS: ${{ inputs.steps }}
+      V0_REPETITIONS: ${{ inputs.repetitions }}
+    steps:
+      - name: Execute both arms under the shared laboratory lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = nato-master
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/dev/2
+          test "$V0_PROVIDER" = ollama-umons
+          case "$V0_MODEL" in
+            qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M) ;;
+            *) echo "Model outside the declared V2 panel" >&2; exit 1 ;;
+          esac
+          case "$V0_STEPS" in 8|16|24|32) ;; *)
+            echo "Steps must be 8, 16, 24 or 32" >&2; exit 1 ;;
+          esac
+          case "$V0_REPETITIONS" in 1|2|3) ;; *)
+            echo "Repetitions must be 1, 2 or 3" >&2; exit 1 ;;
+          esac
+          exec 9>>/var/lib/lance/lab.lock
+          flock -x 9
+          cd /opt/lance-dev-2
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          venv/bin/python - <<'PY'
+          import json, os, urllib.request
+          opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+          with opener.open('http://127.0.0.1:8503/api/environment', timeout=10) as response:
+              state = json.load(response)
+          assert state['instance'] == 'dev-2' and state['lab_lock_enabled'] is True
+          assert state['commit'] == os.environ['EXPECTED_SHA']
+          PY
+          mkdir -p output/v0-control
+          # Cost and duration are recorded, not capped. The outer timeout only
+          # kills a stuck controller; each arm is bounded by calls and turns.
+          timeout --signal=TERM --kill-after=45s "$((600 + 3600 * V0_REPETITIONS))" \
+            venv/bin/python -m benchmarks.experiments.v0_control_live run \
+            --output "output/v0-control/$TRIAL_NAME" \
+            --provider "$V0_PROVIDER" --model "$V0_MODEL" \
+            --steps "$V0_STEPS" --repetitions "$V0_REPETITIONS" \
+            --max-tool-calls "$V0_STEPS" --max-turns "$V0_STEPS" \
+            > "output/v0-control/$TRIAL_NAME.console.log" 2>&1
+
+      - name: Destroy any owned fixture left by the controller
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = nato-master
+          exec 9>>/var/lib/lance/lab.lock
+          flock -x 9
+          cd /opt/lance-dev-2
+          OUT="output/v0-control/$TRIAL_NAME"
+          if [ -d "$OUT" ]; then
+            if [ -f "$OUT.console.log" ]; then cp "$OUT.console.log" "$OUT/controller-console.log"; fi
+            venv/bin/python -m benchmarks.experiments.v0_control_live cleanup --output "$OUT" || true
+          fi

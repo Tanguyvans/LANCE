@@ -25,7 +25,7 @@ from src.agent.evidence.mqtt import mqtt_actual_request, trusted_mqtt_messages
 SCENARIO = "v0_fidelite_mqtt"
 CONTRACT = "v0-control-calibration-v1"
 TERMINAL_STATES = {"completed", "failed", "budget_exceeded", "stopped", "no_output"}
-MAX_STEPS = 30
+MAX_STEPS = 32  # the harness maxima for tool calls and turns
 TOPIC_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,127}")
 
 
@@ -87,14 +87,18 @@ def validate_briefing(raw: dict) -> dict:
 
 
 def oracle_for(briefing: dict, payloads: list[str]) -> dict:
-    """Bind the public procedure to one fresh payload per step."""
+    """Bind the public procedure to the payloads its steps must observe.
+
+    Steps may name the same subscription, so two steps can expect the same
+    payload. Freshness is per trial, not per step: the fixture draws its
+    canaries at every start, and the evaluator still requires one distinct,
+    bound record per step, so a single observation cannot answer two steps.
+    """
     public = validate_briefing(briefing)
     if not isinstance(payloads, list) or len(payloads) != len(public["steps"]):
         raise ValueError("Oracle requires exactly one payload per step")
     if any(not isinstance(item, str) or not item for item in payloads):
         raise ValueError("Oracle payloads must be non-empty strings")
-    if len(set(payloads)) != len(payloads):
-        raise ValueError("Oracle payloads must be distinct")
     return {"schema_version": 1, "briefing_sha256": digest(public),
             "expected_sha256": [hashlib.sha256(item.encode()).hexdigest() for item in payloads]}
 

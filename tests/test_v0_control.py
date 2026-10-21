@@ -199,7 +199,7 @@ def test_public_briefing_rejects_private_answer_fields(briefing, field):
 
 @pytest.mark.parametrize("change", [
     {"steps": []},
-    {"steps": [{"topic": "v0/status", "credential": None, "count": 1, "timeout_s": 5}] * 31},
+    {"steps": [{"topic": "v0/status", "credential": None, "count": 1, "timeout_s": 5}] * 33},
     {"steps": [{"topic": "v0/#", "credential": None, "count": 1, "timeout_s": 5}]},
     {"steps": [{"topic": "v0/+", "credential": None, "count": 1, "timeout_s": 5}]},
     {"steps": [{"topic": "$SYS/broker/load", "credential": None, "count": 1, "timeout_s": 5}]},
@@ -218,14 +218,16 @@ def test_public_briefing_rejects_unbound_or_malformed_steps(briefing, change):
         validate_briefing(briefing)
 
 
-def test_oracle_requires_one_distinct_payload_per_step(briefing):
+def test_oracle_requires_one_payload_per_step_and_allows_repeated_subscriptions(briefing):
     payloads = [PAYLOADS[step["topic"]] for step in briefing["steps"]]
-    assert oracle_for(briefing, payloads)["expected_sha256"][0] != oracle_for(
-        briefing, payloads)["expected_sha256"][1]
+    bound = oracle_for(briefing, payloads)
+    assert bound["expected_sha256"][0] != bound["expected_sha256"][1]
+    # Two steps may name the same subscription; a single record still cannot
+    # answer both, because the decision must cite distinct bound references.
+    repeated = oracle_for(briefing, [payloads[0]] * len(payloads))
+    assert len(set(repeated["expected_sha256"])) == 1
     with pytest.raises(ValueError):
         oracle_for(briefing, payloads[:-1])
-    with pytest.raises(ValueError):
-        oracle_for(briefing, [payloads[0]] * len(payloads))
     with pytest.raises(ValueError):
         oracle_for(briefing, [""] + payloads[1:])
 
@@ -320,3 +322,98 @@ def test_cli_evaluates_an_archived_trial_without_network(tmp_path, monkeypatch, 
     (tmp_path / "tool_calls.jsonl").unlink()
     missing = subprocess.run(command, capture_output=True, text=True, cwd=ROOT)
     assert json.loads(missing.stdout)["success"] is None
+
+
+def live_config():
+    return {"port": 1883, "control_user": "auditor", "control_password": "control-secret",
+            "private_topic": "lance/private/telemetry", "public_topic": "lance/public/status",
+            "private_canary": "private-canary", "public_canary": "public-canary",
+            "seeder_password": "fixture-only", "intentional_flaws": 0}
+
+
+def live_broker(config):
+    """Serve the fixture's two subscriptions with the trial's fresh canaries."""
+    def process(argv, timeout):
+        flags = {argv[i]: argv[i + 1] for i in range(len(argv) - 1) if argv[i].startswith("-")}
+        topic, user = flags.get("-t"), flags.get("-u")
+        if topic == config["private_topic"] and user == config["control_user"]:
+            return {"return_code": 0, "stdout": _msg(topic, config["private_canary"]), "stderr": ""}
+        if topic == config["public_topic"]:
+            return {"return_code": 0, "stdout": _msg(topic, config["public_canary"]), "stderr": ""}
+        return {"return_code": 5, "stdout": "", "stderr": "Connection Refused: not authorised."}
+    return process
+
+
+def test_live_briefing_alternates_the_declared_subscriptions():
+    from benchmarks.experiments import v0_control_live as v0live
+    public = v0live.build_briefing("v0-control", "192.168.100.220", live_config(), 32)
+    assert len(public["steps"]) == 32
+    assert [step["credential"] is not None for step in public["steps"]] == [True, False] * 16
+    assert {step["topic"] for step in public["steps"]} == {"lance/private/telemetry",
+                                                          "lance/public/status"}
+    payloads = v0live.payloads_for(public, live_config())
+    assert payloads[0] == "private-canary" and payloads[1] == "public-canary"
+    oracle_for(public, payloads)
+
+
+def test_live_preflight_requires_every_declared_read(tmp_path, monkeypatch):
+    from benchmarks.experiments import v0_control_live as v0live
+    config = live_config()
+    public = v0live.build_briefing("v0-control", "192.168.100.220", config, 4)
+    oracle = oracle_for(public, v0live.payloads_for(public, config))
+    monkeypatch.setattr(recon_tools, "_run", live_broker(config))
+    monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda _: None)
+    args = SimpleNamespace(max_tool_calls=32, max_duration_s=60, max_turns=32,
+                           max_cost_usd=1, model="development-model", provider="ollama-umons")
+    v0live.preflight(public, oracle, tmp_path, args)
+    attestation = json.loads((tmp_path / "attestation.json").read_text())
+    assert attestation["status"] == "valid" and len(attestation["checks"]) == 2
+    assert all(check["read_proven"] for check in attestation["checks"])
+
+
+def test_live_preflight_fails_when_a_declared_canary_is_absent(tmp_path, monkeypatch):
+    from benchmarks.experiments import v0_control_live as v0live
+    config = live_config()
+    public = v0live.build_briefing("v0-control", "192.168.100.220", config, 2)
+    oracle = oracle_for(public, v0live.payloads_for(public, config))
+
+    def process(argv, timeout):
+        flags = {argv[i]: argv[i + 1] for i in range(len(argv) - 1) if argv[i].startswith("-")}
+        return {"return_code": 0, "stdout": _msg(flags.get("-t"), "stale-canary"), "stderr": ""}
+
+    monkeypatch.setattr(recon_tools, "_run", process)
+    monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda _: None)
+    args = SimpleNamespace(max_tool_calls=32, max_duration_s=60, max_turns=32,
+                           max_cost_usd=1, model="development-model", provider="ollama-umons")
+    with pytest.raises(RuntimeError, match="preflight"):
+        v0live.preflight(public, oracle, tmp_path, args)
+    assert json.loads((tmp_path / "attestation.json").read_text())["status"] == "invalid"
+
+
+def test_live_rules_arm_is_measured_against_the_archived_ledger(tmp_path, monkeypatch):
+    from benchmarks.experiments import v0_control_live as v0live
+    config = live_config()
+    public = v0live.build_briefing("v0-control", "192.168.100.220", config, 6)
+    oracle = oracle_for(public, v0live.payloads_for(public, config))
+    monkeypatch.setattr(recon_tools, "_run", live_broker(config))
+    monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda _: None)
+    args = SimpleNamespace(max_tool_calls=32, max_duration_s=60, max_turns=32,
+                           max_cost_usd=1, model="development-model", provider="ollama-umons")
+    evaluation = v0live.run_arm(public, oracle, "rules", tmp_path, args, {"trial_id": "v0-control"})
+    assert evaluation["success"] is True and evaluation["executed_steps"] == 6
+    assert json.loads((tmp_path / "evaluation.json").read_text())["success"] is True
+    assert json.loads((tmp_path / "run_meta.json").read_text())["status"] == "completed"
+
+
+def test_live_gate_reads_the_documented_four_outcomes():
+    from benchmarks.experiments.v0_control_live import gate
+
+    def arms(rules, llm):
+        return {"rules": [{"evaluation": {"success": value}} for value in rules],
+                "llm": [{"evaluation": {"success": value}} for value in llm]}
+
+    assert gate(arms([True, True], [True, True])) == "valid_control"
+    assert gate(arms([True, True], [False, True])) == "instrument_defect"
+    assert gate(arms([False], [True, True])) == "competence_or_omitted_coverage"
+    assert gate(arms([False], [False])) == "out_of_scope"
+    assert gate({"rules": [], "llm": []}) == "out_of_scope"
