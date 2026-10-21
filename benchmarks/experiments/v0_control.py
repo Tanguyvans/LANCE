@@ -25,7 +25,11 @@ from src.agent.evidence.mqtt import mqtt_actual_request, trusted_mqtt_messages
 SCENARIO = "v0_fidelite_mqtt"
 CONTRACT = "v0-control-calibration-v1"
 TERMINAL_STATES = {"completed", "failed", "budget_exceeded", "stopped", "no_output"}
-MAX_STEPS = 32  # the harness maxima for tool calls and turns
+# The provider loop keeps its last two turns for the terminal call, so a
+# control of N steps spends N data calls and N+2 turns; with 32 as the harness
+# maximum for both, 30 steps is the highest non-saturating control.
+TURN_RESERVE = 2
+MAX_STEPS = 30
 TOPIC_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,127}")
 
 

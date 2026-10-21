@@ -200,7 +200,7 @@ def test_public_briefing_rejects_private_answer_fields(briefing, field):
 
 @pytest.mark.parametrize("change", [
     {"steps": []},
-    {"steps": [{"topic": "v0/status", "credential": None, "count": 1, "timeout_s": 5}] * 33},
+    {"steps": [{"topic": "v0/status", "credential": None, "count": 1, "timeout_s": 5}] * 31},
     {"steps": [{"topic": "v0/#", "credential": None, "count": 1, "timeout_s": 5}]},
     {"steps": [{"topic": "v0/+", "credential": None, "count": 1, "timeout_s": 5}]},
     {"steps": [{"topic": "$SYS/broker/load", "credential": None, "count": 1, "timeout_s": 5}]},
@@ -264,6 +264,10 @@ class FakeClient:
             refs = [json.loads(item["content"])["evidence_ref"] for item in self.requests[-1]["messages"]
                     if item["role"] == "tool" and "evidence_ref" in json.loads(item["content"])]
             name, arguments = "finish_control", {"evidence_refs": refs[:self.steps]}
+        return self.reply(name, arguments, index)
+
+    @staticmethod
+    def reply(name, arguments, index):
         return ChatCompletion.model_validate({
             "id": f"completion-{index}", "object": "chat.completion", "created": 1, "model": "development-model",
             "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {
@@ -274,7 +278,29 @@ class FakeClient:
         })
 
 
-def llm_setup(tmp_path, monkeypatch, briefing, max_calls=32, max_turns=32, duration=60):
+class ScriptedClient(FakeClient):
+    """Follow a fixed tool schedule; `finish:k` cites the first k references."""
+
+    def __init__(self, schedule):
+        self.schedule, self.requests = schedule, []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+    def create(self, **kwargs):
+        self.requests.append(deepcopy({**kwargs,
+                                       "messages": [_message(item) for item in kwargs["messages"]]}))
+        index = len(self.requests) - 1
+        action = self.schedule[min(index, len(self.schedule) - 1)]
+        if action.startswith("run_step"):
+            name, arguments = "run_step", {"index": int(action.split(":")[1])}
+        else:
+            refs = [json.loads(item["content"])["evidence_ref"]
+                    for item in self.requests[-1]["messages"]
+                    if item["role"] == "tool" and "evidence_ref" in json.loads(item["content"])]
+            name, arguments = "finish_control", {"evidence_refs": refs[:int(action.split(":")[1])]}
+        return self.reply(name, arguments, index)
+
+
+def llm_setup(tmp_path, monkeypatch, briefing, max_calls=32, max_turns=32, duration=60, client=None):
     monkeypatch.setattr(recon_tools, "_run", broker())
     monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda _: None)
     args = SimpleNamespace(max_tool_calls=max_calls, max_duration_s=duration, max_turns=max_turns,
@@ -282,7 +308,7 @@ def llm_setup(tmp_path, monkeypatch, briefing, max_calls=32, max_turns=32, durat
     run = live.new_run(tmp_path, "llm", args, network=briefing["target_network"])
     provider = object.__new__(LLMProvider)
     provider.provider, provider.model = "ollama-umons", "development-model"
-    provider.client = RecordingClient(FakeClient(len(briefing["steps"])), tmp_path)
+    provider.client = RecordingClient(client or FakeClient(len(briefing["steps"])), tmp_path)
     return run, provider
 
 
@@ -301,6 +327,18 @@ def test_llm_arm_executes_the_same_public_procedure(tmp_path, monkeypatch, brief
     wire = (tmp_path / "provider-wire.jsonl").read_text()
     assert "DO_NOT_ARCHIVE_PRIVATE_REASONING" not in wire
     assert "expected_sha256" not in wire
+
+
+def test_llm_arm_refuses_a_truncated_completion(tmp_path, monkeypatch, briefing):
+    # The model tries to close after two of four steps: the tool refuses, the
+    # arm keeps running, and the control still ends complete.
+    schedule = ["run_step:0", "run_step:1", "finish:2",
+                "run_step:2", "run_step:3", "finish:4"]
+    run, provider = llm_setup(tmp_path, monkeypatch, briefing, client=ScriptedClient(schedule))
+    decision = run_llm(briefing, bind_mqtt_tool(run), run, provider)
+    assert len(decision["executed"]) == len(briefing["steps"])
+    result = evaluate_trial(briefing, oracle(briefing), ledger(run), decision)
+    assert result["success"] is True and result["skipped_steps"] == 0
 
 
 def test_llm_arm_is_budgeted_like_the_rules_arm(tmp_path, monkeypatch, briefing):
@@ -373,9 +411,9 @@ def test_live_summary_publishes_counts_without_fixture_values(tmp_path):
 
 def test_live_briefing_alternates_the_declared_subscriptions():
     from benchmarks.experiments import v0_control_live as v0live
-    public = v0live.build_briefing("v0-control", "192.168.100.220", live_config(), 32)
-    assert len(public["steps"]) == 32
-    assert [step["credential"] is not None for step in public["steps"]] == [True, False] * 16
+    public = v0live.build_briefing("v0-control", "192.168.100.220", live_config(), 30)
+    assert len(public["steps"]) == 30
+    assert [step["credential"] is not None for step in public["steps"]] == [True, False] * 15
     assert {step["topic"] for step in public["steps"]} == {"lance/private/telemetry",
                                                           "lance/public/status"}
     payloads = v0live.payloads_for(public, live_config())
@@ -462,3 +500,6 @@ def test_workflow_is_manual_dev2_only_and_declares_the_lock_held():
     assert 'v0_control_live run' in text and 'v0_control_live cleanup' in text
     assert 'v0_control_live summary' in text
     assert '$((600 + 3600 * V0_REPETITIONS))' in text
+    # The declared steps bound the data calls; the turns add the completion
+    # reserve the provider loop keeps for itself.
+    assert '--max-tool-calls "$V0_STEPS" --max-turns "$((V0_STEPS + 2))"' in text

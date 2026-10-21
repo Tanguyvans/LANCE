@@ -36,8 +36,14 @@ from src.agent.provider import LLMProvider
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_STEPS = 32
-MAX_STEPS = 32
+# The provider loop reserves its last two turns for the terminal call, so N
+# listed steps need N data calls and N+2 turns. With 32 as the harness maximum
+# for both, the control tops out at 30 steps: beyond that the model would be
+# forced to close before executing the declared procedure.
+TURN_RESERVE = 2
+DEFAULT_STEPS = 30
+MAX_STEPS = 30
+MAX_TURNS = MAX_STEPS + TURN_RESERVE
 SUBSCRIPTIONS = ("private", "public")
 
 
@@ -310,12 +316,14 @@ def main():
                         help=f"Declared steps per arm (1-{MAX_STEPS})")
     parser.add_argument("--repetitions", type=int, default=3,
                         help="Independent repetitions per arm (bounded 1-5)")
-    parser.add_argument("--max-tool-calls", type=int, default=MAX_STEPS)
+    parser.add_argument("--max-tool-calls", type=int, default=MAX_STEPS,
+                        help="Data-call ceiling; one call per declared step")
     parser.add_argument("--max-duration-s", type=float, default=None,
                         help="Optional elapsed-time ceiling; unset measures without capping")
     parser.add_argument("--max-cost-usd", type=float, default=None,
                         help="Optional cost ceiling; unset measures without capping")
-    parser.add_argument("--max-turns", type=int, default=MAX_STEPS)
+    parser.add_argument("--max-turns", type=int, default=MAX_TURNS,
+                        help="Turn ceiling; one turn per step plus the completion reserve")
     args = parser.parse_args()
 
     def terminate(signum, frame):

@@ -53,6 +53,12 @@ def run_llm(briefing, execute, run, provider):
                 or len(set(evidence_refs)) != len(evidence_refs)
                 or not set(evidence_refs) <= set(observed)):
             return {"ok": False, "error_kind": "invalid_control_references"}
+        # The procedure declares one evidence reference per step: a shorter
+        # list would end the run as a completed but truncated control, which
+        # reads as a model failure when it is the instrument accepting it.
+        if len(evidence_refs) != len(steps):
+            return {"ok": False, "error_kind": "incomplete_control",
+                    "expected_refs": len(steps), "observed_refs": len(evidence_refs)}
         decision.update(status="completed", executed=list(evidence_refs))
         return {"ok": True, "success": True}
 
@@ -65,7 +71,8 @@ def run_llm(briefing, execute, run, provider):
                           "required": ["index"], "additionalProperties": False},
          "function": run_step},
         {"name": "finish_control",
-         "description": "Save the executed steps, one evidence reference per step, in order.",
+         "description": ("Save the executed steps: one evidence reference per declared step, "
+                         "in order. A partial list is refused."),
          "input_schema": {"type": "object",
                           "properties": {"evidence_refs": {"type": "array",
                                                            "items": {"type": "string"}}},

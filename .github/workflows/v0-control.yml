@@ -22,15 +22,15 @@ on:
           - qwen3.8:27b
           - gemma4:26b-a4b-it-q4_K_M
       steps:
-        description: Declared steps per arm (near the 32-call harness maximum)
+        description: Declared steps per arm (30 keeps 2 turns for completion)
         required: true
-        default: '32'
+        default: '30'
         type: choice
         options:
           - '8'
           - '16'
           - '24'
-          - '32'
+          - '30'
       repetitions:
         description: Independent repetitions per arm
         required: true
@@ -84,8 +84,8 @@ jobs:
             qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M) ;;
             *) echo "Model outside the declared V2 panel" >&2; exit 1 ;;
           esac
-          case "$V0_STEPS" in 8|16|24|32) ;; *)
-            echo "Steps must be 8, 16, 24 or 32" >&2; exit 1 ;;
+          case "$V0_STEPS" in 8|16|24|30) ;; *)
+            echo "Steps must be 8, 16, 24 or 30" >&2; exit 1 ;;
           esac
           case "$V0_REPETITIONS" in 1|2|3) ;; *)
             echo "Repetitions must be 1, 2 or 3" >&2; exit 1 ;;
@@ -113,7 +113,7 @@ jobs:
             --output "output/v0-control/$TRIAL_NAME" \
             --provider "$V0_PROVIDER" --model "$V0_MODEL" \
             --steps "$V0_STEPS" --repetitions "$V0_REPETITIONS" \
-            --max-tool-calls "$V0_STEPS" --max-turns "$V0_STEPS" \
+            --max-tool-calls "$V0_STEPS" --max-turns "$((V0_STEPS + 2))" \
             > "output/v0-control/$TRIAL_NAME.console.log" 2>&1 || status=$?
           if [ "$status" -ne 0 ]; then
             # The console log carries fixture values, so it is not published;
