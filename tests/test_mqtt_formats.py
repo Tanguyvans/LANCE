@@ -581,3 +581,35 @@ def test_the_runner_is_manual_and_targets_only_dev_two():
     summary = steps["Publish counts, rates and spend only"]
     assert summary["if"] == "always()"
     assert "summary --output" in summary["run"]
+
+
+def test_the_rules_arm_is_recounted_through_the_runner(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda _: None)
+    item = live.load_corpus()[0]
+    args = SimpleNamespace(max_tool_calls=13, max_duration_s=None, max_turns=21,
+                           max_cost_usd=None, model="development-model",
+                           provider="ollama-umons")
+    evaluation = live.run_arm(item["dossier"], item["oracle"], "rules",
+                              tmp_path / "rules", args, {"git_commit": "0" * 40})
+    # The recount reads the answer artefact: an arm that closes without one is
+    # scored as a failure, so both arms must leave the same file.
+    assert (tmp_path / "rules" / "answer.json").is_file()
+    assert evaluation["success"] is True
+    assert evaluation["correct"] == len(item["dossier"]["messages"])
+
+
+def test_the_runner_reads_turn_routing_from_the_trial_directory(tmp_path):
+    assert live.routing(tmp_path) is None
+    (tmp_path / "routing.json").write_text(
+        json.dumps({"turns": 21, "events": {"accepted=true": 1}}), encoding="utf-8")
+    assert live.routing(tmp_path)["turns"] == 21
+
+
+def test_a_controller_failure_publishes_code_frames_not_data():
+    try:
+        raise TypeError("dossier value leaked here")
+    except TypeError as exc:
+        detail = live.failure_detail(exc)
+    assert detail["error_type"] == "TypeError"
+    assert detail["frames"] and set(detail["frames"][0]) == {"file", "line", "function"}
+    assert "leaked" not in json.dumps(detail)

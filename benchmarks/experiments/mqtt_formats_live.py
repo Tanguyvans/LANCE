@@ -11,17 +11,15 @@ import argparse
 import json
 import os
 from pathlib import Path
-import secrets
 import signal
 import subprocess
 import threading
 import time
 from types import SimpleNamespace
-from uuid import uuid4
 
 from benchmarks.experiments.mqtt_formats import (
-    CONTRACT, METRIC, SCENARIO, VERDICTS, Journal, aggregate, evaluate,
-    run_rules, validate_dossier,
+    CONTRACT, METRIC, SCENARIO, Journal, aggregate, evaluate, run_rules,
+    validate_dossier,
 )
 from benchmarks.experiments.mqtt_formats_llm import (
     MAX_TURNS, check_budget, run_llm,
@@ -30,7 +28,6 @@ from benchmarks.experiments.mqtt_reference_live import (
     MODEL, MODEL_PANEL, PROVIDER, require_nato, write_json,
 )
 from benchmarks.experiments.ssh_reference_llm import RecordingClient
-from benchmarks.experiments.v0_control_llm import routing
 from src.agent.audit_experiment import digest
 from src.agent.cost_tracker import CostTracker
 from src.agent.provider import LLMProvider
@@ -112,6 +109,9 @@ def run_arm(public, oracle, policy, directory, args, metadata):
             answer = run_rules(public, journal)
             decision.update(status="completed", conclusion=answer["conclusion"],
                             verdicts=answer["verdicts"])
+            # Both arms leave the same answer artefact: the recount reads the
+            # file, not the arm's own claim.
+            write_json(directory / "answer.json", answer)
         else:
             provider = LLMProvider(args.provider, args.model)
             provider.client = RecordingClient(provider.client, directory)
@@ -248,7 +248,7 @@ def main_run(args):
                     results["failures"].append({
                         "repetition": repetition,
                         "fixture_type": item["dossier"]["fixture_type"],
-                        "error_type": type(exc).__name__})
+                        **failure_detail(exc)})
                     write_json(root / "results.json", results)
                     raise
         results["summary"] = aggregate([case["evaluation"] for case in results["cases"]])
@@ -256,8 +256,32 @@ def main_run(args):
         write_json(root / "results.json", results)
         return 0
     except BaseException as exc:
-        write_json(root / "controller-failure.json", {"error_type": type(exc).__name__})
+        write_json(root / "controller-failure.json", failure_detail(exc))
         raise
+
+
+def routing(directory):
+    """Turn routing of the LLM arm, or None for the arm that has no turns.
+
+    ``v0_control_llm.routing`` counts events in memory; here the record is read
+    back from the trial directory, so the recount stays outside the arm.
+    """
+    path = directory / "routing.json"
+    return json.loads(path.read_text()) if path.is_file() else None
+
+
+def failure_detail(exc):
+    """Error class and code frames only.
+
+    A controller defect has to be diagnosable from the job log, but a traceback
+    can quote a message or a dossier value. Frames name code, not data, so the
+    publishing surface stays the same as the summary's.
+    """
+    import traceback
+    frames = [{"file": Path(frame.filename).name, "line": frame.lineno,
+               "function": frame.name}
+              for frame in traceback.extract_tb(exc.__traceback__)][-6:]
+    return {"error_type": type(exc).__name__, "frames": frames}
 
 
 def hashlib_digest(path):
