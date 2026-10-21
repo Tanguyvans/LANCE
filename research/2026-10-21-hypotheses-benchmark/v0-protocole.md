@@ -156,9 +156,9 @@ règles a réussi 8/8 étapes en 40 s et 8 appels (0 $) ; le bras LLM s'est arr�
 après 6 étapes sur 8, en 53 s, 6 appels et 0,022 $, sans discordance ni
 référence en trop. Le harnais réservait ses deux derniers tours à la clôture et
 la terminait sans vérifier la complétude : défaut d'instrument, pas une mesure
-de compétence. Deux corrections en découlent — `finish_control`
-refuse une liste incomplète, et `N` est ramené à 30 pour laisser deux tours de
-clôture dans le plafond de 32. Le second smoke, sur la version corrigée, rend
+de compétence. Deux corrections en découlent — `finish_control` refuse une
+liste incomplète, et `N` est ramené à 30 pour laisser deux tours de clôture
+dans le plafond de 32. Le second smoke, sur la version corrigée, rend
 `valid_control` : les deux bras réussissent 8/8 sans discordance ni référence
 en trop, le bras règles en 40 s et 8 appels (0 $), le bras LLM en 64,6 s,
 8 appels et 0,029 $. Un smoke n'est pas le premier passage : `X` reste non
