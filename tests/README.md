@@ -62,6 +62,12 @@ du workflow. Ces tests ne lancent ni broker, ni LXC, ni modèle réel.
 `test_mqtt_reference_diagnostics.py` vérifie que l'inspection autorisée des
 essais MQTT en échec ne publie que classe d'erreur, utilitaire, code de
 retour et cause fixe, sans aucune valeur privée des preuves.
+`test_v0_control.py` qualifie la porte de validité V0 sur le même exécuteur :
+les deux bras exécutent une procédure publique dans l'ordre déclaré, l'oracle
+lie une charge utile distincte par étape, et la mesure recalculée depuis le
+journal distingue étape sautée, référence inventée, charge utile périmée et
+budget épuisé. Le broker et le fournisseur sont simulés ; aucun run nato n'a
+lieu ici. Voir le [protocole V0](../research/2026-10-21-hypotheses-benchmark/v0-protocole.md).
 
 `test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
 des outils. `test_procedure_runs.py` couvre le tableau paginé des exécutions,

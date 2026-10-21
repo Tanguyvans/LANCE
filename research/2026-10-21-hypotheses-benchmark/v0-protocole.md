@@ -1,7 +1,10 @@
 # Protocole V0 — porte de validité de l'instrument
 
-**Statut.** `proposition` — conception seule. Aucune fixture, aucun run.
-**Date.** 2026-10-21 (Europe/Brussels, UTC+02:00).
+**Statut.** `proposition` — contrôle implémenté et testé hors ligne, sans
+fixture multi-topic ni run. Les deux bras, l'oracle et l'évaluateur existent ;
+la fixture en N sujets et le lancement sur nato restent à construire.
+**Date.** 2026-10-21 (Europe/Brussels, UTC+02:00). Dernière révision :
+**2026-10-21 11:12 (Europe/Brussels, UTC+02:00)**.
 **Portée.** Ce document définit comment franchir V0, pas ce que V0 prouvera.
 **Format.** Document de travail, sans résultat ni figure ; il rejoindra le
 rapport compilé au premier run, avec source LaTeX et PDF.
@@ -88,6 +91,45 @@ comme limite, pas passée sous silence.
 - Rien sur la validité de l'oracle des familles : V0 contrôle l'exécution, pas
   la vérité terrain.
 - Rien sur l'admission : `strict_v3_metrics_adopted` reste hors de portée.
+
+## Implémentation actuelle (2026-10-21)
+
+Contrat `v0-control-calibration-v1`, scénario `v0_fidelite_mqtt`.
+
+- `benchmarks/experiments/v0_control.py` : validation du briefing public,
+  oracle, bras règles, évaluateur, ligne de commande hors ligne.
+- `benchmarks/experiments/v0_control_llm.py` : bras LLM sur le même exécuteur
+  et le même enregistreur de preuves que les harnais existants ; outils
+  `run_step` et `finish_control`.
+
+Ce qui est imposé par le code :
+
+- le briefing ne porte que la procédure — sujet littéral, identifiant optionnel,
+  fenêtre d'écoute, 1 à 30 étapes ; un sujet à joker, un champ d'oracle ou une
+  valeur non finie sont refusés ;
+- l'oracle lie un condensat de charge utile **distinct** par étape au condensat
+  du briefing ; il ne peut pas être rejoué sur une autre instance ;
+- les deux bras exécutent les étapes dans l'ordre déclaré et citent une preuve
+  par étape ; le bras règles n'accepte pas d'oracle ;
+- la mesure est recalculée depuis le journal : étapes exécutées, sautées,
+  charges utiles discordantes, références en trop. La réussite exige le statut
+  terminal `completed`, toutes les étapes, aucune discordance et aucune
+  référence supplémentaire ;
+- un run tronqué par le budget est enregistré `budget_exceeded` des deux côtés,
+  jamais lu comme un échec de compétence.
+
+Vérification : `tests/test_v0_control.py`, 32 tests hors ligne (broker simulé,
+exécuteur et enregistreur réels) ; avec les harnais voisins, 224 tests passent.
+Aucun run sur nato, aucune fixture, aucun seuil `X`.
+
+Ce qui reste avant un pilote :
+
+1. une fixture qui publie N charges utiles distinctes sur N sujets, avec les
+   identifiants tirés à chaque essai — la fixture MQTT actuelle n'a que deux
+   sujets ;
+2. un lanceur nato réutilisant l'infrastructure existante, dans la campagne V2
+   et son manifeste ;
+3. les répétitions et le gel de `X` après le premier passage.
 
 ## Conditions d'arrêt
 
