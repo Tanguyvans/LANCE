@@ -136,4 +136,7 @@ jobs:
           if [ -d "$OUT" ]; then
             if [ -f "$OUT.console.log" ]; then cp "$OUT.console.log" "$OUT/controller-console.log"; fi
             venv/bin/python -m benchmarks.experiments.v0_control_live cleanup --output "$OUT" || true
+            # Counts, gate and spend only: the log projection never carries a
+            # payload, a canary or a credential.
+            venv/bin/python -m benchmarks.experiments.v0_control_live summary --output "$OUT" || true
           fi

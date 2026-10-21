@@ -345,6 +345,32 @@ def live_broker(config):
     return process
 
 
+def test_live_summary_publishes_counts_without_fixture_values(tmp_path):
+    from benchmarks.experiments import v0_control_live as v0live
+    config = live_config()
+    results = {"schema_version": 1, "contract": CONTRACT, "scenario_id": "v0_fidelite_mqtt",
+               "steps": 2, "repetitions": 1, "arms": ["rules", "llm"],
+               "threshold": None, "threshold_frozen": False,
+               "cases": [{"repetition": 1, "policy": "llm", "spend": {"cost_usd": None},
+                          "evaluation": {"success": False, "outcome": "budget",
+                                         "executed_steps": 1, "skipped_steps": 1,
+                                         "payload_mismatches": 0, "unexpected_refs": 0,
+                                         "evidence_refs": ["ev-1"], "reason": "budget"}}],
+               "failures": [], "summary": {"outcome": "instrument_defect"}}
+    (tmp_path / "results.json").write_text(json.dumps(results))
+    summary = v0live.public_summary(tmp_path)
+    assert summary["summary"] == {"outcome": "instrument_defect"}
+    assert summary["threshold"] is None and summary["threshold_frozen"] is False
+    assert summary["cases"] == [{"repetition": 1, "policy": "llm", "spend": {"cost_usd": None},
+                                 "success": False, "outcome": "budget", "executed_steps": 1,
+                                 "skipped_steps": 1, "payload_mismatches": 0,
+                                 "unexpected_refs": 0}]
+    published = json.dumps(summary)
+    for secret in ("private-canary", "control-secret", "fixture-only",
+                   config["private_topic"], "evidence_refs"):
+        assert secret not in published
+
+
 def test_live_briefing_alternates_the_declared_subscriptions():
     from benchmarks.experiments import v0_control_live as v0live
     public = v0live.build_briefing("v0-control", "192.168.100.220", live_config(), 32)
@@ -434,4 +460,5 @@ def test_workflow_is_manual_dev2_only_and_declares_the_lock_held():
     assert '--max-cost-usd' not in text and '--max-duration-s' not in text
     assert 'upload-artifact' not in text
     assert 'v0_control_live run' in text and 'v0_control_live cleanup' in text
+    assert 'v0_control_live summary' in text
     assert '$((600 + 3600 * V0_REPETITIONS))' in text

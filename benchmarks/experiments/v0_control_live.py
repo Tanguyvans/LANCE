@@ -256,6 +256,39 @@ def main_run(args):
         backend.cleanup()
 
 
+SUMMARY_FIELDS = ("success", "outcome", "executed_steps", "skipped_steps",
+                  "payload_mismatches", "unexpected_refs")
+
+
+def public_summary(root):
+    """Job-log projection: counts, gate and spend only, never a payload or secret."""
+    results_path = root / "results.json"
+    results = json.loads(results_path.read_text()) if results_path.is_file() else {}
+    cases = []
+    for case in results.get("cases", []):
+        evaluation = case.get("evaluation") or {}
+        row = {"repetition": case.get("repetition"), "policy": case.get("policy"),
+               "spend": case.get("spend")}
+        row.update({key: evaluation.get(key) for key in SUMMARY_FIELDS})
+        cases.append(row)
+    failure_path = root / "controller-failure.json"
+    return {
+        "contract": results.get("contract"), "scenario_id": results.get("scenario_id"),
+        "steps": results.get("steps"), "repetitions": results.get("repetitions"),
+        "arms": results.get("arms"), "threshold": results.get("threshold"),
+        "threshold_frozen": results.get("threshold_frozen"),
+        "summary": results.get("summary"), "cases": cases,
+        "failures": results.get("failures", []),
+        "controller_failure": (json.loads(failure_path.read_text())
+                               if failure_path.is_file() else None),
+    }
+
+
+def main_summary(args):
+    print(json.dumps(public_summary(args.output.resolve()), indent=2, sort_keys=True))
+    return 0
+
+
 def main_cleanup(args):
     """Destroy resources left by an interrupted controller, under its owner."""
     root = args.output.resolve()
@@ -269,7 +302,7 @@ def main_cleanup(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["run", "cleanup"])
+    parser.add_argument("command", choices=["run", "cleanup", "summary"])
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--provider", choices=[PROVIDER], default=PROVIDER)
     parser.add_argument("--model", choices=list(MODEL_PANEL), default=MODEL)
@@ -289,6 +322,8 @@ def main():
         raise KeyboardInterrupt()
 
     signal.signal(signal.SIGTERM, terminate)
+    if args.command == "summary":
+        return main_summary(args)
     return main_run(args) if args.command == "run" else main_cleanup(args)
 
 
