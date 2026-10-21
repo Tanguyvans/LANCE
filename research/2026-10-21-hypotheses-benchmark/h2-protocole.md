@@ -1,12 +1,12 @@
 # Protocole H2 — hétérogénéité de représentation
 
-**Statut.** `harnais hors ligne prêt, aucun run lisible` — protocole, corpus gelé de
+**Statut.** `harnais prêt, aucune mesure de modèle` — protocole, corpus gelé de
 huit fixtures, oracle privé, les deux bras et le recompte sont écrits et
-testés hors ligne. Trois passages sur nato ont rendu des défauts d'instrument
-ou une indisponibilité du fournisseur, corrigés ou nommés ; aucun ne mesure le
+testés hors ligne. Cinq passages sur nato ont rendu des défauts d'instrument,
+un refus d'outil, ou un relais arrêté — corrigés ou nommés ; aucun ne mesure le
 modèle.
 **Date.** 2026-10-21 (Europe/Brussels, UTC+02:00). Dernière révision :
-**2026-10-22 01:12 (Europe/Brussels, UTC+02:00)**.
+**2026-10-22 01:27 (Europe/Brussels, UTC+02:00)**.
 **Portée.** Ce document fixe le contraste, la mesure et l'oracle de H2. Il ne
 déclare aucun résultat de modèle ; la seule mesure publiée ci-dessous est celle
 du bras règles sur le corpus, qui définit la référence à battre.
@@ -204,9 +204,26 @@ montre seulement que le harnais ne distinguait pas encore *l'extrémité
 injoignable* d'un modèle qui lit mal le corpus ; le pré-vol fournisseur
 ci-dessus sépare maintenant ces deux cas avant de dépenser un bras.
 
-Ces trois passages ne mesurent rien sur le modèle et ne comptent pas comme des
-résultats de H2. Ils disent seulement que le harnais n'était pas encore
-lisible. La prédiction devient
-falsifiable ainsi — le bras LLM doit faire **strictement mieux que 0/2** sur
-`variant/raw` et rester à **2/2** sur les trois autres groupes. Un gain en vue
-normalisée serait un résultat de H4, pas de H2.
+**2026-10-22, passages `39691982845` (garde) et `39692443207` (pré-vol) — aucun
+résultat, relais arrêté.** Le premier s'arrête sur le garde de commit : le
+checkout `dev/2` portait encore le commit précédent, la validation et le
+déploiement n'étant pas terminés. Le second, dispatché après, atteint le
+contrôleur et le pré-vol nomme la cause sans dépenser un seul bras :
+`error_type=APIConnectionError`, `error_kind=network`, `status_code=null`. Le
+relais `pve-nato` (`100.76.206.65:11435`) n'écoute plus, alors que `nato` et
+`pve-nato` répondent : c'est le tunnel identifié le 4 octobre 2026 qui est
+retombé, pas le fournisseur ni le harnais. Aucun bras n'a été exécuté, donc
+aucune mesure. Le trajet et la procédure de rétablissement sont dans
+[le guide UMONS](../../docs/guides/umons-llm.md), et le rétablissement exige
+une authentification interactive avec le compte UMONS autorisé.
+
+Ces passages ne mesurent rien sur le modèle et ne comptent pas comme des
+résultats de H2. Les premiers disent que le harnais n'était pas encore lisible ;
+les derniers qu'il l'est, et que la panne est en amont de lui. Le pré-vol a
+changé ce que ces échecs coûtent : un relais arrêté se nomme maintenant en
+quelques secondes et zéro bras, au lieu de vingt-quatre bras et d'un journal de
+six erreurs par invocation.
+
+La prédiction reste falsifiable ainsi — le bras LLM doit faire **strictement
+mieux que 0/2** sur `variant/raw` et rester à **2/2** sur les trois autres
+groupes. Un gain en vue normalisée serait un résultat de H4, pas de H2.
