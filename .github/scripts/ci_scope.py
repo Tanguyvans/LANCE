@@ -14,6 +14,10 @@ DOCUMENT_FILES = {
     "README.md", "AGENTS.md", "LICENSE", "tests/README.md",
     "src/agent/phases/README.md", "model_training/README.md",
 }
+# READMEs are documentation wherever they sit, except under code and workflow
+# directories, where a README can describe behaviour the suite must re-check.
+CODE_ROOTS = ("src/", ".github/")
+UNIT_TEST_ROOT = "tests/"
 
 
 def documentation_only(paths: list[str]) -> bool:
@@ -21,6 +25,10 @@ def documentation_only(paths: list[str]) -> bool:
         path in DOCUMENT_FILES or (
             path.startswith(DOCUMENT_ROOTS)
             and Path(path).suffix.lower() in DOCUMENT_SUFFIXES
+        ) or (
+            path.endswith("/README.md")
+            and not path.startswith(CODE_ROOTS)
+            and not path.startswith(UNIT_TEST_ROOT)
         )
         for path in paths
     )

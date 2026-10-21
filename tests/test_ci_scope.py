@@ -20,6 +20,8 @@ spec.loader.exec_module(scope)
     "docs/architecture/run-artifacts.md", "docs/images/example.svg",
     "objectifs/ETAT-COURANT.md", "objectifs/asiaccs-2027/plan-soumission.md",
     "research/study/report.tex", "research/study/report.pdf", "research/study/sources.bib",
+    "benchmarks/README.md", "benchmarks/experiments/api-reference/README.md",
+    "model_training/README.md", "docker/README.md",
 ])
 def test_known_documents_use_lightweight_checks(path):
     assert scope.documentation_only([path])
@@ -35,6 +37,7 @@ def test_known_empty_diff_requires_no_runtime_checks():
     "research/study/config.yaml", "docs/example.py", "src/agent/pipeline.py",
     "model_training/train.py", "tests/test_example.py", "requirements.txt",
     "benchmarks/scenarios/s1.yaml", "objectifs/notes.py", "objectifs/data.json",
+    "src/agent/prompts/README.md", ".github/README.md", "tests/fixtures/README.md",
     "Dockerfile", ".dockerignore",
     ".github/workflows/docker.yml", ".github/scripts/ci_scope.py", "unknown-file",
 ])
