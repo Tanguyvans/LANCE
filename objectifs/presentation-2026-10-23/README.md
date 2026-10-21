@@ -17,8 +17,8 @@ institutionnels et collègues techniques).
 
 ## Documents
 
-- [slides.pptx](slides.pptx) — rendu principal, 13 diapositives : 10 de corps et
-  3 de réserve. Ouvre directement dans PowerPoint ou Keynote.
+- [slides.pptx](slides.pptx) — rendu principal, 10 diapositives : 9 de corps et
+  1 de réserve. Ouvre directement dans PowerPoint ou Keynote.
 - [build.py](build.py) — générateur du `.pptx` (`python3 build.py`, via
   `officecli`). Source unique : modifier ici, pas dans le fichier PowerPoint.
 - [archive-beamer/](archive-beamer/) — première version beamer
@@ -39,18 +39,20 @@ Palette : cramoisi `B60036`, bleu `1D5C96`, encre `20252D`, gris `5C626C`.
 | # | Diapositive | Rôle | Visuel |
 | --- | --- | --- | --- |
 | 1 | Titre | Statut « work in progress » affiché d'emblée | — |
-| 2 | The objective, and what it implies | Objectif, trois engagements, priorités ; entraînement hors priorité | Bus de distribution vers trois branches |
-| 3 | How we answer it | Laboratoire, plateforme, benchmark ; les six phases du pipeline | Deux schémas de flux |
-| 4 | What counts as ``found'' | Preuve recalculée ; saine contre vulnérable | Deux colonnes comparées |
-| 5 | What the first campaign showed | Les deux bras réussissent partout | Barres saturées, 6/6 |
-| 6 | So the objective is restated as hypotheses | Registre H1–H6 ; H6 est un risque, pas un gain | Six cartes, H6 détachée |
-| 7 | Before testing the model, test the test | Porte V0 à deux bras | Quatre issues de la porte |
-| 8 | What we can measure today | Trois mesures descriptives | Tuiles + jauge de dispersion |
-| 9 | What we cannot claim | Quatre limites explicites | Quatre cartes |
-| 10 | Next steps, and what would help | Ordre par conditions ; deux demandes | Liste numérotée + encadrés |
-| 11 | Reserve — model panel | Coûts et succès par approche | Tableau |
-| 12 | Reserve — variability | Coefficient de variation | Tableau |
-| 13 | Reserve — declared coverage gaps | Trous de couverture assumés | Liste |
+| 2 | The objective | Une phrase, trois engagements ; entraînement hors priorité | Bus vers trois branches |
+| 3 | The instrument | Laboratoire, plateforme, benchmark — trois rôles distincts | Chaîne de trois nœuds |
+| 4 | What counts as “found” | Preuve recalculée ; saine contre vulnérable | Deux panneaux opposés |
+| 5 | Where we are | Les deux bras réussissent partout | Barres saturées, 6/6 |
+| 6 | The objective, restated as hypotheses | Registre H1–H6 ; H6 est un risque, pas un gain | Six cartes, H6 détachée |
+| 7 | Before testing the model, test the test | Porte V0 à deux bras | Quatre issues, en grille |
+| 8 | What we cannot claim | Trois limites explicites | Trois cartes |
+| 9 | Next steps | Quatre étapes ; ce qui aiderait ; échéance | Liste numérotée + encadré |
+| 10 | Reserve — declared coverage gaps | Trous de couverture assumés | Liste |
+
+Une seule idée par diapositive, une phrase de titre par idée. Les chiffres du
+pilote (coûts, variabilité, cas discriminant) ne figurent plus dans le corps :
+ils ne répondent pas à la question posée. Ils sont archivés dans les versions
+antérieures de `build.py` (commit `9951ded`) et dans `docs/benchmark/`.
 
 ## Vérification
 
@@ -62,7 +64,7 @@ section suivante.
 
 **Rendu vérifié** : `officecli validate` sans erreur, `officecli view issues` à
 zéro problème (ni débordement de texte, ni chevauchement), inspection visuelle
-des 13 diapositives. Le dimensionnement du texte est calculé à partir des
+des 10 diapositives. Le dimensionnement du texte est calculé à partir des
 métriques Arial avec une marge de sécurité, parce que le moteur de rendu
 substitue une police de repli plus large et ignore le rétrécissement
 automatique stocké dans le fichier.
@@ -101,5 +103,5 @@ formulations du premier plan qui n'étaient pas soutenues par les sources.
 - Ouvrir `slides.pptx` dans PowerPoint pour confirmer le rendu réel.
 - Relire le deck du point de vue d'un lecteur qui n'a pas suivi les échanges.
 - Répéter au moins une fois à voix haute pour vérifier le budget de temps.
-- Si le temps manque en séance : supprimer la diapositive 3 (fondue dans la 4),
-  puis réduire la diapositive 8 à un seul résultat.
+- Si le temps manque en séance : sauter la diapositive 3 (son contenu est
+  énonçable en une phrase), puis la diapositive 7.
