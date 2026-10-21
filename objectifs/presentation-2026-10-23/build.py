@@ -229,11 +229,11 @@ page("", "Cover. Say: this is a progress report, not a results talk.",
      seconds=20, chrome=False)
 box("", 2.0, 4.4, 0.14, 8.4, fill=R)
 box("LANCE", 3.4, 3.9, 26, 2.2, 52, INK, bold=True)
-box("An autonomous, provable auditor\nfor IoT/IIoT networks", 3.4, 6.4, 26, 2.4,
+box("An autonomous and verifiable auditor\nfor IoT/IIoT networks", 3.4, 6.4, 26, 2.4,
     25, M)
 box("Progress report — NATO SPS G6259", 3.4, 10.4, 26, 1.0, 18, R, bold=True)
 box("23 October 2026  ·  Université de Mons, ILIA", 3.4, 11.4, 26, 0.9, 15, M)
-box("Work in progress.", 3.4, 13.6, 26, 0.9, 14, M, italic=True)
+box("Status: work in progress.", 3.4, 13.6, 26, 0.9, 14, M, italic=True)
 picture(LOGO, 26.9, 1.4, 5.2, 5.2 * 463 / 1351, "SMart ILIA — UMONS")
 
 # --------------------------------------------------------- 2. The objective
@@ -241,23 +241,23 @@ page("The objective",
      "One sentence, then three commitments. Do not read the boxes aloud; the "
      "diagram carries it.", seconds=60, sect=0)
 
-box("An auditor that explores, finds,\nverifies and reports.",
+box("An auditor that explores, identifies,\nverifies and reports.",
     4.0, 4.9, 26.0, 2.8, 30, INK, bold=True, align="center")
 
 box("", 16.85, 8.1, 0.06, 0.7, fill=R)
 box("", 2.2, 8.9, 29.4, 0.06, fill=R)
 
 for i, (head, sub) in enumerate([
-    ("Which conditions", "not which model wins"),
-    ("Same tools, same budget", "for both approaches"),
-    ("Proof, not opinion", "recomputed from the log"),
+    ("Under which conditions", "rather than which model prevails"),
+    ("Identical tools and budget", "for both approaches"),
+    ("Evidence, not assertion", "recomputed from the log"),
 ]):
     x = 2.2 + i * 10.1
     node(f"c{i}", head, x, 9.5, 9.2, 1.8, GRAY, INK, LINE, 19)
     box(sub, x, 11.5, 9.2, 0.9, 14, M, align="center")
     box("", x + 4.55, 8.96, 0.09, 0.5, fill=R)
 
-box("Model training is out of priority.", 2.2, 14.3, 29.4, 0.9, 16, R,
+box("Model training is not a current priority.", 2.2, 14.3, 29.4, 0.9, 16, R,
     bold=True, align="center")
 
 # ------------------------------------------------------- 3. The instrument
@@ -266,76 +266,76 @@ page("The instrument",
      seconds=50, sect=1)
 
 node("lab", "Laboratory", 2.4, 6.0, 8.4, 1.9, GRAY, INK, LINE, 23)
-box("networks we know", 2.4, 8.1, 8.4, 0.9, 15, M, align="center")
+box("networks with known ground truth", 2.4, 8.1, 8.4, 0.9, 15, M, align="center")
 
 node("plat", "Platform", 12.7, 6.0, 8.4, 1.9, BLUE, B, B, 23)
-box("runs the audit", 12.7, 8.1, 8.4, 0.9, 15, M, align="center")
+box("conducts the audit", 12.7, 8.1, 8.4, 0.9, 15, M, align="center")
 
 node("bench", "Benchmark", 23.0, 6.0, 8.4, 1.9, ROSE, R, R, 23)
-box("judges the result", 23.0, 8.1, 8.4, 0.9, 15, M, align="center")
+box("assesses the result", 23.0, 8.1, 8.4, 0.9, 15, M, align="center")
 
 arrow("lab", "plat", M, 2.4)
 arrow("plat", "bench", M, 2.4)
 
-box("The model is one piece among them.", 2.4, 11.6, 29.0, 1.2, 24, R,
+box("The model is one component among them.", 2.4, 11.6, 29.0, 1.2, 24, R,
     bold=True, align="center")
-box("A run becomes a measurement only against a known ground truth.",
+box("A run constitutes a measurement only against known ground truth.",
     2.4, 13.4, 29.0, 0.9, 14, M, align="center")
 
 # ------------------------------------------------- 4. What counts as found
-page("What counts as “found”",
+page("What constitutes a finding",
      "Two halves. Left: we recompute from the log, never from the conclusion. "
      "Right: the same trial runs on both configurations, so a false positive "
      "is visible.", seconds=80, sect=1)
 
 box("", 2.2, 5.4, 14.2, 4.8, fill=GRAY, preset="roundRect", line=f"{LINE}:1pt")
-box("“I read another organisation's data.”", 2.7, 5.8, 13.2, 1.6, 17, M,
+box("“I have read another organisation's data.”", 2.7, 5.8, 13.2, 1.6, 17, M,
     align="center", italic=True)
-box("✕   Not counted", 2.7, 8.3, 13.2, 1.1, 24, R, bold=True, align="center")
+box("✕   Not admitted", 2.7, 8.3, 13.2, 1.1, 24, R, bold=True, align="center")
 
 box("", 17.4, 5.4, 14.2, 4.8, fill=ROSE, preset="roundRect", line=f"{R}:1pt")
-box("The request and its response\nhold the data.", 17.9, 5.8, 13.2, 1.6, 17,
+box("The request and its response\ncontain the data.", 17.9, 5.8, 13.2, 1.6, 17,
     INK, align="center")
-box("✓   Counted", 17.9, 8.3, 13.2, 1.1, 24, GREEN, bold=True, align="center")
+box("✓   Admitted", 17.9, 8.3, 13.2, 1.1, 24, GREEN, bold=True, align="center")
 
-box("We recompute it from the log.\nWe never trust the conclusion.",
-    2.2, 11.2, 29.4, 1.9, 21, R, bold=True, align="center")
+box("The finding is recomputed from the log;\nthe conclusion is never taken on "
+    "trust.", 2.2, 11.2, 29.4, 1.9, 21, R, bold=True, align="center")
 
-box("The same trial runs on a healthy and on a vulnerable network.\n"
-    "Finding something in the healthy one is an error.",
+box("The same trial is conducted on a healthy and on a vulnerable network.\n"
+    "A finding reported on the healthy one is recorded as an error.",
     2.2, 13.5, 29.4, 1.6, 14, M, align="center")
 
 # ------------------------------------------------------- 5. Where we are
-page("Where we are",
+page("Current status",
      "Both approaches succeed everywhere. That is a property of the instrument, "
      "not a verdict on the model.", seconds=50, sect=2)
 
-box("Both approaches succeed everywhere.", 2.2, 5.2, 29.4, 1.4, 30, INK,
-    bold=True, align="center")
+box("Both approaches succeed on every configuration.", 2.2, 5.2, 29.4, 1.4, 30,
+    INK, bold=True, align="center")
 
-for i, (label, color) in enumerate([("Rules", M), ("Model", R)]):
+for i, (label, color) in enumerate([("Rule-based", M), ("Model-based", R)]):
     y = 8.0 + i * 2.3
-    box(label, 5.2, y, 3.8, 1.2, 18, INK, bold=True)
-    box("", 9.6, y + 0.15, 12.6, 0.9, fill=color)  # the scale saturates
+    box(label, 5.2, y, 4.6, 1.2, 18, INK, bold=True)
+    box("", 10.4, y + 0.15, 11.8, 0.9, fill=color)  # the scale saturates
     box("6 / 6", 22.8, y, 3.4, 1.2, 21, color, bold=True, align="center")
 
-box("It cannot tell them apart.", 2.2, 13.0, 29.4, 1.2, 24, R, bold=True,
-    align="center")
-box("Not a failure of the model — a failure of the instrument.",
+box("The instrument does not discriminate between them.", 2.2, 13.0, 29.4, 1.2,
+    24, R, bold=True, align="center")
+box("This is a limitation of the instrument, not of the model.",
     2.2, 14.4, 29.4, 0.9, 14, M, align="center")
 
 # ----------------------------------------------------- 6. The register
-page("The objective, restated as hypotheses",
+page("The objective restated as hypotheses",
      "The objective does not change, its form does. Six network properties, "
      "six tests. H6 is a risk, not a gain.", seconds=75, sect=2)
 
 cards = [
-    ("H1", "Connected devices", "a hidden link"),
-    ("H2", "Mixed formats", "an unknown parser"),
-    ("H3", "Unseen contracts", "undocumented rights"),
-    ("H4", "Vendor meaning", "a field's sense"),
-    ("H5", "Refusals", "resuming after failure"),
-    ("H6", "Hostile content", "an obeyed instruction"),
+    ("H1", "Connected devices", "a link absent from public inputs"),
+    ("H2", "Heterogeneous formats", "a representation no parser covers"),
+    ("H3", "Novel contracts", "rights stated in unseen documentation"),
+    ("H4", "Vendor semantics", "a field whose meaning is only documented"),
+    ("H5", "Ambiguous refusals", "resuming the audit after a refusal"),
+    ("H6", "Hostile content", "an instruction obeyed from observed content"),
 ]
 for i, (code, prop, test) in enumerate(cards):
     col, row = i % 3, i // 3
@@ -344,26 +344,26 @@ for i, (code, prop, test) in enumerate(cards):
     fill, accent = (ROSE, R) if code == "H6" else (GRAY, INK)
     box("", x, y, 9.3, 3.5, fill=fill, preset="roundRect", line=f"{LINE}:1pt")
     box(code, x + 0.6, y + 0.4, 1.6, 0.9, 24, accent, bold=True)
-    box(prop, x + 2.5, y + 0.4, 6.2, 0.9, 17, accent, bold=True)
-    box(test, x + 0.6, y + 1.8, 8.1, 1.2, 15, M)
+    box(prop, x + 2.5, y + 0.4, 6.2, 0.9, 16, accent, bold=True)
+    box(test, x + 0.6, y + 1.8, 8.1, 1.3, 14, M)
 
-box("H1–H5 measure a possible gain.   H6 measures a risk.",
+box("H1–H5 quantify a possible gain.   H6 quantifies a risk.",
     2.2, 14.0, 29.4, 0.9, 19, R, bold=True, align="center")
 
 # ------------------------------------------------------------- 7. V0
-page("Before testing the model, test the test",
+page("A control task before testing the model",
      "The gate is the condition of interpretation for everything else. It "
      "applies to both arms.", seconds=70, sect=2)
 
-box("A control task, simple enough to solve without inference.\n"
-    "Both approaches must pass.", 2.4, 4.9, 29.2, 1.9, 24, INK, bold=True,
-    align="center")
+box("A control task, simple enough to be solved without inference.\n"
+    "Both approaches are required to pass.", 2.4, 4.9, 29.2, 1.9, 24, INK,
+    bold=True, align="center")
 
 rows = [
     ("script ✓  model ✗", "a defect in the instrument", R, ROSE),
     ("script ✗  model ✓", "a gain, or a coverage gap", INK, GRAY),
-    ("script ✗  model ✗", "out of reach for this instrument", M, GRAY),
-    ("script ✓  model ✓", "valid — read the hypotheses", GREEN, BLUE),
+    ("script ✗  model ✗", "beyond the reach of this instrument", M, GRAY),
+    ("script ✓  model ✓", "valid — the hypotheses may be read", GREEN, BLUE),
 ]
 for i, (arm, verdict, color, fill) in enumerate(rows):
     x = 2.2 + (i % 2) * 15.0
@@ -372,9 +372,9 @@ for i, (arm, verdict, color, fill) in enumerate(rows):
     box(arm, x + 0.7, y + 0.5, 13.0, 0.7, 16, color, bold=True)
     box(verdict, x + 0.7, y + 1.25, 13.0, 0.6, 13, color)
 
-box("Only the last one licenses reading the six hypotheses.",
+box("Only the fourth outcome permits the hypotheses to be read.",
     2.2, 13.75, 29.4, 0.9, 19, R, bold=True, align="center")
-box("Written and tested offline. The laboratory run remains to be done.",
+box("Implemented and tested offline. The laboratory run remains outstanding.",
     2.2, 14.9, 29.4, 0.8, 13, M, align="center")
 
 # ------------------------------------------------ 8. What we cannot claim
@@ -383,10 +383,10 @@ page("What we cannot claim",
      seconds=60, sect=3)
 
 limits = [
-    ("No general advantage", "No hypothesis has been executed yet."),
-    ("No confidence interval", "Three repetitions give a dispersion, "
+    ("No general advantage", "No hypothesis has yet been executed."),
+    ("No confidence interval", "Three repetitions yield a dispersion, "
      "not a sample."),
-    ("Nothing admitted as evidence", "The metric definition is not frozen."),
+    ("No admitted evidence", "The metric definition is not frozen."),
 ]
 for i, (head, body) in enumerate(limits):
     x = 2.2 + i * 9.9
@@ -395,8 +395,8 @@ for i, (head, body) in enumerate(limits):
     box(head, x + 0.7, 7.1, 8.0, 1.4, 17, R, bold=True)
     box(body, x + 0.7, 8.6, 8.0, 1.5, 14, INK)
 
-box("A “green run” is not a measurement — an early run was green while every "
-    "model arm had failed.", 2.2, 11.4, 29.4, 1.0, 17, R, bold=True,
+box("A successful run is not a measurement: one early run reported success "
+    "while every model arm had failed.", 2.2, 11.4, 29.4, 1.0, 17, R, bold=True,
     align="center")
 
 # --------------------------------------------------------- 9. Next steps
@@ -405,10 +405,10 @@ page("Next steps",
      seconds=70, sect=3)
 
 steps = [
-    ("1", "V0 on a held-out instance"),
-    ("2", "A parameterisable test harness"),
-    ("3", "Families for H2, H3 and H4"),
-    ("4", "Reproducible platform deployment"),
+    ("1", "Execute V0 on a held-out instance"),
+    ("2", "Develop a parameterisable test harness"),
+    ("3", "Build the scenario families for H2, H3 and H4"),
+    ("4", "Deploy a reproducible platform"),
 ]
 for i, (num, head) in enumerate(steps):
     y = 5.2 + i * 1.85
@@ -418,12 +418,12 @@ for i, (num, head) in enumerate(steps):
         box("", 4.2, y + 1.45, 21.0, 0.04, fill=LINE)
 
 box("", 2.4, 13.1, 29.2, 1.9, fill=ROSE, preset="roundRect")
-box("What would help most", 3.2, 13.35, 27.6, 0.7, 15, R, bold=True)
-box("real vendor artifacts   ·   an adversarial review of the register",
-    3.2, 14.0, 27.6, 0.8, 15, INK)
+box("Forms of support requested", 3.2, 13.35, 27.6, 0.7, 15, R, bold=True)
+box("access to real vendor artifacts   ·   an adversarial review of the "
+    "register", 3.2, 14.0, 27.6, 0.8, 15, INK)
 
-box("AsiaCCS 2027 — submission 11 December 2026 (AoE).", 2.4, 15.5, 29.2, 0.7,
-    12.5, M)
+box("AsiaCCS 2027 — submission deadline 11 December 2026 (AoE).", 2.4, 15.5,
+    29.2, 0.7, 12.5, M)
 
 # ----------------------------------------------------------- Reserve slide
 page("Reserve — declared coverage gaps",
