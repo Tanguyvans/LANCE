@@ -383,6 +383,18 @@ def live_broker(config):
     return process
 
 
+def test_control_steps_leave_the_completion_reserve_inside_the_harness_maximum():
+    from benchmarks.experiments import v0_control as control
+    from benchmarks.experiments import v0_control_live as v0live
+    # 32 calls and 32 turns are the harness maxima, and the provider keeps its
+    # last two turns for the terminal call: N steps must leave room for both.
+    assert control.MAX_STEPS == v0live.MAX_STEPS == 30
+    assert control.TURN_RESERVE == v0live.TURN_RESERVE == 2
+    assert v0live.MAX_STEPS + v0live.TURN_RESERVE == v0live.MAX_TURNS == 32
+    workflow = (ROOT / '.github/workflows/v0-control.yml').read_text()
+    assert 'case "$V0_STEPS" in 8|16|24|30)' in workflow
+
+
 def test_live_summary_publishes_counts_without_fixture_values(tmp_path):
     from benchmarks.experiments import v0_control_live as v0live
     config = live_config()
