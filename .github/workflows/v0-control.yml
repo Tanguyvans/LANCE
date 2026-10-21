@@ -54,6 +54,7 @@ jobs:
     timeout-minutes: 240
     env:
       LANCE_LAB_LOCK: /var/lib/lance/lab.lock
+      LANCE_MQTT_LOCK_HELD: "1"
       TRIAL_NAME: ${{ github.run_id }}-${{ github.run_attempt }}
       EXPECTED_SHA: ${{ github.sha }}
       PYTHONUNBUFFERED: "1"
@@ -67,10 +68,18 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          test "$RUNNER_NAME" = nato-master
-          test "$GITHUB_EVENT_NAME" = workflow_dispatch
-          test "$GITHUB_REF" = refs/heads/dev/2
-          test "$V0_PROVIDER" = ollama-umons
+          # A bare `test` fails without a word, and the controller's own console
+          # log stays on nato for privacy, so every guard names what it saw.
+          require() {
+            if [ "$1" != "$2" ]; then
+              echo "$3: expected '$2', observed '$1'" >&2
+              exit 1
+            fi
+          }
+          require "${RUNNER_NAME:-}" nato-master "runner name"
+          require "${GITHUB_EVENT_NAME:-}" workflow_dispatch "event name"
+          require "${GITHUB_REF:-}" refs/heads/dev/2 "trigger ref"
+          require "${V0_PROVIDER:-}" ollama-umons "provider"
           case "$V0_MODEL" in
             qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M) ;;
             *) echo "Model outside the declared V2 panel" >&2; exit 1 ;;
@@ -83,8 +92,10 @@ jobs:
           esac
           exec 9>>/var/lib/lance/lab.lock
           flock -x 9
+          echo "Shared laboratory lock acquired"
           cd /opt/lance-dev-2
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          require "$(git rev-parse HEAD)" "$EXPECTED_SHA" "dev-2 checkout HEAD"
+          echo "dev-2 checkout matches $EXPECTED_SHA; checking the running API"
           venv/bin/python - <<'PY'
           import json, os, urllib.request
           opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -96,13 +107,20 @@ jobs:
           mkdir -p output/v0-control
           # Cost and duration are recorded, not capped. The outer timeout only
           # kills a stuck controller; each arm is bounded by calls and turns.
+          status=0
           timeout --signal=TERM --kill-after=45s "$((600 + 3600 * V0_REPETITIONS))" \
             venv/bin/python -m benchmarks.experiments.v0_control_live run \
             --output "output/v0-control/$TRIAL_NAME" \
             --provider "$V0_PROVIDER" --model "$V0_MODEL" \
             --steps "$V0_STEPS" --repetitions "$V0_REPETITIONS" \
             --max-tool-calls "$V0_STEPS" --max-turns "$V0_STEPS" \
-            > "output/v0-control/$TRIAL_NAME.console.log" 2>&1
+            > "output/v0-control/$TRIAL_NAME.console.log" 2>&1 || status=$?
+          if [ "$status" -ne 0 ]; then
+            # The console log carries fixture values, so it is not published;
+            # the cleanup step copies it next to the trial on nato.
+            echo "Controller exited with status $status" >&2
+            exit "$status"
+          fi
 
       - name: Destroy any owned fixture left by the controller
         if: always()

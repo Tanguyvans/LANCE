@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 from openai.types.chat import ChatCompletion
 import pytest
+import yaml
 
 from src.agent.audit_experiment import digest
 from src.agent.provider import LLMProvider
@@ -417,3 +418,20 @@ def test_live_gate_reads_the_documented_four_outcomes():
     assert gate(arms([False], [True, True])) == "competence_or_omitted_coverage"
     assert gate(arms([False], [False])) == "out_of_scope"
     assert gate({"rules": [], "llm": []}) == "out_of_scope"
+
+
+def test_workflow_is_manual_dev2_only_and_declares_the_lock_held():
+    text = (ROOT / '.github/workflows/v0-control.yml').read_text()
+    document = yaml.safe_load(text)
+    assert 'workflow_dispatch' in document[True]  # YAML parses the `on` key as True.
+    assert document['concurrency']['group'] == 'lance-lab-dev2'
+    job = document['jobs']['v0-control']
+    assert job['runs-on'] == ['self-hosted', 'nato-master']
+    # The controller refuses to run without the marker the shell sets once it
+    # owns the shared lock, so the job env must carry it.
+    assert job['env']['LANCE_MQTT_LOCK_HELD'] == '1'
+    assert 'refs/heads/dev/2' in text
+    assert '--max-cost-usd' not in text and '--max-duration-s' not in text
+    assert 'upload-artifact' not in text
+    assert 'v0_control_live run' in text and 'v0_control_live cleanup' in text
+    assert '$((600 + 3600 * V0_REPETITIONS))' in text
