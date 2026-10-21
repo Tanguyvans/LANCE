@@ -34,6 +34,9 @@ au premier run, avec source et PDF.
 
 V0 n'est **pas une hypothèse sur le modèle**. C'est la condition
 d'interprétation de tout le reste : sans elle, aucun résultat n'est lisible.
+Le protocole complet — tâche de contrôle soluble sans inférence, seuil `X`,
+instance tenue à l'écart, conditions d'arrêt — est dans
+[v0-protocole.md](v0-protocole.md).
 
 | Observation | Lecture | Action |
 | --- | --- | --- |
@@ -49,7 +52,11 @@ tâche à taux d'erreur non nul, pas sur une tâche saturée.
 
 **Instance tenue à l'écart.** SSH et MQTT ont servi à mettre au point le harnais
 et le prompt. La famille de contrôle doit utiliser des identifiants tirés à
-chaque essai, comme le fait déjà le harnais API.
+chaque essai, comme le fait déjà le harnais API. Le harnais MQTT le fait
+aussi ; le harnais SSH non : son `case_configuration` garde les trois
+identifiants du dictionnaire fixes et ne randomise que le mot de passe gagnant.
+V0 porte donc sur MQTT en l'état, ou sur SSH après randomisation du
+dictionnaire.
 
 **Cas API, réconcilié.** `s_api_organisations` est une **limite de couverture
 déclarée**, pas un échec de V0 : le contrat public énonce la règle par membre,
@@ -248,6 +255,8 @@ indépendantes : `statistical_independence: not_established` partout.
 
 ## Documents
 
+- [Protocole V0](v0-protocole.md) — tâche de contrôle, porte de décision, seuil
+  `X`, instance tenue à l'écart.
 - [Plan V2 et avancement consolidé](../2026-10-12-recentrage-corpus/README.md)
 - [C2 : verdict de relecture](../2026-10-21-c2-couverture/revue.md)
 - [Pistes de la plateforme](../../objectifs/PISTES.md)
