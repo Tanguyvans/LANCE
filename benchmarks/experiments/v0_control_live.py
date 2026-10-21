@@ -37,14 +37,51 @@ from src.agent.provider import LLMProvider
 
 ROOT = Path(__file__).resolve().parents[2]
 # The provider loop reserves its last two turns for the terminal call, so N
-# listed steps need N data calls and N+2 turns. With 32 as the harness maximum
-# for both, the control tops out at 30 steps: beyond that the model would be
-# forced to close before executing the declared procedure.
+# listed steps need N data calls and N+2 turns before any routing slack. It
+# also needs turns that produce no data call at all (a text-only answer, a
+# rejected repeat, a malformed argument): the first 30-step passage spent four
+# of them and closed without a terminal decision. Two budgets leave room for
+# that: the data-call ceiling is N, the turn ceiling is N + reserve + slack.
+# With 32 as the harness maximum for both, N = 24 is the highest control that
+# keeps six routing turns in hand.
 TURN_RESERVE = 2
-DEFAULT_STEPS = 30
-MAX_STEPS = 30
-MAX_TURNS = MAX_STEPS + TURN_RESERVE
+ROUTING_SLACK = 6
+DEFAULT_STEPS = 24
+MAX_STEPS = 24
+MAX_TURNS = MAX_STEPS + TURN_RESERVE + ROUTING_SLACK
 SUBSCRIPTIONS = ("private", "public")
+# X is frozen in campaign provenance, not in code: a threshold written before
+# the first pass would be an observation target rather than a decision rule.
+MANIFEST = ROOT / "benchmarks" / "experiments" / "v0-control-manifest.json"
+THRESHOLD_RULE = "X is frozen after the first pass, never before"
+
+
+def frozen_threshold(path=MANIFEST, steps=None):
+    """Frozen reference for this control, or the explicit unfrozen record.
+
+    An absent manifest means the first pass has not happened yet. A manifest
+    calibrated on another step count does not transfer: the gate keeps the
+    control it was measured on.
+    """
+    if not path.is_file():
+        return {"threshold": None, "threshold_frozen": False,
+                "threshold_rule": THRESHOLD_RULE}
+    manifest = json.loads(path.read_text())
+    if manifest.get("contract") != CONTRACT or manifest.get("scenario_id") != SCENARIO:
+        raise ValueError("Manifest does not describe this control")
+    if manifest.get("threshold_frozen") is not True:
+        raise ValueError("Manifest threshold is not frozen")
+    threshold = manifest.get("threshold")
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) \
+            or not 0.0 <= threshold <= 1.0:
+        raise ValueError("Manifest threshold must be a rate between 0 and 1")
+    if steps is not None and manifest.get("steps") != steps:
+        raise ValueError(f"Manifest threshold was frozen at {manifest.get('steps')} "
+                         f"steps, not {steps}")
+    return {"threshold": float(threshold), "threshold_frozen": True,
+            "threshold_rule": THRESHOLD_RULE,
+            "threshold_evidence": manifest.get("evidence"),
+            "saturating": manifest.get("saturating")}
 
 
 def step_kinds(steps):
@@ -207,11 +244,35 @@ def spend(directory):
             "cost_usd": costs.get("total_cost_usd")}
 
 
-def main_run(args):
-    if not 1 <= args.steps <= MAX_STEPS:
+def routing(directory):
+    """Turn routing of the LLM arm, or None for an arm that has no turns."""
+    path = directory / "routing.json"
+    return json.loads(path.read_text()) if path.is_file() else None
+
+
+def check_budget(steps, max_tool_calls, max_turns):
+    """Refuse a control whose turn ceiling cannot absorb routing turns.
+
+    The completion reserve and the routing slack are part of the instrument:
+    a run without them ends before its declared procedure and reads as a
+    model failure.
+    """
+    if not 1 <= steps <= MAX_STEPS:
         raise ValueError(f"steps must stay between 1 and {MAX_STEPS}")
+    if max_tool_calls < steps:
+        raise ValueError(f"max_tool_calls must cover the {steps} declared steps")
+    need = steps + TURN_RESERVE + ROUTING_SLACK
+    if max_turns < need:
+        raise ValueError(f"max_turns must be at least {need} "
+                         f"({steps} steps + {TURN_RESERVE} completion + "
+                         f"{ROUTING_SLACK} routing)")
+
+
+def main_run(args):
+    check_budget(args.steps, args.max_tool_calls, args.max_turns)
     if not 1 <= args.repetitions <= 5:
         raise ValueError("repetitions must stay between 1 and 5 for a bounded control")
+    threshold = frozen_threshold(steps=args.steps)
     require_nato()
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -223,9 +284,7 @@ def main_run(args):
     results = {"schema_version": 1, "contract": CONTRACT, "scenario_id": SCENARIO,
                "purpose": "instrument validity gate; no admission", "steps": args.steps,
                "repetitions": args.repetitions, "arms": ["rules", "llm"],
-               "threshold": None, "threshold_frozen": False,
-               "threshold_rule": "X is frozen after the first pass, never before",
-               "cases": [], "failures": []}
+               **threshold, "cases": [], "failures": []}
     try:
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
         metadata = {"schema_version": 1, "git_commit": commit, "trial_id": trial_id,
@@ -249,7 +308,8 @@ def main_run(args):
                 policies[policy].append({"evaluation": evaluation,
                                          "spend": spend(trial / policy)})
                 results["cases"].append({"repetition": repetition, "policy": policy,
-                                         "evaluation": evaluation, "spend": spend(trial / policy)})
+                                         "evaluation": evaluation, "spend": spend(trial / policy),
+                                         "routing": routing(trial / policy)})
         results["summary"] = {"rules": [item["evaluation"]["success"] for item in policies["rules"]],
                               "llm": [item["evaluation"]["success"] for item in policies["llm"]],
                               "outcome": gate(policies)}
@@ -274,7 +334,7 @@ def public_summary(root):
     for case in results.get("cases", []):
         evaluation = case.get("evaluation") or {}
         row = {"repetition": case.get("repetition"), "policy": case.get("policy"),
-               "spend": case.get("spend")}
+               "spend": case.get("spend"), "routing": case.get("routing")}
         row.update({key: evaluation.get(key) for key in SUMMARY_FIELDS})
         cases.append(row)
     failure_path = root / "controller-failure.json"
@@ -283,6 +343,8 @@ def public_summary(root):
         "steps": results.get("steps"), "repetitions": results.get("repetitions"),
         "arms": results.get("arms"), "threshold": results.get("threshold"),
         "threshold_frozen": results.get("threshold_frozen"),
+        "threshold_evidence": results.get("threshold_evidence"),
+        "saturating": results.get("saturating"),
         "summary": results.get("summary"), "cases": cases,
         "failures": results.get("failures", []),
         "controller_failure": (json.loads(failure_path.read_text())
@@ -316,7 +378,7 @@ def main():
                         help=f"Declared steps per arm (1-{MAX_STEPS})")
     parser.add_argument("--repetitions", type=int, default=3,
                         help="Independent repetitions per arm (bounded 1-5)")
-    parser.add_argument("--max-tool-calls", type=int, default=MAX_STEPS,
+    parser.add_argument("--max-tool-calls", type=int, default=DEFAULT_STEPS,
                         help="Data-call ceiling; one call per declared step")
     parser.add_argument("--max-duration-s", type=float, default=None,
                         help="Optional elapsed-time ceiling; unset measures without capping")

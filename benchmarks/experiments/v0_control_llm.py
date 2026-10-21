@@ -20,6 +20,31 @@ budgets. No other brokers, topics or credentials are available.
 """
 
 
+ROUTING_FIELDS = ("event", "reason", "response_type", "finish_reason", "cause", "accepted")
+
+
+def routing(events):
+    """Turn routing as counts, never as content.
+
+    A control that closed without a terminal decision has to be diagnosable
+    from the job log: this says which non-data turns occurred and why the loop
+    stopped, and carries no argument, payload or credential.
+    """
+    counts = {}
+    for event in events:
+        if not isinstance(event, dict) or event.get("type") != "provider_diagnostic":
+            continue
+        for field in ROUTING_FIELDS:
+            value = event.get(field)
+            if isinstance(value, bool):
+                value = "true" if value else "false"
+            if not isinstance(value, str):
+                continue
+            key = f"{field}={value}"
+            counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def run_llm(briefing, execute, run, provider):
     public = validate_briefing(briefing)
     decision = {"schema_version": 1, "contract": CONTRACT, "decision_policy": "llm",
@@ -88,9 +113,13 @@ def run_llm(briefing, execute, run, provider):
         "tools": [{k: v for k, v in tool.items() if k != "function"} for tool in tools],
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
+    events = []
+
     def event_callback(event):
         try:
             append_json(run.run_dir / "provider-events.jsonl", event)
+            if isinstance(event, dict) and event.get("type") == "provider_diagnostic":
+                events.append(event)
         except Exception:
             run._evidence_integrity_failed = True
             raise
@@ -123,4 +152,8 @@ def run_llm(briefing, execute, run, provider):
         decision.update(status=state, error_type=kind)
         (run.run_dir / "decision.json").write_text(json.dumps(decision, indent=2) + "\n")
         raise
+    finally:
+        (run.run_dir / "routing.json").write_text(
+            json.dumps({"turns": run.max_turns, "events": routing(events)},
+                       indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return decision

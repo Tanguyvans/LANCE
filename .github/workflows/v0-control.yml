@@ -22,15 +22,14 @@ on:
           - qwen3.8:27b
           - gemma4:26b-a4b-it-q4_K_M
       steps:
-        description: Declared steps per arm (30 keeps 2 turns for completion)
+        description: Declared steps per arm (24 keeps completion and routing turns)
         required: true
-        default: '30'
+        default: '24'
         type: choice
         options:
           - '8'
           - '16'
           - '24'
-          - '30'
       repetitions:
         description: Independent repetitions per arm
         required: true
@@ -84,8 +83,8 @@ jobs:
             qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M) ;;
             *) echo "Model outside the declared V2 panel" >&2; exit 1 ;;
           esac
-          case "$V0_STEPS" in 8|16|24|30) ;; *)
-            echo "Steps must be 8, 16, 24 or 30" >&2; exit 1 ;;
+          case "$V0_STEPS" in 8|16|24) ;; *)
+            echo "Steps must be 8, 16 or 24" >&2; exit 1 ;;
           esac
           case "$V0_REPETITIONS" in 1|2|3) ;; *)
             echo "Repetitions must be 1, 2 or 3" >&2; exit 1 ;;
@@ -107,13 +106,15 @@ jobs:
           mkdir -p output/v0-control
           # Cost and duration are recorded, not capped. The outer timeout only
           # kills a stuck controller; each arm is bounded by calls and turns.
+          # Turns = steps + 2 completion + 6 routing: a turn that produces no
+          # data call must not cost the declared procedure.
           status=0
           timeout --signal=TERM --kill-after=45s "$((600 + 3600 * V0_REPETITIONS))" \
             venv/bin/python -m benchmarks.experiments.v0_control_live run \
             --output "output/v0-control/$TRIAL_NAME" \
             --provider "$V0_PROVIDER" --model "$V0_MODEL" \
             --steps "$V0_STEPS" --repetitions "$V0_REPETITIONS" \
-            --max-tool-calls "$V0_STEPS" --max-turns "$((V0_STEPS + 2))" \
+            --max-tool-calls "$V0_STEPS" --max-turns "$((V0_STEPS + 8))" \
             > "output/v0-control/$TRIAL_NAME.console.log" 2>&1 || status=$?
           if [ "$status" -ne 0 ]; then
             # The console log carries fixture values, so it is not published;

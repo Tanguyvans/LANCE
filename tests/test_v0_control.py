@@ -200,7 +200,7 @@ def test_public_briefing_rejects_private_answer_fields(briefing, field):
 
 @pytest.mark.parametrize("change", [
     {"steps": []},
-    {"steps": [{"topic": "v0/status", "credential": None, "count": 1, "timeout_s": 5}] * 31},
+    {"steps": [{"topic": "v0/status", "credential": None, "count": 1, "timeout_s": 5}] * 25},
     {"steps": [{"topic": "v0/#", "credential": None, "count": 1, "timeout_s": 5}]},
     {"steps": [{"topic": "v0/+", "credential": None, "count": 1, "timeout_s": 5}]},
     {"steps": [{"topic": "$SYS/broker/load", "credential": None, "count": 1, "timeout_s": 5}]},
@@ -383,16 +383,92 @@ def live_broker(config):
     return process
 
 
-def test_control_steps_leave_the_completion_reserve_inside_the_harness_maximum():
+def test_control_steps_leave_the_completion_and_routing_turns_inside_the_maximum():
     from benchmarks.experiments import v0_control as control
     from benchmarks.experiments import v0_control_live as v0live
-    # 32 calls and 32 turns are the harness maxima, and the provider keeps its
-    # last two turns for the terminal call: N steps must leave room for both.
-    assert control.MAX_STEPS == v0live.MAX_STEPS == 30
+    # 32 calls and 32 turns are the harness maxima; the provider keeps two
+    # turns for the terminal call, and a turn that produces no data call must
+    # not cost the declared procedure. The first 30-step passage spent four
+    # routing turns and closed without a decision.
+    assert control.MAX_STEPS == v0live.MAX_STEPS == v0live.DEFAULT_STEPS == 24
     assert control.TURN_RESERVE == v0live.TURN_RESERVE == 2
-    assert v0live.MAX_STEPS + v0live.TURN_RESERVE == v0live.MAX_TURNS == 32
+    assert control.ROUTING_SLACK == v0live.ROUTING_SLACK == 6
+    assert v0live.MAX_STEPS + 8 == v0live.MAX_TURNS == 32
     workflow = (ROOT / '.github/workflows/v0-control.yml').read_text()
-    assert 'case "$V0_STEPS" in 8|16|24|30)' in workflow
+    assert 'case "$V0_STEPS" in 8|16|24)' in workflow
+    assert '--max-turns "$((V0_STEPS + 8))"' in workflow
+
+
+@pytest.mark.parametrize("steps, calls, turns", [
+    (24, 24, 32), (8, 8, 16),
+])
+def test_a_control_budget_admits_the_reserve_and_the_routing_slack(steps, calls, turns):
+    from benchmarks.experiments import v0_control_live as v0live
+    v0live.check_budget(steps, calls, turns)
+
+
+@pytest.mark.parametrize("steps, calls, turns", [
+    (25, 25, 33),      # beyond the harness maximum for steps
+    (30, 30, 32),      # zero routing slack: the first passage's defect
+    (24, 24, 31),      # one routing turn short
+    (24, 20, 32),      # the data-call ceiling cannot cover the procedure
+])
+def test_a_control_budget_refuses_an_instrument_that_cannot_finish(steps, calls, turns):
+    from benchmarks.experiments import v0_control_live as v0live
+    with pytest.raises(ValueError):
+        v0live.check_budget(steps, calls, turns)
+
+
+def test_a_frozen_threshold_travels_with_its_calibration(tmp_path):
+    from benchmarks.experiments import v0_control_live as v0live
+    manifest = tmp_path / "manifest.json"
+    unfrozen = v0live.frozen_threshold(manifest, steps=24)
+    assert unfrozen == {"threshold": None, "threshold_frozen": False,
+                        "threshold_rule": v0live.THRESHOLD_RULE}
+    manifest.write_text(json.dumps({
+        "schema_version": 1, "contract": CONTRACT, "scenario_id": "v0_fidelite_mqtt",
+        "steps": 24, "threshold": 2 / 3, "threshold_frozen": True, "saturating": False,
+        "evidence": {"run_id": "39592971744", "git_commit": "ae32dd7"}}))
+    frozen = v0live.frozen_threshold(manifest, steps=24)
+    assert frozen["threshold"] == pytest.approx(2 / 3)
+    assert frozen["threshold_frozen"] is True
+    assert frozen["threshold_evidence"] == {"run_id": "39592971744", "git_commit": "ae32dd7"}
+    assert frozen["saturating"] is False
+    with pytest.raises(ValueError):
+        v0live.frozen_threshold(manifest, steps=8)
+
+
+@pytest.mark.parametrize("change", [
+    {"threshold_frozen": False},
+    {"threshold": None},
+    {"threshold": 1.5},
+    {"threshold": True},
+    {"contract": "v0-control-other-v1"},
+    {"scenario_id": "other"},
+])
+def test_a_manifest_that_does_not_freeze_a_rate_is_refused(tmp_path, change):
+    from benchmarks.experiments import v0_control_live as v0live
+    manifest = tmp_path / "manifest.json"
+    record = {"schema_version": 1, "contract": CONTRACT, "scenario_id": "v0_fidelite_mqtt",
+              "steps": 24, "threshold": 0.5, "threshold_frozen": True}
+    record.update(change)
+    manifest.write_text(json.dumps(record))
+    with pytest.raises(ValueError):
+        v0live.frozen_threshold(manifest, steps=24)
+
+
+def test_routing_is_published_as_counts_and_never_as_content():
+    from benchmarks.experiments.v0_control_llm import routing
+    events = [
+        {"type": "provider_diagnostic", "event": "request", "turn": 1},
+        {"type": "provider_diagnostic", "event": "tool", "reason": "malformed_args",
+         "arguments": "control-secret"},
+        {"type": "provider_diagnostic", "event": "terminal", "cause": "max_turns_exhausted"},
+        {"type": "tool_result", "name": "run_step", "result": "private-canary"},
+    ]
+    assert routing(events) == {"cause=max_turns_exhausted": 1, "event=request": 1,
+                               "event=terminal": 1, "event=tool": 1,
+                               "reason=malformed_args": 1}
 
 
 def test_live_summary_publishes_counts_without_fixture_values(tmp_path):
@@ -411,7 +487,8 @@ def test_live_summary_publishes_counts_without_fixture_values(tmp_path):
     summary = v0live.public_summary(tmp_path)
     assert summary["summary"] == {"outcome": "instrument_defect"}
     assert summary["threshold"] is None and summary["threshold_frozen"] is False
-    assert summary["cases"] == [{"repetition": 1, "policy": "llm", "spend": {"cost_usd": None},
+    assert summary["cases"] == [{"repetition": 1, "policy": "llm",
+                                 "spend": {"cost_usd": None}, "routing": None,
                                  "success": False, "outcome": "budget", "executed_steps": 1,
                                  "skipped_steps": 1, "payload_mismatches": 0,
                                  "unexpected_refs": 0}]
@@ -423,9 +500,9 @@ def test_live_summary_publishes_counts_without_fixture_values(tmp_path):
 
 def test_live_briefing_alternates_the_declared_subscriptions():
     from benchmarks.experiments import v0_control_live as v0live
-    public = v0live.build_briefing("v0-control", "192.168.100.220", live_config(), 30)
-    assert len(public["steps"]) == 30
-    assert [step["credential"] is not None for step in public["steps"]] == [True, False] * 15
+    public = v0live.build_briefing("v0-control", "192.168.100.220", live_config(), 24)
+    assert len(public["steps"]) == 24
+    assert [step["credential"] is not None for step in public["steps"]] == [True, False] * 12
     assert {step["topic"] for step in public["steps"]} == {"lance/private/telemetry",
                                                           "lance/public/status"}
     payloads = v0live.payloads_for(public, live_config())
@@ -513,5 +590,6 @@ def test_workflow_is_manual_dev2_only_and_declares_the_lock_held():
     assert 'v0_control_live summary' in text
     assert '$((600 + 3600 * V0_REPETITIONS))' in text
     # The declared steps bound the data calls; the turns add the completion
-    # reserve the provider loop keeps for itself.
-    assert '--max-tool-calls "$V0_STEPS" --max-turns "$((V0_STEPS + 2))"' in text
+    # reserve the provider loop keeps for itself and the routing turns that
+    # produce no data call.
+    assert '--max-tool-calls "$V0_STEPS" --max-turns "$((V0_STEPS + 8))"' in text
