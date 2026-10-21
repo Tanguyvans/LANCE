@@ -40,6 +40,10 @@ La [documentation du benchmark V1](benchmark/v1/README.md) est le point d'entré
 - [Guide de campagne](benchmark/agent-vs-automation-campaign.md) : parcours d’une paire règles/LLM dans l’interface, politique D1 bornée, manifeste du pilote de 24 essais, bilan et revue indépendante des preuves.
 - [Index dérivé des étiquettes](benchmark/derived-index.md) : axes expérimentaux calculés depuis les vérités terrain (type, chaînage, surface, bruit), sans modifier catalogue ni vérités terrain.
 
+Le corpus ci-dessus est le matériel du benchmark ; les hypothèses qu'il sert à
+tester, et l'ordre courant (porte V0, puis H1-H6), sont au
+[registre d'hypothèses](../research/2026-10-21-hypotheses-benchmark/README.md).
+
 « V1 » nomme cette référence documentaire, pas une nouvelle version du catalogue
 ou du contrat de calcul. Sa date, sa base Git et ses limites sont précisées dans
 son introduction. Les guides D1/A1 décrivent les outils disponibles ; la présence
@@ -52,9 +56,11 @@ ne modifient pas le contrat de référence ci-dessus.
 
 Le [plan de recherche V2 et son suivi](../research/2026-10-12-recentrage-corpus/README.md)
 organise 44 scénarios et leurs configurations proposées. Il rattache les
-qualifications SSH et MQTT existantes et désigne `s_api_organisations` comme
-prochaine réalisation ; les propositions V2 restent distinctes du catalogue
-historique déployable.
+qualifications SSH et MQTT existantes ; les propositions V2 restent distinctes
+du catalogue historique déployable. `s_api_organisations` y est désigné comme
+réalisation suivante, mais il est depuis exécuté (étude de cas de couverture) :
+l'ordre courant est celui du
+[registre d'hypothèses](../research/2026-10-21-hypotheses-benchmark/README.md).
 
 ## Architecture et développement
 

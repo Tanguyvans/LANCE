@@ -38,7 +38,7 @@ ils ne sont pas revendiqués comme contributions en eux-mêmes.
 | # | Contribution candidate | Preuve exigée | Case du papier |
 | --- | --- | --- | --- |
 | C1 | Un benchmark IoT multi-équipements à familles tenues à l'écart (split par famille de packs, canaris, variantes déployées et vérifiées) | Corpus gelé + journal d'accès + contrôles négatifs propres | § Benchmark |
-| C2 | Une carte mesurée des conditions d'écart, **par hypothèse** (V0 et H1-H6), à outils, preuves et budgets identiques (y compris carte vide) | Une famille par hypothèse, mesure recalculée depuis le journal ; intervalles à 95 % et correction de Holm **seulement** si deux familles indépendantes existent | § Résultats |
+| C2 | Une carte mesurée des conditions d'écart, **par hypothèse** (V0 et H1-H6), à outils, preuves et budgets identiques (y compris carte vide) | Une famille par hypothèse, mesure recalculée depuis le journal ; intervalles à 95 % et correction de Holm **seulement** si deux familles indépendantes existent (condition nécessaire ; à n = 2 le bootstrap ne donne qu'un pseudo-IC, pas une revendication à 95 %) | § Résultats |
 | C3 | Le coût de l'avantage éventuel : coût par vrai positif confirmé, temps, variance inter-graines, face aux règles | Mesures E3 sur les mêmes runs, grille de prix gelée | § Coût et limites |
 
 Toute contribution sans sa preuve au moment de la rédaction sort du papier ou
@@ -61,9 +61,10 @@ qu'aux hypothèses dont la mesure est un TP (H1, H2). Les autres ont leur propre
 mesure, définie au registre (extraction correcte, champs interprétés, reprises,
 conformité à une instruction injectée). Quand des intervalles sont possibles :
 borne inférieure de l'intervalle apparié à 95 % supérieure au seuil delta
-pré-enregistré, après correction de Holm. À défaut de deux familles
-indépendantes, le résultat reste **descriptif par hypothèse**, sans revendication
-d'inférence.
+pré-enregistré, après correction de Holm. Deux familles indépendantes sont une
+condition **nécessaire**, pas suffisante : à n = 2 le bootstrap ne produit qu'un
+pseudo-intervalle. À défaut, le résultat reste **descriptif par hypothèse**,
+sans revendication d'inférence.
 
 | Exp. | Question | Bras et conditions | Mesures primaires | État |
 | --- | --- | --- | --- | --- |
@@ -89,7 +90,7 @@ N'entrent au papier que si E1-E3 sont bouclées et relues.
 
 | Piste | Intérêt | Garde-fou |
 | --- | --- | --- |
-| Scénarios où l'automatisation est structurellement compliquée : chaînes à impasses générées, protocole documenté inconnu des règles, leurres plausibles | Renforce C2 là où l'écart est attendu | Déployés et vérifiés contre la vérité terrain ; jamais de règle volontairement affaiblie |
+| Scénarios où l'automatisation est structurellement compliquée : chaînes à impasses générées, protocole documenté inconnu des règles, leurres plausibles | Renforce la contribution C2 (pas le C2-scénario, clos) là où l'écart est attendu | Déployés et vérifiés contre la vérité terrain ; jamais de règle volontairement affaiblie |
 | Panel de modèles élargi, dont un **modèle MoE** (mélange d'experts, par ex. MoE local contre modèle dense local et modèle distant) | Axe coût/latence/qualité ; répond à la critique « un seul modèle testé » | Même gel (prompts, outils, budgets) ; le MoE est un bras de comparaison, pas un second sujet de papier |
 | Extension aux phases 2 (reconnaissance) et 5 (intrusion) | L'adaptation peut y compter davantage | Seulement si le critère de poursuite de la proposition est satisfait en phases 3-4 |
 | Génération procédurale complète de variantes | Puissance statistique, anti-contamination | Prouver d'abord une famille déployable ; une altération en aperçu seul invalide la strate |
@@ -158,7 +159,7 @@ sans identifiant de run.
 
 ## 9. Suivi V2 consolidé
 
-Dernière révision : **2026-10-21 10:30 (Europe/Brussels, UTC+02:00)**. Cette section
+Dernière révision : **2026-10-21 10:38 (Europe/Brussels, UTC+02:00)**. Cette section
 est un état des lieux historique ; l'ordre courant est celui du
 [registre d'hypothèses](../../research/2026-10-21-hypotheses-benchmark/README.md).
 

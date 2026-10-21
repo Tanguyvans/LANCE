@@ -8,7 +8,7 @@ ne le font pas ?
 aucune fixture, aucun run.
 
 **Dates.** Étude ouverte et classée le 2026-10-21 (Europe/Brussels, UTC+02:00).
-Dernière révision : **2026-10-21 10:30 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-21 10:38 (Europe/Brussels, UTC+02:00)**.
 
 ## Principe
 

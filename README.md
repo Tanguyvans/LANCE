@@ -35,8 +35,9 @@ first implementation: analysis and verification from a shared public inventory,
 with a no-LLM policy and a separate paired comparator.
 
 Current submission objective: [AsiaCCS 2027](objectifs/asiaccs-2027/README.md)
-(round 2, 11 December 2026) — target, proven-contribution requirements and the
-16 November 2026 go/no-go decision criteria.
+(round 2, 11 December 2026) — target and proven-contribution requirements. The
+submission decision follows a written condition (readable manuscript, ready
+artifact), not an internal date.
 
 Resuming work: [current state and task plan](objectifs/ETAT-COURANT.md) — where
 the repository stands, what is ready, what runs in parallel and what is strictly
@@ -97,7 +98,8 @@ evaluation scenarios.
 
 - [Documentation index](docs/README.md)
 - [Research topics and conventions](research/README.md)
-- [V2 scenario plan and progress](research/2026-10-12-recentrage-corpus/README.md): proposed configurations, completed bounded SSH qualification, and MQTT as the next implementation.
+- [Benchmark hypothesis register](research/2026-10-21-hypotheses-benchmark/README.md): the current order (V0 gate, then H1-H6), one hypothesis per family, declared coverage gaps.
+- [V2 scenario plan and progress](research/2026-10-12-recentrage-corpus/README.md): historical proposed configurations; bounded SSH and MQTT pilots are done.
 - [Research report: benchmark coverage, context and LLM contribution (PDF)](research/2026-09-27-agent-vs-automation/report.pdf) · [editable LaTeX](research/2026-09-27-agent-vs-automation/report.tex)
 - [Benchmark, scenarios and evaluation](docs/benchmark/v1/README.md)
 - [Pipeline structure](src/agent/phases/README.md)

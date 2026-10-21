@@ -77,9 +77,9 @@ Lancé sur le serveur de la fixture, en local, avec l'adaptateur
 | F1 (vulnérable) | exploration des collections | oui | oui | oui |
 
 Le bras script réussit donc en posture protégée et **s'arrête** en posture
-vulnérable : c'est l'écart que le scénario doit rendre mesurable. Le bras
-d'exploration franchit la frontière `collection_cross` en F1 sans produire
-de faux positif en F0.
+vulnérable : c'est l'écart que cette étude de cas de couverture rend mesurable.
+Le bras d'exploration franchit la frontière `collection_cross` en F1 sans
+produire de faux positif en F0.
 
 Ce résultat est une **qualification logicielle**, pas une mesure de LLM :
 le bras d'exploration des tests est un script déterministe écrit pour
@@ -158,7 +158,6 @@ durée sont mesurés sans plafond.
 
 ## Ce qui reste à construire
 
-- Le premier lancement réel sur nato, et la lecture de ses coûts.
 - La calibration des seuils C06 (couverture, faux positifs), après le pilote
   et jamais avant.
 - Le reset, la parité des bras et la provenance du fournisseur restent à

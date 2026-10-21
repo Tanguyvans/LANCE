@@ -9,7 +9,7 @@ fixture, aucun run. La construction proposée est conservée comme trace, avec
 son verdict.
 
 **Dates.** Étude ouverte et classée le 2026-10-21 (Europe/Brussels, UTC+02:00).
-Dernière révision : **2026-10-21 10:30 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-21 10:38 (Europe/Brussels, UTC+02:00)**.
 
 **Format.** Mémo de falsification, sans résultat ni figure : ni source LaTeX ni
 PDF. Le dossier passera au format scientifique classique si un run est un jour
@@ -58,8 +58,9 @@ relèverait d'une autre thèse.
 
 - **C3** : `independent_families` reste requis pour un intervalle, et le
   repli C3 ne dispense donc pas de construire une deuxième famille
-  indépendante. Ce point n'est pas résolu par l'arrêt de C2 ; il est le
-  prochain vrai chantier.
+  indépendante. Ce point n'est pas résolu par l'arrêt de C2, mais ce n'est plus
+  le conducteur du travail : c'est la condition d'une revendication
+  statistique.
 - **Si B2 est poursuivi** : prouver la borne inférieure de taille d'état,
   écrire l'amendement du critère de budget, et le rattacher à C09/C10.
 - **Le test de clôture lui-même** n'a toujours ni contrôle positif ni

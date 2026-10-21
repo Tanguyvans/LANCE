@@ -7,6 +7,10 @@ La documentation courante est dans **[docs/benchmark/v1/](../docs/benchmark/v1/R
 - [Évaluation, preuves et métriques](../docs/benchmark/v1/evaluation.md).
 - [Exécution et diagnostic](../docs/benchmark/v1/execution.md).
 
+Ce corpus est le matériel du benchmark ; les hypothèses qu'il sert à tester
+sont au [registre d'hypothèses](../research/2026-10-21-hypotheses-benchmark/README.md),
+qui fixe l'ordre courant (porte V0, puis H1-H6).
+
 Ce dossier reste à la racine car il contient les données et outils exécutables,
 pas seulement du texte :
 

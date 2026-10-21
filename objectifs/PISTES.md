@@ -1,6 +1,6 @@
 # Pistes de la plateforme
 
-**Dernière mise à jour : 2026-10-21 10:30 (Europe/Brussels, UTC+02:00).**
+**Dernière mise à jour : 2026-10-21 10:38 (Europe/Brussels, UTC+02:00).**
 
 Registre d'idées pour la plateforme, hors du chemin critique de la soumission
 AsiaCCS. Une piste n'est ni un plan ni une promesse : c'est une hypothèse de

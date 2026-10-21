@@ -22,7 +22,7 @@ qui reste la source de vérité de l'exécution.
 **Objectif retenu le 2026-10-12 ; suivi réconcilié le 2026-10-16, campagne incomplète.**
 Le [registre des tentatives](../../benchmarks/experiments/policy-comparison/reconciliation-2026-10-16.json)
 recense 15 tentatives de campagne, 8 de calibration et 13 inspections, dont six
-ont créé un diagnostic isolé. Sous le gel actuel, huit tentatives appariées
+ont créé un diagnostic isolé. Sous le gel historique du 14 octobre, huit tentatives appariées
 couvrent sept des douze paires prévues : trois sont comparables et cinq
 incomparables. La seconde tentative S1 r1, arrêtée à la limite de durée,
 avait écrasé son premier résumé ; les deux résultats sont maintenant conservés.
@@ -43,7 +43,7 @@ du LLM n'est démontré.
 - Soumission visée : **2026-12-11 (AoE)**, AsiaCCS 2027 round 2. C'est la seule
   contrainte externe ; elle n'ordonne pas les étapes.
 - Conférence : 12-16 juillet 2027, Macao.
-- Dernière mise à jour de ce dossier : **2026-10-21 10:30 (Europe/Brussels,
+- Dernière mise à jour de ce dossier : **2026-10-21 10:38 (Europe/Brussels,
   UTC+02:00)**.
 
 ## Synthèse
@@ -59,15 +59,15 @@ du LLM n'est démontré.
 - **Instrument déjà disponible** : pipeline six phases, quatre modes
   d'exécution (`lance`, `rules`, `vanilla`, `scripted`), comparateur apparié
   D1/A1, contrat de preuve strict-v3, 29 scénarios et 22 définitions de packs.
-  Le travail restant est expérimental et rédactionnel, pas la construction
-  d'un nouveau système.
+  Le moteur d'audit existe ; le harnais paramétrable (`families=1` en dur) et
+  la plateforme de déploiement/lancement restent à construire.
 
 ## Documents
 
 - [Audit de couverture des scénarios](audit-couverture.md) : matrice réelle du corpus (75 % de failles à signature, strate logique réduite à S15, edge cases absents) et verdict sur le set pilote (remplacer le contrôle sain fictif par S1h).
 - [Plan de soumission](plan-soumission.md) : exigences AsiaCCS vérifiées,
-  contributions candidates, expériences E1-E3, pistes bonus, rétroplanning,
-  critères de décision et risques.
+  contributions candidates, expériences E1-E3, pistes bonus, séquence de
+  travail et critères de décision.
 - Proposition scientifique :
   [PDF](../../research/2026-10-12-recentrage-corpus/proposition-conditions.pdf) ·
   [LaTeX](../../research/2026-10-12-recentrage-corpus/proposition-conditions.tex)
@@ -88,10 +88,13 @@ sur leurs quatre bras script/Qwen, dans un périmètre local et borné :
 [`mqtt_reference_live`](../../docs/benchmark/agent-vs-automation-cli.md#qualification-mqtt-réelle-vérifiée-le-19-octobre-2026)
 le 19 octobre (run `39239366068`, cas F0/F1, 120 fichiers et deux archives
 vérifiés). Ces calibrations restent hors admission confirmatoire M-T.
-**La prochaine réalisation V2 est `s_api_organisations`**, puis `s_mqtt_reprise`
-et `s_cache_identites`. Le gel et l’alignement des métriques restent à établir
-avant le nouveau test ; la poursuite du pilote historique ci-dessous constitue
-un suivi distinct, conservé sans remplacer ses échecs.
+`s_api_organisations` est exécuté et reste une étude de cas de couverture ;
+`s_mqtt_reprise` et `s_cache_identites` sont rejetés et ne sont pas poursuivis.
+L'ordre courant est celui du
+[registre d'hypothèses](../../research/2026-10-21-hypotheses-benchmark/README.md)
+(V0 et H1-H6). Le gel et l’alignement des métriques restent à établir ; la
+poursuite du pilote historique ci-dessous constitue un suivi distinct, conservé
+sans remplacer ses échecs.
 Consolidation documentaire : **2026-10-19 (Europe/Brussels, UTC+02:00)**.
 
 ## Suite et points ouverts

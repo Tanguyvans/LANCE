@@ -1,6 +1,6 @@
 # Pilote D1/A1
 
-## Campagne active et reprise
+## Campagne historique gelée et reprise
 
 Le [plan gelé](pilot-2026-10.json) conserve les 12 paires prévues (S1, S14,
 S15, S1h, trois répétitions). Le [registre réconcilié du 16 octobre](reconciliation-2026-10-16.json)
@@ -32,8 +32,10 @@ Le [plan V2 et son suivi](../../../research/2026-10-12-recentrage-corpus/README.
 conservent la sélection proposée et rattachent les qualifications natives SSH
 (15 octobre) et MQTT (19 octobre). Elles ne complètent aucune paire manquante
 ci-dessus et n’admettent pas une campagne confirmatoire M-T.
-**La prochaine réalisation V2 est `s_api_organisations`** ; le blocage du
-manifeste historique reste conservé dans son propre périmètre.
+`s_api_organisations`, alors désigné comme réalisation suivante, est exécuté et
+reste une étude de cas de couverture ; l'ordre courant est celui du
+[registre d'hypothèses](../../../research/2026-10-21-hypotheses-benchmark/README.md).
+Le blocage du manifeste historique reste conservé dans son propre périmètre.
 
 ## Modèle générique
 

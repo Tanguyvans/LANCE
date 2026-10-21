@@ -1,6 +1,6 @@
 # État courant : point de reprise
 
-**Dernière mise à jour : 2026-10-21 10:30 (Europe/Brussels, UTC+02:00).**
+**Dernière mise à jour : 2026-10-21 10:38 (Europe/Brussels, UTC+02:00).**
 Cette page sert de point d'entrée pour reprendre le travail rapidement dans une
 nouvelle session. Elle ne remplace pas les documents de référence : elle dit
 **où on en est**, **ce qui est prêt**, et **ce qui peut être fait en parallèle ou
@@ -40,8 +40,9 @@ thèse et relèverait d'une autre campagne.
 
 ## Où en est le dépôt
 
-`main` et `dev/2` sont alignés sur `ed7686e` (vérifié au 2026-10-21) : tout
-nouveau commit sur `main` doit être reporté sur `dev/2` avant un nouveau pilote.
+`main` et `dev/2` sont alignés (vérifié le 2026-10-21 ; le SHA n'est pas figé
+ici). Tout nouveau commit sur `main` doit être reporté sur `dev/2` avant un
+nouveau pilote.
 Le pilote de référence de
 `s_api_organisations` (contrat v2) est exécuté ; les deux pilotes V2 (SSH et
 MQTT, 3 répétitions, `qwen3.8:27b`) restent exploitables.
@@ -178,10 +179,9 @@ elle appartient au benchmark qui la mesure, pas à la plateforme.
   ```
 - **Cible d'exécution** : nato / `pve-nato` via le runner `nato-master`
   uniquement. Le homelab personnel est hors périmètre.
-- **Blocage levé le 2026-10-20** : `dev/2` suivait alors `main` (`9a283f8`),
-  CI verte et `dev-2` redéployé ; l'alignement courant est `ed7686e`. Un futur
-  commit sur `main` doit à nouveau être reporté sur `dev/2` avant tout nouveau
-  pilote.
+- **Blocage levé le 2026-10-20** : `dev/2` suivait alors `main`, CI verte et
+  `dev-2` redéployé. Un futur commit sur `main` doit à nouveau être reporté sur
+  `dev/2` avant tout nouveau pilote.
 
 ## Plan de travail
 
@@ -195,9 +195,8 @@ puis la plateforme. Le pilote MoE reste une mesure utile, pas un préalable.
 Ces étapes dépendent les unes des autres ; les paralléliser invaliderait les
 mesures.
 
-1. ~~**Avancer `dev/2` sur `main`**~~ — **fait le 2026-10-20** : `dev/2` était
-   alors à `4e82f6f`, CI verte et `dev-2` redéployé ; réaligné depuis
-   (`ed7686e`).
+1. ~~**Avancer `dev/2` sur `main`**~~ — **fait le 2026-10-20** : CI verte et
+   `dev-2` redéployé ; réaligné depuis.
 2. ~~**Pilote SSH**~~ — **fait le 2026-10-20** : run `39465619725`, 6 paires
    admissibles, un premier passage invalidé par un `TypeError` corrigé en
    `74c218a`.

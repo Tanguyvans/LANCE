@@ -152,8 +152,8 @@ historiques et la revue IoT figée gardent leurs dates et leur portée.
 | Organisation V2 et correspondance scénario/mesure/hypothèse | Conception structurée et contrôlée | Admission expérimentale par scénario |
 | `s_ssh_identifiants` | **Qualification native réussie le 15 octobre** ; **pilote à 3 répétitions le 20 octobre** : 6 paires admissibles | Variabilité mesurée ; effectifs et gel confirmatoire à établir |
 | `s_mqtt_lecture` | **Qualification réelle réussie le 19 octobre** ; **pilote à 3 répétitions le 20 octobre** : 6 paires admissibles | Variabilité mesurée ; effectifs et gel confirmatoire à établir |
-| `s_api_organisations` | **Pilote de référence le 20 octobre** (contrat v2, `qwen3.8:27b`) : en F1 le script déclaré échoue, le LLM prouve `collection_cross` sans faux positif en F0 ; non admis (une famille, une répétition) | Deuxième famille, trois répétitions, seuils C06 |
-| `s_mqtt_reprise`, `s_cache_identites` | Contrats définis | Après `s_api_organisations` |
+| `s_api_organisations` | **Pilote de référence le 20 octobre** (contrat v2, `qwen3.8:27b`) : en F1 le script déclaré échoue, le LLM prouve `collection_cross` sans faux positif en F0 ; non admis (une famille, une répétition) | **Étude de cas de couverture**, pas une famille de revendication : répétitions et seuils C06 |
+| `s_mqtt_reprise`, `s_cache_identites` | Contrats définis | **Rejetés** ([PISTES](../../objectifs/PISTES.md)) : non poursuivis |
 | `s_injection_preuves` et parcours réseau | Préparation hors ligne et chantier parallèle distincts | Leurs propres contrôles restent requis |
 
 ### Qualification SSH déjà obtenue
@@ -251,17 +251,18 @@ premier appel fournisseur, à cause d’une addition `None + float` sur une
 échéance devenue sans plafond. Le statut du job ne prouve donc pas qu’une mesure
 existe ; seuls les compteurs d’usage le montrent.
 
-## Quoi construire maintenant
+## Ordre proposé le 2026-10-12 (historique)
 
-Commencer par la préparation des preuves, les contrôles, le reset et la parité ;
-`s_injection_preuves` sert à la calibration hors ligne et conserve son travail propre.
-Les qualifications SSH et MQTT étant acquises dans leur périmètre borné,
-poursuivre par **`s_api_organisations`, `s_mqtt_reprise`, `s_cache_identites`**,
-dans cet ordre. La campagne confirmatoire reste à préparer séparément.
+Cette section décrit l'ordre proposé le 2026-10-12 ; il n'est plus l'ordre
+courant. Celui-ci est le
+[registre d'hypothèses](../2026-10-21-hypotheses-benchmark/README.md) : porte V0,
+puis H2, H3, H4, H1 et H5. `s_api_organisations` est une étude de cas de
+couverture, et `s_mqtt_reprise` comme `s_cache_identites` sont rejetés.
+La préparation des preuves, les contrôles, le reset et la parité restent requis.
 
 | Place | Travail | Scénarios prioritaires |
 | --- | --- | --- |
-| Étape 1 | Comparaison locale | SSH et MQTT qualifiés, puis les trois scénarios ci-dessus |
+| Étape 1 | Comparaison locale | SSH et MQTT qualifiés |
 | Étape 2 | Séquences IoT | `s_mqtt_commande`, `s_session_cloturee`, `s_provisioning_rejeu` |
 | Étape 3 | Nouveaux contrats | `s_edge_contrat`, puis socle `s_ota_version` avant `s_ota_contrat` |
 | En parallèle | Parcours réseau | `s_reseau_distance`, après ses propres contrôles |
@@ -303,8 +304,8 @@ exiger une victoire LLM. Les noms et l’ordre de construction restent inchangé
   centré sur les décisions, catalogue en annexe selon six questions.
   Exemple MQTT complet, première comparaison SSH et MQTT et liens internes entre fiches.
   Matrice complète scénario/benchmark/mesure/hypothèse ajoutée.
-  Consolidation des qualifications SSH et MQTT existantes ; la prochaine
-  réalisation est `s_api_organisations`.
+  Consolidation des qualifications SSH et MQTT existantes ; la réalisation
+  suivante était `s_api_organisations`, depuis exécuté.
   La révision du 15 octobre à 14:49 comptait 58 pages relues ; celle du
   16 octobre à 21:43 en comptait 59. La vérification de la présente version est
   consignée en fin de README.
