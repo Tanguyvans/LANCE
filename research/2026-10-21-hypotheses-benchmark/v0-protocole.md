@@ -1,11 +1,11 @@
 # Protocole V0 — porte de validité de l'instrument
 
 **Statut.** `proposition` — contrôle implémenté, testé hors ligne et exécuté
-une fois sur nato en smoke (8 étapes, 1 répétition) ; le premier passage de
+sur nato en deux smokes (8 étapes, 1 répétition) ; le premier passage de
 calibration et le seuil `X` restent à faire. Le contrôle porte sur la fixture
 MQTT existante à deux abonnements, répétés en alternance.
 **Date.** 2026-10-21 (Europe/Brussels, UTC+02:00). Dernière révision :
-**2026-10-21 12:35 (Europe/Brussels, UTC+02:00)**.
+**2026-10-21 12:45 (Europe/Brussels, UTC+02:00)**.
 **Portée.** Ce document définit comment franchir V0, pas ce que V0 prouvera.
 **Format.** Document de travail, sans résultat ni figure ; il rejoindra le
 rapport compilé au premier run, avec source LaTeX et PDF.
@@ -150,23 +150,24 @@ fournisseur simulés, exécuteur et enregistreur réels) ; le précontrôle, les
 deux bras, le refus d'une clôture incomplète, la projection du journal, la
 lecture des quatre issues et la reprise sur dossier interrompu sont couverts.
 
-**Smoke du 2026-10-21 (8 étapes, 1 répétition, `qwen3.8:27b`).** Le contrôle a
+**Smokes du 2026-10-21 (8 étapes, 1 répétition, `qwen3.8:27b`).** Le premier a
 tourné de bout en bout sur `nato-master` et rendu `instrument_defect` : le bras
 règles a réussi 8/8 étapes en 40 s et 8 appels (0 $) ; le bras LLM s'est arrêté
 après 6 étapes sur 8, en 53 s, 6 appels et 0,022 $, sans discordance ni
 référence en trop. Le harnais réservait ses deux derniers tours à la clôture et
-la terminait sans vérifier la complétude : c'est un défaut d'instrument, pas une
-mesure de compétence. Deux corrections en découlent — `finish_control` refuse
-une liste incomplète, et `N` est ramené à 30 pour laisser deux tours de clôture
-dans le plafond de 32. Un smoke n'est pas le premier passage : `X` reste non
+la terminait sans vérifier la complétude : défaut d'instrument, pas une mesure
+de compétence. Deux corrections en découlent — `finish_control`
+refuse une liste incomplète, et `N` est ramené à 30 pour laisser deux tours de
+clôture dans le plafond de 32. Le second smoke, sur la version corrigée, rend
+`valid_control` : les deux bras réussissent 8/8 sans discordance ni référence
+en trop, le bras règles en 40 s et 8 appels (0 $), le bras LLM en 64,6 s,
+8 appels et 0,029 $. Un smoke n'est pas le premier passage : `X` reste non
 gelé.
 
 Ce qui reste avant un premier passage :
 
-1. **rejouer le smoke** sur la version corrigée, puis vérifier que les deux
-   bras réussissent 8/8 et que la porte rend `valid_control` ;
-2. le premier passage réglé sur 30 étapes et 3 répétitions ;
-3. le gel de `X` dans le manifeste, après ce passage seulement, et la
+1. le premier passage réglé sur 30 étapes et 3 répétitions ;
+2. le gel de `X` dans le manifeste, après ce passage seulement, et la
    déclaration de saturation si les deux bras réussissent partout.
 
 ## Conditions d'arrêt
