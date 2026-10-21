@@ -2,10 +2,11 @@
 
 **Statut.** `harnais hors ligne prêt, aucun run lisible` — protocole, corpus gelé de
 huit fixtures, oracle privé, les deux bras et le recompte sont écrits et
-testés hors ligne. Deux passages sur nato ont rendu des défauts d'instrument,
-corrigés ; aucun ne mesure le modèle.
+testés hors ligne. Trois passages sur nato ont rendu des défauts d'instrument
+ou une indisponibilité du fournisseur, corrigés ou nommés ; aucun ne mesure le
+modèle.
 **Date.** 2026-10-21 (Europe/Brussels, UTC+02:00). Dernière révision :
-**2026-10-22 00:12 (Europe/Brussels, UTC+02:00)**.
+**2026-10-22 01:12 (Europe/Brussels, UTC+02:00)**.
 **Portée.** Ce document fixe le contraste, la mesure et l'oracle de H2. Il ne
 déclare aucun résultat de modèle ; la seule mesure publiée ci-dessous est celle
 du bras règles sur le corpus, qui définit la référence à battre.
@@ -109,8 +110,8 @@ l'abstention est la seule réponse correcte.
 5. Bras LLM sur les mêmes octets, sans parseur, avec les mêmes budgets. **Fait,
    testé hors ligne, non exécuté sur nato.**
 6. Lanceur nato, sans broker ni fixture : le dossier est figé et seul le
-   fournisseur est appelé. Workflow manuel depuis `dev/2`. **Écrit, non
-   dispatché.**
+   fournisseur est appelé. Workflow manuel depuis `dev/2`. **Dispatché trois
+   fois, voir les passages ci-dessous ; pré-vol fournisseur ajouté.**
 
 ## Implémentation
 
@@ -120,7 +121,17 @@ l'abstention est la seule réponse correcte.
 | Bras LLM | `benchmarks/experiments/mqtt_formats_llm.py` | outils `read_message` et `finish_interpretation`, refus d'une preuve non lue, refus d'un dossier partiel, budgets |
 | Corpus gelé | `benchmarks/experiments/mqtt-formats-corpus.json` | huit fixtures, une question commune, oracle re-vérifié au chargement |
 | Lanceur nato | `benchmarks/experiments/mqtt_formats_live.py`, workflow `mqtt-formats.yml` | aucun broker, aucun fixture, verrou de laboratoire, projection publique sans charge utile |
-| Tests | `tests/test_mqtt_formats.py` | 58 tests |
+| Pré-vol fournisseur | `benchmarks/experiments/mqtt_formats_live.py` | catalogue seul, aucune génération ; distingue extrémité injoignable, modèle absent et modèle qui ne répond pas |
+| Tests | `tests/test_mqtt_formats.py` | 65 tests |
+
+**Pré-vol.** Un zéro peut venir de trois causes que le harnais confondait :
+l'extrémité est injoignable, le modèle n'y est pas servi, ou le modèle ne rend
+rien d'exploitable. Seule la troisième est une mesure. Avant le premier bras,
+le lanceur interroge donc le catalogue du fournisseur (quinze secondes, aucun
+réessai, aucune génération, aucun contenu du dossier) et s'arrête sur un nom :
+`provider-preflight.json` porte la présence du modèle, `provider-preflight-error.json`
+la classe d'erreur (`network` ou `protocol`) et le code HTTP. Ces deux fichiers
+sont projetés dans le résumé public.
 
 **Ce que le harnais met dans le journal.** Chaque lecture produit une référence
 de preuve dérivée du condensat du dossier et du message présenté. Un verdict qui
@@ -182,7 +193,18 @@ imbriquée que l'extrémité du fournisseur ne sait pas exprimer, et qui fait
 règles, lui, rend `1.0` sur les trois groupes couverts et `0.0` sur
 `variant/raw`, comme hors ligne.
 
-Ces deux passages ne mesurent rien sur le modèle et ne comptent pas comme des
+**2026-10-21, run `39684177777` — aucun résultat, extrémité injoignable.** Le
+schéma de clôture aplati laisse passer les requêtes, et le routage nomme
+désormais la cause : `error_kind=network`, six fois par invocation,
+`response_type=providererror`, aucun code HTTP — donc pas un refus du
+fournisseur mais une connexion qui n'aboutit pas. Le bras règles, lui, reste
+stable et rend `1.0` sur les trois groupes couverts et `0.0` sur
+`variant/raw`. Le modèle n'a rien rendu : ce passage ne mesure pas H2. Il
+montre seulement que le harnais ne distinguait pas encore *l'extrémité
+injoignable* d'un modèle qui lit mal le corpus ; le pré-vol fournisseur
+ci-dessus sépare maintenant ces deux cas avant de dépenser un bras.
+
+Ces trois passages ne mesurent rien sur le modèle et ne comptent pas comme des
 résultats de H2. Ils disent seulement que le harnais n'était pas encore
 lisible. La prédiction devient
 falsifiable ainsi — le bras LLM doit faire **strictement mieux que 0/2** sur

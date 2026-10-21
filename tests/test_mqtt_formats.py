@@ -610,6 +610,63 @@ def test_the_runner_reads_turn_routing_from_the_trial_directory(tmp_path):
     assert live.routing(tmp_path)["turns"] == 21
 
 
+class _Catalogue:
+    def __init__(self, model):
+        self.data = [SimpleNamespace(id=model)]
+
+
+class _CatalogueClient:
+    def __init__(self, model=None, error=None):
+        self.model, self.error = model, error
+
+    def with_options(self, **_):
+        return self
+
+    @property
+    def models(self):
+        return self
+
+    def list(self):
+        if self.error is not None:
+            raise self.error
+        return _Catalogue(self.model)
+
+
+def _preflight(tmp_path, monkeypatch, client):
+    monkeypatch.setattr(live, "LLMProvider",
+                        lambda provider, model: SimpleNamespace(client=client))
+    args = SimpleNamespace(provider="ollama-umons", model="qwen3.8:27b")
+    return live.provider_preflight(args, tmp_path)
+
+
+def test_the_preflight_names_a_model_the_endpoint_serves(tmp_path, monkeypatch):
+    assert _preflight(tmp_path, monkeypatch, _CatalogueClient("qwen3.8:27b")) is True
+    record = json.loads((tmp_path / "provider-preflight.json").read_text())
+    assert record["available"] is True and record["models_listed"] == 1
+
+
+def test_the_preflight_names_an_absent_model_before_any_arm_runs(tmp_path, monkeypatch):
+    # The catalogue answers, so this is not an outage: the model is missing.
+    assert _preflight(tmp_path, monkeypatch, _CatalogueClient("other-model")) is False
+    assert json.loads((tmp_path / "provider-preflight.json").read_text())["available"] is False
+
+
+def test_an_unreachable_endpoint_is_a_named_instrument_failure(tmp_path, monkeypatch):
+    assert _preflight(tmp_path, monkeypatch,
+                      _CatalogueClient(error=ConnectionError("endpoint down"))) is None
+    error = json.loads((tmp_path / "provider-preflight-error.json").read_text())
+    assert error["error_kind"] == "network" and error["status_code"] is None
+    assert "endpoint down" not in json.dumps(error)
+
+
+def test_a_protocol_refusal_is_told_apart_from_an_outage(tmp_path, monkeypatch):
+    refusal = RuntimeError("refused")
+    refusal.status_code = 404
+    assert _preflight(tmp_path, monkeypatch, _CatalogueClient(error=refusal)) is None
+    error = json.loads((tmp_path / "provider-preflight-error.json").read_text())
+    assert error["error_kind"] == "protocol" and error["status_code"] == 404
+
+
 def test_a_controller_failure_publishes_code_frames_not_data():
     try:
         raise TypeError("dossier value leaked here")

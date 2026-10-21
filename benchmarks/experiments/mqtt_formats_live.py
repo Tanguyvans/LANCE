@@ -204,6 +204,34 @@ def prediction_check(cases):
                         "prediction holds on this corpus")}
 
 
+def provider_preflight(args, root):
+    """Reachability and model presence, before the first dossier arm runs.
+
+    Three failures produce the same zero: the endpoint is unreachable, the
+    model is absent from it, or the model answers nothing usable. Only the
+    third is a measurement, so the runner names the first two first. The
+    catalogue call generates nothing and carries no dossier content.
+    """
+    from src.agent.provider import _is_network_error
+
+    try:
+        provider = LLMProvider(args.provider, args.model)
+        catalogue = provider.client.with_options(timeout=15, max_retries=0).models.list()
+        available = any(item.id == args.model for item in catalogue.data)
+        write_json(root / "provider-preflight.json", {
+            "provider": args.provider, "model": args.model, "available": available,
+            "models_listed": len(catalogue.data),
+            "purpose": "catalogue only; no model generation"})
+        return available
+    except Exception as exc:
+        write_json(root / "provider-preflight-error.json", {
+            "provider": args.provider, "model": args.model,
+            "error_type": type(exc).__name__,
+            "error_kind": "network" if _is_network_error(exc) else "protocol",
+            "status_code": getattr(exc, "status_code", None)})
+        return None
+
+
 def main_run(args):
     fixtures = load_corpus()
     messages = {len(item["dossier"]["messages"]) for item in fixtures}
@@ -223,6 +251,15 @@ def main_run(args):
         "planned_arms": 2 * len(fixtures) * args.repetitions,
         "budgets": {key: getattr(args, key) for key in
                     ("max_tool_calls", "max_duration_s", "max_cost_usd", "max_turns")}})
+    # An unreachable endpoint or an absent model would spend every arm to
+    # produce the same zero as a model that cannot read the corpus. Stop here,
+    # with a named cause, rather than report 24 arms of nothing.
+    reachable = provider_preflight(args, root)
+    if reachable is not True:
+        raise RuntimeError(
+            "Provider preflight failed: the endpoint is unreachable"
+            if reachable is None else
+            f"Provider preflight failed: model {args.model} is not served")
     results = {"schema_version": 1, "contract": CONTRACT, "scenario_id": SCENARIO,
                "metric": METRIC, "purpose": "hypothesis family; no admission",
                "repetitions": args.repetitions, "arms": ["rules", "llm"],
@@ -307,7 +344,12 @@ def public_summary(root):
             row.update({key: case["evaluation"].get(key) for key in SUMMARY_FIELDS})
         cases.append(row)
     failure_path = root / "controller-failure.json"
+    preflight, preflight_error = root / "provider-preflight.json", root / "provider-preflight-error.json"
     return {"contract": results.get("contract"), "scenario_id": results.get("scenario_id"),
+            "provider_preflight": (json.loads(preflight.read_text())
+                                   if preflight.is_file() else None),
+            "provider_preflight_error": (json.loads(preflight_error.read_text())
+                                         if preflight_error.is_file() else None),
             "metric": results.get("metric"), "repetitions": results.get("repetitions"),
             "arms": results.get("arms"), "corpus_sha256": results.get("corpus_sha256"),
             "summary": results.get("summary"), "prediction": results.get("prediction"),

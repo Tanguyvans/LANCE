@@ -83,8 +83,11 @@ normalisée rendant les deux schémas égaux, bras LLM refusant une preuve non l
 et un dossier partiel. Le corpus de huit fixtures est re-vérifié au chargement et
 sa référence est lue depuis le bras règles (6/8, `variant/raw` 0/2), jamais
 écrite à la main. La vérification de prédiction exige les deux bras et distingue
-une égalité en vue brute d'un gain en vue normalisée, qui relève de H4. Ni
-broker, ni fixture, ni modèle réel. Voir le
+une égalité en vue brute d'un gain en vue normalisée, qui relève de H4. Le pré-vol
+fournisseur est couvert à part : un catalogue joignable nomme le modèle absent, une
+connexion qui n'aboutit pas rend `network`, un refus rend `protocol` et son code,
+sans jamais recopier le message de l'exception. Ni broker, ni fixture, ni modèle
+réel. Voir le
 [protocole H2](../research/2026-10-21-hypotheses-benchmark/h2-protocole.md).
 
 `test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
