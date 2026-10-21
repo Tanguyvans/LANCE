@@ -18,6 +18,7 @@ spec.loader.exec_module(scope)
 @pytest.mark.parametrize("path", [
     "README.md", "AGENTS.md", "tests/README.md", "src/agent/phases/README.md",
     "docs/architecture/run-artifacts.md", "docs/images/example.svg",
+    "objectifs/ETAT-COURANT.md", "objectifs/asiaccs-2027/plan-soumission.md",
     "research/study/report.tex", "research/study/report.pdf", "research/study/sources.bib",
 ])
 def test_known_documents_use_lightweight_checks(path):
@@ -33,7 +34,8 @@ def test_known_empty_diff_requires_no_runtime_checks():
     "src/agent/skills/example/SKILL.md", "research/study/experiment.py",
     "research/study/config.yaml", "docs/example.py", "src/agent/pipeline.py",
     "model_training/train.py", "tests/test_example.py", "requirements.txt",
-    "benchmarks/scenarios/s1.yaml", "Dockerfile", ".dockerignore",
+    "benchmarks/scenarios/s1.yaml", "objectifs/notes.py", "objectifs/data.json",
+    "Dockerfile", ".dockerignore",
     ".github/workflows/docker.yml", ".github/scripts/ci_scope.py", "unknown-file",
 ])
 def test_code_configuration_and_unknown_paths_keep_complete_checks(path):

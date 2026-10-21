@@ -8,7 +8,7 @@ import re
 import subprocess
 
 
-DOCUMENT_ROOTS = ("docs/", "research/")
+DOCUMENT_ROOTS = ("docs/", "objectifs/", "research/")
 DOCUMENT_SUFFIXES = {".md", ".tex", ".pdf", ".bib", ".png", ".jpg", ".jpeg", ".svg", ".webp"}
 DOCUMENT_FILES = {
     "README.md", "AGENTS.md", "LICENSE", "tests/README.md",

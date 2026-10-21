@@ -164,6 +164,9 @@ déploiements par branche dans des dépôts temporaires ; voir le
 `test_ci_scope.py` vérifie le classement des fichiers et de vrais intervalles Git
 (pushs multiples, fusion de PR, suppressions, renommages et historique peu profond),
 le repli vers tous les contrôles en cas d'incertitude et les conditions des workflows.
+Seuls `docs/`, `objectifs/` et `research/` (documents listés) suivent le chemin
+allégé : un push qui ne touche que de la documentation ne relance ni la suite de
+tests, ni l'image scellée, ni un déploiement.
 
 `test_shared_activity.py` couvre les résumés locaux, l’agrégation en lecture
 seule des trois instances, les erreurs de pairs, l’absence de transmission
