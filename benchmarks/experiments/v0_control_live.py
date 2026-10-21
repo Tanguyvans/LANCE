@@ -244,6 +244,22 @@ def spend(directory):
             "cost_usd": costs.get("total_cost_usd")}
 
 
+def threshold_met(summary, threshold):
+    """Whether each arm clears the frozen floor; unknown while X is unfrozen.
+
+    X is a decision floor, not an observation: the gate keeps reading the four
+    outcomes, and this says only whether the run it just measured is above the
+    rate the calibration froze.
+    """
+    if threshold is None:
+        return {"rules": None, "llm": None}
+    met = {}
+    for arm in ("rules", "llm"):
+        values = summary.get(arm) or []
+        met[arm] = (sum(values) / len(values) > threshold) if values else None
+    return met
+
+
 def routing(directory):
     """Turn routing of the LLM arm, or None for an arm that has no turns."""
     path = directory / "routing.json"
@@ -313,6 +329,8 @@ def main_run(args):
         results["summary"] = {"rules": [item["evaluation"]["success"] for item in policies["rules"]],
                               "llm": [item["evaluation"]["success"] for item in policies["llm"]],
                               "outcome": gate(policies)}
+        results["summary"]["threshold_met"] = threshold_met(results["summary"],
+                                                            results.get("threshold"))
         write_json(root / "results.json", results)
         return 0
     except BaseException as exc:

@@ -5,10 +5,11 @@ langage apporte quelque chose qu'un script ne peut pas apporter — et lesquelle
 ne le font pas ?
 
 **Statut.** `proposition` — registre de conception. Aucune famille ouverte,
-aucune fixture, aucun run.
+aucune fixture de famille. Le seul run du registre est celui de la porte V0,
+qui est **partiellement franchie**.
 
 **Dates.** Étude ouverte et classée le 2026-10-21 (Europe/Brussels, UTC+02:00).
-Dernière révision : **2026-10-21 12:45 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-21 14:34 (Europe/Brussels, UTC+02:00)**.
 
 ## Principe
 
@@ -38,11 +39,18 @@ Le protocole complet — tâche de contrôle soluble sans inférence, seuil `X`,
 instance tenue à l'écart, conditions d'arrêt — est dans
 [v0-protocole.md](v0-protocole.md). Le contrôle est implémenté, testé hors
 ligne et doté d'un lanceur nato (`v0_control.py`, `v0_control_llm.py`,
-`v0_control_live.py`, `tests/test_v0_control.py`, workflow `v0-control.yml`).
+`v0_control_live.py`, `v0-control-manifest.json`, `tests/test_v0_control.py`,
+workflow `v0-control.yml`).
 Un smoke de 8 étapes a rendu `instrument_defect` et a fait corriger deux
 défauts d'instrument : clôture acceptant une liste incomplète, et réserve de
-tours oubliée (N plafonné à 30). Le premier passage de 30 étapes ×
-3 répétitions reste à faire ; `X` n'est pas gelé.
+tours oubliée. Le passage de 30 étapes × 3 répétitions a rendu `instrument_defect`
+à son tour — le bras règles 3/3, le bras LLM 2/3, la troisième répétition
+épuisant ses tours sans décision terminale — et a fait ajouter une marge de
+routage de six tours : `N` est ramené à 24. Le passage de calibration
+(24 étapes × 3) rend `valid_control` : les deux bras réussissent 24/24 à chaque
+répétition. `X = 0,9` est gelé dans le manifeste de campagne, et le contrôle est
+déclaré **saturant** : il détecte un défaut répété, pas un défaut rare. V0 est
+**partiellement franchie** en ce sens.
 
 | Observation | Lecture | Action |
 | --- | --- | --- |
@@ -54,7 +62,10 @@ tours oubliée (N plafonné à 30). Le premier passage de 30 étapes ×
 **Plancher chiffré.** Sur la famille de contrôle, les deux bras doivent réussir
 au-dessus d'un seuil `X`, gelé **après** le premier pilote et jamais avant. Un
 instrument qui réussit partout ne détecte rien : le contrôle doit porter sur une
-tâche à taux d'erreur non nul, pas sur une tâche saturée.
+tâche à taux d'erreur non nul, pas sur une tâche saturée. `X = 0,9` est gelé
+dans `benchmarks/experiments/v0-control-manifest.json` ; à trois répétitions,
+trois succès passent et un échec échoue. Le contrôle reste **saturant** : c'est
+sa limite déclarée, pas un résultat caché.
 
 **Instance tenue à l'écart.** SSH et MQTT ont servi à mettre au point le harnais
 et le prompt. La famille de contrôle doit utiliser des identifiants tirés à
@@ -237,7 +248,8 @@ indépendantes : `statistical_independence: not_established` partout.
 ## Ordre de construction
 
 1. **V0** sur SSH/MQTT avec une instance tenue à l'écart. Coût minimal, condition
-   d'interprétation de tout le reste.
+   d'interprétation de tout le reste. **Faite, partiellement franchie** :
+   `valid_control`, `X = 0,9`, saturation déclarée.
 2. **H2** sur `s_mqtt_formats` : dossier hors ligne, oracle d'interprétation,
    double vue déjà prévue par C04. La famille la moins chère.
 3. **H3** sur C05 : réutilise le patron du harnais API (routes documentées,
@@ -278,4 +290,6 @@ indépendantes : `statistical_independence: not_established` partout.
   hors ligne et la revue à trois lentilles.
 - **Aucun intervalle** n'est calculable à une famille par hypothèse. Le registre
   produit un profil descriptif ; l'inférence exige des familles indépendantes.
-- **Le plancher `X` de V0** sera gelé après le premier pilote.
+- **Le contrôle V0 est saturant** : il détecte un défaut répété, pas un défaut
+  rare. Une détection plus fine demanderait plus de répétitions, donc un coût
+  qui n'est pas celui d'une porte de validité.

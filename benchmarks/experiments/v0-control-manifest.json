@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "contract": "v0-control-calibration-v1",
+  "scenario_id": "v0_fidelite_mqtt",
+  "steps": 24,
+  "repetitions": 3,
+  "threshold": 0.9,
+  "threshold_rule": "each arm must succeed strictly above X on the control",
+  "threshold_frozen": true,
+  "frozen_at": "2026-10-21 14:28 (Europe/Brussels, UTC+02:00)",
+  "saturating": true,
+  "saturation_reading": "both arms succeeded on every repetition at the highest step count that keeps the routing slack; the control cannot detect a rate defect below one failure in three, and its detection power drops to catching a repeated defect",
+  "evidence": {
+    "run_id": "39597630837",
+    "git_commit": "375141b15c8abc6c941d757f3fe8bd7347833a63",
+    "provider": "ollama-umons",
+    "model": "qwen3.8:27b",
+    "arms": {
+      "rules": [true, true, true],
+      "llm": [true, true, true]
+    }
+  }
+}

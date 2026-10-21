@@ -67,10 +67,12 @@ les deux bras exécutent une procédure publique dans l'ordre déclaré, l'oracl
 lie une charge utile distincte par étape, et la mesure recalculée depuis le
 journal distingue étape sautée, référence inventée, charge utile périmée et
 budget épuisé et clôture incomplète refusée. Le même fichier couvre le lanceur
-nato hors réseau : briefing en 30 étapes alternant les deux abonnements de la
-fixture, précontrôle qui refuse un canari absent, exécution du bras règles
-mesurée depuis le journal, projection du résultat dans le journal sans valeur
-privée, et lecture des quatre issues. Le broker, le fournisseur et Proxmox sont simulés ;
+nato hors réseau : briefing en 24 étapes alternant les deux abonnements de la
+fixture, budget refusé sans réserve de clôture ni marge de routage, précontrôle
+qui refuse un canari absent, exécution du bras règles mesurée depuis le journal,
+routage des tours publié en nombres, seuil `X` lu dans le manifeste de campagne
+et non dans le code, projection du résultat dans le journal sans valeur privée,
+et lecture des quatre issues. Le broker, le fournisseur et Proxmox sont simulés ;
 aucun run nato n'a lieu ici. Voir le
 [protocole V0](../research/2026-10-21-hypotheses-benchmark/v0-protocole.md).
 

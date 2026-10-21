@@ -457,6 +457,26 @@ def test_a_manifest_that_does_not_freeze_a_rate_is_refused(tmp_path, change):
         v0live.frozen_threshold(manifest, steps=24)
 
 
+def test_the_campaign_manifest_freezes_the_rate_of_this_control():
+    from benchmarks.experiments import v0_control_live as v0live
+    frozen = v0live.frozen_threshold(steps=v0live.MAX_STEPS)
+    assert frozen["threshold_frozen"] is True
+    assert 0.0 < frozen["threshold"] < 1.0
+    assert frozen["saturating"] is True
+    evidence = frozen["threshold_evidence"]
+    assert evidence["run_id"] and evidence["git_commit"]
+    assert evidence["arms"] == {"rules": [True] * 3, "llm": [True] * 3}
+    # X is the floor the first passage froze: three successes in three
+    # repetitions clear it, and the defect that passage exposed — one failure
+    # in three — does not.
+    x = frozen["threshold"]
+    assert v0live.threshold_met({"rules": [True] * 3, "llm": [True] * 3}, x) \
+        == {"rules": True, "llm": True}
+    assert v0live.threshold_met({"rules": [True] * 3, "llm": [True, True, False]}, x) \
+        == {"rules": True, "llm": False}
+    assert v0live.threshold_met({}, None) == {"rules": None, "llm": None}
+
+
 def test_routing_is_published_as_counts_and_never_as_content():
     from benchmarks.experiments.v0_control_llm import routing
     events = [

@@ -1,14 +1,17 @@
 # Protocole V0 — porte de validité de l'instrument
 
-**Statut.** `proposition` — contrôle implémenté, testé hors ligne et exécuté
-sur nato en deux smokes (8 étapes, 1 répétition) ; le premier passage de
-calibration et le seuil `X` restent à faire. Le contrôle porte sur la fixture
-MQTT existante à deux abonnements, répétés en alternance.
+**Statut.** `partiellement franchie` — contrôle implémenté, testé hors ligne et
+exécuté sur nato : deux smokes de 8 étapes, un passage de 30 étapes qui a rendu
+`instrument_defect` et fait corriger le budget de tours, puis le passage de
+calibration à 24 étapes × 3 répétitions, `valid_control`, `X = 0,9` gelé et
+saturation déclarée. Le contrôle porte sur la fixture MQTT existante à deux
+abonnements, répétés en alternance.
 **Date.** 2026-10-21 (Europe/Brussels, UTC+02:00). Dernière révision :
-**2026-10-21 12:45 (Europe/Brussels, UTC+02:00)**.
-**Portée.** Ce document définit comment franchir V0, pas ce que V0 prouvera.
-**Format.** Document de travail, sans résultat ni figure ; il rejoindra le
-rapport compilé au premier run, avec source LaTeX et PDF.
+**2026-10-21 14:34 (Europe/Brussels, UTC+02:00)**.
+**Portée.** Ce document définit comment franchir V0, ce que V0 a rendu, et ce
+qu'elle ne prouve pas.
+**Format.** Document de travail, sans figure ; il rejoindra le rapport compilé
+avec source LaTeX et PDF.
 
 ## Question
 
@@ -45,16 +48,27 @@ de les exécuter et d'en produire la preuve, pas de les comprendre.
 **Non-saturation.** N est choisi aussi proche que possible du budget déclaré
 (32 appels et 32 tours sont les maxima du harnais actuel), de sorte que le
 contrôle ne soit pas saturé. Le harnais SSH limite par défaut à 8 appels et
-12 tours : le contrôle utilise la borne haute, pas les valeurs du pilote.
+12 tours : le contrôle utilise la borne haute, pas les valeurs du pilote. Les
+deux exigences se contredisent en partie — monter N sature moins mais laisse
+moins de tours de routage — et la borne retenue est celle qui garde la marge :
+`N = 24`.
 
 **Réserve de tours.** La boucle du fournisseur réserve ses deux derniers tours
 à l'appel terminal : à `max_turns = T`, le modèle ne peut collecter que `T - 2`
-observations. Une procédure de N étapes consomme donc N appels de données et
-`N + 2` tours. Le plafond des deux budgets étant 32, `N = 30` est la borne
-haute : au-delà, le modèle serait forcé de conclure avant d'avoir exécuté la
-procédure déclarée, et l'échec se lirait à tort comme une faiblesse du modèle.
-La réserve ne donne aucune capacité de collecte supplémentaire : elle remplace
-deux tours perdus, elle n'en ajoute pas.
+observations. Une procédure de N étapes consomme donc N appels de données et au
+moins `N + 2` tours. La réserve ne donne aucune capacité de collecte
+supplémentaire : elle remplace deux tours perdus, elle n'en ajoute pas.
+
+**Marge de routage.** Un tour peut aussi ne produire aucun appel de données :
+réponse en texte seul, appel répété refusé, arguments malformés. Ces tours ne
+consomment pas le plafond d'appels, seulement le plafond de tours. Le premier
+passage de 30 étapes en a dépensé quatre sur les 32 tours et s'est clos sans
+décision terminale : la porte a lu `instrument_defect`, qui est bien un défaut
+d'instrument et non une faiblesse du modèle. Le budget distingue donc deux
+plafonds — `N` appels de données, `N + 2 + 6` tours — et `N = 24` est la borne
+haute qui garde six tours de routage sous le maximum de 32 du harnais. Le
+contrôle refuse désormais un budget dont le plafond de tours ne couvre pas la
+réserve et la marge.
 
 **Aucune asymétrie.** Le bras règles reçoit la même boucle en N étapes. Si le
 script réussit parce qu'une étape est triviale pour lui mais pas pour le modèle,
@@ -75,7 +89,9 @@ nul par construction.
 **Seuil `X`.** Chaque bras doit réussir au-dessus de `X` sur le contrôle.
 `X` est gelé **après** le premier passage, jamais avant, et reste dans le
 manifeste de campagne. Un `X` choisi à l'avance serait un seuil d'observation,
-pas un seuil de décision.
+pas un seuil de décision. Il est gelé à `0,9`
+(`benchmarks/experiments/v0-control-manifest.json`) : à trois répétitions,
+trois succès passent, un échec échoue.
 
 **Saturation.** Si les deux bras réussissent partout au premier passage, le
 contrôle ne détecte rien : durcir N dans la limite du budget déclaré, puis
@@ -101,6 +117,9 @@ comme limite, pas passée sous silence.
 - Rien sur la validité de l'oracle des familles : V0 contrôle l'exécution, pas
   la vérité terrain.
 - Rien sur l'admission : `strict_v3_metrics_adopted` reste hors de portée.
+- Rien sur un défaut rare : le contrôle est saturant au premier passage, donc
+  il détecte un défaut répété (un échec sur trois suffit à passer sous `X`),
+  pas un défaut intermittent qu'aucune des trois répétitions n'aurait capté.
 
 ## Implémentation actuelle (2026-10-21)
 
@@ -116,14 +135,17 @@ Contrat `v0-control-calibration-v1`, scénario `v0_fidelite_mqtt`.
   exécute les deux bras dans un ordre alterné selon la répétition, détruit la
   fixture à chaque répétition pour retirer de nouveaux secrets, et écrit
   `results.json` avec l'issue des quatre cas. Commande `cleanup` pour
-  récupérer un contrôleur interrompu.
+  récupérer un contrôleur interrompu ; commande `summary` pour le journal.
+- `benchmarks/experiments/v0-control-manifest.json` : le seuil `X` gelé, la
+  déclaration de saturation et la provenance de la mesure (run, commit, modèle,
+  succès par bras). Absent, le contrôle enregistre `X` non gelé.
 - `.github/workflows/v0-control.yml` : `workflow_dispatch` manuel sur
   `nato-master`, sous le verrou de laboratoire partagé, depuis `dev/2`.
 
 Ce qui est imposé par le code :
 
 - le briefing ne porte que la procédure — sujet littéral, identifiant optionnel,
-  fenêtre d'écoute, 1 à 30 étapes ; un sujet à joker, un champ d'oracle ou une
+  fenêtre d'écoute, 1 à 24 étapes ; un sujet à joker, un champ d'oracle ou une
   valeur non finie sont refusés ;
 - l'oracle lie un condensat de charge utile par étape au condensat du
   briefing ; il ne peut pas être rejoué sur une autre instance. Deux étapes
@@ -136,8 +158,14 @@ Ce qui est imposé par le code :
   une liste incomplète (une référence par étape déclarée), sans quoi le bras
   LLM pouvait clore un contrôle tronqué qui se lisait comme un échec de modèle ;
 - la commande `summary` projette le résultat dans le journal du run — issue,
-  nombres d'étapes, discordances et dépense — sans charge utile, canari ni
-  identifiant ;
+  nombres d'étapes, discordances, dépense et, pour le bras LLM, le routage des
+  tours en nombres (appels refusés, arguments malformés, cause d'arrêt) — sans
+  charge utile, canari ni identifiant ;
+- le contrôle refuse un budget dont le plafond de tours ne couvre pas la
+  procédure, la réserve de clôture et la marge de routage ;
+- `X` est lu dans un manifeste de campagne, jamais dans le code : manifeste
+  absent signifie `X` non gelé, et un seuil calibré sur un autre nombre d'étapes
+  ne s'applique pas ;
 - la mesure est recalculée depuis le journal : étapes exécutées, sautées,
   charges utiles discordantes, références en trop. La réussite exige le statut
   terminal `completed`, toutes les étapes, aucune discordance et aucune
@@ -145,9 +173,10 @@ Ce qui est imposé par le code :
 - un run tronqué par le budget est enregistré `budget_exceeded` des deux côtés,
   jamais lu comme un échec de compétence.
 
-Vérification : `tests/test_v0_control.py`, 40 tests hors ligne (broker et
+Vérification : `tests/test_v0_control.py`, 55 tests hors ligne (broker et
 fournisseur simulés, exécuteur et enregistreur réels) ; le précontrôle, les
-deux bras, le refus d'une clôture incomplète, la projection du journal, la
+deux bras, le refus d'une clôture incomplète, la projection du journal, le
+routage des tours, le refus d'un budget sans marge, la lecture du manifeste, la
 lecture des quatre issues et la reprise sur dossier interrompu sont couverts.
 
 **Smokes du 2026-10-21 (8 étapes, 1 répétition, `qwen3.8:27b`).** Le premier a
@@ -164,11 +193,50 @@ en trop, le bras règles en 40 s et 8 appels (0 $), le bras LLM en 64,6 s,
 8 appels et 0,029 $. Un smoke n'est pas le premier passage : `X` reste non
 gelé.
 
-Ce qui reste avant un premier passage :
+**Premier passage du 2026-10-21 (30 étapes, 3 répétitions, `qwen3.8:27b`,
+run 39592971744, `dev/2` à `ae32dd7`).** Le bras règles réussit 3/3, à 30 appels
+et 150 s par répétition. Le bras LLM réussit 2/3 : la troisième répétition
+exécute 28 appels de données dans les 32 tours, puis se clôt sans décision
+terminale (`outcome: unknown`, 320 s, 0,418 $). Quatre tours ont donc produit
+autre chose qu'un appel de données, et le plafond de tours, égal aux 32 du
+harnais, n'en laissait aucun. La porte rend `instrument_defect` : c'est le
+résultat attendu d'un contrôle, pas une mesure de compétence. La correction
+donne au bras LLM six tours de routage en plus de la réserve de clôture et
+ramène `N` à 24 (commit `375141b`).
 
-1. le premier passage réglé sur 30 étapes et 3 répétitions ;
-2. le gel de `X` dans le manifeste, après ce passage seulement, et la
-   déclaration de saturation si les deux bras réussissent partout.
+Ce passage n'est pas le premier passage de calibration : il a servi à corriger
+l'instrument.
+
+**Passage de calibration du 2026-10-21 (24 étapes, 3 répétitions,
+`qwen3.8:27b`, run 39597630837, `dev/2` à `375141b`).** Les deux bras
+réussissent partout : `valid_control`, 24/24 étapes sur chacune des trois
+répétitions, aucune discordance de charge utile, aucune référence en trop. Le
+bras règles dépense 24 appels et 120 s par répétition (0 $) ; le bras LLM
+dépense 24 appels de données et un appel de clôture, entre 160 et 182 s, pour
+0,026 $, 0,163 $ et 0,194 $ selon la répétition. Le routage des tours est
+enregistré : les trois répétitions atteignent la clôture acceptée
+(`cause=accepted_save`) sans aucun tour perdu, en 2, 25 et 25 tours utiles.
+
+**Saturation déclarée.** Les deux bras réussissent partout au premier passage,
+et `N = 24` est la borne haute compatible avec la marge de routage : durcir `N`
+dans les bornes du harnais reviendrait à retirer cette marge et à reproduire le
+défaut du passage précédent. Le contrôle ne détecte donc pas un défaut de taux
+inférieur à un échec sur trois ; il détecte un défaut répété. Cette limite est
+au registre, elle n'est pas passée sous silence.
+
+**Seuil `X` gelé.** `X = 0,9`, dans
+`benchmarks/experiments/v0-control-manifest.json`, avec le run et le commit de
+la mesure. Un bras doit réussir **strictement au-dessus** de `X` : à trois
+répétitions, trois succès passent et un seul échec échoue. Le seuil n'est pas
+un taux observé recopié, c'est le plancher qui aurait refusé le passage
+précédent (2/3) et accepté celui-ci (3/3). Le manifeste porte aussi `saturating`
+et la lecture de la saturation ; le contrôle relit ce fichier, refuse un seuil
+qui ne serait pas gelé et refuse qu'un seuil calibré sur un autre nombre
+d'étapes s'applique.
+
+**V0 est déclarée partiellement franchie**, au sens de la première condition
+d'arrêt : l'instrument est lisible pour la parité d'exécution et pour un défaut
+répété, pas pour un défaut rare.
 
 ## Conditions d'arrêt
 
