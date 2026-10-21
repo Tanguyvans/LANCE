@@ -1,6 +1,6 @@
 # Pistes de la plateforme
 
-**Dernière mise à jour : 2026-10-20 23:34 (Europe/Brussels, UTC+02:00).**
+**Dernière mise à jour : 2026-10-21 10:30 (Europe/Brussels, UTC+02:00).**
 
 Registre d'idées pour la plateforme, hors du chemin critique de la soumission
 AsiaCCS. Une piste n'est ni un plan ni une promesse : c'est une hypothèse de
@@ -79,8 +79,9 @@ compétence.
 
 ## Candidats instruits et rejetés
 
-Rejetés par la vérification adverse à trois lentilles (honnêteté,
-mesurabilité, faisabilité) le 2026-10-20. Le motif décisif reste écrit.
+Rejetés par les vérifications adverses (honnêteté, mesurabilité, faisabilité)
+des 2026-10-20 et 2026-10-21. Le motif décisif reste écrit ; le détail du C2
+est dans [le verdict](../research/2026-10-21-c2-couverture/revue.md).
 
 | Candidat | Motif décisif |
 | --- | --- |
@@ -89,6 +90,9 @@ mesurabilité, faisabilité) le 2026-10-20. Le motif décisif reste écrit.
 | Edge contrat B (précondition en prose) | Contredit la définition C05 (« à partir du contrat public ») et le test de clôture |
 | Chaîne de prérequis | Mauvais scénario (C09 exige trois défauts) et oracle contradictoire |
 | Cache et attribution | La faille se contredit (« la clé inclut l'identité ») ; la preuve est un format de journal, pas une observation |
+| Jeton de service à portée confuse (C2, candidat A) | Trilemme : services publics → D1+ réussit ; refus nommant le service → D1+ parse ; refus muet → devinette de noms. Le plan se contredit entre son D1+ et son hypothèse de survie |
+| Prérequis d'état non documenté (C2, candidat B) | Mauvais rattachement (C09/C10, pas C06) et trois issues toutes non conformes : route documentée → D1+ la trouve ; route cachée → devinette ; échec par budget → critère violé |
+| Variante B2 : coût de recherche d'état (C09/C10) | Seule survivante technique, mais elle mesure l'efficacité de recherche sous budget, pas la clôture informationnelle ; exige un amendement du critère de budget, une borne inférieure prouvée et une famille supplémentaire. N'est pas poursuivie dans la campagne en cours |
 
 ## Ce qu'il ne faut pas reproposer
 

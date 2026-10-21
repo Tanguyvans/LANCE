@@ -38,10 +38,13 @@ du LLM n'est démontré.
 ## Dates
 
 - Début de l'objectif : **2026-10-12**.
-- Point de décision soumission / repli : **2026-11-16** (critères dans le plan).
-- Soumission visée : **2026-12-11 (AoE)**, AsiaCCS 2027 round 2.
+- Décision soumission / repli : à la condition écrite dans le plan (manuscrit
+  relisible et artefact prêt), sans date interne.
+- Soumission visée : **2026-12-11 (AoE)**, AsiaCCS 2027 round 2. C'est la seule
+  contrainte externe ; elle n'ordonne pas les étapes.
 - Conférence : 12-16 juillet 2027, Macao.
-- Dernière mise à jour de ce dossier : **2026-10-19**.
+- Dernière mise à jour de ce dossier : **2026-10-21 10:30 (Europe/Brussels,
+  UTC+02:00)**.
 
 ## Synthèse
 
@@ -99,8 +102,9 @@ Consolidation documentaire : **2026-10-19 (Europe/Brussels, UTC+02:00)**.
    `blocked-new-freeze-required`. Les dépassements précédents restent dans
    le registre ; aucune reprise ne les remplace.
 2. Calibrer le seuil delta sur le pilote, jamais après observation du test.
-3. Décider le 2026-11-16 selon les critères du plan : soumission AsiaCCS,
-   ou repli workshop / version journal ultérieure.
+3. Décider selon les critères du plan, quand la condition de décision est
+   remplie (manuscrit relisible, artefact prêt) : soumission AsiaCCS, ou repli
+   workshop / version journal ultérieure.
 4. Préparer tôt l'artefact anonymisé exigé par l'appendice Open Science.
 
 ## Point de reprise du 15 octobre 2026

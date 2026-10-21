@@ -1,16 +1,48 @@
 # État courant : point de reprise
 
-**Dernière mise à jour : 2026-10-20 23:34 (Europe/Brussels, UTC+02:00).**
+**Dernière mise à jour : 2026-10-21 10:30 (Europe/Brussels, UTC+02:00).**
 Cette page sert de point d'entrée pour reprendre le travail rapidement dans une
 nouvelle session. Elle ne remplace pas les documents de référence : elle dit
 **où on en est**, **ce qui est prêt**, et **ce qui peut être fait en parallèle ou
 non**. Voir [l'objectif AsiaCCS 2027](asiaccs-2027/README.md) et
 [l'étude de recentrage V2](../research/2026-10-12-recentrage-corpus/README.md).
 
+## Objectif et priorités (révisé le 2026-10-21)
+
+**But global.** Un auditeur de réseaux IoT/IIoT autonome et prouvable : il
+explore, trouve, vérifie et rapporte, avec des preuves recalculables.
+
+**Priorités actuelles, dans cet ordre :**
+
+1. **Le benchmark** — un instrument d'évaluation comparative des modèles, à
+   couverture maximale, contre d'autres LLM et contre des scripts déclarés.
+   Il est structuré par un
+   [registre d'hypothèses](../research/2026-10-21-hypotheses-benchmark/README.md)
+   (V0 et H1-H6), pas par une liste de scénarios.
+2. **La plateforme** — déploiement et lancement : installer, lancer un audit,
+   suivre, récupérer, isoler, nettoyer.
+
+**Hors priorité :** l'entraînement des modèles. **Conséquence :** le papier
+AsiaCCS est le compte rendu de ce que le benchmark mesure ; il ne pilote pas
+l'ordre des travaux.
+
+**Règle de planification.** Aucune étape interne n'est datée. Une étape commence
+quand la précédente est vérifiée. La seule contrainte externe est la date de
+soumission, documentée dans le
+[plan de soumission](asiaccs-2027/plan-soumission.md) ; elle ne justifie ni un
+périmètre réduit non validé, ni un résultat non mesuré.
+
+**C2 est clos pour la campagne en cours.** Les deux mécanismes ont été rejetés
+sur papier le 2026-10-21 ; le
+[verdict](../research/2026-10-21-c2-couverture/revue.md) explique pourquoi. La
+variante B2 (coût de recherche d'état) n'est pas poursuivie : elle changerait la
+thèse et relèverait d'une autre campagne.
+
 ## Où en est le dépôt
 
-`main` et `dev/2` sont alignés (`git log -1 --oneline`) : reporter `main` sur
-`dev/2` avant tout nouveau pilote. Le pilote de référence de
+`main` et `dev/2` sont alignés sur `ed7686e` (vérifié au 2026-10-21) : tout
+nouveau commit sur `main` doit être reporté sur `dev/2` avant un nouveau pilote.
+Le pilote de référence de
 `s_api_organisations` (contrat v2) est exécuté ; les deux pilotes V2 (SSH et
 MQTT, 3 répétitions, `qwen3.8:27b`) restent exploitables.
 
@@ -110,18 +142,30 @@ admis** (une famille, une répétition, strict-v3 non adoptées).
 
 Le panneau de modèles est couvert : les deux modèles réussissent partout, le
 MoE coûtant environ le double. La variabilité inter-répétitions est mesurée
-pour les deux.
+pour les deux. Mais ces résultats sont **descriptifs** : ils montrent que
+l'instrument mesure, pas quand un LLM est utile.
 
-Deux décisions de fond restent, dans cet ordre :
+Ce qui manque, dans l'ordre :
 
-1. **Trancher la cible** : le succès est saturé (les deux bras réussissent les
-   douze paires), donc la mesure primaire du plan de soumission — l'écart en
-   vrais positifs confirmés strict-v3, testé en supériorité — n'est pas
-   atteignable avec ces fixtures. Soit on défend le **coût à résultat non
-   inférieur** (C3), soit on construit des scénarios où les règles échouent (C2).
-2. **Deux scénarios par harnais** : aucune campagne ne produira d'intervalle
-   tant qu'un harnais ne couvre pas au moins deux scénarios. Ajouter des modèles
-   ou des répétitions n'y change rien.
+1. **Un harnais paramétrable** : aujourd'hui un scénario est un module
+   verrouillé (`scenario_id` imposé, `families=1`, oracle et évaluateur figés).
+   Tant que ce n'est pas réglé, ajouter une famille revient à dupliquer du code.
+2. **Les familles du [registre d'hypothèses](../research/2026-10-21-hypotheses-benchmark/README.md)**
+   H1-H6, avec leur oracle, leur baseline déclarée et leur mesure propre. C'est
+   la contribution du benchmark : une matrice d'hypothèses, pas un nombre de
+   scénarios.
+3. **La couverture déclarée** : publier ce qui est couvert et ce qui ne l'est
+   pas. Un benchmark qui assume ses trous est plus solide qu'un benchmark qui
+   prétend tout couvrir.
+4. **Une deuxième famille indépendante par harnais**, si l'on veut des
+   intervalles. Ce n'est plus le conducteur du travail, mais la condition d'une
+   revendication statistique.
+5. **La plateforme** : déploiement reproductible, lancement, suivi,
+   récupération des résultats, isolation. Elle ne se mesure pas en précision —
+   c'est le rôle du benchmark.
+
+La précision du cœur d'audit (les 5 faux positifs S15) reste un objectif, mais
+elle appartient au benchmark qui la mesure, pas à la plateforme.
 
 ## Conditions de démarrage d'une session
 
@@ -134,27 +178,36 @@ Deux décisions de fond restent, dans cet ordre :
   ```
 - **Cible d'exécution** : nato / `pve-nato` via le runner `nato-master`
   uniquement. Le homelab personnel est hors périmètre.
-- **Blocage levé le 2026-10-20** : `dev/2` suit `main` (`9a283f8`), CI verte et
-  `dev-2` redéployé. Un futur commit sur `main` doit à nouveau être reporté sur
-  `dev/2` avant tout nouveau pilote.
+- **Blocage levé le 2026-10-20** : `dev/2` suivait alors `main` (`9a283f8`),
+  CI verte et `dev-2` redéployé ; l'alignement courant est `ed7686e`. Un futur
+  commit sur `main` doit à nouveau être reporté sur `dev/2` avant tout nouveau
+  pilote.
 
 ## Plan de travail
 
-### Séquence obligatoire
+Les étapes ci-dessous décrivent la séquence V2 historique. Elles restent
+valides pour ce qu'elles couvrent, mais elles ne sont plus le conducteur :
+l'ordre courant est le registre d'hypothèses, puis le harnais paramétrable,
+puis la plateforme. Le pilote MoE reste une mesure utile, pas un préalable.
+
+### Séquence V2
 
 Ces étapes dépendent les unes des autres ; les paralléliser invaliderait les
 mesures.
 
-1. ~~**Avancer `dev/2` sur `main`**~~ — **fait le 2026-10-20** : `dev/2` est à
-   `4e82f6f`, CI verte et `dev-2` redéployé.
+1. ~~**Avancer `dev/2` sur `main`**~~ — **fait le 2026-10-20** : `dev/2` était
+   alors à `4e82f6f`, CI verte et `dev-2` redéployé ; réaligné depuis
+   (`ed7686e`).
 2. ~~**Pilote SSH**~~ — **fait le 2026-10-20** : run `39465619725`, 6 paires
    admissibles, un premier passage invalidé par un `TypeError` corrigé en
    `74c218a`.
 3. ~~**Pilote MQTT**~~ — **fait le 2026-10-20** : run `39467657683`, 6 paires
    admissibles.
-4. **Pilote SSH + MQTT avec le modèle MoE** (`gemma4:26b-a4b-it-q4_K_M`), le
-   seul reste à exécuter. Le panneau est verrouillé à ces deux modèles ;
-   l'inférence reste séparée par configuration, jamais regroupée.
+4. ~~**Pilote SSH + MQTT avec le modèle MoE**~~ — **fait** : runs
+   `39480713050` (SSH) et `39482737529` (MQTT), 3 répétitions chacun. Le
+   panneau est verrouillé à ces deux modèles ; l'inférence reste séparée par
+   configuration, jamais regroupée. Les commandes ci-dessous restent la
+   procédure de reproduction.
    ```bash
    gh workflow run benchmark-integrity.yml --ref dev/2 -f slot=dev-2 \
      -f ssh_reference=true -f ssh_provider=ollama-umons \
@@ -181,7 +234,7 @@ pilote tourne, ou avant lui.
 
 | Tâche | Pourquoi c'est parallélisable | Où |
 | --- | --- | --- |
-| **`s_api_organisations`, pilote v2** | Contrat v2, fixture, baseline, évaluateur, politique LLM, harnais vivant et premier pilote réel faits ; reste la deuxième famille, les répétitions et l'attestation de posture. | `benchmarks/experiments/api-reference/` |
+| **`s_api_organisations`, pilote v2** | Contrat v2, fixture, baseline, évaluateur, politique LLM, harnais vivant et premier pilote réel faits ; restent les répétitions et l'attestation de posture. C'est une **étude de cas de couverture**, pas une famille de revendication. | `benchmarks/experiments/api-reference/` |
 | **Précision S15** | Les 5 faux positifs confirmés (SSH routeur, `/docs`) se traitent en lisant `04_exploitation.json` du run `2026-10-19_205307` sur nato. | nato, API |
 | **Artefact anonymisé AsiaCCS** | Exigé par l'appendice Open Science. Bloquant en cas d'absence et long à préparer. | [plan](asiaccs-2027/plan-soumission.md) §6 |
 | **Squelette du papier** | Structure, contributions, bibliographie. | [plan](asiaccs-2027/plan-soumission.md) |
@@ -200,17 +253,28 @@ cours.
 - **Le gel et le pilote** : geler les marges ou `delta_min` avant d'avoir la
   variabilité reviendrait à figer à l'aveugle. Le pilote d'abord.
 
-## Décisions en attente
+## Étapes et conditions de démarrage
 
-| Décision | Échéance | État |
+Aucune étape interne n'est datée. Une étape commence quand la précédente est
+vérifiée.
+
+| Étape | Condition de démarrage | État |
 | --- | --- | --- |
-| Avancer `dev/2` sur `main` | ~~immédiat~~ | **Fait** le 2026-10-20 |
-| Pilotes SSH et MQTT, `qwen3.8:27b` | ~~immédiat~~ | **Faits** le 2026-10-20 |
-| Pilotes SSH et MQTT, modèle MoE | immédiat | Prêt |
-| Deuxième scénario par harnais (condition d'un intervalle) | **avant** marges et `delta_min` | Nouveau, à trancher |
-| Marges, `delta_min`, unité d'indépendance | **après** le pilote | Volontairement reporté |
-| Soumission AsiaCCS ou repli | **2026-11-16** | Critères dans le plan |
-| Soumission | **2026-12-11 (AoE)** | — |
+| Avancer `dev/2` sur `main` | — | **Fait** le 2026-10-20 |
+| Pilotes SSH et MQTT, `qwen3.8:27b` | — | **Faits** le 2026-10-20 |
+| Pilotes SSH et MQTT, modèle MoE | — | **Faits** : runs `39480713050` et `39482737529` |
+| [Registre d'hypothèses](../research/2026-10-21-hypotheses-benchmark/README.md) V0 et H1-H6 | — | **Rédigé** le 2026-10-21 |
+| Porte de validité V0 sur SSH/MQTT, instance tenue à l'écart | registre validé | À faire |
+| Harnais paramétrable (un scénario = un module) | V0 franchie | À faire |
+| Familles H2, H3, H4 : oracle, baseline, évaluateur | harnais paramétrable | À faire |
+| Deuxième famille indépendante par harnais | une famille H2 ou H3 opérationnelle | À faire ; condition d'un intervalle, pas du travail courant |
+| Marges, `delta_min`, unité d'indépendance | données de plusieurs familles | Volontairement reporté |
+| Plateforme : déploiement et lancement reproductibles | benchmark exécutable de bout en bout | À faire |
+| Décision de soumission | manuscrit relisible et artefact prêt | Contrainte externe : **2026-12-11 (AoE)** |
+
+La date de soumission est la seule contrainte externe. Elle n'ordonne pas les
+étapes : si une condition n'est pas remplie, l'étape suivante ne commence pas,
+quelle que soit la date.
 
 ## Limites à ne pas oublier
 
