@@ -75,6 +75,17 @@ et non dans le code, projection du résultat dans le journal sans valeur privée
 et lecture des quatre issues. Le broker, le fournisseur et Proxmox sont simulés ;
 aucun run nato n'a lieu ici. Voir le
 [protocole V0](../research/2026-10-21-hypotheses-benchmark/v0-protocole.md).
+`test_mqtt_formats.py` qualifie le harnais H2 hors ligne : dossier gelé refusé
+s'il porte un champ d'étiquette ou un topic non littéral, oracle lié au condensat
+du dossier, verdict obligé de citer une lecture de son propre message, bras
+règles couvrant le schéma déclaré et s'abstenant sur un schéma non déclaré, vue
+normalisée rendant les deux schémas égaux, bras LLM refusant une preuve non lue
+et un dossier partiel. Le corpus de huit fixtures est re-vérifié au chargement et
+sa référence est lue depuis le bras règles (6/8, `variant/raw` 0/2), jamais
+écrite à la main. La vérification de prédiction exige les deux bras et distingue
+une égalité en vue brute d'un gain en vue normalisée, qui relève de H4. Ni
+broker, ni fixture, ni modèle réel. Voir le
+[protocole H2](../research/2026-10-21-hypotheses-benchmark/h2-protocole.md).
 
 `test_procedure_catalogue.py` vérifie le catalogue versionné et la disponibilité
 des outils. `test_procedure_runs.py` couvre le tableau paginé des exécutions,

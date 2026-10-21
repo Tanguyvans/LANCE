@@ -1,0 +1,450 @@
+{
+  "contract": "mqtt-formats-interpretation-v1",
+  "fixtures": [
+    {
+      "dossier": {
+        "fixture_type": "s_mqtt_formats_t01",
+        "instance_id": "h2-t01",
+        "messages": [
+          {
+            "encoding": "utf-8",
+            "message_id": "m1",
+            "payload": "{\"dev_id\": \"sensor-hall-a\", \"temp_c\": 21.5, \"state\": \"ok\"}",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/hall/a"
+          },
+          {
+            "encoding": "utf-8",
+            "message_id": "m2",
+            "payload": "{\"dev_id\": \"sensor-hall-b\", \"temp_c\": 19.0, \"state\": \"ok\"}",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/hall/b"
+          },
+          {
+            "encoding": "utf-8",
+            "message_id": "m3",
+            "payload": "{\"dev_id\": \"sensor-hall-a\", \"rh_pct\": 44.0}",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/hall/a"
+          },
+          {
+            "encoding": "utf-8",
+            "message_id": "m4",
+            "payload": "{\"dev_id\": \"sensor-hall-b\", \"state\": \"maintenance\"}",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/status"
+          }
+        ],
+        "question": {
+          "device_id": "sensor-hall-a",
+          "property": "temperature_c"
+        },
+        "scenario_id": "s_mqtt_formats",
+        "schema": "reference",
+        "schema_version": 1,
+        "view": "raw"
+      },
+      "oracle": {
+        "conclusion": "exposed",
+        "contract": "mqtt-formats-interpretation-v1",
+        "dossier_sha256": "ad1b15b09cafa802994a10fecdc20d86b69cec711f9416f59d428db111fc3ce7",
+        "schema_version": 1,
+        "verdicts": {
+          "m1": "exposed",
+          "m2": "not_exposed",
+          "m3": "not_exposed",
+          "m4": "not_exposed"
+        }
+      }
+    },
+    {
+      "dossier": {
+        "fixture_type": "s_mqtt_formats_t02",
+        "instance_id": "h2-t02",
+        "messages": [
+          {
+            "fields": {
+              "device_id": "sensor-hall-a",
+              "temperature_c": 21.5
+            },
+            "message_id": "m1",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/1"
+          },
+          {
+            "fields": {
+              "device_id": "sensor-hall-b",
+              "temperature_c": 19.0
+            },
+            "message_id": "m2",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/2"
+          },
+          {
+            "fields": {
+              "device_id": "sensor-hall-a",
+              "humidity_pct": 44.0
+            },
+            "message_id": "m3",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/3"
+          }
+        ],
+        "question": {
+          "device_id": "sensor-hall-a",
+          "property": "temperature_c"
+        },
+        "scenario_id": "s_mqtt_formats",
+        "schema": "reference",
+        "schema_version": 1,
+        "view": "normalized"
+      },
+      "oracle": {
+        "conclusion": "exposed",
+        "contract": "mqtt-formats-interpretation-v1",
+        "dossier_sha256": "c46b0a0d704eef6179de8de81e041e6f68e1fb59d2e71cb06d7e0246d50f04f5",
+        "schema_version": 1,
+        "verdicts": {
+          "m1": "exposed",
+          "m2": "not_exposed",
+          "m3": "not_exposed"
+        }
+      }
+    },
+    {
+      "dossier": {
+        "fixture_type": "s_mqtt_formats_t03",
+        "instance_id": "h2-t03",
+        "messages": [
+          {
+            "encoding": "utf-8",
+            "message_id": "m1",
+            "payload": "{\"meta\": {\"node\": \"sensor-hall-a\"}, \"sample\": {\"T\": 21.5}}",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/1"
+          },
+          {
+            "encoding": "utf-8",
+            "message_id": "m2",
+            "payload": "{\"meta\": {\"node\": \"sensor-hall-b\"}, \"sample\": {\"T\": 19.0}}",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/2"
+          },
+          {
+            "encoding": "utf-8",
+            "message_id": "m3",
+            "payload": "{\"meta\": {\"node\": \"sensor-hall-a\"}, \"sample\": {\"H\": 44.0}}",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/3"
+          }
+        ],
+        "question": {
+          "device_id": "sensor-hall-a",
+          "property": "temperature_c"
+        },
+        "scenario_id": "s_mqtt_formats",
+        "schema": "variant",
+        "schema_version": 1,
+        "view": "raw"
+      },
+      "oracle": {
+        "conclusion": "exposed",
+        "contract": "mqtt-formats-interpretation-v1",
+        "dossier_sha256": "daa9eaaedba4707af84e042fed1ba45709f544fd9b946485dc3468fc4973423d",
+        "schema_version": 1,
+        "verdicts": {
+          "m1": "exposed",
+          "m2": "not_exposed",
+          "m3": "not_exposed"
+        }
+      }
+    },
+    {
+      "dossier": {
+        "fixture_type": "s_mqtt_formats_t04",
+        "instance_id": "h2-t04",
+        "messages": [
+          {
+            "fields": {
+              "device_id": "sensor-hall-a",
+              "temperature_c": 21.5
+            },
+            "message_id": "m1",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/1"
+          },
+          {
+            "fields": {
+              "device_id": "sensor-hall-b",
+              "temperature_c": 19.0
+            },
+            "message_id": "m2",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/2"
+          },
+          {
+            "fields": {
+              "device_id": "sensor-hall-a",
+              "humidity_pct": 44.0
+            },
+            "message_id": "m3",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/3"
+          }
+        ],
+        "question": {
+          "device_id": "sensor-hall-a",
+          "property": "temperature_c"
+        },
+        "scenario_id": "s_mqtt_formats",
+        "schema": "variant",
+        "schema_version": 1,
+        "view": "normalized"
+      },
+      "oracle": {
+        "conclusion": "exposed",
+        "contract": "mqtt-formats-interpretation-v1",
+        "dossier_sha256": "2c5c05d1d0e5795c424ea9674c6dc91f3882ad79eeddd607ccc5399d8fc11f35",
+        "schema_version": 1,
+        "verdicts": {
+          "m1": "exposed",
+          "m2": "not_exposed",
+          "m3": "not_exposed"
+        }
+      }
+    },
+    {
+      "dossier": {
+        "fixture_type": "s_mqtt_formats_t05",
+        "instance_id": "h2-t05",
+        "messages": [
+          {
+            "encoding": "utf-8",
+            "message_id": "m1",
+            "payload": "{\"dev_id\": \"sensor-hall-a\", \"temp_c\": 21.5}",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/hall/a"
+          },
+          {
+            "encoding": "utf-8",
+            "message_id": "m2",
+            "payload": "{\"dev_id\": \"sensor-hall-b\", \"temp_c\": 19.0}",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/hall/b"
+          },
+          {
+            "encoding": "utf-8",
+            "message_id": "m3",
+            "payload": "{\"dev_id\":\"sensor-hall-a\",\"temp_",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/hall/a"
+          }
+        ],
+        "question": {
+          "device_id": "sensor-hall-a",
+          "property": "temperature_c"
+        },
+        "scenario_id": "s_mqtt_formats",
+        "schema": "reference",
+        "schema_version": 1,
+        "view": "raw"
+      },
+      "oracle": {
+        "conclusion": "exposed",
+        "contract": "mqtt-formats-interpretation-v1",
+        "dossier_sha256": "3851491ba03d5c92ad2010dff594c230eac4e77b5ab9a9a31d9686d7f1ba1080",
+        "schema_version": 1,
+        "verdicts": {
+          "m1": "exposed",
+          "m2": "not_exposed",
+          "m3": "abstain"
+        }
+      }
+    },
+    {
+      "dossier": {
+        "fixture_type": "s_mqtt_formats_t06",
+        "instance_id": "h2-t06",
+        "messages": [
+          {
+            "fields": {
+              "device_id": "sensor-hall-a",
+              "temperature_c": 21.5
+            },
+            "message_id": "m1",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/hall/a"
+          },
+          {
+            "fields": {
+              "device_id": "sensor-hall-b",
+              "temperature_c": 19.0
+            },
+            "message_id": "m2",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/hall/b"
+          },
+          {
+            "fields": {
+              "temperature_c": 21.5
+            },
+            "message_id": "m3",
+            "qos": 0,
+            "retain": false,
+            "topic": "site/hall/unknown"
+          }
+        ],
+        "question": {
+          "device_id": "sensor-hall-a",
+          "property": "temperature_c"
+        },
+        "scenario_id": "s_mqtt_formats",
+        "schema": "reference",
+        "schema_version": 1,
+        "view": "normalized"
+      },
+      "oracle": {
+        "conclusion": "exposed",
+        "contract": "mqtt-formats-interpretation-v1",
+        "dossier_sha256": "46244284ea6dde2ac62040633eb74f42056c068c13f00b69d10c241b3fa7a9ca",
+        "schema_version": 1,
+        "verdicts": {
+          "m1": "exposed",
+          "m2": "not_exposed",
+          "m3": "abstain"
+        }
+      }
+    },
+    {
+      "dossier": {
+        "fixture_type": "s_mqtt_formats_t07",
+        "instance_id": "h2-t07",
+        "messages": [
+          {
+            "encoding": "utf-8",
+            "message_id": "m1",
+            "payload": "{\"meta\": {\"node\": \"sensor-hall-a\"}, \"sample\": {\"T\": 21.5}}",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/1"
+          },
+          {
+            "encoding": "utf-8",
+            "message_id": "m2",
+            "payload": "{\"meta\": {\"node\": \"sensor-hall-a\"}, \"sample\": {\"T\": \"n/a\"}}",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/4"
+          },
+          {
+            "encoding": "utf-8",
+            "message_id": "m3",
+            "payload": "{\"meta\": {\"node\": \"sensor-hall-b\"}, \"sample\": {\"T\": 19.0}}",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/2"
+          }
+        ],
+        "question": {
+          "device_id": "sensor-hall-a",
+          "property": "temperature_c"
+        },
+        "scenario_id": "s_mqtt_formats",
+        "schema": "variant",
+        "schema_version": 1,
+        "view": "raw"
+      },
+      "oracle": {
+        "conclusion": "exposed",
+        "contract": "mqtt-formats-interpretation-v1",
+        "dossier_sha256": "a7733c79cf10b08275d6962c3a2556a0ffacc6ac8ee840b0c69b7e8f1023c9ce",
+        "schema_version": 1,
+        "verdicts": {
+          "m1": "exposed",
+          "m2": "abstain",
+          "m3": "not_exposed"
+        }
+      }
+    },
+    {
+      "dossier": {
+        "fixture_type": "s_mqtt_formats_t08",
+        "instance_id": "h2-t08",
+        "messages": [
+          {
+            "fields": {
+              "device_id": "sensor-hall-a",
+              "temperature_c": 21.5
+            },
+            "message_id": "m1",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/1"
+          },
+          {
+            "fields": {
+              "device_id": "sensor-hall-b",
+              "temperature_c": 19.0
+            },
+            "message_id": "m2",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/2"
+          },
+          {
+            "fields": {
+              "temperature_c": 21.5
+            },
+            "message_id": "m3",
+            "qos": 0,
+            "retain": false,
+            "topic": "plant/node/unknown"
+          }
+        ],
+        "question": {
+          "device_id": "sensor-hall-a",
+          "property": "temperature_c"
+        },
+        "scenario_id": "s_mqtt_formats",
+        "schema": "variant",
+        "schema_version": 1,
+        "view": "normalized"
+      },
+      "oracle": {
+        "conclusion": "exposed",
+        "contract": "mqtt-formats-interpretation-v1",
+        "dossier_sha256": "bb38d95390a0d179e5702aa5a5ecf0dc08fdc10b5f1042bbd0e076e49944099e",
+        "schema_version": 1,
+        "verdicts": {
+          "m1": "exposed",
+          "m2": "not_exposed",
+          "m3": "abstain"
+        }
+      }
+    }
+  ],
+  "question": {
+    "device_id": "sensor-hall-a",
+    "property": "temperature_c"
+  },
+  "scenario_id": "s_mqtt_formats",
+  "schema_version": 1
+}

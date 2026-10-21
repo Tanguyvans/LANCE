@@ -1,0 +1,130 @@
+name: H2 interpretation formats (manual dev2)
+
+# Manual hypothesis family. It freezes the dossiers, runs both arms offline and
+# feeds no admission; evidence stays on nato. No broker is started and no
+# fixture is created: the only remote call is the provider. Run it from dev/2,
+# like every other laboratory controller.
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Fixed provider (only ollama-umons is accepted)
+        required: true
+        default: ollama-umons
+        type: choice
+        options:
+          - ollama-umons
+      model:
+        description: Model from the declared V2 panel
+        required: true
+        default: qwen3.8:27b
+        type: choice
+        options:
+          - qwen3.8:27b
+          - gemma4:26b-a4b-it-q4_K_M
+      repetitions:
+        description: Independent repetitions per fixture and arm
+        required: true
+        default: '3'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lance-lab-dev2
+  cancel-in-progress: false
+
+jobs:
+  mqtt-formats:
+    runs-on: [self-hosted, nato-master]
+    timeout-minutes: 240
+    env:
+      LANCE_LAB_LOCK: /var/lib/lance/lab.lock
+      LANCE_MQTT_LOCK_HELD: "1"
+      TRIAL_NAME: ${{ github.run_id }}-${{ github.run_attempt }}
+      EXPECTED_SHA: ${{ github.sha }}
+      PYTHONUNBUFFERED: "1"
+      H2_PROVIDER: ${{ inputs.provider }}
+      H2_MODEL: ${{ inputs.model }}
+      H2_REPETITIONS: ${{ inputs.repetitions }}
+    steps:
+      - name: Execute both arms under the shared laboratory lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          # A bare `test` fails without a word, and the controller's own console
+          # log stays on nato for privacy, so every guard names what it saw.
+          require() {
+            if [ "$1" != "$2" ]; then
+              echo "$3: expected '$2', observed '$1'" >&2
+              exit 1
+            fi
+          }
+          require "${RUNNER_NAME:-}" nato-master "runner name"
+          require "${GITHUB_EVENT_NAME:-}" workflow_dispatch "event name"
+          require "${GITHUB_REF:-}" refs/heads/dev/2 "trigger ref"
+          require "${H2_PROVIDER:-}" ollama-umons "provider"
+          case "$H2_MODEL" in
+            qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M) ;;
+            *) echo "Model outside the declared V2 panel" >&2; exit 1 ;;
+          esac
+          case "$H2_REPETITIONS" in 1|2|3) ;; *)
+            echo "Repetitions must be 1, 2 or 3" >&2; exit 1 ;;
+          esac
+          exec 9>>/var/lib/lance/lab.lock
+          flock -x 9
+          echo "Shared laboratory lock acquired"
+          cd /opt/lance-dev-2
+          require "$(git rev-parse HEAD)" "$EXPECTED_SHA" "dev-2 checkout HEAD"
+          echo "dev-2 checkout matches $EXPECTED_SHA; checking the running API"
+          venv/bin/python - <<'PY'
+          import json, os, urllib.request
+          opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+          with opener.open('http://127.0.0.1:8503/api/environment', timeout=10) as response:
+              state = json.load(response)
+          assert state['instance'] == 'dev-2' and state['lab_lock_enabled'] is True
+          assert state['commit'] == os.environ['EXPECTED_SHA']
+          PY
+          mkdir -p output/mqtt-formats
+          # Cost and duration are recorded, not capped. The outer timeout only
+          # kills a stuck controller; each arm is bounded by calls and turns.
+          # Tool calls = messages + 1 close; turns add 2 completion and 6 routing,
+          # because a turn with no data call must not cost the dossier.
+          status=0
+          timeout --signal=TERM --kill-after=45s "$((600 + 1800 * H2_REPETITIONS))" \
+            venv/bin/python -m benchmarks.experiments.mqtt_formats_live run \
+            --output "output/mqtt-formats/$TRIAL_NAME" \
+            --provider "$H2_PROVIDER" --model "$H2_MODEL" \
+            --repetitions "$H2_REPETITIONS" \
+            --max-tool-calls 13 --max-turns 21 \
+            > "output/mqtt-formats/$TRIAL_NAME.console.log" 2>&1 || status=$?
+          if [ "$status" -ne 0 ]; then
+            # The console log carries dossier content, so it is not published;
+            # the summary step reads the trial directory on nato only.
+            echo "Controller exited with status $status" >&2
+            exit "$status"
+          fi
+
+      - name: Publish counts, rates and spend only
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = nato-master
+          exec 9>>/var/lib/lance/lab.lock
+          flock -x 9
+          cd /opt/lance-dev-2
+          OUT="output/mqtt-formats/$TRIAL_NAME"
+          if [ -d "$OUT" ]; then
+            if [ -f "$OUT.console.log" ]; then cp "$OUT.console.log" "$OUT/controller-console.log"; fi
+            # Counts, rates and spend only: the projection never carries a
+            # payload, an oracle verdict or a dossier digest.
+            venv/bin/python -m benchmarks.experiments.mqtt_formats_live summary --output "$OUT" || true
+          fi

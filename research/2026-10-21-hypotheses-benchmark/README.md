@@ -4,12 +4,12 @@
 langage apporte quelque chose qu'un script ne peut pas apporter — et lesquelles
 ne le font pas ?
 
-**Statut.** `proposition` — registre de conception. Aucune famille ouverte,
-aucune fixture de famille. Le seul run du registre est celui de la porte V0,
-qui est **partiellement franchie**.
+**Statut.** `registre en construction` — une famille ouverte (H2), harnais
+hors ligne prêt, aucun run de famille. La porte V0 est **partiellement
+franchie**.
 
 **Dates.** Étude ouverte et classée le 2026-10-21 (Europe/Brussels, UTC+02:00).
-Dernière révision : **2026-10-21 14:34 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-21 22:37 (Europe/Brussels, UTC+02:00)**.
 
 ## Principe
 
@@ -125,7 +125,12 @@ comme hypothèse de supériorité.
 - **Familles.** `s_mqtt_formats` (variante de `s_mqtt_lecture`) et
   `s_ot_formats` (variante de `s_ot_ecriture`). **Variantes** : elles ne
   comptent pas comme familles indépendantes.
-- **Statut.** `planned_not_implemented_or_attested`.
+- **Statut.** `s_mqtt_formats` : **ouverte**, harnais hors ligne prêt et testé
+  (58 tests), corpus gelé de huit fixtures, bras règles à 6/8 — 0/2 en
+  `variant/raw`, 2/2 sur les trois autres groupes. Aucun run sur nato, donc
+  aucune mesure de modèle. `s_ot_formats` reste
+  `planned_not_implemented_or_attested`.
+- **Protocole.** [h2-protocole.md](h2-protocole.md).
 
 ### H3 — Interprétation d'un contrat public nouveau
 
@@ -223,7 +228,7 @@ H1 et H5 partagent la sortie « plan » et se distinguent par le retour.
 | SSH | oui | pilote | mesurée | n/a |
 | MQTT | oui | pilote | mesurée | n/a |
 | `s_api_organisations` | oui | C06-D02 | pilote, non admis | non établie |
-| `s_mqtt_formats` | oui | variante de `s_mqtt_lecture` | planifiée | non établie |
+| `s_mqtt_formats` | oui | variante de `s_mqtt_lecture` | ouverte, sans run | non établie |
 | `s_ot_formats` | oui | variante de `s_ot_ecriture` | planifiée | non établie |
 | `s_edge_contrat`, `s_ota_contrat` | oui | C05 | planifiées | non établie |
 | `s_ot_reprise` | oui | C10-D06 | planifiée | non établie |
@@ -251,7 +256,9 @@ indépendantes : `statistical_independence: not_established` partout.
    d'interprétation de tout le reste. **Faite, partiellement franchie** :
    `valid_control`, `X = 0,9`, saturation déclarée.
 2. **H2** sur `s_mqtt_formats` : dossier hors ligne, oracle d'interprétation,
-   double vue déjà prévue par C04. La famille la moins chère.
+   double vue déjà prévue par C04. La famille la moins chère. **Ouverte** :
+   harnais hors ligne, corpus et bras règles prêts ; reste le premier run sur
+   nato, puis la lecture de la prédiction.
 3. **H3** sur C05 : réutilise le patron du harnais API (routes documentées,
    oracle à frontières, évaluateur depuis le journal).
 4. **H4** : après H2, pour que la frontière syntaxe / sens soit instrumentée.
@@ -275,6 +282,8 @@ indépendantes : `statistical_independence: not_established` partout.
 
 - [Protocole V0](v0-protocole.md) — tâche de contrôle, porte de décision, seuil
   `X`, instance tenue à l'écart.
+- [Protocole H2](h2-protocole.md) — hétérogénéité de représentation, corpus gelé,
+  oracle d'interprétation, référence du bras règles.
 - [Plan V2 et avancement consolidé](../2026-10-12-recentrage-corpus/README.md)
 - [C2 : verdict de relecture](../2026-10-21-c2-couverture/revue.md)
 - [Pistes de la plateforme](../../objectifs/PISTES.md)
