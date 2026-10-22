@@ -451,6 +451,24 @@ def test_the_llm_arm_reads_the_same_dossier_and_closes(tmp_path, monkeypatch):
     assert formats.evaluate(public, oracle, answer, recorded)["success"] is True
 
 
+def test_the_llm_arm_counting_its_own_tools_reaches_the_cost_record(tmp_path, monkeypatch):
+    public, _, _ = run(dossier())
+    oracle = oracle_two_exposures(public)
+    run_obj = llm_setup(tmp_path, monkeypatch)
+    provider = object.__new__(LLMProvider)
+    provider.provider, provider.model = "ollama-umons", "development-model"
+    provider.client = RecordingClient(
+        ScriptedInterpreter(["read:m1", "read:m2", "finish"], oracle["verdicts"], "exposed"),
+        tmp_path)
+    formats_llm.run_llm(public, run_obj, provider)
+    run_obj.tracker.end_phase()
+    # These tools are the family's own, so the executor's counter never sees
+    # them: an arm that read two messages and closed must publish three calls,
+    # not zero.
+    assert run_obj._tool_call_count == 3
+    assert run_obj.tracker.summary()["total_tool_calls"] == 3
+
+
 def test_the_llm_arm_prompt_carries_no_oracle(tmp_path, monkeypatch):
     public, _, _ = run(dossier())
     oracle = oracle_two_exposures(public)
@@ -547,6 +565,19 @@ def test_the_prediction_is_read_from_both_arms_never_from_one():
         case("rules", "variant", "normalized", False), case("llm", "variant", "normalized", True)])
     assert semantic["holds"] is False
     assert semantic["reading"] == "a gain in the normalized view would be H4, not H2"
+
+
+def test_the_summary_never_pools_the_two_arms():
+    def case(policy, success):
+        return {"policy": policy, "evaluation": {
+            "schema": "variant", "view": "raw", "success": success, "coverage": 1.0,
+            "messages": 3, "correct": 3 if success else 0}}
+
+    table = live.summaries([case("rules", False), case("llm", True)])
+    # Pooled, this group would read as one success out of two and hide the
+    # difference that H2 is about.
+    assert table["rules"]["groups"]["variant/raw"]["success_rate"] == 0.0
+    assert table["llm"]["groups"]["variant/raw"]["success_rate"] == 1.0
 
 
 def test_the_job_log_projection_carries_no_dossier_content(tmp_path):

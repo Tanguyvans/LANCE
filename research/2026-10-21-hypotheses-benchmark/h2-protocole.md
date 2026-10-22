@@ -1,12 +1,12 @@
 # Protocole H2 — hétérogénéité de représentation
 
-**Statut.** `harnais prêt, aucune mesure de modèle` — protocole, corpus gelé de
-huit fixtures, oracle privé, les deux bras et le recompte sont écrits et
-testés hors ligne. Cinq passages sur nato ont rendu des défauts d'instrument,
-un refus d'outil, ou un relais arrêté — corrigés ou nommés ; aucun ne mesure le
-modèle.
+**Statut.** `prédiction tenue, mesure faible` — un run lisible sur nato, une
+répétition : le gain en vue brute tient à **un seul dossier sur deux**. À
+consolider par des répétitions et par une baseline qui essaie. Le protocole, le
+corpus gelé de huit fixtures, l'oracle privé et les deux bras restent la
+référence de construction.
 **Date.** 2026-10-21 (Europe/Brussels, UTC+02:00). Dernière révision :
-**2026-10-22 01:27 (Europe/Brussels, UTC+02:00)**.
+**2026-10-22 11:55 (Europe/Brussels, UTC+02:00)**.
 **Portée.** Ce document fixe le contraste, la mesure et l'oracle de H2. Il ne
 déclare aucun résultat de modèle ; la seule mesure publiée ci-dessous est celle
 du bras règles sur le corpus, qui définit la référence à battre.
@@ -170,6 +170,42 @@ lecture fixe la référence que la prédiction doit dépasser :
 
 Ces chiffres sont une propriété du harnais, pas un résultat de modèle : ils
 disent seulement que le contraste est instrumenté.
+
+## Mesure du 2026-10-22, run `39756997752`
+
+Commit `e4137c8`, `ollama-umons` / `qwen3.8:27b`, une répétition, 16 bras, aucun
+échec de contrôleur. Pré-vol `available: true`, deux modèles listés.
+
+| Groupe | Bras règles | Bras LLM | Lecture |
+| --- | --- | --- | --- |
+| `reference/raw` | 1,0 | 1,0 | égalité |
+| `reference/normalized` | 1,0 | 1,0 | égalité |
+| `variant/raw` | **0,0** | **0,5** | gain strict, un dossier |
+| `variant/normalized` | 1,0 | 1,0 | égalité |
+
+**Le gain tient à un seul dossier.** `t03` (`variant/raw`) : le LLM rend 3
+verdicts justes, le bras règles s'abstient sur les trois messages faute de
+parseur. `t07` (même groupe, appareil nommé avec `"T": "n/a"`) échoue aux deux
+bras : chacun rend deux verdicts justes et une affirmation fausse là où
+l'abstention était la seule réponse correcte. Le gain ne vient donc pas d'une
+supériorité générale sur le schéma `variant`, mais d'un dossier que le parseur
+déclaré ne peut pas ouvrir et que le modèle ouvre.
+
+**Ce que cette mesure ne dit pas.** Une répétition, deux dossiers par groupe, un
+seul schéma `variant`, une seule question, un seul appareil protégé. Elle
+n'établit ni stabilité entre répétitions, ni compétence sur l'espace des schémas
+MQTT. Elle ne départage pas non plus « le modèle lit mieux » de « la baseline
+déclarée n'essaie pas » : c'est le rôle du bras règles qui essaie, encore à
+écrire.
+
+**Défaut de compte trouvé pendant ce run.** Les deux bras publiaient
+`tool_calls: 0` alors que le bras LLM lisait trois ou quatre messages et
+clôturait : les outils de la famille sont les siens, pas ceux de l'exécuteur,
+et aucun compteur ne les voyait. Les verdicts ne sont pas affectés — ils sont
+recomptés depuis le journal — mais le coût publié ce jour-là sous-estime les
+appels. Corrigé : chaque lecture et chaque clôture alimentent le compteur du
+run et le `CostTracker` ; le résumé sépare désormais les deux bras au lieu de
+les mettre en commun.
 
 ## Passages sur nato
 

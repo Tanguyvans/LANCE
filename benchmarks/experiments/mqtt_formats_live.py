@@ -167,6 +167,19 @@ def spend(directory):
             "cost_usd": costs.get("total_cost_usd")}
 
 
+def summaries(cases):
+    """One aggregate per arm, never a pool of the two.
+
+    A pooled rate mixes the declared parsers with the model, so a group where
+    they disagree reads as a single middling number and hides exactly the
+    difference H2 measures.
+    """
+    return {policy: aggregate([case["evaluation"] for case in cases
+                               if case.get("policy") == policy
+                               and case.get("evaluation")])
+            for policy in ("rules", "llm")}
+
+
 def prediction_check(cases):
     """Whether the declared prediction held, read from the per-group rates.
 
@@ -288,7 +301,7 @@ def main_run(args):
                         **failure_detail(exc)})
                     write_json(root / "results.json", results)
                     raise
-        results["summary"] = aggregate([case["evaluation"] for case in results["cases"]])
+        results["summary"] = summaries(results["cases"])
         results["prediction"] = prediction_check(results["cases"])
         write_json(root / "results.json", results)
         return 0

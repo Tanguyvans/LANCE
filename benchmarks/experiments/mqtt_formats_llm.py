@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from src.agent.audit_experiment import digest
 from src.agent.core.executor import check_execution_limits
@@ -72,11 +73,27 @@ def run_llm(dossier, run, provider, journal=None):
                 "conclusion": None, "verdicts": {}}
     observed = {}
 
+    def count_tool_call(started):
+        """Every data call reaches the tracker and the run counter.
+
+        The tools here are the family's own, not the executor's wrapper, so
+        nothing else would count them: without this, an arm that read five
+        messages and closed publishes zero tool calls, and the budget the
+        summary reports is the budget nobody spent.
+        """
+        run._tool_call_count += 1
+        tracker = getattr(run, "tracker", None)
+        if tracker is not None:
+            tracker.record_execution(started, time.monotonic() - started)
+
     def read_message(message_id):
+        started = time.monotonic()
         if not isinstance(message_id, str) or message_id not in identifiers:
+            count_tool_call(started)
             return {"ok": False, "error_kind": "unknown_message"}
         evidence_ref, body = journal.read(message_id)
         observed[evidence_ref] = message_id
+        count_tool_call(started)
         check_execution_limits(run)
         return {"ok": True, "message_id": message_id, "evidence_ref": evidence_ref,
                 "presentation": body}
@@ -89,6 +106,8 @@ def run_llm(dossier, run, provider, journal=None):
         endpoint accepts, so a failed close is about the dossier, not about
         the tool contract.
         """
+        started = time.monotonic()
+        count_tool_call(started)
         check_execution_limits(run)
         if conclusion not in VERDICTS:
             return {"ok": False, "error_kind": "invalid_conclusion"}

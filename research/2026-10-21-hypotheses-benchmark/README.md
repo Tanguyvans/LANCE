@@ -125,11 +125,12 @@ comme hypothèse de supériorité.
 - **Familles.** `s_mqtt_formats` (variante de `s_mqtt_lecture`) et
   `s_ot_formats` (variante de `s_ot_ecriture`). **Variantes** : elles ne
   comptent pas comme familles indépendantes.
-- **Statut.** `s_mqtt_formats` : **ouverte**, harnais hors ligne prêt et testé
-  (65 tests), corpus gelé de huit fixtures, bras règles à 6/8 — 0/2 en
-  `variant/raw`, 2/2 sur les trois autres groupes, reproduit sur nato. Trois
-  passages y ont rendu des défauts d'instrument ou une extrémité injoignable,
-  tous nommés dans le protocole, **aucun n'est une mesure de modèle**.
+- **Statut.** `s_mqtt_formats` : **ouverte, prédiction tenue mais faible**
+  (67 tests hors ligne). Premier run lisible le 2026-10-22 : le bras LLM fait
+  `0,5` en `variant/raw` contre `0,0` pour les parsers déclarés, et `1,0`
+  partout ailleurs comme eux. Le gain tient à **un dossier sur deux** ; les deux
+  bras échouent sur `t07`. Une répétition, un seul schéma non déclaré : à
+  consolider, et à départager d'une baseline déclarée qui essaie.
   `s_ot_formats` reste
   `planned_not_implemented_or_attested`.
 - **Protocole.** [h2-protocole.md](h2-protocole.md).
@@ -230,7 +231,7 @@ H1 et H5 partagent la sortie « plan » et se distinguent par le retour.
 | SSH | oui | pilote | mesurée | n/a |
 | MQTT | oui | pilote | mesurée | n/a |
 | `s_api_organisations` | oui | C06-D02 | pilote, non admis | non établie |
-| `s_mqtt_formats` | oui | variante de `s_mqtt_lecture` | ouverte, sans mesure de modèle | non établie |
+| `s_mqtt_formats` | oui | variante de `s_mqtt_lecture` | ouverte, prédiction tenue faiblement | non établie |
 | `s_ot_formats` | oui | variante de `s_ot_ecriture` | planifiée | non établie |
 | `s_edge_contrat`, `s_ota_contrat` | oui | C05 | planifiées | non établie |
 | `s_ot_reprise` | oui | C10-D06 | planifiée | non établie |
