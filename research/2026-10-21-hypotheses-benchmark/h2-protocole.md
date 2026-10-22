@@ -1,15 +1,17 @@
 # Protocole H2 — hétérogénéité de représentation
 
-**Statut.** `prédiction tenue, mesure faible` — un run lisible sur nato, une
-répétition : le gain en vue brute tient à **un seul dossier sur deux**. À
-consolider par des répétitions et par une baseline qui essaie. Le protocole, le
-corpus gelé de huit fixtures, l'oracle privé et les deux bras restent la
-référence de construction.
+**Statut.** `prédiction tenue, gain absorbé par la convention` — deux runs
+lisibles sur nato, dont un à trois répétitions : le gain en vue brute tient à
+**un seul dossier sur deux**, il est stable entre répétitions, et le bras qui
+lit par convention sans schéma le couvre entièrement. Le protocole, le corpus
+gelé de huit fixtures, l'oracle privé et les trois bras restent la référence de
+construction.
 **Date.** 2026-10-21 (Europe/Brussels, UTC+02:00). Dernière révision :
-**2026-10-22 11:55 (Europe/Brussels, UTC+02:00)**.
-**Portée.** Ce document fixe le contraste, la mesure et l'oracle de H2. Il ne
-déclare aucun résultat de modèle ; la seule mesure publiée ci-dessous est celle
-du bras règles sur le corpus, qui définit la référence à battre.
+**2026-10-22 14:05 (Europe/Brussels, UTC+02:00)**.
+**Portée.** Ce document fixe le contraste, la mesure et l'oracle de H2, puis
+consigne les passages sur nato. La référence hors ligne (bras règles, bras par
+convention) définit ce qu'un gain doit dépasser ; les mesures de modèle sont
+celles du 2026-10-22.
 
 ## Question et condition d'entrée
 
@@ -204,10 +206,15 @@ corpus gelé, `variant/raw` compris, y compris `t07` que les deux autres bras
 échouent. C'est la référence à battre pour qu'un gain de modèle veuille dire
 quelque chose.
 
-## Mesure du 2026-10-22, run `39756997752`
+## Mesure du 2026-10-22
 
-Commit `e4137c8`, `ollama-umons` / `qwen3.8:27b`, une répétition, 16 bras, aucun
-échec de contrôleur. Pré-vol `available: true`, deux modèles listés.
+Deux runs lisibles, même modèle (`ollama-umons` / `qwen3.8:27b`), même corpus
+gelé, pré-vol `available: true` et deux modèles listés dans les deux cas.
+
+### Run `39756997752` — commit `e4137c8`, une répétition, 16 bras
+
+Aucun échec de contrôleur. Les deux bras de l'époque, sans le bras par
+convention.
 
 | Groupe | Bras règles | Bras LLM | Lecture |
 | --- | --- | --- | --- |
@@ -229,7 +236,7 @@ seul schéma `variant`, une seule question, un seul appareil protégé. Elle
 n'établit ni stabilité entre répétitions, ni compétence sur l'espace des schémas
 MQTT. Elle ne départage pas non plus « le modèle lit mieux » de « la baseline
 déclarée n'essaie pas » : c'est le rôle du bras règles qui essaie, encore à
-écrire.
+écrire à ce moment-là (il l'est depuis, voir ci-dessous).
 
 **Défaut de compte trouvé pendant ce run.** Les deux bras publiaient
 `tool_calls: 0` alors que le bras LLM lisait trois ou quatre messages et
@@ -239,6 +246,45 @@ recomptés depuis le journal — mais le coût publié ce jour-là sous-estime l
 appels. Corrigé : chaque lecture et chaque clôture alimentent le compteur du
 run et le `CostTracker` ; le résumé sépare désormais les deux bras au lieu de
 les mettre en commun.
+
+### Run `39759422939` — commit `da7e9cd`, trois répétitions, 72 bras
+
+Même modèle, même corpus, les trois bras dans le même run, l'ordre des bras
+tourné à chaque fixture. Aucun échec de contrôleur.
+
+| Groupe | Bras règles | Bras convention | Bras LLM |
+| --- | --- | --- | --- |
+| `reference/raw` | 1,0 | 1,0 | 1,0 |
+| `reference/normalized` | 1,0 | 1,0 | 1,0 |
+| `variant/raw` | **0,0** | **1,0** | **0,5** |
+| `variant/normalized` | 1,0 | 1,0 | 1,0 |
+
+**La figure est stable.** Les trois répétitions rendent le même tableau : `t03`
+gagné par le modèle à chaque fois, `t07` perdu à chaque fois, `rules_attempt`
+juste sur les 24 bras. Le gain de `0,5` n'est donc pas un tirage chanceux — mais
+il reste **un dossier sur deux**.
+
+**Le gain est absorbé par la convention.** Le bras `rules_attempt` n'a aucune clé
+du corpus et lit `dev`/`node`/`sensor`/`id` pour l'identité, `t`/`temp` pour la
+lecture ; il couvre `t03` et `t07` sans modèle. Le contrôle de prédiction publie
+donc `convention_gain_absorbed: true` : ce que le LLM gagne sur le parseur
+déclaré, un script qui essaie le gagne aussi. La prédiction de H2 reste tenue au
+sens littéral (`raw_gain: true`, `normalized_equal: true`), mais elle ne
+distingue plus le modèle de la déclaration : un parseur plus large suffirait.
+
+**Coût.** Chaque bras LLM consomme quatre ou cinq appels d'outil (quatre
+lectures plus la clôture, ou trois lectures, un refus recompté et la clôture) et
+sept à quatorze secondes. Les `tool_calls` publiés sont désormais non nuls : le
+défaut de compte du run précédent est corrigé, et ces chiffres sont mesurés, pas
+plafonnés.
+
+**Ce que cette mesure ne dit pas.** Deux dossiers par groupe, un seul schéma
+`variant`, une seule question, un seul appareil protégé, un seul modèle. Elle
+établit la stabilité sur ce corpus, pas une compétence sur l'espace des schémas
+MQTT. Le fait que la convention couvre `t03` et `t07` ferme la lecture « le
+modèle lit ce que personne d'autre ne lit » pour ce corpus ; il ne dit pas
+qu'aucun schéma ne résisterait à une convention plus riche. Un modèle différent
+pourrait rendre un autre tableau : le run n'a été fait qu'avec `qwen3.8:27b`.
 
 ## Passages sur nato
 
@@ -286,8 +332,13 @@ aucune mesure. Le trajet et la procédure de rétablissement sont dans
 [le guide UMONS](../../docs/guides/umons-llm.md), et le rétablissement exige
 une authentification interactive avec le compte UMONS autorisé.
 
-Ces passages ne mesurent rien sur le modèle et ne comptent pas comme des
-résultats de H2. Les premiers disent que le harnais n'était pas encore lisible ;
+**2026-10-22, runs `39756997752` et `39759422939` — mesure.** Relais rétabli,
+les deux passages rendent un tableau complet et sans échec de contrôleur ; le
+second, à trois répétitions et trois bras, est le run de référence. Le détail est
+dans « Mesure du 2026-10-22 » ci-dessus.
+
+Les passages du 2026-10-21 ne mesurent rien sur le modèle et ne comptent pas
+comme des résultats de H2. Les premiers disent que le harnais n'était pas encore lisible ;
 les derniers qu'il l'est, et que la panne est en amont de lui. Le pré-vol a
 changé ce que ces échecs coûtent : un relais arrêté se nomme maintenant en
 quelques secondes et zéro bras, au lieu de vingt-quatre bras et d'un journal de
