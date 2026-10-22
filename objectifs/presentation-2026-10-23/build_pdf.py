@@ -22,7 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parent
 DECK = ROOT / "slides.pptx"
 OUT = ROOT / "slides.pdf"
 WIDTH, HEIGHT = 2400, 1350
-SLIDES = 13
+SLIDES = 10
 MAX_TRIES = 8
 
 

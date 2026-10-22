@@ -88,7 +88,7 @@ LINE = "D9DEE5"
 GREEN = "2E7D5B"
 FONT = "Arial"
 
-SECTIONS = ["Objective", "Instrument", "Control", "Hypotheses", "Outlook"]
+SECTIONS = ["Objective", "Method", "Control", "Hypotheses", "Next steps"]
 
 # ---------------------------------------------------------------- the grid
 # 12 columns, 0.56 cm gutters, 2.2 cm side margins. Every slide uses the same
@@ -271,9 +271,8 @@ def footer():
     sized(f"{s}", RIGHT - 1.8, FOOT_Y, 1.8, 0.55, 10.5, M, align="right")
 
 
-# ---------------------------------------------------------------- 1. Cover
-page("", "Cover. Say: this is a progress report, not a results talk.",
-     seconds=20, chrome=False)
+# ----------------------------------------------------------------- 1. Cover
+page("", "Cover. Say: this is a progress report.", seconds=20, chrome=False)
 
 stem(ML, 2.75, 0.14, 6.1)
 sized("LANCE", 3.35, 2.55, 22, 2.75, 46, INK, bold=True)
@@ -281,140 +280,91 @@ sized("An autonomous and verifiable auditor\nfor IoT/IIoT networks",
       3.35, 5.35, 19.5, 2.30, 25, M)
 
 stem(ML, 9.25, CW, 0.03, LINE)
+sized("23 October 2026  ·  Université de Mons, ILIA", 3.35, 9.65, 20, 0.85,
+      15, M)
 
-sized("Progress report — NATO SPS G6259", 3.35, 9.65, 20, 1.0, 18, R, bold=True)
-sized("23 October 2026  ·  Université de Mons, ILIA", 3.35, 10.75, 20, 0.85, 15, M)
-
-panel(ML, 13.30, 12.6, 1.60, ROSE, ROSE, "rect")
-stem(ML, 13.30, 0.14, 1.60, R)
-sized("Status: work in progress.", ML + 0.95, 13.30, 11.2, 1.60, 14, M,
-      italic=True)
 picture(LOGO, 26.95, 1.40, 5.2, 5.2 * 463 / 1351, "SMart ILIA — UMONS")
 
-# --------------------------------------------------------- 2. The objective
+# ------------------------------------------------------ 1. The objective
 page("The objective",
-     "One sentence on the left, three commitments on the right. Do not read "
-     "the three rows aloud; they qualify the sentence, they do not repeat it. "
-     "Close on the last line.",
+     "Read the question aloud, then the three points. The question is about "
+     "conditions, not about which model wins.",
      seconds=60, sect=0)
 
-sized("An auditor that explores, identifies, verifies and reports.",
-      TEXT_X, 5.40, TEXT_W, 4.6, 25, INK, bold=True, valign="top")
+box("Under which conditions does an agentic approach prevail over a scripted "
+    "one, rather than which model prevails?",
+    ML, 4.90, CW, 3.40, 28, INK, bold=True, valign="top")
 
-for i, (head, sub) in enumerate([
-    ("Under which conditions", "rather than which model prevails"),
-    ("Identical tools and budget", "for both arms of the V0 control harness"),
-    ("Evidence, not assertion", "recomputed from the log"),
+for i, text in enumerate([
+    "An auditor that explores, identifies, verifies and reports.",
+    "Identical tools and budget for both approaches, within the control harness.",
+    "Evidence recomputed from the log, not asserted.",
 ]):
-    y = 4.90 + i * 3.05
-    panel(DIAG_X, y, DIAG_W, 2.55, GRAY, LINE, "rect")
-    stem(DIAG_X, y + 0.55, 0.16, 1.45, R)
-    sized(head, DIAG_X + 0.85, y + 0.38, DIAG_W - 1.5, 1.05, 20, INK,
-          bold=True)
-    sized(sub, DIAG_X + 0.85, y + 1.48, DIAG_W - 1.5, 0.80, 14, M)
+    y = 9.30 + i * 1.65
+    stem(ML, y + 0.20, 0.14, 0.90, R)
+    sized(text, ML + 0.55, y, CW - 0.55, 1.30, 18, INK, valign="middle")
 
 caption("Model training is not a current priority.")
 footer()
 
-# ---------------------------------------------- 2b. The platform in brief
+# ------------------------------------------------- 2. The platform in brief
 page("The platform in brief",
-     "The platform conducts the audit. Left: what it does. Right: the "
-     "dashboard of a running instance. The platform is one component; the "
-     "next slides say what its results mean.",
-     seconds=60, sect=0)
+     "The platform conducts the audit. Left: three facts. Right: the dashboard "
+     "of a running instance. What the results mean comes later.",
+     seconds=45, sect=0)
 
-sized("A platform that runs the audit and keeps every run.",
-      TEXT_X, 5.40, TEXT_W, 1.9, 22, INK, bold=True, valign="top")
 for i, text in enumerate([
-    "Six phases in the LANCE pipeline, from graph analysis to report.",
-    "Four execution modes: LANCE pipeline, rule-based audit, agent, script.",
-    "Each run is recorded with its observations, its evidence and its cost.",
-    "The Benchmark and Scenario Lab tabs sit beside it, on the same instance.",
+    "Runs the audit in six phases",
+    "Four execution modes",
+    "Every run kept as evidence",
 ]):
-    y = 7.60 + i * 1.72
-    stem(TEXT_X, y + 0.12, 0.14, 1.20, R)
-    sized(text, TEXT_X + 0.55, y, TEXT_W - 0.55, 1.45, 15, INK,
-          valign="top")
+    y = 5.40 + i * 2.30
+    stem(TEXT_X, y + 0.25, 0.14, 1.20, R)
+    sized(text, TEXT_X + 0.55, y, TEXT_W - 0.55, 1.70, 20, INK, bold=True,
+          valign="middle")
 
 PLAT_W = 16.0
 picture(ROOT / "assets" / "platform-dashboard.jpg",
         RIGHT - PLAT_W, BODY_Y + 0.05, PLAT_W, PLAT_W / 1.6,
         "LANCE platform dashboard: network topology and run controls")
 
-caption("The platform runs the audit; the laboratory and the benchmark decide "
-        "what the result means.",
+caption("The platform runs the audit; the benchmark judges it.",
         "Captures of the running instance, 22 October 2026.")
-footer()
-
-# ------------------------------------------------------- 3. The instrument
-page("The instrument",
-     "Three pieces, three roles. The model is one piece among them. The last "
-     "line is the methodological point: a run means nothing without a network "
-     "whose truth is known.",
-     seconds=50, sect=1)
-
-roles = [
-    ("Laboratory", "networks with known ground truth", GRAY, LINE, M),
-    ("Platform", "conducts the audit", BLUE, B, B),
-    ("Benchmark", "assesses the result", ROSE, R, R),
-]
-for i, (head, desc, fill, lc, accent) in enumerate(roles):
-    y = 4.70 + i * 3.10
-    panel(ML, y, CW, 2.88, fill, lc, "rect")
-    stem(ML, y, 0.42, 2.88, accent)
-    # Head and description share one station across all three rows: the column
-    # boundary is what makes this a table rather than two disconnected columns.
-    sized(head, ML + 1.15, y, 6.0, 2.88, 23, accent if accent != M else INK,
-          bold=True)
-    sized(desc, ML + 7.55, y, CW - 8.35, 2.88, 15, M)
-    if i < 2:
-        # Short, axis-aligned link in the accent column: a connector across
-        # the gap would cut the box corners.
-        stem(ML + 0.175, y + 2.88, 0.07, 0.22, accent)
-
-caption("The model is one component among them.",
-        "A run constitutes a measurement only against known ground truth.")
 footer()
 
 # ---------------------------------------- 3b. Script, LLM agent and harness
 page("Script, LLM agent and harness",
-     "Three things, kept apart. The script is a fixed procedure. The LLM agent "
-     "chooses its next step from the tool results. The harness holds the tools, "
-     "the budget, the log and the scoring fixed. Only the decision-maker varies.",
+     "The harness is fixed. Only the decision-maker changes: a script or an "
+     "LLM agent, on the same tools, budget and log.",
      seconds=60, sect=1)
 
 HY0, HH = 4.60, 9.70
 panel(ML, HY0, CW, HH, BLUE, B, "rect")
-sized("HARNESS  ·  fixed for both approaches: tools, budget, log, scoring",
-      ML + 0.6, HY0 + 0.35, CW - 1.2, 0.8, 15, B, bold=True)
+sized("HARNESS  ·  same tools, budget, log and scoring for both",
+      ML + 0.6, HY0 + 0.35, CW - 1.2, 0.8, 16, B, bold=True)
 
 half = (CW - 1.2 - 0.6) / 2
 for i, (head, body, accent) in enumerate([
-    ("Script", "A fixed procedure. The same steps run on every configuration. "
-               "No model is involved.", M),
-    ("LLM agent", "A model reads each tool result and chooses the next step, "
-                  "within the same budget.", R),
+    ("Script", "Fixed steps. No model.", M),
+    ("LLM agent", "A model picks each next step.", R),
 ]):
     x = ML + 0.6 + i * (half + 0.6)
-    panel(x, HY0 + 1.6, half, 3.3, "FFFFFF", accent, "rect")
+    panel(x, HY0 + 1.6, half, 2.6, "FFFFFF", accent, "rect")
     stem(x, HY0 + 1.6, half, 0.14, accent)
-    sized(head, x + 0.6, HY0 + 2.0, half - 1.2, 0.9, 20,
+    sized(head, x + 0.6, HY0 + 2.1, half - 1.2, 0.9, 22,
           accent if accent != M else INK, bold=True)
-    sized(body, x + 0.6, HY0 + 3.0, half - 1.2, 1.7, 15, INK, valign="top")
-    stem(x + half / 2 - 0.025, HY0 + 4.9, 0.05, 0.9, accent)
+    sized(body, x + 0.6, HY0 + 3.1, half - 1.2, 0.9, 16, INK, valign="top")
+    stem(x + half / 2 - 0.025, HY0 + 4.2, 0.05, 0.7, accent)
 
-panel(ML + 0.6, HY0 + 5.8, CW - 1.2, 1.2, GRAY, LINE, "rect")
-sized("Tools: one shared set for both (scans, service probes, credential tests, "
-      "file reads)", ML + 1.0, HY0 + 5.8, CW - 2.0, 1.2, 16, INK,
+panel(ML + 0.6, HY0 + 4.9, CW - 1.2, 1.2, GRAY, LINE, "rect")
+sized("Same tools for both", ML + 1.0, HY0 + 4.9, CW - 2.0, 1.2, 18, INK,
       align="center")
-stem(ML + CW / 2 - 0.025, HY0 + 7.0, 0.05, 0.4, B)
-panel(ML + 0.6, HY0 + 7.4, CW - 1.2, 1.2, "FFFFFF", B, "rect")
-sized("Log of every call, then scoring recomputed from that log",
-      ML + 1.0, HY0 + 7.4, CW - 2.0, 1.2, 16, INK, align="center")
+stem(ML + CW / 2 - 0.025, HY0 + 6.1, 0.05, 0.5, B)
+panel(ML + 0.6, HY0 + 6.6, CW - 1.2, 1.2, "FFFFFF", B, "rect")
+sized("Same log, same scoring", ML + 1.0, HY0 + 6.6, CW - 2.0, 1.2, 18, INK,
+      align="center")
 
-caption("The harness is what makes the two approaches comparable: only the "
-        "decision-maker changes.",
-        "Without LLM: Script and rule-based audit. With LLM: Agent simple and the LANCE pipeline.")
+caption("Only the decision-maker changes.")
 footer()
 
 # ------------------------------------------------- 3c. How a run is judged
@@ -467,32 +417,27 @@ footer()
 
 # ------------------------------------------------- 4. What counts as found
 page("What constitutes a finding",
-     "Two halves. Left: we recompute from the log, never from the conclusion. "
-     "Right: the same trial runs on both configurations, so a false positive "
-     "is visible. The bottom band is the second half of the rule.",
-     seconds=80, sect=1)
+     "A finding counts only once it is recomputed from the log. On the healthy "
+     "network, any finding is an error.",
+     seconds=60, sect=1)
 
-PW = cw(6)          # the counter-panels are a 6 + 6 split of the grid
-panel(ML, 4.75, PW, 6.05, GRAY, LINE)
-sized("“I have read another organisation's data.”",
-      ML + 0.7, 5.22, PW - 1.4, 1.9, 16, M, italic=True, align="center")
-stem(ML + PW / 2 - 0.75, 7.70, 1.5, 0.05, LINE)
-sized("✕   Not admitted", ML + 0.7, 7.90, PW - 1.4, 1.6, 26, R, bold=True,
-      align="center")
-
+PW = cw(6)          # two equal panels on the 6 + 6 split
 PX = RIGHT - PW
-panel(PX, 4.75, PW, 6.05, ROSE, R)
-sized("The request and its response\ncontain the data.",
-      PX + 0.7, 5.22, PW - 1.4, 1.9, 16, INK, align="center")
-stem(PX + PW / 2 - 0.75, 7.70, 1.5, 0.05, R)
-sized("✓   Admitted", PX + 0.7, 7.90, PW - 1.4, 1.6, 26, GREEN, bold=True,
-      align="center")
+PY, PH = 4.85, 7.20
 
-panel(ML, 11.55, CW, 2.45, BLUE, LINE, "rect")
-stem(ML, 11.55, 0.14, 2.45, B)
-sized("The same trial is conducted on a healthy and on a vulnerable network.   "
-      "A finding reported on the healthy one is recorded as an error.",
-      ML + 1.0, 11.55, CW - 1.6, 2.45, 15, INK)
+panel(ML, PY, PW, PH, GRAY, LINE, "rect")
+stem(ML, PY, PW, 0.14, R)
+sized("Healthy network", ML + 0.8, PY + 0.7, PW - 1.6, 0.8, 14, M, bold=True)
+sized("✕  Error", ML + 0.8, PY + 1.7, PW - 1.6, 1.4, 28, R, bold=True)
+box("Any finding reported here is an error.",
+    ML + 0.8, PY + 3.3, PW - 1.6, 2.0, 16, M, valign="top")
+
+panel(PX, PY, PW, PH, BLUE, LINE, "rect")
+stem(PX, PY, PW, 0.14, GREEN)
+sized("Vulnerable network", PX + 0.8, PY + 0.7, PW - 1.6, 0.8, 14, M, bold=True)
+sized("✓  Finding", PX + 0.8, PY + 1.7, PW - 1.6, 1.4, 28, GREEN, bold=True)
+box("Recomputed from the log before it counts.",
+    PX + 0.8, PY + 3.3, PW - 1.6, 2.0, 16, M, valign="top")
 
 caption("The finding is recomputed from the log; the conclusion is never "
         "taken on trust.")
@@ -500,76 +445,46 @@ footer()
 
 # ------------------------------------------------------------- 7. V0
 page("A control task before testing the model",
-     "The gate is the condition of interpretation for everything else, and it "
-     "binds both arms. Read the matrix by cells: the only cell that opens the "
-     "hypotheses is the one where both arms pass — script check and model check.",
+     "V0 is the gate. Both arms face the same control task, and the hypotheses "
+     "are read only if the script and the model both pass it.",
      seconds=70, sect=2)
 
 sized("V0 is a control task, simple enough to be solved without inference. "
-      "Both approaches are required to pass.",
+      "Both approaches must pass it.",
       ML, BODY_Y, CW, 1.45, 17, M, valign="top")
 
-HX, HW = 7.55, (RIGHT - 7.55 - 0.55) / 2
-for j, lab in enumerate(["model ✗", "model ✓"]):
-    sized(lab, HX + j * (HW + 0.55), 5.98, HW, 0.80, 14, M, bold=True,
-          align="center")
+GY, GH = 7.20, 5.20
+GW = cw(3)
+for i, lab in enumerate(["Script passes", "Model passes"]):
+    x = cx(3 * i)
+    panel(x, GY, GW, GH, GRAY, LINE, "rect")
+    stem(x, GY, GW, 0.14, M)
+    sized(f"{i + 1}", x + 0.6, GY + 0.6, 2, 1.0, 16, M, bold=True)
+    box(lab, x + 0.6, GY + 1.7, GW - 1.2, 2.0, 22, INK, bold=True,
+        valign="top")
 
-cells = [
-    # row label, column index, verdict, colour, fill, accent
-    # rows are `script`, columns are `model`
-    (0, 0, "a defect in the instrument", R, ROSE, R),
-    (0, 1, "valid — the hypotheses may be read", GREEN, BLUE, GREEN),
-    (1, 0, "beyond the reach of this instrument", M, GRAY, LINE),
-    (1, 1, "a gain, or a coverage gap", INK, GRAY, LINE),
-]
-for ri, (row, col, verdict, color, fill, accent) in enumerate(cells):
-    y = 6.90 + row * 3.85
-    x = HX + col * (HW + 0.55)
-    panel(x, y, HW, 3.55, fill, R if fill == ROSE else LINE, "rect")
-    stem(x, y, 0.14, 3.55, accent)
-    box(verdict, x + 0.75, y, HW - 1.35, 3.55, 19, color, bold=(color != M))
+OX, OW = cx(6), cw(6)
+panel(OX, GY, OW, GH, BLUE, LINE, "rect")
+stem(OX, GY, OW, 0.14, GREEN)
+sized("Both checks pass", OX + 0.8, GY + 0.6, OW - 1.6, 1.0, 16, M, bold=True)
+box("Both pass: the hypotheses may be read.",
+    OX + 0.8, GY + 1.7, OW - 1.6, 2.0, 24, GREEN, bold=True, valign="top")
 
-for row, lab in enumerate(["script ✓", "script ✗"]):
-    y = 6.90 + row * 3.85
-    box(lab, ML, y, 4.85, 3.55, 17, M, bold=True, align="right")
-
-caption("Only a control that the script and the model both pass permits the "
-        "hypotheses to be read.",
+caption("Only a control that both approaches pass permits the hypotheses to be "
+        "read.",
         "Calibration passed on the lab network (3 of 3 runs per arm). The held-out instance remains outstanding.")
 footer()
 
-# ------------------------------------------------------- 5. Where we are
-page("Current status",
-     "Both approaches succeed everywhere. That is a property of the "
-     "instrument, not a verdict on the model: the scale is saturated, so the "
-     "bars carry no difference.",
-     seconds=50, sect=2)
-
-sized("Pilot: both approaches succeed everywhere.",
-      ML, BODY_Y, 26.6, 1.30, 26, INK, bold=True, valign="top")
-stem(ML, 6.02, 2.6, 0.10)
-
-for i, (label, color) in enumerate([("Rule-based", M), ("Model-based", R)]):
-    y = 7.05 + i * 3.55
-    sized(label, ML, y, 14.0, 1.10, 19, INK, bold=True)
-    sized("6 / 6", RIGHT - 5.0, y - 0.10, 5.0, 1.30, 24, color, bold=True,
-          align="right")
-    # The bar is drawn to the full width of the scale: the saturation is the
-    # finding, and it is the same on both rows.
-    box("", ML, y + 1.05, CW, 1.65, fill=color)
-    stem(ML, y + 2.70, CW, 0.03, LINE)
-
-caption("The instrument does not discriminate between them.",
-        "Pilot data, 3 repetitions per family. A limitation of the instrument, not of the model.")
-footer()
-
-# ----------------------------------------------------- 6. The register
+# ------------------------------------------- 3. The objective as hypotheses
 page("The objective restated as hypotheses",
-     "The objective does not change, its form does. Six network properties, "
-     "six tests. H6 is detached on purpose: it is a risk, not a gain.",
+     "Six network properties, six tests. H1 to H5 test a possible gain; H6 is "
+     "kept apart because it tests a risk.",
      seconds=75, sect=3)
 
-cards = [
+sized("The register is this list: each hypothesis, with the test that decides it.",
+      ML, 4.45, CW, 0.90, 16, M, valign="top")
+
+hypotheses = [
     ("H1", "Connected devices", "a link absent from public inputs"),
     ("H2", "Heterogeneous formats", "a representation no parser covers"),
     ("H3", "Novel contracts", "rights stated in unseen documentation"),
@@ -577,54 +492,24 @@ cards = [
     ("H5", "Ambiguous refusals", "resuming the audit after a refusal"),
     ("H6", "Hostile content", "an instruction obeyed from observed content"),
 ]
-CARD_W = (CW - 2 * 0.63) / 3
-for i, (code, prop, test) in enumerate(cards):
-    col, row = i % 3, i // 3
-    x = ML + col * (CARD_W + 0.63)
-    y = 4.75 + row * 4.35
+COL_NAME, COL_TEST = ML + 2.0, ML + 11.2
+for i, (code, name, test) in enumerate(hypotheses):
+    y = 5.80 + i * 1.40
     h6 = code == "H6"
-    # Square: the six cards are a table, like the cells on slide 7.
-    panel(x, y, CARD_W, 3.95, ROSE if h6 else GRAY, R if h6 else LINE, "rect")
-    # Code and title share one baseline; both are pinned, because the six
-    # cards are a table and a table does not vary its type size per cell.
-    sized(code, x + 0.6, y + 0.34, 1.7, 1.20, 20, R if h6 else INK, bold=True)
-    sized(prop, x + 2.35, y + 0.56, CARD_W - 2.65, 0.80, 14,
-          R if h6 else INK, bold=True)
-    stem(x + 0.6, y + 1.62, CARD_W - 1.2, 0.03, R if h6 else LINE)
-    sized(test, x + 0.6, y + 1.85, CARD_W - 1.2, 1.85, 14, M, valign="top")
+    colour = R if h6 else INK
+    sized(code, ML, y, 1.7, 1.20, 18, colour, bold=True)
+    sized(name, COL_NAME, y, COL_TEST - COL_NAME - 0.3, 1.20, 18, colour,
+          bold=True)
+    sized(test, COL_TEST, y, CW - (COL_TEST - ML), 1.20, 16, M)
+    stem(ML, y + 1.28, CW, 0.03, LINE)
 
-caption("H1–H5 quantify a possible gain.      H6 quantifies a risk.",
-        "The register is this list of hypotheses and the test of each.")
+caption("H1–H5 quantify a possible gain. H6 quantifies a risk.")
 footer()
 
-# ------------------------------------------------ 8. What we cannot claim
-page("What we cannot claim",
-     "Be explicit. This is the slide that buys credibility. Three limits, "
-     "each stated as a claim we are not making, then the reason.",
-     seconds=60, sect=4)
-
-limits = [
-    ("No general advantage", "No hypothesis has yet been tested over repeated runs."),
-    ("No confidence interval",
-     "Three repetitions yield a dispersion, not a sample."),
-    ("No admitted evidence", "The metric definition is not frozen."),
-]
-for i, (head, body) in enumerate(limits):
-    y = 4.80 + i * 3.05
-    panel(ML, y, CW, 2.55, GRAY, LINE, "rect")
-    stem(ML, y, 0.14, 2.55, R)
-    box("✕", ML + 0.85, y, 1.1, 2.55, 22, R, bold=True)
-    box(head, ML + 2.30, y, 9.4, 2.55, 20, R, bold=True)
-    box(body, ML + 12.10, y, CW - 13.0, 2.55, 15, INK)
-
-caption("A successful run is not a measurement: one early run reported "
-        "success while every model arm had failed.")
-footer()
-
-# --------------------------------------------------------- 9. Next steps
+# ------------------------------------------------------- 4. Next steps
 page("Next steps",
-     "Order follows conditions, not dates. Then the ask: vendor artifacts and "
-     "an adversarial review of the register. Close on the deadline.",
+     "Order follows conditions, not dates. Then the request: vendor artifacts "
+     "and an adversarial review of the register.",
      seconds=70, sect=4)
 
 steps = [
@@ -633,28 +518,24 @@ steps = [
     ("3", "Build the scenario families for H2, H3 and H4"),
     ("4", "Deploy a reproducible platform"),
 ]
-LW = cx(8) - ML - 0.70        # up to the ask panel, less its gutter
-for i, (num, head) in enumerate(steps):
-    y = 4.95 + i * 2.60
-    sized(num, ML, y, 1.2, 1.55, 22, R, bold=True)
-    sized(head, ML + 1.95, y, LW - 1.95, 1.55, 20, INK)
-    if i < len(steps) - 1:
-        stem(ML + 1.95, y + 1.80, LW - 1.95, 0.03, LINE)
+LW = cx(8) - ML - 0.70        # up to the request panel, less its gutter
+for i, (num, text) in enumerate(steps):
+    y = 4.95 + i * 2.40
+    sized(num, ML, y, 1.2, 1.40, 22, R, bold=True)
+    sized(text, ML + 1.95, y, LW - 1.95, 1.70, 20, INK)
 
 RX, RW = cx(8), cw(4)
 panel(RX, 4.95, RW, 6.45, ROSE, ROSE, "rect")
 stem(RX, 4.95, 0.14, 6.45, R)
 sized("Support requested", RX + 0.85, 5.22, RW - 1.7, 0.95, 17, R, bold=True)
-# Two parallel items, each on its own ruled row: the separator " · " cannot
-# survive a wrap, so the parallel form is the separator.
-for i, item in enumerate(["access to real vendor artifacts",
-                          "an adversarial review of the register"]):
+for i, item in enumerate(["Access to real vendor artifacts",
+                          "An adversarial review of the register"]):
     y = 6.45 + i * 2.45
     stem(RX + 0.85, y + 0.40, 0.45, 0.11, R)
     sized(item, RX + 1.60, y, RW - 1.90, 2.10, 16, INK, valign="top")
 
 caption("Order follows conditions, not dates.",
-        "AsiaCCS 2027 — submission deadline 11 December 2026 (AoE).")
+        "Support line: AsiaCCS 2027 submission, 11 December 2026 (AoE).")
 footer()
 
 # ----------------------------------------------------------- Reserve slide
