@@ -22,6 +22,11 @@ institutionnels et collègues techniques).
   1 de réserve. Ouvre directement dans PowerPoint ou Keynote.
 - [build.py](build.py) — générateur du `.pptx` (`python3 build.py`, via
   `officecli`). Source unique : modifier ici, pas dans le fichier PowerPoint.
+- [slides.pdf](slides.pdf) — export PDF, une page par diapositive, obtenu par
+  [build_pdf.py](build_pdf.py) (`python3 build_pdf.py`). C'est un PDF
+  **d'images** : chaque page est un rendu PNG de 1920 × 1080, pas un export
+  vectoriel. Le texte n'y est pas sélectionnable. Utile pour diffuser et
+  imprimer, pas pour éditer.
 - [design-notes.md](design-notes.md) — grille, règles de composition et
   journal des relectures. À lire avant de modifier `build.py`.
 - [archive-beamer/](archive-beamer/) — première version beamer
