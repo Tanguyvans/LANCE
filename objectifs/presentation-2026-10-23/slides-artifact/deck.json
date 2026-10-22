@@ -1,0 +1,15 @@
+{
+  "v": 4,
+  "createdOnFiles": { "v": 1, "at": "2026-10-22T12:15:00Z" },
+  "lists": "css",
+  "title": "LANCE — progress report",
+  "order": ["cover", "objective", "platform", "topologies", "judged", "versions", "results", "hypotheses", "next"],
+  "sections": {
+    "s1": { "description": "What the project asks and what the platform does.", "start": "cover" },
+    "s2": { "description": "How a run is judged and what counts as a finding.", "start": "judged" },
+    "s3": { "description": "The two benchmark versions, V1 and V2.", "start": "versions" },
+    "s4": { "description": "The hypotheses and what comes next.", "start": "hypotheses" }
+  },
+  "faces": {},
+  "designSystems": []
+}

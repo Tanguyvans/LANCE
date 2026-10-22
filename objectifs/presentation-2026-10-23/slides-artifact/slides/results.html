@@ -1,0 +1,20 @@
+<section id="results" data-transition="fade" style="background:#FFFFFF;color:#1A1A1A;font-family:Arial, Helvetica, sans-serif;padding:168px 128px 96px;display:flex;flex-direction:column;gap:40px">
+<p style="position:absolute;left:128px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Objectives</p>
+<p style="position:absolute;left:360px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Platform</p>
+<p style="position:absolute;left:592px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Method</p>
+<p style="position:absolute;left:824px;top:56px;width:216px;font-size:24px;color:#B60036;border-bottom:3px solid #B60036;padding:0 0 8px">Benchmark</p>
+<p style="position:absolute;left:1056px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Hypotheses</p>
+<p style="position:absolute;left:1288px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Next steps</p>
+<img src="/_blob/d6f51aef2d93c4ba20463361c3f59919" alt="SMart ILIA, Université de Mons" style="position:absolute;right:128px;top:40px;width:210px;height:72px;object-fit:contain">
+<div style="display:flex;flex-direction:column;gap:16px"><h2 style="font-size:52px;font-weight:700;line-height:1.1">Example results: two scored V1 runs</h2><div style="width:120px;height:6px;background:#B60036"></div></div>
+<table style="font-size:28px;font-family:Arial, Helvetica, sans-serif;color:#1A1A1A">
+<tr style="background:#FCF0F4"><th style="width:14%;color:#B60036">Scenario</th><th style="width:30%;color:#B60036">Model</th><th style="width:14%;color:#B60036">F1</th><th style="width:22%;color:#B60036">Precision</th><th style="width:20%;color:#B60036">Recall</th></tr>
+<tr><td style="width:14%">S1</td><td style="width:30%">qwen3.8:27b</td><td style="width:14%">80 %</td><td style="width:22%">66.7 %</td><td style="width:20%">100 %</td></tr>
+<tr><td style="width:14%">S15</td><td style="width:30%">qwen3.8:27b</td><td style="width:14%">54.5 %</td><td style="width:22%">37.5 %</td><td style="width:20%">100 %</td></tr>
+</table>
+<ul style="font-size:30px;line-height:1.5">
+<li>Single runs on development scenarios (S15: multi-tenant API), not a measurement</li>
+<li>S1 precision is a lower bound; no script baseline yet</li>
+</ul>
+<aside>Counts read from the platform’s benchmark view on 22 October 2026. 437 runs are recorded: 256 partial, 98 incomplete, 44 done, 39 failed or other. Most are partial or incomplete, which the platform marks as not comparable. Only two runs have a final audit score: S1 (F1 80 %, precision 66.7 %, recall 100 %) and S15 (F1 54.5 %, precision 37.5 %, recall 100 %), both with the local model qwen3.8:27b on development scenarios. On S1, the evaluator classifies five of the six false positives as supported by evidence but outside the answer key; whether they are real weaknesses has not been checked, so precision is a lower bound. These are single runs; they illustrate the scoring, they do not measure the model.</aside>
+</section>

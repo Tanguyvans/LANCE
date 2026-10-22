@@ -1,5 +1,19 @@
 # Présentation d'avancement — 2026-10-23
 
+> **Version courante (2026-10-22).** Le deck présenté est un deck « Slides »
+> de Claude (9 diapositives, lien privé :
+> <https://claude.ai/artifact/2mgiuTXaC6HxhSas8xw39v>). Son code source est dans
+> [slides-artifact/](slides-artifact/) : `deck.json` (ordre et sections),
+> `slides/*.html` (une diapositive par fichier, 1920 × 1080) et `assets/`
+> (logo et captures de topologie S1 et S12 prises sur la plateforme le
+> 2026-10-22). Les images y sont référencées par l'identifiant d'actif de l'outil
+> (`/_blob/…`) : pour reconstruire le deck ailleurs, remplacer ces références par
+> les fichiers de `assets/`.
+>
+> Le `.pptx`, le `.pdf` et `build.py` décrits plus bas correspondent à la
+> version précédente (13 diapositives, gabarit PowerPoint) et ne sont plus à
+> jour. Ils sont conservés pour l'historique.
+
 **Question.** Comment rendre compte de l'avancement du projet à des partenaires
 du programme NATO SPS G6259 et à des collègues, sans surdéclarer ce qui n'est
 pas mesuré ?

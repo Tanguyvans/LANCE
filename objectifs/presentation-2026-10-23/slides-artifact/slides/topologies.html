@@ -1,0 +1,32 @@
+<section id="topologies" data-transition="fade" style="background:#FFFFFF;color:#1A1A1A;font-family:Arial, Helvetica, sans-serif;padding:168px 128px 96px;display:flex;flex-direction:column;gap:32px">
+<p style="position:absolute;left:128px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Objectives</p>
+<p style="position:absolute;left:360px;top:56px;width:216px;font-size:24px;color:#B60036;border-bottom:3px solid #B60036;padding:0 0 8px">Platform</p>
+<p style="position:absolute;left:592px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Method</p>
+<p style="position:absolute;left:824px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Benchmark</p>
+<p style="position:absolute;left:1056px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Hypotheses</p>
+<p style="position:absolute;left:1288px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Next steps</p>
+<img src="/_blob/d6f51aef2d93c4ba20463361c3f59919" alt="SMart ILIA, Université de Mons" style="position:absolute;right:128px;top:40px;width:210px;height:72px;object-fit:contain">
+<div style="display:flex;flex-direction:column;gap:16px"><h2 style="font-size:52px;font-weight:700;line-height:1.1">Example scenarios: S1 and S12</h2><div style="width:120px;height:6px;background:#B60036"></div></div>
+<div style="display:flex;flex-direction:row;gap:48px;align-items:flex-start">
+<div style="width:440px;display:flex;flex-direction:column;gap:12px">
+<p style="font-size:30px;font-weight:700;color:#1D5C96">S1: flat network</p>
+<img src="/_blob/265c3f693b2cd568e313580a4aa2451d" alt="Topology of scenario S1 as drawn by the platform: a router connected to an SSH server, a web server and an MQTT broker" style="width:440px;height:410px;object-fit:contain;border:1px solid #BBBBBB">
+<p style="font-size:26px;line-height:1.3">router and 3 services, one subnet; 12 expected findings</p>
+</div>
+<div style="width:520px;display:flex;flex-direction:column;gap:12px">
+<p style="font-size:30px;font-weight:700;color:#B60036">S12: three zones, 34 services</p>
+<img src="/_blob/fabb319061b0e0c7556ffb8d83ca7346" alt="Topology of scenario S12 as drawn by the platform: a router connected to 34 services" style="width:520px;height:486px;object-fit:contain;border:1px solid #BBBBBB">
+<p style="font-size:26px;line-height:1.3">IT 8 · IoT 14 · OT 12 services; 42 expected findings</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px">
+<p style="font-size:28px;font-weight:700">Node types</p>
+<p style="font-size:28px"><span style="color:#D95B4A"><b>router</b></span></p>
+<p style="font-size:28px"><span style="color:#2F7FD0"><b>compute</b></span> (servers)</p>
+<p style="font-size:28px"><span style="color:#D9802F"><b>gateway</b></span> (MQTT, Node-RED)</p>
+<p style="font-size:28px"><span style="color:#8A55B5"><b>camera</b></span> (cameras, NVR)</p>
+<p style="font-size:28px"><span style="color:#3FAE5C"><b>sensor</b></span> (PLC, CoAP, SNMP)</p>
+</div>
+</div>
+<p style="font-size:26px;color:#5C626C">29 public scenarios (19 development), each with an answer key; the hardened control S1h, listed apart, has an empty key</p>
+<aside>Both views are captures of the platform’s own topology graph for the scenarios S1 and S12, taken on 22 October 2026. S1 is a router with three services on one subnet: an MQTT broker, a web server and an SSH server. S12 is a router with 34 services in three zones, grouped by address range: IT 8 services, IoT 14, OT 12. The colours are the platform’s node types, not zones. The routers and services are virtual machines on the benchmark network.</aside>
+</section>

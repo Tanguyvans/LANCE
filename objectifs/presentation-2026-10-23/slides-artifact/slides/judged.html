@@ -1,0 +1,40 @@
+<section id="judged" data-transition="fade" style="background:#FFFFFF;color:#1A1A1A;font-family:Arial, Helvetica, sans-serif;padding:168px 128px 96px;display:flex;flex-direction:column;gap:48px">
+<p style="position:absolute;left:128px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Objectives</p>
+<p style="position:absolute;left:360px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Platform</p>
+<p style="position:absolute;left:592px;top:56px;width:216px;font-size:24px;color:#B60036;border-bottom:3px solid #B60036;padding:0 0 8px">Method</p>
+<p style="position:absolute;left:824px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Benchmark</p>
+<p style="position:absolute;left:1056px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Hypotheses</p>
+<p style="position:absolute;left:1288px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Next steps</p>
+<img src="/_blob/d6f51aef2d93c4ba20463361c3f59919" alt="SMart ILIA, Université de Mons" style="position:absolute;right:128px;top:40px;width:210px;height:72px;object-fit:contain">
+<div style="display:flex;flex-direction:column;gap:16px"><h2 style="font-size:52px;font-weight:700;line-height:1.1">How a run is judged</h2><div style="width:120px;height:6px;background:#B60036"></div></div>
+<div style="display:flex;flex-direction:row;gap:16px;align-items:center">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;border:2px solid #5C626C;padding:20px">
+<h3 style="font-size:32px;font-weight:700">Goal</h3>
+<p style="font-size:28px;line-height:1.3">find the planted weaknesses</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px;height:24px;background:#B60036"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;border:2px solid #1D5C96;background:#EFF6FC;padding:20px">
+<h3 style="font-size:32px;font-weight:700;color:#1D5C96">Scenario + key</h3>
+<p style="font-size:28px;line-height:1.3">scenario with a ground-truth file</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px;height:24px;background:#B60036"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;border:2px solid #1D5C96;background:#EFF6FC;padding:20px">
+<h3 style="font-size:32px;font-weight:700;color:#1D5C96">Platform</h3>
+<p style="font-size:28px;line-height:1.3">audit, one log per run</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px;height:24px;background:#B60036"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;border:2px solid #5C626C;padding:20px">
+<h3 style="font-size:32px;font-weight:700">Evidence</h3>
+<p style="font-size:28px;line-height:1.3">files kept per run</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px;height:24px;background:#B60036"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;border:2px solid #B60036;background:#FCF0F4;padding:20px">
+<h3 style="font-size:32px;font-weight:700;color:#B60036">Benchmark</h3>
+<p style="font-size:28px;line-height:1.3">audit F1 against the answer key</p>
+</div>
+</div>
+<ul style="font-size:30px;line-height:1.5">
+<li>A finding counts only if recomputed from the run log; on a hardened control such as S1h, any finding is an error</li>
+</ul>
+<aside>Read left to right. The goal is set before the run. The scenario carries its own answer key. The benchmark compares what the platform reports with that key, never with the model’s own conclusion.</aside>
+</section>
