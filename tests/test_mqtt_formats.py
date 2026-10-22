@@ -567,6 +567,51 @@ def test_the_prediction_is_read_from_both_arms_never_from_one():
     assert semantic["reading"] == "a gain in the normalized view would be H4, not H2"
 
 
+def _attempt(fixture_type):
+    item = next(item for item in live.load_corpus()
+                if item["dossier"]["fixture_type"] == fixture_type)
+    public = item["dossier"]
+    journal = formats.Journal(public, public["view"])
+    answer = formats.run_attempting_rules(public, journal)
+    return formats.evaluate(public, item["oracle"], answer, journal)
+
+
+def test_a_convention_script_covers_the_undeclared_schema():
+    # This is the arm that decides whether the model's gain means anything: it
+    # knows no schema, only the estate's conventions.
+    evaluation = _attempt("s_mqtt_formats_t03")
+    assert evaluation["success"] is True and evaluation["coverage"] == 1.0
+
+
+def test_a_convention_script_abstains_where_the_reading_is_not_a_value():
+    evaluation = _attempt("s_mqtt_formats_t07")
+    assert evaluation["success"] is True
+    assert "m2" not in evaluation["wrong"]
+
+
+def test_the_convention_script_covers_the_whole_frozen_corpus():
+    # Recorded as the reference a model must beat to claim a format competence:
+    # 8/8, including the trap fixture both other arms fail.
+    assert all(_attempt(f"s_mqtt_formats_t0{index}")["success"]
+               for index in range(1, 9))
+
+
+def test_the_prediction_says_when_a_convention_baseline_absorbs_the_gain():
+    def case(policy, success):
+        return {"policy": policy, "evaluation": {
+            "schema": "variant", "view": "raw", "success": success, "coverage": 1.0,
+            "messages": 3, "correct": 3 if success else 0}}
+
+    check = live.prediction_check([case("rules", False), case("rules_attempt", True),
+                                   case("llm", True)])
+    assert check["raw_gain"] is True and check["convention_gain_absorbed"] is True
+    assert "not specific to the model" in check["reading"]
+    # A baseline that does not cover the group leaves the gain standing.
+    check = live.prediction_check([case("rules", False), case("rules_attempt", False),
+                                   case("llm", True)])
+    assert check["convention_gain_absorbed"] is False
+
+
 def test_the_summary_never_pools_the_two_arms():
     def case(policy, success):
         return {"policy": policy, "evaluation": {

@@ -21,6 +21,7 @@ import base64
 import hashlib
 import json
 from pathlib import Path
+import re
 
 CONTRACT = "mqtt-formats-interpretation-v1"
 SCENARIO = "s_mqtt_formats"
@@ -221,6 +222,79 @@ def _decode_reference(message):
     return mapped
 
 
+# Conventions a script may use without any schema being declared: the device
+# is named by an identity token, the reading by a temperature token, and a
+# humidity token never passes for temperature. They are conventions of the
+# estate, not the variant schema: no key of the corpus is written here.
+IDENTITY_TOKENS = frozenset({"dev", "device", "node", "sensor", "id"})
+PROPERTY_TOKENS = {"temperature_c": frozenset({"t", "temp", "temperature"}),
+                   "humidity_pct": frozenset({"h", "rh", "hum", "humid", "humidity"})}
+
+
+def _tokens(key):
+    return [part for part in re.split(r"[^a-z0-9]+", str(key).casefold()) if part]
+
+
+def _scalars(value, key=None):
+    """Every scalar of a decoded document, with the last key that holds it."""
+    if isinstance(value, dict):
+        return [pair for name, item in value.items() for pair in _scalars(item, name)]
+    if isinstance(value, list):
+        return [pair for item in value for pair in _scalars(item, key)]
+    return [(key or "", value)]
+
+
+def _convention_fields(message, question):
+    """Read a message by convention alone, with no schema registered anywhere.
+
+    The declared parser refuses a presentation it was not written for. This
+    reader is what a competent script does instead: it looks for an identity
+    token and for the asked reading's token, at any depth. It cannot tell the
+    reading from another reading of the same document except by name, so a
+    message that carries only humidity is ``not_exposed`` for temperature.
+    """
+    if message["encoding"] == "base64":
+        try:
+            text = base64.b64decode(message["payload"], validate=True).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            return None
+    else:
+        text = message["payload"]
+    try:
+        decoded = json.loads(text)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    wanted = PROPERTY_TOKENS[question["property"]]
+    others = set().union(*(tokens for name, tokens in PROPERTY_TOKENS.items()
+                           if name != question["property"]))
+    device, reading = None, "absent"
+    for key, value in _scalars(decoded):
+        tokens = _tokens(key)
+        if device is None and isinstance(value, str) and set(tokens) & IDENTITY_TOKENS:
+            device = value
+        if set(tokens) & wanted and not set(tokens) & others:
+            # A slot that carries something else than a value leaves the
+            # question open: the message does not let the reader decide.
+            numeric = isinstance(value, (int, float)) and not isinstance(value, bool)
+            reading = "present" if numeric else "undecidable"
+    return {"device_id": device, "reading": reading}
+
+
+def _decide_convention(fields, question):
+    if fields is None:
+        return None
+    device = fields["device_id"]
+    if device is None:
+        return None
+    if device != question["device_id"]:
+        return "not_exposed"
+    if fields["reading"] == "undecidable":
+        return None
+    return "exposed" if fields["reading"] == "present" else "not_exposed"
+
+
 def _decide(fields, question):
     """Shared exposure rule: does this message carry the asked reading?
 
@@ -270,12 +344,44 @@ def run_rules(dossier, journal):
             "conclusion": _conclude({key: entry["verdict"] for key, entry in verdicts.items()})}
 
 
+def run_attempting_rules(dossier, journal):
+    """Competent script that tries: conventions instead of a declared parser.
+
+    This is the arm that says whether a gain over the declared parser means
+    anything. It knows no schema, so it is not the declared parser; it reads
+    keys by convention, so it is not a model. If it covers the same group that
+    the model covers, the model's advantage is a property of the declaration,
+    not of the model.
+    """
+    public = validate_dossier(dossier)
+    verdicts = {}
+    for message in public["messages"]:
+        evidence_ref, body = journal.read(message["message_id"])
+        if public["view"] == "normalized":
+            # The normalized view already carries canonical names: no
+            # convention is needed, and every arm reads it the same way.
+            canonical = body["fields"]
+            value = canonical.get(public["question"]["property"])
+            fields = {"device_id": canonical.get("device_id"),
+                      "reading": ("absent" if value is None else
+                                  "present" if isinstance(value, (int, float))
+                                  and not isinstance(value, bool) else "undecidable")}
+        else:
+            fields = _convention_fields(body, public["question"])
+        verdict = _decide_convention(fields, public["question"])
+        verdicts[message["message_id"]] = {"verdict": verdict or "abstain",
+                                           "evidence_ref": evidence_ref}
+    return {"schema_version": 1, "contract": CONTRACT, "decision_policy": "rules_attempt",
+            "dossier_sha256": journal.dossier_sha256, "verdicts": verdicts,
+            "conclusion": _conclude({key: entry["verdict"] for key, entry in verdicts.items()})}
+
+
 def _validate_answer(answer, public, journal):
     if not isinstance(answer, dict) or set(answer) != ANSWER_FIELDS:
         raise ValueError("Answer must carry exactly the declared fields")
     if answer["schema_version"] != 1 or answer["contract"] != CONTRACT:
         raise ValueError("Answer belongs to another contract")
-    if answer["decision_policy"] not in ("rules", "llm"):
+    if answer["decision_policy"] not in ("rules", "rules_attempt", "llm"):
         raise ValueError("Answer decision policy is not declared")
     if answer["dossier_sha256"] != journal.dossier_sha256:
         raise ValueError("Answer is bound to another dossier")

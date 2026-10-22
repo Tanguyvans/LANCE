@@ -18,8 +18,8 @@ import time
 from types import SimpleNamespace
 
 from benchmarks.experiments.mqtt_formats import (
-    CONTRACT, METRIC, SCENARIO, Journal, aggregate, evaluate, run_rules,
-    validate_dossier,
+    CONTRACT, METRIC, SCENARIO, Journal, aggregate, evaluate, run_attempting_rules,
+    run_rules, validate_dossier,
 )
 from benchmarks.experiments.mqtt_formats_llm import (
     MAX_TURNS, check_budget, run_llm,
@@ -35,6 +35,10 @@ from src.agent.provider import LLMProvider
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS = ROOT / "benchmarks" / "experiments" / "mqtt-formats-corpus.json"
 SCOPE = "mqtt-formats-interpretation"
+# The declared parsers, the model, and the script that tries by convention.
+# The third is a baseline, not a contender: it exists to say whether the gain
+# over the declaration belongs to the model or to the declaration.
+ARMS = ("rules", "rules_attempt", "llm")
 PREDICTION = "llm beats the declared parsers on variant/raw and equals them elsewhere"
 
 
@@ -105,11 +109,12 @@ def run_arm(public, oracle, policy, directory, args, metadata):
     journal = Journal(public, public["view"])
     failure = None
     try:
-        if policy == "rules":
-            answer = run_rules(public, journal)
+        if policy in ("rules", "rules_attempt"):
+            answer = (run_rules(public, journal) if policy == "rules"
+                      else run_attempting_rules(public, journal))
             decision.update(status="completed", conclusion=answer["conclusion"],
                             verdicts=answer["verdicts"])
-            # Both arms leave the same answer artefact: the recount reads the
+            # Every arm leaves the same answer artefact: the recount reads the
             # file, not the arm's own claim.
             write_json(directory / "answer.json", answer)
         else:
@@ -131,7 +136,9 @@ def run_arm(public, oracle, policy, directory, args, metadata):
                      "stopped" if isinstance(exc, (KeyboardInterrupt, SystemExit)) else "failed")
             decision.update(status=state, error_type=kind)
     finally:
-        if policy == "rules":
+        if policy != "llm":
+            # The LLM arm writes its own journal, because its evidence log is
+            # the record the arm must be recounted against.
             _write_journal(directory, journal)
         run.tracker.end_phase()
         run.tracker.finalize()
@@ -168,7 +175,7 @@ def spend(directory):
 
 
 def summaries(cases):
-    """One aggregate per arm, never a pool of the two.
+    """One aggregate per arm, never a pool of the arms.
 
     A pooled rate mixes the declared parsers with the model, so a group where
     they disagree reads as a single middling number and hides exactly the
@@ -177,7 +184,7 @@ def summaries(cases):
     return {policy: aggregate([case["evaluation"] for case in cases
                                if case.get("policy") == policy
                                and case.get("evaluation")])
-            for policy in ("rules", "llm")}
+            for policy in ARMS}
 
 
 def prediction_check(cases):
@@ -187,20 +194,19 @@ def prediction_check(cases):
     groups. Anything else is a refutation, and the protocol says which
     hypothesis a normalized-view gain belongs to (H4).
     """
-    rules, llm = {}, {}
+    tables = {arm: {} for arm in ARMS}
     for case in cases:
         rate = case["evaluation"]
-        if not rate:
+        if not rate or case.get("policy") not in tables:
             continue
         key = f"{rate['schema']}/{rate['view']}"
-        target = llm if case["policy"] == "llm" else rules
-        entry = target.setdefault(key, [0, 0])
+        entry = tables[case["policy"]].setdefault(key, [0, 0])
         entry[0] += 1 if rate["success"] else 0
         entry[1] += 1
     rates = {arm: {key: (value[0] / value[1] if value[1] else None)
                    for key, value in table.items()}
-             for arm, table in (("rules", rules), ("llm", llm))}
-    groups_seen = set(rates["rules"]) | set(rates["llm"])
+             for arm, table in tables.items()}
+    groups_seen = set().union(*(set(table) for table in rates.values()))
     gain = ("variant/raw" in groups_seen
             and rates["rules"].get("variant/raw") is not None
             and rates["llm"].get("variant/raw") is not None
@@ -208,13 +214,23 @@ def prediction_check(cases):
     normalised = [key for key in groups_seen if key.endswith("/normalized")]
     normalised_equal = all(rates["rules"].get(key) == rates["llm"].get(key)
                            for key in normalised) if normalised else None
+    # The baseline that tries exists for one question: does the model's gain
+    # over the declared parser survive a script that reads by convention?
+    attempt = rates["rules_attempt"].get("variant/raw")
+    absorbed = (attempt is not None and rates["llm"].get("variant/raw") is not None
+                and gain and attempt >= rates["llm"]["variant/raw"])
     return {"prediction": PREDICTION, "rates": rates,
             "raw_gain": gain, "normalized_equal": normalised_equal,
+            "convention_gain_absorbed": absorbed,
             "holds": bool(gain) and normalised_equal is not False,
             "reading": ("a gain in the normalized view would be H4, not H2"
                         if normalised_equal is False else
                         "equality in the raw view refutes H2" if not gain else
-                        "prediction holds on this corpus")}
+                        "the convention baseline covers the raw variant: the gain "
+                        "over the declared parser is not specific to the model"
+                        if absorbed else
+                        "prediction holds on this corpus, against a convention "
+                        "baseline that does not cover the group")}
 
 
 def provider_preflight(args, root):
@@ -275,14 +291,16 @@ def main_run(args):
             f"Provider preflight failed: model {args.model} is not served")
     results = {"schema_version": 1, "contract": CONTRACT, "scenario_id": SCENARIO,
                "metric": METRIC, "purpose": "hypothesis family; no admission",
-               "repetitions": args.repetitions, "arms": ["rules", "llm"],
+               "repetitions": args.repetitions, "arms": list(ARMS),
                "corpus_sha256": metadata["corpus_sha256"], "cases": [], "failures": []}
     try:
         for repetition in range(1, args.repetitions + 1):
             for index, item in enumerate(fixtures):
                 trial = root / f"trial-{repetition:02d}" / item["dossier"]["fixture_type"]
                 trial.mkdir(parents=True, exist_ok=False, mode=0o700)
-                order = ["rules", "llm"] if (repetition + index) % 2 else ["llm", "rules"]
+                # Rotate the arm order so no arm always runs first on a dossier.
+                shift = (repetition + index) % len(ARMS)
+                order = list(ARMS[shift:]) + list(ARMS[:shift])
                 try:
                     for policy in order:
                         evaluation = run_arm(item["dossier"], item["oracle"], policy,
