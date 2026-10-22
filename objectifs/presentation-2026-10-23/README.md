@@ -10,9 +10,9 @@
 > (`/_blob/…`) : pour reconstruire le deck ailleurs, remplacer ces références par
 > les fichiers de `assets/`.
 >
-> Le `.pptx`, le `.pdf` et `build.py` décrits plus bas correspondent à la
-> version précédente (13 diapositives, gabarit PowerPoint) et ne sont plus à
-> jour. Ils sont conservés pour l'historique.
+> Les anciens `slides.pptx` et `slides.pdf` (13 diapositives, gabarit
+> PowerPoint) ont été retirés. Le reste de cette page décrit cette version
+> précédente et n'est conservé que pour l'historique.
 
 **Question.** Comment rendre compte de l'avancement du projet à des partenaires
 du programme NATO SPS G6259 et à des collègues, sans surdéclarer ce qui n'est
@@ -32,15 +32,12 @@ institutionnels et collègues techniques).
 
 ## Documents
 
-- [slides.pptx](slides.pptx) — rendu principal, 13 diapositives : 12 de corps et
-  1 de réserve. Ouvre directement dans PowerPoint ou Keynote.
-- [build.py](build.py) — générateur du `.pptx` (`python3 build.py`, via
-  `officecli`). Source unique : modifier ici, pas dans le fichier PowerPoint.
-- [slides.pdf](slides.pdf) — export PDF, une page par diapositive, obtenu par
-  [build_pdf.py](build_pdf.py) (`python3 build_pdf.py`). C'est un PDF
-  **d'images** : chaque page est un rendu PNG de 1920 × 1080, pas un export
-  vectoriel. Le texte n'y est pas sélectionnable. Utile pour diffuser et
-  imprimer, pas pour éditer.
+- [slides-artifact/](slides-artifact/) — source du deck courant (voir la note en
+  tête de page).
+- [build.py](build.py) et [build_pdf.py](build_pdf.py) — générateurs de
+  l'ancienne version PowerPoint (13 diapositives). Les fichiers `slides.pptx` et
+  `slides.pdf` qu'ils produisaient ont été retirés ; ils restent dans
+  l'historique git.
 - [design-notes.md](design-notes.md) — grille, règles de composition et
   journal des relectures. À lire avant de modifier `build.py`.
 - [archive-beamer/](archive-beamer/) — première version beamer
@@ -132,7 +129,7 @@ formulations du premier plan qui n'étaient pas soutenues par les sources.
 
 ## Suite
 
-- Ouvrir `slides.pptx` dans PowerPoint pour confirmer le rendu réel.
+- Parcourir le deck courant en mode présentation pour confirmer le rendu réel.
 - Relire le deck du point de vue d'un lecteur qui n'a pas suivi les échanges.
 - Répéter au moins une fois à voix haute pour vérifier le budget de temps.
 - Si le temps manque en séance : sauter la diapositive 3 (son contenu est
