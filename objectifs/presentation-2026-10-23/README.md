@@ -18,7 +18,7 @@ institutionnels et collègues techniques).
 
 ## Documents
 
-- [slides.pptx](slides.pptx) — rendu principal, 11 diapositives : 10 de corps et
+- [slides.pptx](slides.pptx) — rendu principal, 13 diapositives : 12 de corps et
   1 de réserve. Ouvre directement dans PowerPoint ou Keynote.
 - [build.py](build.py) — générateur du `.pptx` (`python3 build.py`, via
   `officecli`). Source unique : modifier ici, pas dans le fichier PowerPoint.
@@ -52,12 +52,14 @@ Onglets : Objective · Instrument · Control · Hypotheses · Outlook.
 | 2 | The objective | Objective | Une phrase, trois engagements | Trois lignes |
 | 3 | The platform in brief | Objective | Ce que fait la plateforme | Capture du dashboard |
 | 4 | The instrument | Instrument | Laboratoire, plateforme, benchmark | Trois bandes |
-| 5 | What constitutes a finding | Instrument | Preuve recalculée ; saine contre vulnérable | Deux panneaux opposés |
-| 6 | A control task before testing the model | Control | Porte V0 à deux bras | Matrice 2 × 2 |
-| 7 | Current status | Control | Les deux bras réussissent partout | Barres saturées, 6/6 |
-| 8 | The objective restated as hypotheses | Hypotheses | Registre H1–H6 ; H6 est un risque | Six cartes, H6 détachée |
-| 9 | What we cannot claim | Outlook | Trois limites explicites | Trois lignes |
-| 10 | Next steps | Outlook | Quatre étapes ; demande de soutien | Liste numérotée + encadré |
+| 5 | Script, LLM agent and harness | Instrument | Ce qui varie entre les approches, ce qui reste fixe | Schéma harness |
+| 6 | How a run is judged against the goal | Instrument | But → laboratoire → plateforme → preuves → benchmark | Chaîne + boucle de retour |
+| 7 | What constitutes a finding | Instrument | Preuve recalculée ; saine contre vulnérable | Deux panneaux opposés |
+| 8 | A control task before testing the model | Control | Porte V0 à deux bras | Matrice 2 × 2 |
+| 9 | Current status | Control | Les deux bras réussissent partout | Barres saturées, 6/6 |
+| 10 | The objective restated as hypotheses | Hypotheses | Registre H1–H6 ; H6 est un risque | Six cartes, H6 détachée |
+| 11 | What we cannot claim | Outlook | Trois limites explicites | Trois lignes |
+| 12 | Next steps | Outlook | Quatre étapes ; demande de soutien | Liste numérotée + encadré |
 | R | Reserve — declared coverage gaps | Outlook | Trous de couverture assumés | Liste |
 
 Une seule idée par diapositive, une phrase de titre par idée. Les chiffres du
@@ -75,7 +77,7 @@ section suivante.
 
 **Rendu vérifié** : `officecli validate` sans erreur, `officecli view issues` à
 zéro problème (ni débordement de texte, ni chevauchement), inspection visuelle
-des 11 diapositives. Le dimensionnement du texte est calculé à partir des
+des 13 diapositives. Le dimensionnement du texte est calculé à partir des
 métriques Arial avec une marge de sécurité, parce que le moteur de rendu
 substitue une police de repli plus large et ignore le rétrécissement
 automatique stocké dans le fichier.

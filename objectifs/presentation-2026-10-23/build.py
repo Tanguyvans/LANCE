@@ -376,6 +376,95 @@ caption("The model is one component among them.",
         "A run constitutes a measurement only against known ground truth.")
 footer()
 
+# ---------------------------------------- 3b. Script, LLM agent and harness
+page("Script, LLM agent and harness",
+     "Three things, kept apart. The script is a fixed procedure. The LLM agent "
+     "chooses its next step from the tool results. The harness holds the tools, "
+     "the budget, the log and the scoring fixed. Only the decision-maker varies.",
+     seconds=60, sect=1)
+
+HY0, HH = 4.60, 9.70
+panel(ML, HY0, CW, HH, BLUE, B, "rect")
+sized("HARNESS  ·  fixed for both approaches: tools, budget, log, scoring",
+      ML + 0.6, HY0 + 0.35, CW - 1.2, 0.8, 15, B, bold=True)
+
+half = (CW - 1.2 - 0.6) / 2
+for i, (head, body, accent) in enumerate([
+    ("Script", "A fixed procedure. The same steps run on every configuration. "
+               "No model is involved.", M),
+    ("LLM agent", "A model reads each tool result and chooses the next step, "
+                  "within the same budget.", R),
+]):
+    x = ML + 0.6 + i * (half + 0.6)
+    panel(x, HY0 + 1.6, half, 3.3, "FFFFFF", accent, "rect")
+    stem(x, HY0 + 1.6, half, 0.14, accent)
+    sized(head, x + 0.6, HY0 + 2.0, half - 1.2, 0.9, 20,
+          accent if accent != M else INK, bold=True)
+    sized(body, x + 0.6, HY0 + 3.0, half - 1.2, 1.7, 15, INK, valign="top")
+    stem(x + half / 2 - 0.025, HY0 + 4.9, 0.05, 0.9, accent)
+
+panel(ML + 0.6, HY0 + 5.8, CW - 1.2, 1.2, GRAY, LINE, "rect")
+sized("Tools: one shared set for both (scans, service probes, credential tests, "
+      "file reads)", ML + 1.0, HY0 + 5.8, CW - 2.0, 1.2, 16, INK,
+      align="center")
+stem(ML + CW / 2 - 0.025, HY0 + 7.0, 0.05, 0.4, B)
+panel(ML + 0.6, HY0 + 7.4, CW - 1.2, 1.2, "FFFFFF", B, "rect")
+sized("Log of every call, then scoring recomputed from that log",
+      ML + 1.0, HY0 + 7.4, CW - 2.0, 1.2, 16, INK, align="center")
+
+caption("The harness is what makes the two approaches comparable: only the "
+        "decision-maker changes.",
+        "Without LLM: Script and rule-based audit. With LLM: Agent simple and the LANCE pipeline.")
+footer()
+
+# ------------------------------------------------- 3c. How a run is judged
+page("How a run is judged against the goal",
+     "Read left to right. The goal is set before the run. The scenario carries "
+     "its own answer key. The benchmark compares what the platform reports "
+     "with that key, never with the model's own conclusion.",
+     seconds=60, sect=1)
+
+steps = [
+    ("Goal", "Find the weaknesses of a network, and only those"),
+    ("Laboratory", "A scenario with planted weaknesses, listed in a "
+                   "ground-truth file"),
+    ("Platform", "Audits the scenario: six phases, one log per run"),
+    ("Evidence", "Observations and proofs saved as files for each run"),
+    ("Benchmark", "Compares findings with the truth: precision, recall, F1"),
+]
+GAP = 0.90
+BW = (CW - 4 * GAP) / 5
+FY, FH = 5.30, 5.00
+for i, (head, body) in enumerate(steps):
+    x = ML + i * (BW + GAP)
+    accent = R if i == 4 else (B if i == 2 else M)
+    fill = ROSE if i == 4 else (BLUE if i == 2 else GRAY)
+    lc = R if i == 4 else (B if i == 2 else LINE)
+    panel(x, FY, BW, FH, fill, lc, "rect")
+    stem(x, FY, BW, 0.14, accent)
+    sized(f"{i + 1}", x + 0.5, FY + 0.55, 2, 1.0, 16, accent, bold=True)
+    sized(head, x + 0.5, FY + 1.35, BW - 1.0, 0.9, 20,
+          accent if accent != M else INK, bold=True)
+    sized(body, x + 0.5, FY + 2.20, BW - 1.0, 2.60, 13, M, valign="top")
+    if i < 4:
+        stem(x + BW + 0.08, FY + FH / 2 - 0.03, GAP - 0.16, 0.06, accent)
+
+# Return path: the benchmark result loops back to the goal.
+LY = FY + FH + 0.85
+x0 = ML + BW / 2
+x1 = ML + 4 * (BW + GAP) + BW / 2
+stem(x0 - 0.025, FY + FH + 0.05, 0.05, LY - (FY + FH) - 0.05, R)
+stem(x1 - 0.025, FY + FH + 0.05, 0.05, LY - (FY + FH) - 0.05, R)
+stem(x0, LY, x1 - x0, 0.05, R)
+sized("A result counts only against the planted truth; it never confirms the "
+      "model's own conclusion.", ML, LY + 0.25, CW, 0.8, 16, R, bold=True,
+      align="center")
+
+caption("The score is computed against the planted truth, not against the "
+        "platform's own conclusion.",
+        "Precision, recall and F1 are recomputed from each run's log.")
+footer()
+
 # ------------------------------------------------- 4. What counts as found
 page("What constitutes a finding",
      "Two halves. Left: we recompute from the log, never from the conclusion. "
