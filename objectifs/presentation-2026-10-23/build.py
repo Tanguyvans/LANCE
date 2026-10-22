@@ -324,9 +324,9 @@ for i, text in enumerate([
           valign="middle")
 
 PLAT_W = 16.0
-picture(ROOT / "assets" / "platform-dashboard.jpg",
-        RIGHT - PLAT_W, BODY_Y + 0.05, PLAT_W, PLAT_W / 1.6,
-        "LANCE platform dashboard: network topology and run controls")
+picture(ROOT / "assets" / "platform-graph.jpg",
+        RIGHT - PLAT_W, BODY_Y + 0.05, PLAT_W, PLAT_W / (500 / 315),
+        "LANCE platform: network topology of the lab")
 
 caption("The platform runs the audit; the benchmark judges it.",
         "Captures of the running instance, 22 October 2026.")
@@ -364,7 +364,7 @@ panel(ML + 0.6, HY0 + 6.6, CW - 1.2, 1.2, "FFFFFF", B, "rect")
 sized("Same log, same scoring", ML + 1.0, HY0 + 6.6, CW - 2.0, 1.2, 18, INK,
       align="center")
 
-caption("Only the decision-maker changes.")
+caption("Only the step-choice mechanism changes.")
 footer()
 
 # ------------------------------------------------- 3c. How a run is judged
@@ -375,12 +375,11 @@ page("How a run is judged against the goal",
      seconds=60, sect=1)
 
 steps = [
-    ("Goal", "Find the weaknesses of a network, and only those"),
-    ("Laboratory", "A scenario with planted weaknesses, listed in a "
-                   "ground-truth file"),
-    ("Platform", "Audits the scenario: six phases, one log per run"),
-    ("Evidence", "Observations and proofs saved as files for each run"),
-    ("Benchmark", "Compares findings with the truth: precision, recall, F1"),
+    ("Goal", "Find the planted weaknesses"),
+    ("Laboratory", "Scenario with a known answer key"),
+    ("Platform", "Audits it, one log per run"),
+    ("Evidence", "Files kept for each run"),
+    ("Benchmark", "Scores against the key"),
 ]
 GAP = 0.90
 BW = (CW - 4 * GAP) / 5
@@ -406,13 +405,10 @@ x1 = ML + 4 * (BW + GAP) + BW / 2
 stem(x0 - 0.025, FY + FH + 0.05, 0.05, LY - (FY + FH) - 0.05, R)
 stem(x1 - 0.025, FY + FH + 0.05, 0.05, LY - (FY + FH) - 0.05, R)
 stem(x0, LY, x1 - x0, 0.05, R)
-sized("A result counts only against the planted truth; it never confirms the "
-      "model's own conclusion.", ML, LY + 0.25, CW, 0.8, 16, R, bold=True,
-      align="center")
+sized("The score uses the planted truth, never the platform's own conclusion.",
+      ML, LY + 0.25, CW, 0.8, 16, R, bold=True, align="center")
 
-caption("The score is computed against the planted truth, not against the "
-        "platform's own conclusion.",
-        "Precision, recall and F1 are recomputed from each run's log.")
+caption("Each run is scored against the known weaknesses of its scenario.")
 footer()
 
 # ------------------------------------------------- 4. What counts as found
@@ -466,7 +462,7 @@ for i, lab in enumerate(["Script passes", "Model passes"]):
 OX, OW = cx(6), cw(6)
 panel(OX, GY, OW, GH, BLUE, LINE, "rect")
 stem(OX, GY, OW, 0.14, GREEN)
-sized("Both checks pass", OX + 0.8, GY + 0.6, OW - 1.6, 1.0, 16, M, bold=True)
+sized("Gate", OX + 0.8, GY + 0.6, OW - 1.6, 1.0, 16, M, bold=True)
 box("Both pass: the hypotheses may be read.",
     OX + 0.8, GY + 1.7, OW - 1.6, 2.0, 24, GREEN, bold=True, valign="top")
 
@@ -535,7 +531,7 @@ for i, item in enumerate(["Access to real vendor artifacts",
     sized(item, RX + 1.60, y, RW - 1.90, 2.10, 16, INK, valign="top")
 
 caption("Order follows conditions, not dates.",
-        "Support line: AsiaCCS 2027 submission, 11 December 2026 (AoE).")
+        "AsiaCCS 2027 submission deadline: 11 December 2026, anywhere on Earth.")
 footer()
 
 # ----------------------------------------------------------- Reserve slide
