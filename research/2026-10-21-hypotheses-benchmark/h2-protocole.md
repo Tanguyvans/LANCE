@@ -32,6 +32,33 @@ compétence : le bras règles est compétent sur tout schéma déclaré au contr
 et n'a aucun moyen de traiter un schéma qui n'y figure pas. C'est la propriété
 mesurée, pas un défaut injecté.
 
+## Troisième bras, déclaré avant le run
+
+Le contraste à deux bras ne départage pas deux lectures d'un même positif : « le
+modèle lit mieux » et « le parseur déclaré refuse par construction ». Un
+troisième bras les sépare. C'est un **script compétent qui essaie**, sans aucun
+schéma déclaré :
+
+- il décode la charge utile (`base64` ou texte) et parcourt le document JSON à
+  toute profondeur ;
+- il reconnaît l'identité sur des jetons de convention — `dev`, `device`,
+  `node`, `sensor`, `id` — et la lecture demandée sur `t`, `temp`,
+  `temperature` (ou `h`, `rh`, `hum`, `humid`, `humidity` pour l'humidité) ;
+- un jeton d'une autre lecture n'est jamais pris pour la lecture demandée ;
+- un emplacement de lecture qui porte autre chose qu'une valeur conduit à
+  l'abstention, jamais à une affirmation ;
+- aucune clé du corpus n'est écrite dans ce lecteur.
+
+Ce bras n'est pas un concurrent : c'est une **référence**. Si le modèle fait
+mieux que le parseur déclaré mais pas mieux que ce script, alors le gain
+appartient à la déclaration, pas au modèle. S'il fait mieux que les deux, le
+gain lui appartient — sur ce corpus seulement.
+
+**Limite déclarée.** Ce script est écrit après avoir vu le corpus, à partir des
+conventions et non des réponses ; il est donc sur-ajusté au corpus par
+construction. Il prouve qu'une couverture est possible sans modèle, il ne
+mesure pas la performance d'un script sur des dossiers qu'il n'a pas vus.
+
 ## Vocabulaire de la famille
 
 - **Schéma de présentation** : la convention de nommage et d'imbrication des
@@ -122,7 +149,8 @@ l'abstention est la seule réponse correcte.
 | Corpus gelé | `benchmarks/experiments/mqtt-formats-corpus.json` | huit fixtures, une question commune, oracle re-vérifié au chargement |
 | Lanceur nato | `benchmarks/experiments/mqtt_formats_live.py`, workflow `mqtt-formats.yml` | aucun broker, aucun fixture, verrou de laboratoire, projection publique sans charge utile |
 | Pré-vol fournisseur | `benchmarks/experiments/mqtt_formats_live.py` | catalogue seul, aucune génération ; distingue extrémité injoignable, modèle absent et modèle qui ne répond pas |
-| Tests | `tests/test_mqtt_formats.py` | 65 tests |
+| Troisième bras | `benchmarks/experiments/mqtt_formats.py` (`run_attempting_rules`) | aucune clé du corpus, conventions seulement ; 8/8 hors ligne |
+| Tests | `tests/test_mqtt_formats.py` | 71 tests |
 
 **Pré-vol.** Un zéro peut venir de trois causes que le harnais confondait :
 l'extrémité est injoignable, le modèle n'y est pas servi, ou le modèle ne rend
@@ -170,6 +198,11 @@ lecture fixe la référence que la prédiction doit dépasser :
 
 Ces chiffres sont une propriété du harnais, pas un résultat de modèle : ils
 disent seulement que le contraste est instrumenté.
+
+Le troisième bras, lui aussi hors ligne et sans modèle, couvre **8/8** sur le
+corpus gelé, `variant/raw` compris, y compris `t07` que les deux autres bras
+échouent. C'est la référence à battre pour qu'un gain de modèle veuille dire
+quelque chose.
 
 ## Mesure du 2026-10-22, run `39756997752`
 
