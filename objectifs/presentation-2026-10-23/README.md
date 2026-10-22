@@ -18,7 +18,7 @@ institutionnels et collègues techniques).
 
 ## Documents
 
-- [slides.pptx](slides.pptx) — rendu principal, 10 diapositives : 9 de corps et
+- [slides.pptx](slides.pptx) — rendu principal, 11 diapositives : 10 de corps et
   1 de réserve. Ouvre directement dans PowerPoint ou Keynote.
 - [build.py](build.py) — générateur du `.pptx` (`python3 build.py`, via
   `officecli`). Source unique : modifier ici, pas dans le fichier PowerPoint.
@@ -44,18 +44,21 @@ Palette : cramoisi `B60036`, bleu `1D5C96`, encre `20252D`, gris `5C626C`.
 
 ## Structure
 
-| # | Diapositive | Rôle | Visuel |
-| --- | --- | --- | --- |
-| 1 | Titre | Statut « work in progress » affiché d'emblée | — |
-| 2 | The objective | Une phrase, trois engagements ; entraînement hors priorité | Bus vers trois branches |
-| 3 | The instrument | Laboratoire, plateforme, benchmark — trois rôles distincts | Chaîne de trois nœuds |
-| 4 | What constitutes a finding | Preuve recalculée ; saine contre vulnérable | Deux panneaux opposés |
-| 5 | Current status | Les deux bras réussissent partout | Barres saturées, 6/6 |
-| 6 | The objective restated as hypotheses | Registre H1–H6 ; H6 est un risque, pas un gain | Six cartes, H6 détachée |
-| 7 | A control task before testing the model | Porte V0 à deux bras | Matrice 2 × 2 |
-| 8 | What we cannot claim | Trois limites explicites | Trois cartes |
-| 9 | Next steps | Quatre étapes ; ce qui aiderait ; échéance | Liste numérotée + encadré |
-| 10 | Reserve — declared coverage gaps | Trous de couverture assumés | Liste |
+Onglets : Objective · Instrument · Control · Hypotheses · Outlook.
+
+| # | Diapositive | Onglet | Rôle | Visuel |
+| --- | --- | --- | --- | --- |
+| 1 | Titre | — | Statut « work in progress » affiché d'emblée | — |
+| 2 | The objective | Objective | Une phrase, trois engagements | Trois lignes |
+| 3 | The platform in brief | Objective | Ce que fait la plateforme | Capture du dashboard |
+| 4 | The instrument | Instrument | Laboratoire, plateforme, benchmark | Trois bandes |
+| 5 | What constitutes a finding | Instrument | Preuve recalculée ; saine contre vulnérable | Deux panneaux opposés |
+| 6 | A control task before testing the model | Control | Porte V0 à deux bras | Matrice 2 × 2 |
+| 7 | Current status | Control | Les deux bras réussissent partout | Barres saturées, 6/6 |
+| 8 | The objective restated as hypotheses | Hypotheses | Registre H1–H6 ; H6 est un risque | Six cartes, H6 détachée |
+| 9 | What we cannot claim | Outlook | Trois limites explicites | Trois lignes |
+| 10 | Next steps | Outlook | Quatre étapes ; demande de soutien | Liste numérotée + encadré |
+| R | Reserve — declared coverage gaps | Outlook | Trous de couverture assumés | Liste |
 
 Une seule idée par diapositive, une phrase de titre par idée. Les chiffres du
 pilote (coûts, variabilité, cas discriminant) ne figurent plus dans le corps :
@@ -72,7 +75,7 @@ section suivante.
 
 **Rendu vérifié** : `officecli validate` sans erreur, `officecli view issues` à
 zéro problème (ni débordement de texte, ni chevauchement), inspection visuelle
-des 10 diapositives. Le dimensionnement du texte est calculé à partir des
+des 11 diapositives. Le dimensionnement du texte est calculé à partir des
 métriques Arial avec une marge de sécurité, parce que le moteur de rendu
 substitue une police de repli plus large et ignore le rétrécissement
 automatique stocké dans le fichier.

@@ -88,7 +88,7 @@ LINE = "D9DEE5"
 GREEN = "2E7D5B"
 FONT = "Arial"
 
-SECTIONS = ["Objective", "Instrument", "Hypotheses", "Outlook"]
+SECTIONS = ["Objective", "Instrument", "Control", "Hypotheses", "Outlook"]
 
 # ---------------------------------------------------------------- the grid
 # 12 columns, 0.56 cm gutters, 2.2 cm side margins. Every slide uses the same
@@ -228,10 +228,10 @@ def page(title, notes="", seconds=60, sect=None, chrome=True):
 
     # Section tabs, aligned on the same left margin as the body.
     for i, label in enumerate(SECTIONS):
-        x = ML + i * 5.4
-        sized(label, x, 0.80, 4.9, 0.75, 12, R if i == section else M)
+        x = ML + i * 5.0
+        sized(label, x, 0.80, 4.6, 0.75, 12, R if i == section else M)
         if i == section:
-            stem(x, 1.47, 4.9, 0.045)
+            stem(x, 1.47, 4.6, 0.045)
 
     # Title zone: one baseline for every slide.
     sized(title, ML, TITLE_Y, 24.3, TITLE_H, 29, INK, bold=True, name="Title")
@@ -316,6 +316,36 @@ for i, (head, sub) in enumerate([
 caption("Model training is not a current priority.")
 footer()
 
+# ---------------------------------------------- 2b. The platform in brief
+page("The platform in brief",
+     "The platform conducts the audit. Left: what it does. Right: the "
+     "dashboard of a running instance. The platform is one component; the "
+     "next slides say what its results mean.",
+     seconds=60, sect=0)
+
+sized("A platform that runs the audit and keeps every run.",
+      TEXT_X, 5.40, TEXT_W, 1.9, 22, INK, bold=True, valign="top")
+for i, text in enumerate([
+    "Six phases per run, from graph analysis to report.",
+    "Four execution modes: LANCE pipeline, rule-based audit, agent, script.",
+    "Each run is recorded with its observations, its evidence and its cost.",
+    "The Benchmark and Scenario Lab tabs sit beside it, on the same instance.",
+]):
+    y = 7.60 + i * 1.72
+    stem(TEXT_X, y + 0.12, 0.14, 1.20, R)
+    sized(text, TEXT_X + 0.55, y, TEXT_W - 0.55, 1.45, 15, INK,
+          valign="top")
+
+PLAT_W = 16.0
+picture(ROOT / "assets" / "platform-dashboard.jpg",
+        RIGHT - PLAT_W, BODY_Y + 0.05, PLAT_W, PLAT_W / 1.6,
+        "LANCE platform dashboard: network topology and run controls")
+
+caption("The platform runs the audit; the laboratory and the benchmark decide "
+        "what the result means.",
+        "Captures of the running instance, 22 October 2026.")
+footer()
+
 # ------------------------------------------------------- 3. The instrument
 page("The instrument",
      "Three pieces, three roles. The model is one piece among them. The last "
@@ -379,73 +409,15 @@ caption("The finding is recomputed from the log; the conclusion is never "
         "taken on trust.")
 footer()
 
-# ------------------------------------------------------- 5. Where we are
-page("Current status",
-     "Both approaches succeed everywhere. That is a property of the "
-     "instrument, not a verdict on the model: the scale is saturated, so the "
-     "bars carry no difference.",
-     seconds=50, sect=2)
-
-sized("Both approaches succeed on every configuration.",
-      ML, BODY_Y, 26.6, 1.30, 26, INK, bold=True, valign="top")
-stem(ML, 6.02, 2.6, 0.10)
-
-for i, (label, color) in enumerate([("Rule-based", M), ("Model-based", R)]):
-    y = 7.05 + i * 3.55
-    sized(label, ML, y, 14.0, 1.10, 19, INK, bold=True)
-    sized("6 / 6", RIGHT - 5.0, y - 0.10, 5.0, 1.30, 24, color, bold=True,
-          align="right")
-    # The bar is drawn to the full width of the scale: the saturation is the
-    # finding, and it is the same on both rows.
-    box("", ML, y + 1.05, CW, 1.65, fill=color)
-    stem(ML, y + 2.70, CW, 0.03, LINE)
-
-caption("The instrument does not discriminate between them.",
-        "This is a limitation of the instrument, not of the model.")
-footer()
-
-# ----------------------------------------------------- 6. The register
-page("The objective restated as hypotheses",
-     "The objective does not change, its form does. Six network properties, "
-     "six tests. H6 is detached on purpose: it is a risk, not a gain.",
-     seconds=75, sect=2)
-
-cards = [
-    ("H1", "Connected devices", "a link absent from public inputs"),
-    ("H2", "Heterogeneous formats", "a representation no parser covers"),
-    ("H3", "Novel contracts", "rights stated in unseen documentation"),
-    ("H4", "Vendor semantics", "a field whose meaning is only documented"),
-    ("H5", "Ambiguous refusals", "resuming the audit after a refusal"),
-    ("H6", "Hostile content", "an instruction obeyed from observed content"),
-]
-CARD_W = (CW - 2 * 0.63) / 3
-for i, (code, prop, test) in enumerate(cards):
-    col, row = i % 3, i // 3
-    x = ML + col * (CARD_W + 0.63)
-    y = 4.75 + row * 4.35
-    h6 = code == "H6"
-    # Square: the six cards are a table, like the cells on slide 7.
-    panel(x, y, CARD_W, 3.95, ROSE if h6 else GRAY, R if h6 else LINE, "rect")
-    # Code and title share one baseline; both are pinned, because the six
-    # cards are a table and a table does not vary its type size per cell.
-    sized(code, x + 0.6, y + 0.34, 1.7, 1.20, 20, R if h6 else INK, bold=True)
-    sized(prop, x + 2.35, y + 0.56, CARD_W - 2.65, 0.80, 14,
-          R if h6 else INK, bold=True)
-    stem(x + 0.6, y + 1.62, CARD_W - 1.2, 0.03, R if h6 else LINE)
-    sized(test, x + 0.6, y + 1.85, CARD_W - 1.2, 1.85, 14, M, valign="top")
-
-caption("H1–H5 quantify a possible gain.      H6 quantifies a risk.")
-footer()
-
 # ------------------------------------------------------------- 7. V0
 page("A control task before testing the model",
      "The gate is the condition of interpretation for everything else, and it "
      "binds both arms. Read the matrix by cells: the only cell that opens the "
-     "register is the one where both arms pass — script check and model check.",
+     "hypotheses is the one where both arms pass — script check and model check.",
      seconds=70, sect=2)
 
-sized("A control task, simple enough to be solved without inference.   Both "
-      "approaches are required to pass.",
+sized("V0 is a control task, simple enough to be solved without inference. "
+      "Both approaches are required to pass.",
       ML, BODY_Y, CW, 1.45, 17, M, valign="top")
 
 HX, HW = 7.55, (RIGHT - 7.55 - 0.55) / 2
@@ -477,11 +449,70 @@ caption("Only a control that the script and the model both pass permits the "
         "Implemented and tested offline. The laboratory run remains outstanding.")
 footer()
 
+# ------------------------------------------------------- 5. Where we are
+page("Current status",
+     "Both approaches succeed everywhere. That is a property of the "
+     "instrument, not a verdict on the model: the scale is saturated, so the "
+     "bars carry no difference.",
+     seconds=50, sect=2)
+
+sized("Both approaches succeed on every configuration.",
+      ML, BODY_Y, 26.6, 1.30, 26, INK, bold=True, valign="top")
+stem(ML, 6.02, 2.6, 0.10)
+
+for i, (label, color) in enumerate([("Rule-based", M), ("Model-based", R)]):
+    y = 7.05 + i * 3.55
+    sized(label, ML, y, 14.0, 1.10, 19, INK, bold=True)
+    sized("6 / 6", RIGHT - 5.0, y - 0.10, 5.0, 1.30, 24, color, bold=True,
+          align="right")
+    # The bar is drawn to the full width of the scale: the saturation is the
+    # finding, and it is the same on both rows.
+    box("", ML, y + 1.05, CW, 1.65, fill=color)
+    stem(ML, y + 2.70, CW, 0.03, LINE)
+
+caption("The instrument does not discriminate between them.",
+        "This is a limitation of the instrument, not of the model.")
+footer()
+
+# ----------------------------------------------------- 6. The register
+page("The objective restated as hypotheses",
+     "The objective does not change, its form does. Six network properties, "
+     "six tests. H6 is detached on purpose: it is a risk, not a gain.",
+     seconds=75, sect=3)
+
+cards = [
+    ("H1", "Connected devices", "a link absent from public inputs"),
+    ("H2", "Heterogeneous formats", "a representation no parser covers"),
+    ("H3", "Novel contracts", "rights stated in unseen documentation"),
+    ("H4", "Vendor semantics", "a field whose meaning is only documented"),
+    ("H5", "Ambiguous refusals", "resuming the audit after a refusal"),
+    ("H6", "Hostile content", "an instruction obeyed from observed content"),
+]
+CARD_W = (CW - 2 * 0.63) / 3
+for i, (code, prop, test) in enumerate(cards):
+    col, row = i % 3, i // 3
+    x = ML + col * (CARD_W + 0.63)
+    y = 4.75 + row * 4.35
+    h6 = code == "H6"
+    # Square: the six cards are a table, like the cells on slide 7.
+    panel(x, y, CARD_W, 3.95, ROSE if h6 else GRAY, R if h6 else LINE, "rect")
+    # Code and title share one baseline; both are pinned, because the six
+    # cards are a table and a table does not vary its type size per cell.
+    sized(code, x + 0.6, y + 0.34, 1.7, 1.20, 20, R if h6 else INK, bold=True)
+    sized(prop, x + 2.35, y + 0.56, CARD_W - 2.65, 0.80, 14,
+          R if h6 else INK, bold=True)
+    stem(x + 0.6, y + 1.62, CARD_W - 1.2, 0.03, R if h6 else LINE)
+    sized(test, x + 0.6, y + 1.85, CARD_W - 1.2, 1.85, 14, M, valign="top")
+
+caption("H1–H5 quantify a possible gain.      H6 quantifies a risk.",
+        "The register is this list of hypotheses and the test of each.")
+footer()
+
 # ------------------------------------------------ 8. What we cannot claim
 page("What we cannot claim",
      "Be explicit. This is the slide that buys credibility. Three limits, "
      "each stated as a claim we are not making, then the reason.",
-     seconds=60, sect=3)
+     seconds=60, sect=4)
 
 limits = [
     ("No general advantage", "No hypothesis has yet been executed."),
@@ -505,7 +536,7 @@ footer()
 page("Next steps",
      "Order follows conditions, not dates. Then the ask: vendor artifacts and "
      "an adversarial review of the register. Close on the deadline.",
-     seconds=70, sect=3)
+     seconds=70, sect=4)
 
 steps = [
     ("1", "Execute V0 on a held-out instance"),
@@ -541,7 +572,7 @@ footer()
 page("Reserve — declared coverage gaps",
      "A benchmark that states its gaps is stronger than one that claims full "
      "coverage. One line each, no discussion unless asked.",
-     seconds=0, sect=3)
+     seconds=0, sect=4)
 gaps = ["Physical impact and functional safety",
         "Device fragility under probing",
         "Real fleet scale",

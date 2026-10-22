@@ -231,3 +231,28 @@ declares, and every remaining run in the deck matches its declared size. The
 rule the audit enforces is the one in the caption band: a stated size is a
 design decision; `fit_size` is for prose that has to fill an unbounded box, not
 for a list, a table or a label.
+
+## Structure revision (2026-10-22)
+
+The deck was re-sequenced so the argument reads in order:
+
+- **Platform overview added** (slide 3). The platform is presented in general
+  terms before the instrument: six phases per run, four execution modes, and a
+  dashboard capture (`assets/platform-dashboard.jpg`, 16 × 10 cm, same
+  diagram-zone station as slide 2). The capture is from the running instance;
+  the Benchmark capture was left out because its F1 figures come from individual
+  runs, which the deck itself says are not a measurement.
+- **Control before status.** The V0 gate (slide 6) is defined before the
+  status slide (slide 7) that reports its outcome. Previously the conclusion
+  came first. V0 is defined on first use.
+- **Sections re-cut.** `Control` is a section of its own; V0 and the status no
+  longer sit under `Hypotheses`. Five tabs at a 5.0 cm pitch.
+- **"The register" defined** on slide 8, where it first appears, in the
+  caption's support line.
+- Slide 6's speaker note says "hypotheses" instead of "register", since the
+  register is now defined later in the deck.
+
+Unchanged: content of the other slides, palette, grid, caption band. The bars
+on slide 7 were kept; replacing them with a sentence and a table is still an
+open option.
+
