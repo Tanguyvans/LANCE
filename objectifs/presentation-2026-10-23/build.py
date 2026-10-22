@@ -303,7 +303,7 @@ sized("An auditor that explores, identifies, verifies and reports.",
 
 for i, (head, sub) in enumerate([
     ("Under which conditions", "rather than which model prevails"),
-    ("Identical tools and budget", "for both approaches"),
+    ("Identical tools and budget", "for both arms of the V0 control harness"),
     ("Evidence, not assertion", "recomputed from the log"),
 ]):
     y = 4.90 + i * 3.05
@@ -326,7 +326,7 @@ page("The platform in brief",
 sized("A platform that runs the audit and keeps every run.",
       TEXT_X, 5.40, TEXT_W, 1.9, 22, INK, bold=True, valign="top")
 for i, text in enumerate([
-    "Six phases per run, from graph analysis to report.",
+    "Six phases in the LANCE pipeline, from graph analysis to report.",
     "Four execution modes: LANCE pipeline, rule-based audit, agent, script.",
     "Each run is recorded with its observations, its evidence and its cost.",
     "The Benchmark and Scenario Lab tabs sit beside it, on the same instance.",
@@ -535,7 +535,7 @@ for row, lab in enumerate(["script ✓", "script ✗"]):
 
 caption("Only a control that the script and the model both pass permits the "
         "hypotheses to be read.",
-        "Implemented and tested offline. The laboratory run remains outstanding.")
+        "Calibration passed on the lab network (3 of 3 runs per arm). The held-out instance remains outstanding.")
 footer()
 
 # ------------------------------------------------------- 5. Where we are
@@ -545,7 +545,7 @@ page("Current status",
      "bars carry no difference.",
      seconds=50, sect=2)
 
-sized("Both approaches succeed on every configuration.",
+sized("Pilot: both approaches succeed everywhere.",
       ML, BODY_Y, 26.6, 1.30, 26, INK, bold=True, valign="top")
 stem(ML, 6.02, 2.6, 0.10)
 
@@ -560,7 +560,7 @@ for i, (label, color) in enumerate([("Rule-based", M), ("Model-based", R)]):
     stem(ML, y + 2.70, CW, 0.03, LINE)
 
 caption("The instrument does not discriminate between them.",
-        "This is a limitation of the instrument, not of the model.")
+        "Pilot data, 3 repetitions per family. A limitation of the instrument, not of the model.")
 footer()
 
 # ----------------------------------------------------- 6. The register
@@ -604,7 +604,7 @@ page("What we cannot claim",
      seconds=60, sect=4)
 
 limits = [
-    ("No general advantage", "No hypothesis has yet been executed."),
+    ("No general advantage", "No hypothesis has yet been tested over repeated runs."),
     ("No confidence interval",
      "Three repetitions yield a dispersion, not a sample."),
     ("No admitted evidence", "The metric definition is not frozen."),
