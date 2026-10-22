@@ -7,6 +7,7 @@ pas mesuré ?
 **Statut.** Diapositives prêtes à relire. Aucun run exécuté pour ce document.
 
 **Dates.** Créé et rédigé le 2026-10-21 (Europe/Brussels, UTC+02:00).
+Composition revue le **2026-10-22** (Europe/Brussels, UTC+02:00).
 Présentation prévue le **2026-10-23**.
 
 ## Nature
@@ -21,6 +22,8 @@ institutionnels et collègues techniques).
   1 de réserve. Ouvre directement dans PowerPoint ou Keynote.
 - [build.py](build.py) — générateur du `.pptx` (`python3 build.py`, via
   `officecli`). Source unique : modifier ici, pas dans le fichier PowerPoint.
+- [design-notes.md](design-notes.md) — grille, règles de composition et
+  journal des relectures. À lire avant de modifier `build.py`.
 - [archive-beamer/](archive-beamer/) — première version beamer
   ([slides.tex](archive-beamer/slides.tex), [slides.pdf](archive-beamer/slides.pdf)),
   conservée comme archive. Le contenu factuel y est identique ; la version PPTX
@@ -41,10 +44,10 @@ Palette : cramoisi `B60036`, bleu `1D5C96`, encre `20252D`, gris `5C626C`.
 | 1 | Titre | Statut « work in progress » affiché d'emblée | — |
 | 2 | The objective | Une phrase, trois engagements ; entraînement hors priorité | Bus vers trois branches |
 | 3 | The instrument | Laboratoire, plateforme, benchmark — trois rôles distincts | Chaîne de trois nœuds |
-| 4 | What counts as “found” | Preuve recalculée ; saine contre vulnérable | Deux panneaux opposés |
-| 5 | Where we are | Les deux bras réussissent partout | Barres saturées, 6/6 |
-| 6 | The objective, restated as hypotheses | Registre H1–H6 ; H6 est un risque, pas un gain | Six cartes, H6 détachée |
-| 7 | Before testing the model, test the test | Porte V0 à deux bras | Quatre issues, en grille |
+| 4 | What constitutes a finding | Preuve recalculée ; saine contre vulnérable | Deux panneaux opposés |
+| 5 | Current status | Les deux bras réussissent partout | Barres saturées, 6/6 |
+| 6 | The objective restated as hypotheses | Registre H1–H6 ; H6 est un risque, pas un gain | Six cartes, H6 détachée |
+| 7 | A control task before testing the model | Porte V0 à deux bras | Matrice 2 × 2 |
 | 8 | What we cannot claim | Trois limites explicites | Trois cartes |
 | 9 | Next steps | Quatre étapes ; ce qui aiderait ; échéance | Liste numérotée + encadré |
 | 10 | Reserve — declared coverage gaps | Trous de couverture assumés | Liste |
@@ -68,6 +71,11 @@ des 10 diapositives. Le dimensionnement du texte est calculé à partir des
 métriques Arial avec une marge de sécurité, parce que le moteur de rendu
 substitue une police de repli plus large et ignore le rétrécissement
 automatique stocké dans le fichier.
+
+La composition a fait l'objet de cinq relectures adversariales successives
+(grille tenue, lisibilité, fidélité au contenu, sobriété, vocabulaire visuel),
+notées selon une grille pondérée : 6,5 → 7,5 → 8,5 → 8,8 → **9,0**. Le détail et
+les réserves sont dans [design-notes.md](design-notes.md).
 
 **Limites.** Aucune relecture indépendante du rendu final n'a été menée depuis
 le portage PPTX. Le minutage n'est pas vérifié en répétition réelle : le budget
