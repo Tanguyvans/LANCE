@@ -1,5 +1,0 @@
-apercu/
-.slides.batch-*.pptx
-# Working copy of the deck composition; its content is promoted to the files
-# one level up and its rationale to design-notes.md. Kept out of the tree.
-variante-opus/
