@@ -75,6 +75,29 @@ l'entraînement des modèles constitue un volet distinct du projet.
   archivés et les relier à leur successeur. `docs/audit/` conserve les archives
   historiques existantes, qui ne décrivent pas nécessairement le système courant.
 
+## Méthode de travail
+
+**Cycle d'une étude.** Ouvrir un dossier daté en `proposition` → le passer à
+`actif` au premier travail réel → ajouter chaque mesure comme **fichier daté**
+dans ce dossier → clore (`conclu`, y compris par un résultat négatif),
+remplacer en pointant le successeur, ou laisser passer en `dormant`. Une
+conclusion devenue stable migre vers `docs/` ; `research/` garde les sources,
+le raisonnement et les limites.
+
+**Ordre de mise à jour d'un résultat.** Toujours dans cet ordre : (1) la
+source — protocole ou README du dossier daté ; (2) la ligne de l'index
+`research/README.md` ; (3) le tableau « État vérifié » de
+`objectifs/ETAT-COURANT.md` ; (4) la ligne directrice, seulement si une
+décision change. S'arrêter à l'étape 1 fait mentir l'index ; sauter à l'étape 3
+produit une recopie.
+
+**Fin de session.** Un commit par sujet. Travailler sur une branche : un push
+sur `main` déclenche le circuit de validation et de déploiement nato-master.
+Merger après relecture.
+
+**Chaque semaine.** Repérer les dossiers `actif` sans revue et les passer en
+`dormant` ; confronter les index aux dossiers réels.
+
 ## Contribuer
 
 Comprendre le module concerné et sa documentation avant de le modifier. Préserver
