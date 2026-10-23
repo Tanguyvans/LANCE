@@ -19,6 +19,8 @@ l'entraînement des modèles constitue un volet distinct du projet.
 - `tests/` : tests de l'application ; l'entraînement possède ses propres tests.
 - `research/` : recherches par sujet, sources, hypothèses, protocoles proposés et analyses.
 - `docs/` : documentation de référence, organisée par architecture, guides, benchmark et entraînement.
+- `objectifs/` : ligne directrice du projet ; ne recopie ni étude ni résultat.
+- `presentations/` : supports de communication datés, sans autorité sur les pages de référence.
 
 ## Recherche et documentation
 
@@ -31,6 +33,25 @@ l'entraînement des modèles constitue un volet distinct du projet.
   `README.md` indiquant la question, le statut, les dates, la synthèse, les
   documents et les points encore ouverts.
   Suivre les [conventions de recherche](research/README.md).
+- **Ouvrir un dossier ou réviser l'existant.** Un dossier daté n'est créé que
+  pour une **question nouvelle et réfutable** ; une mesure, un run, une
+  révision ou un protocole d'une question existante est un **fichier daté
+  dans le dossier de cette question**. La date du dossier est celle du début
+  et ne change jamais ; la fraîcheur se lit à la date de dernière revue.
+- **Statut fermé.** Tout dossier prend un statut parmi `proposition`, `actif`,
+  `dormant`, `conclu`, `remplacé`, avec sa date de revue et une ligne de
+  format fixe dans l'index `research/README.md`. Un dossier remplacé le
+  déclare en tête et pointe son successeur ; il n'est ni supprimé ni réactivé
+  sans le dater.
+- **Pas de recopie de statut.** Un fait de statut (V0, hypothèse mesurée,
+  chiffre de couverture) a une seule page source ; les index, `objectifs/` et
+  `docs/` le citent sans le réécrire. Un chiffre dérivé d'un artefact généré
+  se cite avec sa définition et se recalcule, il ne se rédige pas.
+- **`objectifs/` ne porte que la ligne directrice** : cible, priorités,
+  critères de décision. Une analyse de corpus, un bilan de résultats ou un
+  journal d'exécution reste dans `research/`. `docs/` ne décrit que le
+  comportement courant de l'application ; une synthèse d'état datée y est
+  citée comme « état au AAAA-MM-JJ », jamais comme contrat.
 - Pour toute nouvelle étude ou révision de fond, fournir une source LaTeX éditable
   et son PDF compilé, avec des figures modifiables et un rendu vérifié. Adopter une
   structure scientifique classique : titre, résumé, table des matières, méthode,

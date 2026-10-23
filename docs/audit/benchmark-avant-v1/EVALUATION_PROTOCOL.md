@@ -5,7 +5,7 @@
 > des états antérieurs ou des propositions ; ils ne font pas autorité aujourd’hui.
 > Voir la [documentation V1](../../benchmark/v1/README.md) pour l’état de référence.
 
-## Protocole courant — catalogue 3.2.0
+## Protocole de l'époque — catalogue 3.2.0
 
 Les métriques courantes suivent le contrat **strict-v3.8 / evidence-v6** :
 [entonnoir candidats, après filtrage et confirmations finales](FUNNEL_METRICS.md).

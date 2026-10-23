@@ -1,5 +1,9 @@
 # 03 — UI/UX, accessibilité et responsive
 
+> **Archive du 2026-07-05 — ne décrit plus l'état courant.**
+> Les constats restent une trace d'audit ; les chemins et numéros de ligne cités
+> peuvent avoir changé. Se référer au code et à [la documentation](../README.md).
+
 Fichiers : `src/static/index.html` (372 l.), `src/static/style.css` (1360 l.), `src/static/app.js`
 (chemins de rendu/focus/feedback). Base **déjà solide** : CSS tokenisé, `:focus-visible`,
 `prefers-reduced-motion`, focus-trap + Esc + restauration de focus sur les modales, table `sr-only`

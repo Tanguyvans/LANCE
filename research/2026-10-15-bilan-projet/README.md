@@ -1,7 +1,11 @@
 # LANCE et IoTChainBench : rapport d'ensemble du projet
 
-**Cycle de vie : Actif** — rapport commencé le **2026-10-15**.
-Dernière révision : **2026-10-15 22:53 (Europe/Brussels, UTC+02:00)**.
+**Cycle de vie : Conclu — synthèse d'état** — rapport commencé le **2026-10-15**.
+C'est un état daté, pas une page de référence courante : il ne fait pas autorité
+sur le comportement actuel du système.
+Dernière révision : **2026-10-23 14:33 (Europe/Brussels, UTC+02:00)** —
+retrait des jalons datés de novembre et décembre, sans changement de contenu
+technique.
 Statut : **bilan documentaire approfondi, résultats historiques attribués et travaux proposés identifiés**.
 
 ## Question et périmètre

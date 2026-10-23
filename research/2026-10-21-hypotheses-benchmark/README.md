@@ -9,7 +9,7 @@ nato le 2026-10-22 : prédiction tenue, gain absorbé par un bras qui lit par
 convention. La porte V0 est **partiellement franchie**.
 
 **Dates.** Étude ouverte et classée le 2026-10-21 (Europe/Brussels, UTC+02:00).
-Dernière révision : **2026-10-22 14:05 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-23 14:33 (Europe/Brussels, UTC+02:00)**.
 
 ## Principe
 
@@ -27,9 +27,9 @@ existants sans apporter la spécificité IoT — hétérogénéité de protocole
 appareils contraints, artefacts constructeur, identités partagées à l'échelle
 d'une flotte.
 
-Ce document est un registre de travail, pas un rapport d'étude : il ne porte ni
-résultat ni figure, et n'est donc pas compilé en LaTeX. Il deviendra un rapport
-au premier run, avec source et PDF.
+Ce document est un registre de travail. Il porte désormais une mesure (H2) mais
+pas encore de rapport compilé : lorsqu'une deuxième famille sera mesurée, il
+deviendra un rapport avec source LaTeX et PDF.
 
 ## Porte de validité V0 — avant les hypothèses
 

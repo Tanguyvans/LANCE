@@ -4,10 +4,9 @@
 
 Ce dossier fixe l'objectif de soumission du programme
 [agent contre automatisation](../../research/2026-09-27-agent-vs-automation/README.md) :
-**soumettre un papier à ACM AsiaCCS 2027 (round 2) au plus tard le
-11 décembre 2026**, sur la question « sous quelles conditions un agent LLM
-dépasse-t-il une automatisation à règles, à outils, preuves et budgets
-identiques ? ».
+**soumettre un papier à ACM AsiaCCS 2027 (round 2)**, sur la question
+« sous quelles conditions un agent LLM dépasse-t-il une automatisation à règles,
+à outils, preuves et budgets identiques ? ».
 
 C'est un dossier d'**objectifs de projet** (hors `research/`) : cible,
 exigences de la conférence, contributions à prouver, critères de décision.
@@ -40,18 +39,16 @@ du LLM n'est démontré.
 - Début de l'objectif : **2026-10-12**.
 - Décision soumission / repli : à la condition écrite dans le plan (manuscrit
   relisible et artefact prêt), sans date interne.
-- Soumission visée : **2026-12-11 (AoE)**, AsiaCCS 2027 round 2. C'est la seule
-  contrainte externe ; elle n'ordonne pas les étapes.
 - Conférence : 12-16 juillet 2027, Macao.
 - Dernière mise à jour de ce dossier : **2026-10-21 10:38 (Europe/Brussels,
   UTC+02:00)**.
 
 ## Synthèse
 
-- **Cible unique** : AsiaCCS 2027. EuroS&P 2027 (2 décembre 2026) est écarté
-  comme cible simultanée : les deux conférences interdisent la soumission
-  concurrente, et le papier serait encore en revue à EuroS&P au deadline
-  AsiaCCS. EuroS&P reste une cible ultérieure pour une version élargie.
+- **Cible unique** : AsiaCCS 2027. EuroS&P 2027 est écarté comme cible
+  simultanée : les deux conférences interdisent la soumission concurrente, et
+  leurs fenêtres de revue se chevauchent. EuroS&P reste une cible ultérieure
+  pour une version élargie.
 - **Contribution visée** : une carte mesurée des conditions d'écart entre
   politiques, pas une supériorité générale du modèle. Un écart nul partout,
   documenté proprement, reste un résultat utilisable mais change la forme
@@ -64,7 +61,7 @@ du LLM n'est démontré.
 
 ## Documents
 
-- [Audit de couverture des scénarios](audit-couverture.md) : matrice réelle du corpus (75 % de failles à signature, strate logique réduite à S15, edge cases absents) et verdict sur le set pilote (remplacer le contrôle sain fictif par S1h).
+- [Audit de couverture des scénarios](audit-couverture.md) : matrice réelle du corpus (243 failles sur 288, soit 84,4 %, dans des catégories à signature ; strate logique de 6 entrées sur S15, S22 et S28 ; edge cases absents) et verdict sur le set pilote (remplacer le contrôle sain fictif par S1h).
 - [Plan de soumission](plan-soumission.md) : exigences AsiaCCS vérifiées,
   contributions candidates, expériences E1-E3, pistes bonus, séquence de
   travail et critères de décision.
@@ -78,7 +75,7 @@ du LLM n'est démontré.
 - Suivi d'exécution :
   [manifeste de campagne](../../benchmarks/experiments/policy-comparison/README.md).
 
-## Avancement V2 au 2026-10-19
+## Avancement au 2026-10-22
 
 Le [plan V2 consolidé](../../research/2026-10-12-recentrage-corpus/README.md)
 conserve 44 scénarios, 25 ensembles et 216 configurations candidates. Deux
@@ -92,10 +89,21 @@ vérifiés). Ces calibrations restent hors admission confirmatoire M-T.
 `s_mqtt_reprise` et `s_cache_identites` sont rejetés et ne sont pas poursuivis.
 L'ordre courant est celui du
 [registre d'hypothèses](../../research/2026-10-21-hypotheses-benchmark/README.md)
-(V0 et H1-H6). Le gel et l’alignement des métriques restent à établir ; la
+(V0 et H1-H6).
+
+**Dernière mesure — 2026-10-22.** H2 (`s_mqtt_formats`) est mesurée sur trois
+répétitions et 72 bras : la prédiction est tenue, mais le gain est absorbé par
+un bras par convention : le modèle obtient 0,5, le parseur déclaré 0,0, mais
+un bras à règles fondé sur les seules conventions de nommage obtient 1,0. Un
+seul schéma,
+un seul modèle : aucune conclusion générale. Les pilotes SSH et MQTT passent
+6 bras sur 6 pour les deux modèles (`qwen3.8:27b`, `gemma4:26b-a4b-it`), le
+modèle à mélange d'experts coûtant environ deux fois plus.
+
+Le gel et l’alignement des métriques restent à établir ; la
 poursuite du pilote historique ci-dessous constitue un suivi distinct, conservé
 sans remplacer ses échecs.
-Consolidation documentaire : **2026-10-19 (Europe/Brussels, UTC+02:00)**.
+Consolidation documentaire : **2026-10-22 (Europe/Brussels, UTC+02:00)**.
 
 ## Suite et points ouverts
 

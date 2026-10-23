@@ -1,5 +1,11 @@
 # 01 — Sécurité de l'API FastAPI
 
+> **Archive du 2026-07-05 — ne décrit plus l'état courant.**
+> Les mutations de l'API sont depuis protégées (`src/api/main.py`, `require_mutation_auth`, `src/api/auth.py`).
+> Les affirmations ci-dessous sur l'absence d'authentification et les numéros de ligne sont périmées.
+> Références courantes : [authentification fournisseur](../guides/provider-auth.md) et
+> [session administrateur](../guides/admin-session.md).
+
 Contexte : l'API (`src/api/`) est exposée sur `:8501` en HTTP non authentifié, sur LAN/Tailscale.
 Elle pilote de vrais outils offensifs et lance de l'Ansible **en root** (avec `--vault-password-file`).
 Bons points vérifiés : **pas de `shell=True`** (subprocess en liste d'args), `yaml.safe_load` partout,

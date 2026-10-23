@@ -6,8 +6,9 @@ proposés sont regroupés dans les [dossiers de recherche](../research/README.md
 Les [archives d'audit](#archives-historiques) décrivent des états passés.
 Le [rapport d'ensemble au 15 octobre 2026](../research/2026-10-15-bilan-projet/report.pdf)
 développe les objectifs, l'architecture et le graphe, les réseaux, la sécurité,
-l'application, les modèles et le benchmark, avec un bilan par volet. Il complète
-les contrats de référence ci-dessous.
+l'application, les modèles et le benchmark, avec un bilan par volet. C'est un
+**état au 2026-10-15, non contractuel** : il ne remplace pas les contrats de
+référence ci-dessous et ne fait pas autorité sur le comportement courant.
 Le [rapport de recherche en PDF](../research/2026-09-27-agent-vs-automation/report.pdf)
 relie les diagnostics du benchmark et du contexte au protocole de comparaison
 LLM/règles ; les propositions restent distinctes de la référence implémentée.
