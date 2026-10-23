@@ -1,0 +1,28 @@
+<section id="sandbox" data-transition="fade" style="background:#FFFFFF;color:#1A1A1A;font-family:Arial, Helvetica, sans-serif;padding:168px 128px 96px;display:flex;flex-direction:column;gap:56px">
+<p style="position:absolute;left:128px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Platform</p>
+<p style="position:absolute;left:360px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">V1</p>
+<p style="position:absolute;left:592px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">V2</p>
+<p style="position:absolute;left:824px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Examples</p>
+<p style="position:absolute;left:1056px;top:56px;width:216px;font-size:24px;color:#B60036;border-bottom:3px solid #B60036;padding:0 0 8px">Sandbox</p>
+<p style="position:absolute;left:1288px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Next steps</p>
+<img src="/_blob/d6f51aef2d93c4ba20463361c3f59919" alt="SMart ILIA, Université de Mons" style="position:absolute;right:128px;top:40px;width:210px;height:72px;object-fit:contain">
+<div style="display:flex;flex-direction:column;gap:16px"><h2 style="font-size:52px;font-weight:700;line-height:1.1">Sandbox: launch a model on a scenario</h2><div style="width:120px;height:6px;background:#B60036"></div></div>
+<div style="display:flex;flex-direction:row;align-items:stretch;gap:20px;font-size:28px;line-height:1.3">
+<div style="flex:1;border:2px solid #5C626C;background:#F1F2F4;padding:24px;display:flex;flex-direction:column;gap:12px"><span style="font-weight:700">Scenario</span><span style="color:#444444">same network for every run</span></div>
+<div style="font-size:40px;color:#B60036;display:flex;align-items:center">→</div>
+<div style="flex:1;border:2px solid #1D5C96;background:#EFF6FC;padding:24px;display:flex;flex-direction:column;gap:12px"><span style="font-weight:700">Local model</span><span style="color:#444444">Qwen3.8 27B on our servers</span><span style="color:#444444">context about 50k tokens</span></div>
+<div style="font-size:40px;color:#B60036;display:flex;align-items:center">→</div>
+<div style="flex:1;border:2px solid #B60036;background:#FCF0F4;padding:24px;display:flex;flex-direction:column;gap:12px"><span style="font-weight:700">Findings</span><span style="color:#444444">scored against the answer key</span></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<p style="font-size:30px;color:#5C626C"><span style="font-weight:700;color:#1A1A1A">Four launch modes on the same scenario</span></p>
+<table style="font-size:30px;font-family:Arial, Helvetica, sans-serif;color:#1A1A1A">
+<tr style="background:#FCF0F4"><th style="width:30%;color:#B60036">Mode</th><th style="width:70%;color:#B60036">What runs</th></tr>
+<tr><td style="width:30%"><span style="font-weight:700">LANCE pipeline</span></td><td style="width:70%">phased agent: analysis per device, one test per weakness</td></tr>
+<tr><td style="width:30%"><span style="font-weight:700">Rule-based audit</span></td><td style="width:70%">fixed rules, scored</td></tr>
+<tr><td style="width:30%"><span style="font-weight:700">Simple agent</span></td><td style="width:70%">a model alone, in a bounded loop</td></tr>
+<tr><td style="width:30%"><span style="font-weight:700">Script</span></td><td style="width:70%">a deterministic procedure, unscored baseline</td></tr>
+</table>
+</div>
+<aside>The sandbox launches a model or a script on a scenario. The model is local, on our own servers: Qwen3.8 27B, with a context of about 50,000 tokens, where hosted models offered 256,000 to one million. Because of this budget, the pipeline works per device, runs one test per weakness, keeps a compact context, and stores full traces outside it. The four modes run on the same scenario so that their results can be compared.</aside>
+</section>

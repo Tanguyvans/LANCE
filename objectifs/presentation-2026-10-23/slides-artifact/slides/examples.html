@@ -1,0 +1,33 @@
+<section id="examples" data-transition="fade" style="background:#FFFFFF;color:#1A1A1A;font-family:Arial, Helvetica, sans-serif;padding:168px 128px 96px;display:flex;flex-direction:column;gap:40px">
+<p style="position:absolute;left:128px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Platform</p>
+<p style="position:absolute;left:360px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">V1</p>
+<p style="position:absolute;left:592px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">V2</p>
+<p style="position:absolute;left:824px;top:56px;width:216px;font-size:24px;color:#B60036;border-bottom:3px solid #B60036;padding:0 0 8px">Examples</p>
+<p style="position:absolute;left:1056px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Sandbox</p>
+<p style="position:absolute;left:1288px;top:56px;width:216px;font-size:24px;color:#5C626C;padding:0 0 8px">Next steps</p>
+<img src="/_blob/d6f51aef2d93c4ba20463361c3f59919" alt="SMart ILIA, Université de Mons" style="position:absolute;right:128px;top:40px;width:210px;height:72px;object-fit:contain">
+<div style="display:flex;flex-direction:column;gap:16px"><h2 style="font-size:52px;font-weight:700;line-height:1.1">Examples: S1 and S15</h2><div style="width:120px;height:6px;background:#B60036"></div></div>
+<div style="display:flex;flex-direction:row;gap:64px;align-items:flex-start">
+<div style="width:520px;display:flex;flex-direction:column;gap:12px">
+<p style="font-size:30px;font-weight:700;color:#1D5C96">S1: flat network</p>
+<img src="/_blob/265c3f693b2cd568e313580a4aa2451d" alt="Topology of scenario S1 as drawn by the platform: a router connected to an SSH server, a web server and an MQTT broker" style="width:440px;height:410px;object-fit:contain;border:1px solid #BBBBBB">
+<p style="font-size:26px;line-height:1.3">router and 3 services, one subnet; 12 expected findings</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:24px">
+<div style="display:flex;flex-direction:column;gap:12px;border-left:10px solid #B60036;padding:8px 0 8px 32px">
+<p style="font-size:30px;font-weight:700;color:#B60036">S15: authenticated multi-tenant API</p>
+<p style="font-size:26px;line-height:1.3;color:#444444">a low-privilege tenant token leads to a cross-tenant administrative export, through three flaws in the API; 3 expected findings</p>
+</div>
+<table style="font-size:26px;font-family:Arial, Helvetica, sans-serif;color:#1A1A1A">
+<tr style="background:#FCF0F4"><th style="width:16%;color:#B60036">Scenario</th><th style="width:16%;color:#B60036">TP</th><th style="width:16%;color:#B60036">FP</th><th style="width:18%;color:#B60036">F1</th><th style="width:17%;color:#B60036">Precision</th><th style="width:17%;color:#B60036">Recall</th></tr>
+<tr><td style="width:16%"><span style="font-weight:700">S1</span></td><td style="width:16%">12</td><td style="width:16%">6</td><td style="width:18%">80 %</td><td style="width:17%">66.7 %</td><td style="width:17%">100 %</td></tr>
+<tr><td style="width:16%"><span style="font-weight:700">S15</span></td><td style="width:16%">3</td><td style="width:16%">5</td><td style="width:18%">54.5 %</td><td style="width:17%">37.5 %</td><td style="width:17%">100 %</td></tr>
+</table>
+<div style="display:flex;flex-direction:column;gap:12px;border:2px solid #1D5C96;background:#EFF6FC;padding:24px">
+<span style="font-size:26px;font-weight:700;color:#1D5C96">Example evidence, S1</span>
+<span style="font-size:26px;line-height:1.3">MQTT broker on port 1883 accepts anonymous connections: a subscription to # without credentials returns retained admin topics. Status: confirmed.</span>
+</div>
+</div>
+</div>
+<aside>Two scenarios, one from each end of the development set. S1 is a router with three services on one subnet. S15 is an authenticated multi-tenant API: a tenant token is turned into an administrative export through an object reference flaw, a mass assignment and a scope check that is not enforced. TP are true positives, FP false positives, both counted against the answer key; S1 has 12 expected findings and S15 has 3. The scores are one run each, from the platform’s benchmark view of 22 October 2026. On S1 the evaluator counts five of the six false positives as supported by evidence but outside the answer key; they have not been checked, so precision is a lower bound. The evidence box is a finding taken from the S1 run as the platform recorded it. These are single runs: they show how the scoring works, not how well the model performs.</aside>
+</section>
