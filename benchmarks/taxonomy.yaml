@@ -1,0 +1,170 @@
+# Taxonomie des trois axes du benchmark : appareil, architecture, faille.
+#
+# Ce fichier ne déclare aucun scénario. Il fait correspondre les valeurs
+# brutes déjà présentes dans le dépôt aux classes utilisées pour organiser
+# le corpus (présentation du 2026-10-23) :
+#   - rôle d'un service (topologies, vérités terrain) → classe d'appareil ;
+#   - topologie d'un scénario → architecture visée ;
+#   - catégorie d'une faille (vérités terrain) → famille de faille.
+# L'architecture visée est l'intention du scénario. src/benchmark/taxonomy.py
+# mesure en plus l'architecture réellement encodée dans la topologie
+# (sous-réseaux, hôtes relais à double interface, services sans passerelle)
+# et signale tout écart : un écart est un scénario à mettre en conformité.
+# Les étiquettes par scénario et par faille sont dérivées par ce module ;
+# elles ne sont jamais saisies à la main.
+schema_version: 1
+
+classes:
+  device:
+    router: routeur OpenWrt du scénario
+    gateway: passerelle IoT ou pont vers les appareils
+    broker: courtier de messages IoT
+    camera: caméra IP ou enregistreur vidéo
+    sensor: capteur ou appareil terminal contraint
+    ot_controller: automate ou contrôleur industriel/bâtiment
+    ot_supervision: IHM ou historian OT
+    iot_platform: plateforme ou API de gestion IoT
+    cloud_service: service cloud simulé
+    identity_service: PKI, enrôlement ou registre d'identités
+    update_service: dépôt, signature ou suivi de mises à jour
+    host: hôte Linux administré par SSH
+    web_app: application web de laboratoire
+    database: base de données
+    file_server: serveur de fichiers
+    network_service: service d'administration réseau
+  architecture:
+    flat: un seul segment, chaque service est joignable directement
+    segmented: plusieurs zones routées et filtrées par le routeur
+    gateway: services isolés joignables seulement par une passerelle exposée
+    multi_hop: cible atteignable seulement par au moins deux relais successifs
+    star: appareils périphériques joignables seulement par un nœud central
+    local_cloud: site local et service distant sur des segments séparés
+  weakness:
+    authentication: identifiants par défaut, absence ou contournement d'authentification
+    access_control: autorisation défaillante ou élévation de privilèges
+    data_exposure: données sensibles ou informations techniques exposées
+    injection: injection de code ou de commande
+    crypto: chiffrement faible ou absent
+    configuration: mauvaise configuration ou durcissement manquant
+    update: mise à jour non sûre
+    known_vulnerability: version affectée par une CVE publique
+
+# Rôle → classe d'appareil. Les protocoles viennent de
+# src/benchmark/tool_registry.py:ROLE_SERVICES ; `protocols` n'est renseigné
+# que pour les rôles absents de ce registre.
+roles:
+  router: {device: router}
+  iot_gateway: {device: gateway}
+  device_gateway: {device: gateway, protocols: [http]}
+  wireless_bridge: {device: gateway, protocols: [udp]}
+  mqtt_broker: {device: broker}
+  mqtt_broker_v2: {device: broker}
+  camera_server: {device: camera}
+  nvr_server: {device: camera}
+  coap_server: {device: sensor}
+  pki_device: {device: sensor}
+  ota_device: {device: sensor}
+  boot_device: {device: sensor, protocols: [http]}
+  provisioning_discovery: {device: sensor, protocols: [udp]}
+  provisioning_telemetry: {device: sensor, protocols: [http]}
+  modbus_server: {device: ot_controller}
+  ot_opcua_server: {device: ot_controller}
+  ot_bacnet_server: {device: ot_controller}
+  ot_hmi: {device: ot_supervision}
+  ot_historian: {device: ot_supervision}
+  nodered_server: {device: iot_platform}
+  api_identity_server: {device: iot_platform}
+  api_tenant_server: {device: iot_platform}
+  api_data_store: {device: iot_platform}
+  api_event_broker: {device: iot_platform}
+  api_admin_portal: {device: iot_platform}
+  provisioning_claim: {device: iot_platform, protocols: [http]}
+  provisioning_maintenance: {device: iot_platform, protocols: [http]}
+  cloud_web_server: {device: cloud_service}
+  cloud_metadata_server: {device: cloud_service}
+  cloud_control_plane: {device: cloud_service}
+  cloud_worker: {device: cloud_service}
+  cloud_audit: {device: cloud_service}
+  pki_ca_server: {device: identity_service}
+  pki_enrollment_server: {device: identity_service}
+  pki_mtls_server: {device: identity_service}
+  pki_registry: {device: identity_service}
+  ota_repository: {device: update_service}
+  ota_server: {device: update_service}
+  ota_signer: {device: update_service}
+  ota_monitor: {device: update_service}
+  firmware_archive: {device: update_service, protocols: [http]}
+  ssh_server: {device: host}
+  ssh_server_v2: {device: host}
+  pivot_entry: {device: host}
+  pivot_relay: {device: host}
+  pivot_decoy: {device: host}
+  heldout_entry: {device: host, protocols: [ssh]}
+  heldout_relay_l1: {device: host, protocols: [ssh]}
+  heldout_relay_l2: {device: host, protocols: [ssh]}
+  web_server: {device: web_app}
+  web_server_v2: {device: web_app}
+  web_upload: {device: web_app}
+  pivot_vault: {device: web_app}
+  heldout_asset_l1: {device: web_app, protocols: [http]}
+  heldout_asset_l2: {device: web_app, protocols: [http]}
+  heldout_asset_l3: {device: web_app, protocols: [http]}
+  exploit_auth_server: {device: web_app, protocols: [http]}
+  exploit_files_server: {device: web_app, protocols: [http]}
+  exploit_command_server: {device: web_app, protocols: [http]}
+  exploit_privilege_server: {device: web_app, protocols: [http]}
+  db_server: {device: database}
+  db_server_v2: {device: database}
+  ftp_server: {device: file_server}
+  snmp_server: {device: network_service}
+
+# Topologie → architecture visée. Pour S1–S12, la cible reprend le tableau
+# V1 de la présentation (S11–S12, « Scale », visent des zones ; la taille est
+# mesurée à part). Pour S13–S29, elle reprend l'intention documentée de la
+# topologie.
+architectures:
+  flat: flat                          # S1, S1h
+  gateway: flat                       # S2
+  nato_lab: gateway                   # S3
+  ics_scada: segmented                # S4, S4h
+  building: star                      # S5
+  star: star                          # S6
+  edge_cloud: local_cloud             # S7
+  multizone: segmented                # S8
+  mesh_iot: flat                      # S9
+  flat_variants: flat                 # S10
+  smart_city_3zones: segmented        # S11
+  smart_city_large: segmented         # S12
+  vlan_segmented: segmented           # S13
+  sparse_hardened: flat               # S14
+  api_authorization: flat             # S15
+  device_pki: flat                    # S16
+  ota_lifecycle: flat                 # S17
+  cloud_iam_ssrf: local_cloud         # S18
+  ot_multiprotocol: flat              # S19
+  true_multihop: multi_hop            # S20
+  sparse_low_prevalence: flat         # S21
+  exploit_diversity: flat             # S22
+  wireless_firmware_chain: gateway    # S23
+  heldout_dual_zone_chain: multi_hop  # S24
+  heldout_segmented_fanout: gateway   # S25
+  heldout_asymmetric_paths: multi_hop # S26
+  heldout_three_pivot_cascade: multi_hop # S27
+  heldout_provisioning_chain: flat    # S28
+  heldout_large_sparse: flat          # S29
+
+# Catégorie de faille (vérités terrain) → famille.
+weaknesses:
+  default_credentials: authentication
+  no_authentication: authentication
+  auth_bypass: authentication
+  broken_access_control: access_control
+  privilege_escalation: access_control
+  data_exposure: data_exposure
+  info_disclosure: data_exposure
+  code_injection: injection
+  weak_crypto: crypto
+  misconfiguration: configuration
+  missing_header: configuration
+  insecure_update: update
+  cve: known_vulnerability

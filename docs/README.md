@@ -38,6 +38,7 @@ La [documentation du benchmark V1](benchmark/v1/README.md) est le point d'entré
 - [Qualification SSH V2](benchmark/agent-vs-automation-cli.md#qualification-native-vérifiée-le-15-octobre-2026) : quatre bras réels script/Qwen validés le 15 octobre ; portée de calibration bornée, hors campagne confirmatoire M-T.
 - [Qualification MQTT V2](benchmark/agent-vs-automation-cli.md#qualification-mqtt-réelle-vérifiée-le-19-octobre-2026) : quatre bras réels script/Qwen sur Mosquitto, cas F0/F1, validés le 19 octobre ; même portée bornée.
 - [Guide de campagne](benchmark/agent-vs-automation-campaign.md) : parcours d’une paire règles/LLM dans l’interface, politique D1 bornée, manifeste du pilote de 24 essais, bilan et revue indépendante des preuves.
+- [Taxonomie appareil / architecture / faille](benchmark/taxonomie.md) : classes des trois axes, architecture mesurée dans les topologies et [matrices de couverture](benchmark/couverture-axes.md) générées, sans modifier le corpus.
 - [Index dérivé des étiquettes](benchmark/derived-index.md) : axes expérimentaux calculés depuis les vérités terrain (type, chaînage, surface, bruit), sans modifier catalogue ni vérités terrain.
 
 Le corpus ci-dessus est le matériel du benchmark ; les hypothèses qu'il sert à

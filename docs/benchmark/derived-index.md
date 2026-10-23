@@ -69,3 +69,6 @@ seulement prévue : l'index décrirait alors une expérience qui n'existe pas.
 Vérification : `tests/test_derived_index.py` couvre la déduction des
 axes, le résumé, le remplacement par manifeste d'altération, et le
 chargement inchangé du catalogue.
+
+Les axes appareil, architecture et faille sont calculés séparément par
+la [taxonomie](taxonomie.md).

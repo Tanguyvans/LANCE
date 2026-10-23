@@ -1,0 +1,4128 @@
+{
+  "schema_version": 1,
+  "generated_by": "src.benchmark.taxonomy",
+  "conformity_rules": {
+    "flat": [
+      "flat"
+    ],
+    "segmented": [
+      "segmented"
+    ],
+    "gateway": [
+      "gateway"
+    ],
+    "multi_hop": [
+      "multi_hop"
+    ],
+    "star": [
+      "gateway"
+    ],
+    "local_cloud": [
+      "gateway",
+      "multi_hop",
+      "segmented"
+    ]
+  },
+  "summary": {
+    "official_scenarios": 29,
+    "official_vulnerabilities": 288,
+    "architecture_conforming": 19,
+    "by_architecture_target": {
+      "flat": 13,
+      "gateway": 3,
+      "local_cloud": 2,
+      "multi_hop": 4,
+      "segmented": 5,
+      "star": 2
+    },
+    "by_architecture_measured": {
+      "flat": 23,
+      "gateway": 1,
+      "multi_hop": 4,
+      "segmented": 1
+    },
+    "by_device": {
+      "broker": 41,
+      "camera": 11,
+      "cloud_service": 3,
+      "database": 20,
+      "file_server": 6,
+      "gateway": 32,
+      "host": 41,
+      "identity_service": 3,
+      "iot_platform": 11,
+      "network_service": 3,
+      "ot_controller": 14,
+      "router": 24,
+      "sensor": 11,
+      "update_service": 2,
+      "web_app": 66
+    },
+    "by_weakness": {
+      "access_control": 8,
+      "authentication": 93,
+      "configuration": 73,
+      "crypto": 10,
+      "data_exposure": 70,
+      "injection": 13,
+      "known_vulnerability": 9,
+      "update": 12
+    }
+  },
+  "sources_sha256": {
+    "benchmarks/ground_truth/dev/scenario_1.yaml": "471a7db294f15a823aa2635eee317c436133b143816349a374fe9a03665214af",
+    "benchmarks/ground_truth/dev/scenario_10.yaml": "ba55a1c2febb74881380728a50a60df64a2d147187d4b9b603f65696378a7bf6",
+    "benchmarks/ground_truth/dev/scenario_11.yaml": "89324ef4042940c781500e6e2ccffa5315436675a01f3c3bf69a3d167f57a681",
+    "benchmarks/ground_truth/dev/scenario_12.yaml": "206e11a541738405c56537f15026390cf3dcf24ebaed30828cfc45456f26e0d9",
+    "benchmarks/ground_truth/dev/scenario_13.yaml": "53ed7e9e7298a2621ef4ac3568c223d3c338302c2b06a3c77a9780262a7617cc",
+    "benchmarks/ground_truth/dev/scenario_14.yaml": "91c6356a9ceabb4ccfa26837480a1b9443d130387ebc166592b4f282f6e86857",
+    "benchmarks/ground_truth/dev/scenario_15.yaml": "f991e7032098e33fb40620a2233abf9af9834853413630b52950fd5dd6463f8c",
+    "benchmarks/ground_truth/dev/scenario_16.yaml": "05d4a033727c0e618bd1a4217d2de6c4baa7eebacea32bf89b966fc471cb9eeb",
+    "benchmarks/ground_truth/dev/scenario_17.yaml": "f58a9b7afae0f9b9a9f8dda5047ae1fc26f043c4a43d6669fc7257fbad181876",
+    "benchmarks/ground_truth/dev/scenario_18.yaml": "619ff089b21d3688105af12e848469bd1cb64fe44f21ea4d61c840c927c8169b",
+    "benchmarks/ground_truth/dev/scenario_19.yaml": "75a9425f7e7570f8cb32e0a46ff253fec2b271ee71fdd68aca2dd3e23cad6819",
+    "benchmarks/ground_truth/dev/scenario_1h.yaml": "1227ec22149f06b594b2d50148f63776605c524454e5839ff54b76dea5280bb8",
+    "benchmarks/ground_truth/dev/scenario_2.yaml": "fdf6e91860a9ee8b327d8a3693ba0d579be6971321d76efc581150f136011286",
+    "benchmarks/ground_truth/dev/scenario_3.yaml": "196ee5bb7ab4f676fe4f605906cecbfbc8e81a3c0b16c3552d18a051d9bf8c1e",
+    "benchmarks/ground_truth/dev/scenario_4.yaml": "6132f184038cccefbce650db166a8cd0df26207d65198000b3168eb486400838",
+    "benchmarks/ground_truth/dev/scenario_4h.yaml": "e366eafd81470c905103c24dd7615b3a3aca1708f3615eaf769b92353382f262",
+    "benchmarks/ground_truth/dev/scenario_5.yaml": "545a2a16d1e1be34a519a2152527c3a23e41e3e3af9ad90da7f6eaff9bc624e2",
+    "benchmarks/ground_truth/dev/scenario_6.yaml": "ec50c0061b3432e0db89d4752b87b5903338961b85ee97ea8307fc84fdded92a",
+    "benchmarks/ground_truth/dev/scenario_7.yaml": "9bd66c0f91a9dd52b50f7ef57ae387fb3311bf41178346a082f5bde89cd340c2",
+    "benchmarks/ground_truth/dev/scenario_8.yaml": "d4fa114c267e68d69b3112dc28db70834d582cd3c0c0ede00289a57d7f79f8b7",
+    "benchmarks/ground_truth/dev/scenario_9.yaml": "74b889887d49ebb2556dc49f3cafc1acf0e5a55ec242751f166a6005806b4502",
+    "benchmarks/ground_truth/test/scenario_20.yaml": "e8eca8fc9c83e3d193f90220779bf6c67f7096fb85ddafb9ffb6a636cbe9c355",
+    "benchmarks/ground_truth/test/scenario_21.yaml": "6b980c0f35328de6449706a38da4a1697be40207db1d5cbbe6efd11e3e043654",
+    "benchmarks/ground_truth/test/scenario_22.yaml": "503178f6bfdf4d25e86e4f5311104fd91cffbad87ecc4d1b482d3e3e2a497a99",
+    "benchmarks/ground_truth/test/scenario_23.yaml": "93c768af07e007aab70af944a33da49b888218a5bbe5a03e31b6ae1c936fe2a6",
+    "benchmarks/ground_truth/test/scenario_24.yaml": "ed66374846a3258ce0fc5743cbcd2fe825c4345e8916fbe0c060ccf22f0d8c34",
+    "benchmarks/ground_truth/test/scenario_25.yaml": "183461c1079cbafb0eed5169f0e1157b6e69fd04703aefb8c95808d9cec62211",
+    "benchmarks/ground_truth/test/scenario_26.yaml": "9c75dbc0ebdc2a23c68319436aaf4755f6ddeab79cce917db5491c11d6ab3298",
+    "benchmarks/ground_truth/test/scenario_27.yaml": "087bbb1fc1d59ec37aa672a8507157c2cafa23b872b078ca09c54028d9de3e5b",
+    "benchmarks/ground_truth/test/scenario_28.yaml": "32b9cc3006b1a54c1465a76effdd227ded5ffe18ebb3ff899bd675c37e85413b",
+    "benchmarks/ground_truth/test/scenario_29.yaml": "371571ffe6e1f10896094ffac40096cc282065e57041d4ad9354579aed6e1e82",
+    "benchmarks/scenarios/dev/S1.yaml": "da669675bf249db3be13478b76561df57b84b1c11a3315c95d0474345a14b327",
+    "benchmarks/scenarios/dev/S10.yaml": "e501e70c8af4a40a33b2ea65643f5886e85a34ef21742e9aef1f7d91499db057",
+    "benchmarks/scenarios/dev/S11.yaml": "3639979f5b279451c1a168b815018d9f361a86332e0aa309b8094b534ba1ba4e",
+    "benchmarks/scenarios/dev/S12.yaml": "a1dc16991df7bcf630fea5f539cc3f73033d5da126f3fc8acd2a87956ef5757b",
+    "benchmarks/scenarios/dev/S13.yaml": "f039a5cdda5fd05fd1e05cbbf2d118010cd2bad2689f695327f1284cca855ae4",
+    "benchmarks/scenarios/dev/S14.yaml": "c2ac51b156d61ac4b89f6faf8ab5496c231281a2df84a487281b82ba60cb83e3",
+    "benchmarks/scenarios/dev/S15.yaml": "ddae4d8cd8a1a3eff46d736bc5a6a4c8c49f049523c303ffbfbebadb496b26b4",
+    "benchmarks/scenarios/dev/S16.yaml": "ad228e807b8199fdf3eb9479855c607e1432f5a2a69bb5776688d75d44e7dbd2",
+    "benchmarks/scenarios/dev/S17.yaml": "d1c7aa442538b7c01fdbbfed97d93e6cc24df411c8d73843e90d72c66368c96c",
+    "benchmarks/scenarios/dev/S18.yaml": "d8abe0e6df27e4d322f53862febc9460b9ba22eb6de109f12869678a83c54d1c",
+    "benchmarks/scenarios/dev/S19.yaml": "2d65138dcbc85e8f73a161c584091cd80e6f807abddc8110dd6a95ecab9e4667",
+    "benchmarks/scenarios/dev/S1h.yaml": "859e2006f0ba84c7d97caa846e7bf4140df6166f1131206dd84a8d41afdda946",
+    "benchmarks/scenarios/dev/S2.yaml": "b239a62b2426f89d0a937888d2952bd24befd097508e0ced987740e41fce35db",
+    "benchmarks/scenarios/dev/S3.yaml": "084c098067fdc8c60ea9225f6aa2ab9dfd79121019c558f04a121427b01d1a8c",
+    "benchmarks/scenarios/dev/S4.yaml": "c9c646646c813bf62c33dc13ec259db44e4c1c87a22fcc58a11935bfb1611398",
+    "benchmarks/scenarios/dev/S4h.yaml": "30db592a40c22022b3826e799ed6a06ba6859e11473dcd1b517fadc86c4951c3",
+    "benchmarks/scenarios/dev/S5.yaml": "50ea5b9626e88053404aa6e94447a447a3021481a7294d8e2dd9724ec16b929a",
+    "benchmarks/scenarios/dev/S6.yaml": "c29fcd4ba554b5d2bd3222b87df51d317a89d96014daa9faef03162091e4f3e2",
+    "benchmarks/scenarios/dev/S7.yaml": "6784d14cc0c9f29b9bbfdcd8e77f6c96b54d9a777a6f275a90be6899075fbf7f",
+    "benchmarks/scenarios/dev/S8.yaml": "d8133c934b0adbc2e472f082be2a5c49586c98700fd3761d1fb34a4611a7b3b1",
+    "benchmarks/scenarios/dev/S9.yaml": "22eee22ff818386b7ce9d90549212732896d3cb6b28f7a36b69d656797cfa99a",
+    "benchmarks/scenarios/test/S20.yaml": "a7c2db4bf1ee52196da0cc96667ad9b9526f4810b904bfb7181c16c90fe41d61",
+    "benchmarks/scenarios/test/S21.yaml": "84a46ba7412b2e2aa68b89d1bb8e483e916a02b5331a3f75233dc9992d3f7428",
+    "benchmarks/scenarios/test/S22.yaml": "d1e238476c41a1d66479b75ee8b960ab738277f32efe02305cfd343c815559a3",
+    "benchmarks/scenarios/test/S23.yaml": "051c3fcdbb0ab4432c49e736e39187e1b8fc7c803892ca06f5c494e599f8c909",
+    "benchmarks/scenarios/test/S24.yaml": "2c3cdc0a2870169ed9dd883564a94ea68c27aead9df7620e6cb8f487cc765083",
+    "benchmarks/scenarios/test/S25.yaml": "6b57093b0924dbc432522aaac5aa5fae78ec8a00b27f51c4c94b640c8aaf13df",
+    "benchmarks/scenarios/test/S26.yaml": "45f040b43317699cea0b2e06cee437757d7a887d1f9baba41bf934a41f97258f",
+    "benchmarks/scenarios/test/S27.yaml": "65b4d375195c3c9b89b54fd65ce091b77f9acb012d817dbb80625030e34bd852",
+    "benchmarks/scenarios/test/S28.yaml": "0a1c78ff0bd01f79865cada14f98ac21016c8d90e4ffe3675aba7f5e3e92543b",
+    "benchmarks/scenarios/test/S29.yaml": "5dc2cd888fbdfcf1bc977822c8b176e0074ff5abf334b17600359eae78fa41d7",
+    "benchmarks/taxonomy.yaml": "aaefaeb368d69f763e4ed5303a2fdf086a8ca88286c3b5a04c1075777ad01a36",
+    "benchmarks/topologies/api_authorization.yaml": "66317d66584d10ef9e1d74df67ed34273d412131f3f6caab3745ffe67d972fd1",
+    "benchmarks/topologies/building.yaml": "6492f56a95a6271cea67464d404161421aa02ca7c157fcda9ed2a9d849a0a1e6",
+    "benchmarks/topologies/cloud_iam_ssrf.yaml": "fe487500dca539ff5554f87dd041dbda222328603d2d47af1adb88859de2bf62",
+    "benchmarks/topologies/device_pki.yaml": "ed026f65acfa5da60e501fb1011456034800b32aacc8fca78b36d08764728fde",
+    "benchmarks/topologies/edge_cloud.yaml": "f80002b68ce88b97450935f8757f17dfa7894aaef7502e1641ff161709bd130a",
+    "benchmarks/topologies/exploit_diversity.yaml": "6f31dba8e2af79ecdd0b2247f5f37974f53750f4172fde52b4081ef39e87d1fb",
+    "benchmarks/topologies/flat.yaml": "152014ba19bfc518d374f2909bcb344cf804d7b61c87ebae2716d0a82dc1b9dc",
+    "benchmarks/topologies/flat_variants.yaml": "99fff1776b8341419a1723a879327d08ccbd8579debabc1d57e196883745bc19",
+    "benchmarks/topologies/gateway.yaml": "76bfd150a6c32d05c6dbb2fc2a6a9cdc99cb110a5e2263772c52ad259e380574",
+    "benchmarks/topologies/heldout_asymmetric_paths.yaml": "1dbbca1decca31d76d1e786a30b3fa10e771d96e6870d37269898970498c38d4",
+    "benchmarks/topologies/heldout_dual_zone_chain.yaml": "8f59c937ef50a6dd02f8804b3bdef3a133d200f7076f156503a0c03847cc713d",
+    "benchmarks/topologies/heldout_large_sparse.yaml": "ca577a2ff68bacf2d235244e3df6d69e10cd84fd0acdaac53d3005d5943f7bc9",
+    "benchmarks/topologies/heldout_provisioning_chain.yaml": "08d27d43b51f6c922cd4656def8020ab213da9172e20fdafb3bed47e7bd7f45c",
+    "benchmarks/topologies/heldout_segmented_fanout.yaml": "fc9610197e2cba22eedffbb0024da623b9ad95c710008561cd209746e3871ba6",
+    "benchmarks/topologies/heldout_three_pivot_cascade.yaml": "253cd75150f524b7f93fc6c9e3a848dc84ae16b36f8cdb2b458f8cd45fe4f5db",
+    "benchmarks/topologies/ics_scada.yaml": "ce13e819dad6417bbd900f787f77ffe6113644b6937ffe1ce0ecf92f1d0548df",
+    "benchmarks/topologies/mesh_iot.yaml": "552bc5da73bb1e886b0d1f692c35b6c7e9ae4edd03c042e22aca4d1512ad550b",
+    "benchmarks/topologies/multizone.yaml": "3cd9cbea890f31f9ddc63bf7018eed42993e6420a4e73e60679848ad046c4da4",
+    "benchmarks/topologies/nato_lab.yaml": "2bb529ae77421fd32e4675103fdc68d976c11079f7bce680ead34ada3988fa04",
+    "benchmarks/topologies/ot_multiprotocol.yaml": "237772038399ef4f58dfd523b2178f068c3cc9735a33701f3272ceaf0ed1b2ec",
+    "benchmarks/topologies/ota_lifecycle.yaml": "87a40d1623dff599ccb0a6cf727a241d9a86ace2457046f53328fffbde7d9ce9",
+    "benchmarks/topologies/smart_city_3zones.yaml": "bc2a702859f33275f839a8cae0a819c5b3151d99d20885a97f9cdfad1ada8809",
+    "benchmarks/topologies/smart_city_large.yaml": "a757e210bf4b83f12b7e93cf406ba69d0dd99cc2f0ef41222a29b8a9b6688344",
+    "benchmarks/topologies/sparse_hardened.yaml": "4bc681ace8f00062ecb788628baa68d02882edc14786db2e8869be8c14a563fc",
+    "benchmarks/topologies/sparse_low_prevalence.yaml": "81d00693bb4f4d281fd71a8c2d8c70985db6b695fe8467f60693690e5ecd9723",
+    "benchmarks/topologies/star.yaml": "8c89d1604b9940228696a190a412fceca67697ec9d50ede429fde71cc2f67cd5",
+    "benchmarks/topologies/true_multihop.yaml": "23248a213cd33abe68aa3b7ea531c8f842ecaa011146dc96af5d2d2ab2f53a33",
+    "benchmarks/topologies/vlan_segmented.yaml": "4f1d174dda9b9dc8dd3270d2f4cf27bfe7a39d30ba3b6911668f7864c221fbd3",
+    "benchmarks/topologies/wireless_firmware_chain.yaml": "939b725ff0302c8c45119652d2ccba29299ee57d19f6052767ac7dc8417c77eb"
+  },
+  "scenarios": [
+    {
+      "scenario_id": "1",
+      "official": true,
+      "split": "dev-public",
+      "label": "Réseau plat",
+      "topology": "flat",
+      "services": 3,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "broker",
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "crypto",
+        "data_exposure"
+      ],
+      "vulnerabilities": 12
+    },
+    {
+      "scenario_id": "1h",
+      "official": false,
+      "split": "dev-public",
+      "label": "Reseau plat (hardened)",
+      "topology": "flat",
+      "services": 3,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "broker",
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "ssh"
+      ],
+      "weaknesses": [],
+      "vulnerabilities": 0
+    },
+    {
+      "scenario_id": "2",
+      "official": true,
+      "split": "dev-public",
+      "label": "Gateway exposée",
+      "topology": "gateway",
+      "services": 5,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "broker",
+        "database",
+        "gateway",
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "mysql",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "data_exposure",
+        "known_vulnerability",
+        "update"
+      ],
+      "vulnerabilities": 13
+    },
+    {
+      "scenario_id": "3",
+      "official": true,
+      "split": "dev-public",
+      "label": "Réplique NATO Lab",
+      "topology": "nato_lab",
+      "services": 7,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "gateway",
+        "conforms": false
+      },
+      "devices": [
+        "broker",
+        "camera",
+        "gateway",
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "ssh"
+      ],
+      "weaknesses": [
+        "access_control",
+        "authentication",
+        "configuration",
+        "data_exposure",
+        "known_vulnerability",
+        "update"
+      ],
+      "vulnerabilities": 18
+    },
+    {
+      "scenario_id": "4",
+      "official": true,
+      "split": "dev-public",
+      "label": "Réseau segmenté",
+      "topology": "ics_scada",
+      "services": 7,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "segmented",
+        "conforms": false
+      },
+      "devices": [
+        "broker",
+        "database",
+        "gateway",
+        "host",
+        "ot_controller",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "modbus",
+        "mqtt",
+        "mysql",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "crypto",
+        "data_exposure",
+        "injection",
+        "known_vulnerability",
+        "update"
+      ],
+      "vulnerabilities": 18
+    },
+    {
+      "scenario_id": "4h",
+      "official": false,
+      "split": "dev-public",
+      "label": "ICS/SCADA (hardened)",
+      "topology": "ics_scada",
+      "services": 7,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "segmented",
+        "conforms": false
+      },
+      "devices": [
+        "broker",
+        "database",
+        "gateway",
+        "host",
+        "ot_controller",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "modbus",
+        "mqtt",
+        "mysql",
+        "ssh"
+      ],
+      "weaknesses": [],
+      "vulnerabilities": 0
+    },
+    {
+      "scenario_id": "5",
+      "official": true,
+      "split": "dev-public",
+      "label": "Smart Building",
+      "topology": "building",
+      "services": 7,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "star",
+        "conforms": false
+      },
+      "devices": [
+        "broker",
+        "camera",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "data_exposure"
+      ],
+      "vulnerabilities": 15
+    },
+    {
+      "scenario_id": "6",
+      "official": true,
+      "split": "dev-public",
+      "label": "Domotique centralisée",
+      "topology": "star",
+      "services": 5,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "star",
+        "conforms": false
+      },
+      "devices": [
+        "broker",
+        "camera",
+        "database",
+        "gateway",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "mysql",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "data_exposure",
+        "known_vulnerability",
+        "update"
+      ],
+      "vulnerabilities": 16
+    },
+    {
+      "scenario_id": "7",
+      "official": true,
+      "split": "dev-public",
+      "label": "Edge-Cloud pivot",
+      "topology": "edge_cloud",
+      "services": 5,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "local_cloud",
+        "conforms": false
+      },
+      "devices": [
+        "broker",
+        "database",
+        "gateway",
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "mysql",
+        "ssh"
+      ],
+      "weaknesses": [
+        "access_control",
+        "authentication",
+        "configuration",
+        "crypto",
+        "data_exposure",
+        "injection",
+        "known_vulnerability",
+        "update"
+      ],
+      "vulnerabilities": 14
+    },
+    {
+      "scenario_id": "8",
+      "official": true,
+      "split": "dev-public",
+      "label": "Multi-zone IT/IoT/OT",
+      "topology": "multizone",
+      "services": 7,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "segmented",
+        "conforms": false
+      },
+      "devices": [
+        "broker",
+        "database",
+        "gateway",
+        "host",
+        "ot_controller",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "modbus",
+        "mqtt",
+        "mysql",
+        "redis",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "data_exposure",
+        "injection",
+        "known_vulnerability",
+        "update"
+      ],
+      "vulnerabilities": 14
+    },
+    {
+      "scenario_id": "9",
+      "official": true,
+      "split": "dev-public",
+      "label": "Mesh IoT",
+      "topology": "mesh_iot",
+      "services": 5,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "broker",
+        "network_service",
+        "sensor"
+      ],
+      "protocols": [
+        "coap",
+        "mqtt",
+        "snmp"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "data_exposure"
+      ],
+      "vulnerabilities": 11
+    },
+    {
+      "scenario_id": "10",
+      "official": true,
+      "split": "dev-public",
+      "label": "Flat avec variantes",
+      "topology": "flat_variants",
+      "services": 5,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "broker",
+        "file_server",
+        "host",
+        "iot_platform",
+        "web_app"
+      ],
+      "protocols": [
+        "ftp",
+        "http",
+        "mqtt",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "data_exposure",
+        "injection"
+      ],
+      "vulnerabilities": 13
+    },
+    {
+      "scenario_id": "11",
+      "official": true,
+      "split": "dev-public",
+      "label": "Smart City 3 zones",
+      "topology": "smart_city_3zones",
+      "services": 14,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "segmented",
+        "conforms": false
+      },
+      "devices": [
+        "broker",
+        "database",
+        "file_server",
+        "gateway",
+        "host",
+        "iot_platform",
+        "ot_controller",
+        "web_app"
+      ],
+      "protocols": [
+        "ftp",
+        "http",
+        "modbus",
+        "mqtt",
+        "mysql",
+        "redis",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "crypto",
+        "data_exposure",
+        "injection",
+        "known_vulnerability",
+        "update"
+      ],
+      "vulnerabilities": 23
+    },
+    {
+      "scenario_id": "12",
+      "official": true,
+      "split": "dev-public",
+      "label": "Smart City Large Scale",
+      "topology": "smart_city_large",
+      "services": 34,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "segmented",
+        "conforms": false
+      },
+      "devices": [
+        "broker",
+        "camera",
+        "database",
+        "file_server",
+        "gateway",
+        "host",
+        "iot_platform",
+        "network_service",
+        "ot_controller",
+        "sensor",
+        "web_app"
+      ],
+      "protocols": [
+        "coap",
+        "ftp",
+        "http",
+        "modbus",
+        "mqtt",
+        "mysql",
+        "redis",
+        "snmp",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "crypto",
+        "data_exposure",
+        "injection",
+        "known_vulnerability",
+        "update"
+      ],
+      "vulnerabilities": 42
+    },
+    {
+      "scenario_id": "13",
+      "official": true,
+      "split": "dev-public",
+      "label": "VLAN Segmented Network",
+      "topology": "vlan_segmented",
+      "services": 16,
+      "architecture": {
+        "measured": "segmented",
+        "segments": 3,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "segmented",
+        "conforms": true
+      },
+      "devices": [
+        "broker",
+        "camera",
+        "database",
+        "file_server",
+        "gateway",
+        "host",
+        "iot_platform",
+        "ot_controller",
+        "sensor",
+        "web_app"
+      ],
+      "protocols": [
+        "coap",
+        "ftp",
+        "http",
+        "modbus",
+        "mqtt",
+        "mysql",
+        "redis",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "configuration",
+        "crypto",
+        "data_exposure",
+        "injection"
+      ],
+      "vulnerabilities": 20
+    },
+    {
+      "scenario_id": "14",
+      "official": true,
+      "split": "dev-public",
+      "label": "Sparse Mixed-Hardening",
+      "topology": "sparse_hardened",
+      "services": 10,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "broker",
+        "database",
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "redis",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "data_exposure"
+      ],
+      "vulnerabilities": 4
+    },
+    {
+      "scenario_id": "15",
+      "official": true,
+      "split": "dev-public",
+      "label": "Authenticated Multi-Tenant API",
+      "topology": "api_authorization",
+      "services": 6,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "iot_platform"
+      ],
+      "protocols": [
+        "http"
+      ],
+      "weaknesses": [
+        "access_control"
+      ],
+      "vulnerabilities": 3
+    },
+    {
+      "scenario_id": "16",
+      "official": true,
+      "split": "dev-public",
+      "label": "Device PKI Lifecycle",
+      "topology": "device_pki",
+      "services": 6,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "identity_service",
+        "sensor"
+      ],
+      "protocols": [
+        "http",
+        "https"
+      ],
+      "weaknesses": [
+        "configuration",
+        "crypto",
+        "data_exposure"
+      ],
+      "vulnerabilities": 4
+    },
+    {
+      "scenario_id": "17",
+      "official": true,
+      "split": "dev-public",
+      "label": "Stateful Signed OTA",
+      "topology": "ota_lifecycle",
+      "services": 6,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "sensor",
+        "update_service"
+      ],
+      "protocols": [
+        "http"
+      ],
+      "weaknesses": [
+        "crypto",
+        "data_exposure",
+        "update"
+      ],
+      "vulnerabilities": 4
+    },
+    {
+      "scenario_id": "18",
+      "official": true,
+      "split": "dev-public",
+      "label": "Simulated Cloud IAM and SSRF",
+      "topology": "cloud_iam_ssrf",
+      "services": 6,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "local_cloud",
+        "conforms": false
+      },
+      "devices": [
+        "cloud_service"
+      ],
+      "protocols": [
+        "http"
+      ],
+      "weaknesses": [
+        "access_control",
+        "data_exposure",
+        "injection"
+      ],
+      "vulnerabilities": 3
+    },
+    {
+      "scenario_id": "19",
+      "official": true,
+      "split": "dev-public",
+      "label": "Safe Multi-Protocol OT Cell",
+      "topology": "ot_multiprotocol",
+      "services": 7,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "ot_controller",
+        "ot_supervision"
+      ],
+      "protocols": [
+        "bacnet",
+        "http",
+        "modbus",
+        "opcua"
+      ],
+      "weaknesses": [
+        "authentication",
+        "crypto",
+        "data_exposure"
+      ],
+      "vulnerabilities": 5
+    },
+    {
+      "scenario_id": "20",
+      "official": true,
+      "split": "test-public",
+      "label": "True Network Multi-Hop Pivot",
+      "topology": "true_multihop",
+      "services": 4,
+      "architecture": {
+        "measured": "multi_hop",
+        "segments": 3,
+        "relays": 2,
+        "isolated_services": 2,
+        "relay_depth": 2,
+        "target": "multi_hop",
+        "conforms": true
+      },
+      "devices": [
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "data_exposure"
+      ],
+      "vulnerabilities": 4
+    },
+    {
+      "scenario_id": "21",
+      "official": true,
+      "split": "test-public",
+      "label": "Sparse Low-Prevalence Network",
+      "topology": "sparse_low_prevalence",
+      "services": 16,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "broker",
+        "database",
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "redis",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "data_exposure"
+      ],
+      "vulnerabilities": 2
+    },
+    {
+      "scenario_id": "22",
+      "official": true,
+      "split": "test-public",
+      "label": "Exploit Primitive Diversity",
+      "topology": "exploit_diversity",
+      "services": 8,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "web_app"
+      ],
+      "protocols": [
+        "http"
+      ],
+      "weaknesses": [
+        "access_control",
+        "authentication",
+        "data_exposure",
+        "injection"
+      ],
+      "vulnerabilities": 4
+    },
+    {
+      "scenario_id": "23",
+      "official": true,
+      "split": "test-public",
+      "label": "Wireless-to-Firmware Chain",
+      "topology": "wireless_firmware_chain",
+      "services": 8,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "gateway",
+        "conforms": false
+      },
+      "devices": [
+        "gateway",
+        "sensor",
+        "update_service"
+      ],
+      "protocols": [
+        "http",
+        "udp"
+      ],
+      "weaknesses": [
+        "configuration",
+        "data_exposure",
+        "update"
+      ],
+      "vulnerabilities": 4
+    },
+    {
+      "scenario_id": "24",
+      "official": true,
+      "split": "test-public",
+      "label": "Dual-Zone Operations Chain",
+      "topology": "heldout_dual_zone_chain",
+      "services": 5,
+      "architecture": {
+        "measured": "multi_hop",
+        "segments": 4,
+        "relays": 3,
+        "isolated_services": 3,
+        "relay_depth": 2,
+        "target": "multi_hop",
+        "conforms": true
+      },
+      "devices": [
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "data_exposure"
+      ],
+      "vulnerabilities": 3
+    },
+    {
+      "scenario_id": "25",
+      "official": true,
+      "split": "test-public",
+      "label": "Segmented Fan-Out",
+      "topology": "heldout_segmented_fanout",
+      "services": 6,
+      "architecture": {
+        "measured": "gateway",
+        "segments": 3,
+        "relays": 2,
+        "isolated_services": 4,
+        "relay_depth": 1,
+        "target": "gateway",
+        "conforms": true
+      },
+      "devices": [
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "data_exposure"
+      ],
+      "vulnerabilities": 3
+    },
+    {
+      "scenario_id": "26",
+      "official": true,
+      "split": "test-public",
+      "label": "Asymmetric Pivot Paths",
+      "topology": "heldout_asymmetric_paths",
+      "services": 7,
+      "architecture": {
+        "measured": "multi_hop",
+        "segments": 4,
+        "relays": 3,
+        "isolated_services": 3,
+        "relay_depth": 2,
+        "target": "multi_hop",
+        "conforms": true
+      },
+      "devices": [
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "data_exposure"
+      ],
+      "vulnerabilities": 5
+    },
+    {
+      "scenario_id": "27",
+      "official": true,
+      "split": "test-public",
+      "label": "Three-Pivot Cascade",
+      "topology": "heldout_three_pivot_cascade",
+      "services": 6,
+      "architecture": {
+        "measured": "multi_hop",
+        "segments": 4,
+        "relays": 3,
+        "isolated_services": 3,
+        "relay_depth": 3,
+        "target": "multi_hop",
+        "conforms": true
+      },
+      "devices": [
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "data_exposure"
+      ],
+      "vulnerabilities": 4
+    },
+    {
+      "scenario_id": "28",
+      "official": true,
+      "split": "test-public",
+      "label": "Provisioning Dependency Chain",
+      "topology": "heldout_provisioning_chain",
+      "services": 8,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "iot_platform",
+        "sensor"
+      ],
+      "protocols": [
+        "http",
+        "udp"
+      ],
+      "weaknesses": [
+        "access_control",
+        "authentication",
+        "data_exposure"
+      ],
+      "vulnerabilities": 4
+    },
+    {
+      "scenario_id": "29",
+      "official": true,
+      "split": "test-public",
+      "label": "Large Sparse Control Network",
+      "topology": "heldout_large_sparse",
+      "services": 20,
+      "architecture": {
+        "measured": "flat",
+        "segments": 1,
+        "relays": 0,
+        "isolated_services": 0,
+        "relay_depth": 0,
+        "target": "flat",
+        "conforms": true
+      },
+      "devices": [
+        "broker",
+        "database",
+        "host",
+        "web_app"
+      ],
+      "protocols": [
+        "http",
+        "mqtt",
+        "redis",
+        "ssh"
+      ],
+      "weaknesses": [
+        "authentication",
+        "data_exposure"
+      ],
+      "vulnerabilities": 3
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "scenario_id": "1",
+      "vuln_id": "V1",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V2",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V3",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V4",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V5",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V6",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V7",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V8",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V9",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "missing_header",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V10",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V11",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "1",
+      "vuln_id": "V12",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V2",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V3",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V4",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "cve",
+      "weakness": "known_vulnerability",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V5",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V6",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V7",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V8",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V9",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V10",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V11",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "missing_header",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V12",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "2",
+      "vuln_id": "V13",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V2",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V3",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "cve",
+      "weakness": "known_vulnerability",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V4",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V5",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V6",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V7",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V8",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V9",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V10",
+      "role": "nvr_server",
+      "device": "camera",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V11",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "privilege_escalation",
+      "weakness": "access_control",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V12",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V13",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V14",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V15",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V16",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V17",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "3",
+      "vuln_id": "V18",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V1",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V2",
+      "role": "web_upload",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V3",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V4",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V5",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V6",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V7",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V8",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V9",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V10",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V11",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V12",
+      "role": "web_upload",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V13",
+      "role": "web_upload",
+      "device": "web_app",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V14",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V15",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V16",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V17",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "4",
+      "vuln_id": "V18",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "cve",
+      "weakness": "known_vulnerability",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V1",
+      "role": "camera_server",
+      "device": "camera",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V2",
+      "role": "camera_server",
+      "device": "camera",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V3",
+      "role": "nvr_server",
+      "device": "camera",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V4",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V5",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V6",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V7",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V8",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V9",
+      "role": "camera_server",
+      "device": "camera",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V10",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "missing_header",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V11",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V12",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V13",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V14",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "5",
+      "vuln_id": "V15",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V2",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V3",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V4",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V5",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V6",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V7",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V8",
+      "role": "camera_server",
+      "device": "camera",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V9",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V10",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V11",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V12",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V13",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V14",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V15",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "cve",
+      "weakness": "known_vulnerability",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "6",
+      "vuln_id": "V16",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "star",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V2",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "cve",
+      "weakness": "known_vulnerability",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V3",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V4",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V5",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V6",
+      "role": "web_upload",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V7",
+      "role": "web_upload",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V8",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V9",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V10",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V11",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V12",
+      "role": "web_upload",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V13",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "privilege_escalation",
+      "weakness": "access_control",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "7",
+      "vuln_id": "V14",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V2",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V3",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V4",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V5",
+      "role": "mqtt_broker_v2",
+      "device": "broker",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V6",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V7",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "cve",
+      "weakness": "known_vulnerability",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V8",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V9",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V10",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V11",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V12",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V13",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "8",
+      "vuln_id": "V14",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V2",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V3",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V4",
+      "role": "mqtt_broker_v2",
+      "device": "broker",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V5",
+      "role": "mqtt_broker_v2",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V6",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V7",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V8",
+      "role": "coap_server",
+      "device": "sensor",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V9",
+      "role": "coap_server",
+      "device": "sensor",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V10",
+      "role": "snmp_server",
+      "device": "network_service",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "9",
+      "vuln_id": "V11",
+      "role": "snmp_server",
+      "device": "network_service",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V2",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V3",
+      "role": "mqtt_broker_v2",
+      "device": "broker",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V4",
+      "role": "mqtt_broker_v2",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V5",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V6",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V7",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V8",
+      "role": "ftp_server",
+      "device": "file_server",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V9",
+      "role": "ftp_server",
+      "device": "file_server",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V10",
+      "role": "nodered_server",
+      "device": "iot_platform",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V11",
+      "role": "nodered_server",
+      "device": "iot_platform",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V12",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "10",
+      "vuln_id": "V13",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V2",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V3",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V4",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V5",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V6",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V7",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V8",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V9",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V10",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V11",
+      "role": "mqtt_broker_v2",
+      "device": "broker",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V12",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "cve",
+      "weakness": "known_vulnerability",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V13",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V14",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V15",
+      "role": "nodered_server",
+      "device": "iot_platform",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V16",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V17",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V18",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V19",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V20",
+      "role": "ftp_server",
+      "device": "file_server",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V21",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V22",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "11",
+      "vuln_id": "V23",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V2",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V3",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V4",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V5",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V6",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V7",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V8",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V9",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V10",
+      "role": "nodered_server",
+      "device": "iot_platform",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V11",
+      "role": "ftp_server",
+      "device": "file_server",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V12",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V13",
+      "role": "nvr_server",
+      "device": "camera",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V14",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V15",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V16",
+      "role": "mqtt_broker_v2",
+      "device": "broker",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V17",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V18",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "cve",
+      "weakness": "known_vulnerability",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V19",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V20",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V21",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "cve",
+      "weakness": "known_vulnerability",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V22",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V23",
+      "role": "nodered_server",
+      "device": "iot_platform",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V24",
+      "role": "camera_server",
+      "device": "camera",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V25",
+      "role": "camera_server",
+      "device": "camera",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V26",
+      "role": "camera_server",
+      "device": "camera",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V27",
+      "role": "coap_server",
+      "device": "sensor",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V28",
+      "role": "snmp_server",
+      "device": "network_service",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V29",
+      "role": "web_upload",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V30",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V31",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V32",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V33",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V34",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V35",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V36",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V37",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V38",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V39",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V40",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V41",
+      "role": "web_upload",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "12",
+      "vuln_id": "V42",
+      "role": "ftp_server",
+      "device": "file_server",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V1",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V2",
+      "role": "router",
+      "device": "router",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V3",
+      "role": "router",
+      "device": "router",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V4",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V5",
+      "role": "ssh_server_v2",
+      "device": "host",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V6",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V7",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V8",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V9",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V10",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V11",
+      "role": "iot_gateway",
+      "device": "gateway",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V12",
+      "role": "nodered_server",
+      "device": "iot_platform",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V13",
+      "role": "camera_server",
+      "device": "camera",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V14",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V15",
+      "role": "web_server_v2",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V16",
+      "role": "db_server",
+      "device": "database",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V17",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V18",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V19",
+      "role": "ftp_server",
+      "device": "file_server",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "13",
+      "vuln_id": "V20",
+      "role": "coap_server",
+      "device": "sensor",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "segmented",
+      "architecture_measured": "segmented"
+    },
+    {
+      "scenario_id": "14",
+      "vuln_id": "F10-MQTT-ANON@s14-mqtt-open",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "14",
+      "vuln_id": "F10-WEB-BACKUP@s14-web-backup",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "14",
+      "vuln_id": "F10-SSH-DEFAULT@s14-ssh-legacy",
+      "role": "ssh_server",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "14",
+      "vuln_id": "F10-REDIS-NOAUTH@s14-redis-open",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "15",
+      "vuln_id": "F11-IDOR@s15-fleet-api",
+      "role": "api_tenant_server",
+      "device": "iot_platform",
+      "category": "broken_access_control",
+      "weakness": "access_control",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "15",
+      "vuln_id": "F11-MASS-ASSIGNMENT@s15-fleet-api",
+      "role": "api_tenant_server",
+      "device": "iot_platform",
+      "category": "broken_access_control",
+      "weakness": "access_control",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "15",
+      "vuln_id": "F11-JWT-SCOPE@s15-fleet-api",
+      "role": "api_tenant_server",
+      "device": "iot_platform",
+      "category": "broken_access_control",
+      "weakness": "access_control",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "16",
+      "vuln_id": "F12-CA-KEY-EXPOSURE@s16-pki-ca",
+      "role": "pki_ca_server",
+      "device": "identity_service",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "16",
+      "vuln_id": "F12-ENROLL-REPLAY@s16-enrollment",
+      "role": "pki_enrollment_server",
+      "device": "identity_service",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "16",
+      "vuln_id": "F12-REVOCATION-IGNORED@s16-device-api",
+      "role": "pki_mtls_server",
+      "device": "identity_service",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "16",
+      "vuln_id": "F12-CLONED-IDENTITY@s16-device-b",
+      "role": "pki_device",
+      "device": "sensor",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "17",
+      "vuln_id": "F13-OLD-FIRMWARE@s17-ota-repo",
+      "role": "ota_repository",
+      "device": "update_service",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "17",
+      "vuln_id": "F13-ROLLBACK@s17-device-a",
+      "role": "ota_device",
+      "device": "sensor",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "17",
+      "vuln_id": "F13-UNSIGNED-METADATA@s17-device-a",
+      "role": "ota_device",
+      "device": "sensor",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "17",
+      "vuln_id": "F13-SHARED-UPDATE-KEY@s17-device-b",
+      "role": "ota_device",
+      "device": "sensor",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "18",
+      "vuln_id": "F14-SSRF-METADATA@s18-cloud-web",
+      "role": "cloud_web_server",
+      "device": "cloud_service",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "18",
+      "vuln_id": "F14-OVERPRIV-ROLE@s18-metadata",
+      "role": "cloud_metadata_server",
+      "device": "cloud_service",
+      "category": "privilege_escalation",
+      "weakness": "access_control",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "18",
+      "vuln_id": "F14-SECRET-BUCKET@s18-cloud-control",
+      "role": "cloud_control_plane",
+      "device": "cloud_service",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "local_cloud",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "19",
+      "vuln_id": "F15-OPCUA-NONE@s19-opcua-open",
+      "role": "ot_opcua_server",
+      "device": "ot_controller",
+      "category": "weak_crypto",
+      "weakness": "crypto",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "19",
+      "vuln_id": "F15-OPCUA-WRITE@s19-opcua-open",
+      "role": "ot_opcua_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "19",
+      "vuln_id": "F15-BACNET-DISCLOSURE@s19-bacnet-open",
+      "role": "ot_bacnet_server",
+      "device": "ot_controller",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "19",
+      "vuln_id": "F15-BACNET-WRITE@s19-bacnet-open",
+      "role": "ot_bacnet_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "19",
+      "vuln_id": "F15-MODBUS-WRITE@s19-modbus",
+      "role": "modbus_server",
+      "device": "ot_controller",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "20",
+      "vuln_id": "F16-ENTRY-CREDS@s20-entry",
+      "role": "pivot_entry",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "20",
+      "vuln_id": "F16-RELAY-CONFIG@s20-entry",
+      "role": "pivot_entry",
+      "device": "host",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "20",
+      "vuln_id": "F16-RELAY-CREDS@s20-relay",
+      "role": "pivot_relay",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "20",
+      "vuln_id": "F16-VAULT-NOAUTH@s20-vault",
+      "role": "pivot_vault",
+      "device": "web_app",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "21",
+      "vuln_id": "F17-MQTT-ANONYMOUS@s21-mqtt-open",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "21",
+      "vuln_id": "F17-WEB-BACKUP@s21-web-backup",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "22",
+      "vuln_id": "F18-AUTH-BYPASS@s22-auth-bypass",
+      "role": "exploit_auth_server",
+      "device": "web_app",
+      "category": "auth_bypass",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "22",
+      "vuln_id": "F18-PATH-TRAVERSAL@s22-files-traversal",
+      "role": "exploit_files_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "22",
+      "vuln_id": "F18-COMMAND-INJECTION@s22-command-injection",
+      "role": "exploit_command_server",
+      "device": "web_app",
+      "category": "code_injection",
+      "weakness": "injection",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "22",
+      "vuln_id": "F18-PRIVILEGE-OVERRIDE@s22-privilege-escalation",
+      "role": "exploit_privilege_server",
+      "device": "web_app",
+      "category": "privilege_escalation",
+      "weakness": "access_control",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "23",
+      "vuln_id": "F19-WIRELESS-DISCLOSURE@s23-radio-open",
+      "role": "wireless_bridge",
+      "device": "gateway",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "23",
+      "vuln_id": "F19-JOIN-REPLAY@s23-gateway-open",
+      "role": "device_gateway",
+      "device": "gateway",
+      "category": "misconfiguration",
+      "weakness": "configuration",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "23",
+      "vuln_id": "F19-FIRMWARE-SECRET@s23-firmware-open",
+      "role": "firmware_archive",
+      "device": "update_service",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "23",
+      "vuln_id": "F19-UNSIGNED-RECOVERY@s23-device-open",
+      "role": "boot_device",
+      "device": "sensor",
+      "category": "insecure_update",
+      "weakness": "update",
+      "architecture_target": "gateway",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "24",
+      "vuln_id": "F20-PIVOT-ENTRY@s24-entry",
+      "role": "heldout_entry",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "24",
+      "vuln_id": "F20-PIVOT-RELAY-L1@s24-relay",
+      "role": "heldout_relay_l1",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "24",
+      "vuln_id": "F20-ASSET-L2@s24-operations-archive",
+      "role": "heldout_asset_l2",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "25",
+      "vuln_id": "F20-PIVOT-ENTRY@s25-gateway",
+      "role": "heldout_entry",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "gateway",
+      "architecture_measured": "gateway"
+    },
+    {
+      "scenario_id": "25",
+      "vuln_id": "F20-ASSET-L1@s25-telemetry-archive",
+      "role": "heldout_asset_l1",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "gateway"
+    },
+    {
+      "scenario_id": "25",
+      "vuln_id": "F20-ASSET-L1@s25-maintenance-archive",
+      "role": "heldout_asset_l1",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "gateway",
+      "architecture_measured": "gateway"
+    },
+    {
+      "scenario_id": "26",
+      "vuln_id": "F20-PIVOT-ENTRY@s26-edge-entry",
+      "role": "heldout_entry",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "26",
+      "vuln_id": "F20-ASSET-L1@s26-edge-snapshot",
+      "role": "heldout_asset_l1",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "26",
+      "vuln_id": "F20-PIVOT-ENTRY@s26-control-entry",
+      "role": "heldout_entry",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "26",
+      "vuln_id": "F20-PIVOT-RELAY-L1@s26-control-relay",
+      "role": "heldout_relay_l1",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "26",
+      "vuln_id": "F20-ASSET-L2@s26-control-snapshot",
+      "role": "heldout_asset_l2",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "27",
+      "vuln_id": "F20-PIVOT-ENTRY@s27-field-entry",
+      "role": "heldout_entry",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "27",
+      "vuln_id": "F20-PIVOT-RELAY-L1@s27-zone-relay",
+      "role": "heldout_relay_l1",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "27",
+      "vuln_id": "F20-PIVOT-RELAY-L2@s27-cell-relay",
+      "role": "heldout_relay_l2",
+      "device": "host",
+      "category": "default_credentials",
+      "weakness": "authentication",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "27",
+      "vuln_id": "F20-ASSET-L3@s27-safety-archive",
+      "role": "heldout_asset_l3",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "multi_hop",
+      "architecture_measured": "multi_hop"
+    },
+    {
+      "scenario_id": "28",
+      "vuln_id": "F21-DISCOVERY-CODE@s28-discovery-open",
+      "role": "provisioning_discovery",
+      "device": "sensor",
+      "category": "info_disclosure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "28",
+      "vuln_id": "F21-CLAIM-REPLAY@s28-claim-open",
+      "role": "provisioning_claim",
+      "device": "iot_platform",
+      "category": "auth_bypass",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "28",
+      "vuln_id": "F21-TELEMETRY-KEY@s28-telemetry-open",
+      "role": "provisioning_telemetry",
+      "device": "sensor",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "28",
+      "vuln_id": "F21-MAINTENANCE-BYPASS@s28-maintenance-open",
+      "role": "provisioning_maintenance",
+      "device": "iot_platform",
+      "category": "broken_access_control",
+      "weakness": "access_control",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "29",
+      "vuln_id": "F10-MQTT-ANON@s29-mqtt-open",
+      "role": "mqtt_broker",
+      "device": "broker",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "29",
+      "vuln_id": "F10-WEB-BACKUP@s29-web-backup",
+      "role": "web_server",
+      "device": "web_app",
+      "category": "data_exposure",
+      "weakness": "data_exposure",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    },
+    {
+      "scenario_id": "29",
+      "vuln_id": "F10-REDIS-NOAUTH@s29-redis-open",
+      "role": "db_server_v2",
+      "device": "database",
+      "category": "no_authentication",
+      "weakness": "authentication",
+      "architecture_target": "flat",
+      "architecture_measured": "flat"
+    }
+  ]
+}
