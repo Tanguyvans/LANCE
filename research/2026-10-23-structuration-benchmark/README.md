@@ -1,7 +1,7 @@
 # Structuration du benchmark par appareil, architecture et faille
 
 **Cycle de vie : Actif.** Étude commencée le **2026-10-23**.
-Dernière révision : **2026-10-23 18:26 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-24 13:03 (Europe/Brussels, UTC+02:00)**.
 Branche de travail : `dev/2`.
 
 ## Question
@@ -67,8 +67,8 @@ verte et ne touche pas au laboratoire sans demande explicite.
    scénario. Chaque faille porte son injecteur, sa preuve et son contrôle
    durci.
 3. **Source unique.** L'inventaire Ansible est généré depuis les topologies,
-   avec des VMID alloués. La divergence LDAP de S13 relevée par l'audit sert
-   de premier cas.
+   avec des VMID alloués. Aujourd'hui, la topologie publique et
+   `benchmarks/ansible/group_vars/all/main.yml` décrivent chacune les services.
 4. **Mise en conformité des architectures.** Les dix scénarios non conformes
    sont soit construits selon leur intention (VLAN, relais, zones OpenWrt
    déjà utilisés par S13 et S20–S27), soit reclassés explicitement.
@@ -78,9 +78,6 @@ verte et ne touche pas au laboratoire sans demande explicite.
 
 ## Documents
 
-- [audit-phase0.md](audit-phase0.md) : audit statique de la chaîne
-  catalogue → déploiement → évaluation, préalable à cette étude (commit
-  `2532980` de `main`).
 - Études liées : [plan V2 et structuration du corpus](../2026-10-12-recentrage-corpus/README.md),
   [registre d'hypothèses](../2026-10-21-hypotheses-benchmark/README.md),
   [couverture du benchmark](../2026-09-29-benchmark-coverage/README.md).

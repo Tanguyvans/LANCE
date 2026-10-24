@@ -7,11 +7,10 @@ attendue selon trois axes : la classe d'**appareil**, l'**architecture**
 réseau et la **famille de faille**. Le vocabulaire et les correspondances
 sont définis dans `benchmarks/taxonomy.yaml`. Le module ne modifie ni le
 catalogue, ni les scénarios, ni les topologies, ni les vérités terrain, ni
-Ansible. Ses sorties sont générées et régénérables à l'identique :
-
-- `benchmarks/labels/taxonomy_index.json` : index lisible par machine ;
-- [couverture-axes.md](couverture-axes.md) : conformité des architectures et
-  matrices de couverture.
+Ansible. Sa sortie, [couverture-axes.md](couverture-axes.md), est générée et
+régénérable à l'identique : conformité des architectures et matrices de
+couverture. L'index détaillé par scénario et par faille n'est écrit en JSON
+que sur demande (`--json`) ; il n'est pas versionné tant qu'aucun outil ne le lit.
 
 L'origine et la suite de ce travail sont décrites dans la
 [recherche sur la structuration du benchmark](../../research/2026-10-23-structuration-benchmark/README.md).
@@ -47,12 +46,13 @@ propre.
 ## Commandes
 
 ```bash
-.venv/bin/python -m src.benchmark.taxonomy           # régénère l'index et la page de couverture
-.venv/bin/python -m src.benchmark.taxonomy --check   # échoue si les fichiers versionnés sont périmés
+.venv/bin/python -m src.benchmark.taxonomy                     # régénère la page de couverture
+.venv/bin/python -m src.benchmark.taxonomy --check             # échoue si la page versionnée est périmée
+.venv/bin/python -m src.benchmark.taxonomy --json /tmp/axes.json  # index détaillé, non versionné
 ```
 
 Après toute modification d'un scénario, d'une topologie, d'une vérité terrain
-ou de la taxonomie, régénérer puis committer les deux sorties.
+ou de la taxonomie, régénérer puis committer la page.
 
 ## Garde-fous
 
@@ -63,16 +63,16 @@ ou de la taxonomie, régénérer puis committer les deux sorties.
   scénario ne peut donc pas entrer sans être classé ;
 - que la taxonomie ne contient aucune entrée qui ne correspond plus au corpus ;
 - les règles de mesure sur des topologies synthétiques ;
-- que les sorties versionnées sont à jour et que leurs empreintes de sources
-  correspondent aux fichiers.
+- que la page versionnée est à jour et que les empreintes de sources de
+  l'index correspondent aux fichiers.
 
 ## Limites
 
-- La mesure lit la topologie publique. L'
-  [audit de la phase 0](../../research/2026-10-23-structuration-benchmark/audit-phase0.md)
-  a constaté sa concordance avec l'inventaire Ansible sur ces champs. Seul
-  S13 reçoit de vraies zones de pare-feu VLAN (`04_inject_vulns.yml`). La
-  mesure ne prouve ni le filtrage effectif sur nato, ni l'état des machines.
+- La mesure lit la topologie publique, pas l'inventaire Ansible
+  (`benchmarks/ansible/group_vars/all/main.yml`), qui décrit les services
+  séparément ; ce module ne vérifie pas leur concordance. Côté Ansible, seul
+  S13 reçoit des zones de pare-feu VLAN (`04_inject_vulns.yml`). La mesure ne
+  prouve ni le filtrage effectif sur nato, ni l'état des machines.
 - Les familles de failles reprennent la `category` déclarée. Une catégorie
   mal choisie dans une vérité terrain donne une étiquette fausse mais
   reproductible. En particulier, une partie des failles `misconfiguration`

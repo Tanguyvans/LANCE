@@ -14,15 +14,14 @@ vulnerability on three axes:
 - weakness: the family of the ground-truth ``category``.
 
 Nothing here writes to the catalogue, the scenarios, the topologies or the
-ground truth. The outputs are generated files that can be regenerated
-identically, with a SHA-256 of every source:
-
-- benchmarks/labels/taxonomy_index.json (machine-readable index);
-- docs/benchmark/couverture-axes.md (conformity table and coverage matrices).
+ground truth. The versioned output is docs/benchmark/couverture-axes.md
+(conformity table and coverage matrices), regenerated identically. The
+detailed index, with a SHA-256 of every source, is written only on request.
 
 Usage:
     python -m src.benchmark.taxonomy
     python -m src.benchmark.taxonomy --check
+    python -m src.benchmark.taxonomy --json /tmp/axes.json
 """
 from __future__ import annotations
 
@@ -42,7 +41,6 @@ from src.benchmark.tool_registry import ROLE_SERVICES
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BENCHMARKS_ROOT = _REPO_ROOT / "benchmarks"
-DEFAULT_INDEX_OUTPUT = DEFAULT_BENCHMARKS_ROOT / "labels" / "taxonomy_index.json"
 DEFAULT_MATRIX_OUTPUT = _REPO_ROOT / "docs" / "benchmark" / "couverture-axes.md"
 TAXONOMY_SCHEMA_VERSION = 1
 
@@ -317,27 +315,26 @@ def render_markdown(index: dict, taxonomy: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_json(index: dict) -> str:
-    return json.dumps(index, indent=2, ensure_ascii=False) + "\n"
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--index-output", type=Path, default=DEFAULT_INDEX_OUTPUT)
     parser.add_argument("--matrix-output", type=Path, default=DEFAULT_MATRIX_OUTPUT)
+    parser.add_argument("--json", type=Path, default=None,
+                        help="Also write the detailed per-scenario/per-vulnerability index here")
     parser.add_argument("--check", action="store_true",
-                        help="Fail if the versioned outputs differ from a fresh generation")
+                        help="Fail if the versioned coverage page differs from a fresh generation")
     args = parser.parse_args(argv)
     index = build_index()
     taxonomy = load_taxonomy(DEFAULT_BENCHMARKS_ROOT / "taxonomy.yaml")
-    outputs = {args.index_output: _render_json(index),
-               args.matrix_output: render_markdown(index, taxonomy)}
+    page = render_markdown(index, taxonomy)
     if args.check:
-        stale = [path for path, text in outputs.items()
-                 if not path.is_file() or path.read_text(encoding="utf-8") != text]
-        for path in stale:
+        path = args.matrix_output
+        if not path.is_file() or path.read_text(encoding="utf-8") != page:
             print(f"stale: {_rel(path)} (run python -m src.benchmark.taxonomy)", file=sys.stderr)
-        return 1 if stale else 0
+            return 1
+        return 0
+    outputs = {args.matrix_output: page}
+    if args.json is not None:
+        outputs[args.json] = json.dumps(index, indent=2, ensure_ascii=False) + "\n"
     for path, text in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
