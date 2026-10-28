@@ -91,9 +91,10 @@ source — protocole ou README du dossier daté ; (2) la ligne de l'index
 décision change. S'arrêter à l'étape 1 fait mentir l'index ; sauter à l'étape 3
 produit une recopie.
 
-**Fin de session.** Un commit par sujet. Travailler sur une branche : un push
-sur `main` déclenche le circuit de validation et de déploiement nato-master.
-Merger après relecture.
+**Fin de session.** Un commit par sujet. Travailler sur `dev/1` : un push
+déclenche le circuit de validation et met à jour l'instance du mini-PC sur le
+port 8502. Un push sur `main` valide et déploie l'instance 8501 ; ne pas y
+pousser un travail en cours.
 
 **Chaque semaine.** Repérer les dossiers `actif` sans revue et les passer en
 `dormant` ; confronter les index aux dossiers réels.
@@ -115,16 +116,35 @@ dans le périmètre défini ci-dessous.
 
 ## Cible d'exécution et de déploiement
 
-- Le benchmark et les déploiements LANCE ciblent **nato / pve-nato**, via le
-  runner GitHub Actions **nato-master**. Un push sur `main` utilise ce
-  circuit de validation et de déploiement.
-- Le **homelab personnel** (nœud `pve`, distinct de `pve-nato`) est hors périmètre :
-  aucun transfert de fichiers, synchronisation, déploiement, changement de
-  configuration ou audit pour ce projet. Une intervention sur le homelab exige
-  une demande distincte de l'utilisateur le désignant explicitement.
-- Un inventaire local ou une connexion SSH fonctionnelle n'autorise pas à changer
-  de cible. Ne jamais se rabattre sur le homelab si nato est inaccessible ;
-  vérifier l'identité de la machine et clarifier toute ambiguïté avant intervention.
+**Le mini-PC est la seule machine d'exécution.** Rien ne tourne sur un poste de
+développement : ni pipeline, ni harnais, ni modèle, ni run de laboratoire. Un
+travail local se limite à lire, modifier, tester les unités hors ligne
+(`python -m pytest`) et committer.
+
+- L'exécution et les déploiements LANCE ciblent **nato / pve-nato**, via le
+  runner GitHub Actions **nato-master** et son adresse Tailscale
+  `100.103.253.86`. Le homelab personnel (nœud `pve`, distinct de `pve-nato`)
+  reste hors périmètre ; une intervention y exige une demande distincte.
+- **Circuit de livraison :** commit → push → GitHub Actions valide → l'instance
+  sur le mini-PC tire le commit. Aucune copie manuelle entre la machine de
+  développement et le mini-PC. Un push sur `main` valide et déploie ; les
+  branches de développement valident et mettent à jour leur propre instance.
+- **Instances sur le mini-PC**, détaillées dans
+  [les branches de développement](docs/guides/development-instances.md) :
+  `main` sur le port 8501 (`/opt/nato-smartcity-iot`), `dev/1` sur le port 8502
+  (`/opt/lance-dev-1`), `dev/2` sur le port 8503 (`/opt/lance-dev-2`).
+  `/api/environment` renvoie l'emplacement, la branche et le commit déployés.
+- **`dev/1` est la branche de travail** de ce dépôt. `dev/2` appartient à un
+  autre intervenant : ne pas y pousser ni la réécrire.
+- **Modèles disponibles sur le mini-PC** (provider UMONS) : `qwen3.8:27b` est
+  le modèle de référence, aux côtés de `qwen3.5-27b-32k`,
+  `gemma4:26b-a4b-it-q4_K_M` et `lance-moe`. `GET /api/models` sur le port de
+  l'instance donne la liste à jour ; un modèle absent de cette réponse n'existe
+  pas sur la machine qui exécute.
+- Un inventaire local, un service qui écoute en local ou une connexion SSH
+  fonctionnelle n'autorisent pas à changer de cible. Ne jamais se rabattre sur
+  une autre machine si le mini-PC est inaccessible ; vérifier l'identité de la
+  machine et clarifier toute ambiguïté avant intervention.
 
 Pour commencer : [README](README.md), [recherches](research/README.md), [documentation](docs/README.md),
 [structure du pipeline](src/agent/phases/README.md) et [tests](tests/README.md).
