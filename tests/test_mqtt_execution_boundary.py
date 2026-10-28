@@ -172,3 +172,29 @@ def test_evidence_write_failure_is_not_hidden_by_successful_mqtt(boundary):
         wrap_tool(run, tool, phase=4)["function"](broker="192.0.2.11", port=1883)
     launcher.assert_called_once()
     assert run._evidence_integrity_failed is True
+
+
+@pytest.mark.parametrize("phase", [3, 4, 5])
+def test_authentication_denial_is_archived_as_negative_result_not_process_failure(boundary, phase):
+    from src.agent.tools.outcomes import tool_execution_failed
+    from src.agent.scanner import extract_findings
+
+    run, tool, launcher = boundary
+    refusal = {
+        "stdout": "",
+        "stderr": "Connection error: Connection Refused: not authorised.\n",
+        "return_code": 5,
+    }
+    launcher.return_value = refusal
+    requested = {"broker": "192.0.2.11", "topic": "#"}
+    receipt = json.loads(wrap_tool(run, tool, phase=phase)["function"](**requested))
+    assert tool_execution_failed("mqtt_listen", receipt) is False
+    assert run.tracker.record_execution.call_args.kwargs["error"] is False
+    assert {key: receipt[key] for key in refusal} == refusal
+    assert receipt["interpretation"] == "connection_refused_auth_required"
+    record, = _records(run)
+    assert record["args"] == requested
+    assert json.loads(record["result"]) == receipt
+    assert extract_findings({"mqtt": [{
+        "tool": "mqtt_listen", "kwargs": requested, "result": json.dumps(receipt),
+    }]}, {"id": "broker", "ip": "192.0.2.11"}) == []

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 
 def tool_execution_failed(tool_name: str, result: object) -> bool:
@@ -9,7 +10,9 @@ def tool_execution_failed(tool_name: str, result: object) -> bool:
 
     ssh-audit uses 2/3 for algorithm warnings/failures. mosquitto_sub uses 27
     when its bounded listening window ends, including after receiving messages.
-    Preserve these exit codes in evidence; they are not process failures.
+    A recognized broker authentication denial (5) is a completed negative
+    access probe. Preserve these exit codes in evidence; they are not
+    process failures and never certify a vulnerability.
     """
     if isinstance(result, str):
         try:
@@ -29,6 +32,17 @@ def tool_execution_failed(tool_name: str, result: object) -> bool:
         return False
     if tool_name == "ssh_audit" and type(code) is int and code in (2, 3):
         return not bool(str(result.get("stdout") or "").strip())
+    if tool_name == "mqtt_listen" and type(code) is int and code == 5:
+        # Accept only the native broker denial, not a transport failure or a
+        # conflicting message result. Keep raw evidence and access verdicts.
+        return not (
+            result.get("interpretation") == "connection_refused_auth_required"
+            and not str(result.get("stdout") or "").strip()
+            and re.fullmatch(
+                r"Connection error: Connection Refused: not authori[sz]ed\.",
+                str(result.get("stderr") or "").strip(),
+            )
+        )
     if tool_name == "mqtt_listen" and type(code) is int and code == 27:
         return result.get("interpretation") != "listener_timed_out_inspect_captured_messages"
     return True

@@ -72,11 +72,52 @@ def _intrusion_scope_candidates(value: object) -> list[tuple[str, ipaddress._Bas
 
 
 
+def _static_find_inspection(tokens: list[str]) -> bool:
+    """Accept literal local paths and read-only find predicates only.
+
+    Unknown predicates, file-writing actions, command execution and glob
+    expansion never qualify for the local-inspection exception.
+    """
+    args = tokens[1:]
+    if not args or any(re.search(r"[*?\[\]{}]", arg) for arg in args):
+        return False
+    index = 0
+    while index < len(args) and (args[index].startswith("/") or args[index] == "."):
+        index += 1
+    if index == 0:
+        return False
+    while index < len(args):
+        predicate = args[index]
+        index += 1
+        if predicate in {"-print", "-readable", "-writable", "-o", "-a", "-not"}:
+            continue
+        if index == len(args):
+            return False
+        value = args[index]
+        index += 1
+        if predicate in {"-name", "-iname"}:
+            if not value or value.startswith("-"):
+                return False
+        elif predicate == "-type":
+            if value not in {"b", "c", "d", "p", "f", "l", "s"}:
+                return False
+        elif predicate in {"-maxdepth", "-mindepth"}:
+            if not re.fullmatch(r"[0-9]+", value):
+                return False
+        elif predicate == "-perm":
+            if not re.fullmatch(r"[-/]?[0-7]{3,4}", value):
+                return False
+        else:
+            return False
+    return True
+
+
 def _static_local_inspection(command: str) -> bool:
     """Recognize a small static read-only pipeline, never a shell program.
 
-    Tool names used as grep patterns or which arguments are data. Keep the
-    existing conservative check for substitutions, interpreters, control flow,
+    Tool names used as patterns or which arguments are data. Find needs a
+    positive predicate grammar: its execution and output actions are excluded.
+    Keep the conservative check for substitutions, interpreters, control flow,
     arbitrary redirects, malformed quoting, or any other command.
     """
     if re.search(r"[`\n\r]|\$(?:[({]|[A-Za-z0-9_@*?!#-])", command):
@@ -89,17 +130,23 @@ def _static_local_inspection(command: str) -> bool:
         tokens = list(lexer)
     except ValueError:
         return False
-    expect_command = True
+    segments: list[list[str]] = [[]]
     for token in tokens:
-        if token == "|" and not expect_command:
-            expect_command = True
+        if token == "|" and segments[-1]:
+            segments.append([])
         elif token and set(token) <= set("|&;()<>"):
             return False
-        elif expect_command:
-            if token not in {"ls", "grep", "head", "tail", "which"}:
+        else:
+            segments[-1].append(token)
+    for segment in segments:
+        if not segment:
+            return False
+        if segment[0] == "find":
+            if not _static_find_inspection(segment):
                 return False
-            expect_command = False
-    return bool(tokens) and not expect_command
+        elif segment[0] not in {"ls", "grep", "head", "tail", "which"}:
+            return False
+    return True
 
 
 def _intrusion_scope_violation(

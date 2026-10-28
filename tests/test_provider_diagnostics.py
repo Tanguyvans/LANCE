@@ -623,3 +623,68 @@ def test_same_agent_successive_invocations_have_distinct_ids(tmp_path):
         rows = [r for r in _records(tmp_path) if r["invocation_id"] == invocation]
         assert [r["request_num"] for r in rows if r["event"] == "request"] == [1]
         assert sum(r["event"] == "terminal" for r in rows) == 1
+
+
+def test_truncated_generation_archives_effective_limits_and_only_scalar_usage(tmp_path):
+    usage = SimpleNamespace(
+        prompt_tokens=321, completion_tokens=17,
+        completion_tokens_details=SimpleNamespace(reasoning_tokens=11),
+    )
+    response = _response(content='draft-canary', finish_reason='length', usage=usage)
+    response.choices[0].message.reasoning_content = 'private-reasoning-canary'
+    provider = _provider([response])
+    observed = provider.chat_with_tools(
+        'private-prompt', 'go', [], max_turns=1, max_tokens=17,
+        stream_callback=_runner(tmp_path),
+    )
+    records = _records(tmp_path)
+    assert records[0]['max_turns'] == 1
+    assert records[0]['max_tokens'] == 17
+    request = next(r for r in records if r['event'] == 'request')
+    assert request['max_tokens'] == provider.client.chat.completions.create.call_args.kwargs['max_tokens'] == 17
+    item = next(r for r in records if r['event'] == 'response')
+    assert item['finish_reason'] == 'length'
+    assert item['input_tokens'] == 321 and item['output_tokens'] == 17
+    assert item['reasoning_tokens'] == 11
+    assert item['reasoning_chars'] == len('private-reasoning-canary')
+    assert item['visible_chars'] == len('draft-canary')
+    assert 'canary' not in json.dumps(records)
+    # Instrumentation must not change the request or returned text.
+    plain = _provider([response])
+    assert plain.chat_with_tools('private-prompt', 'go', [], max_turns=1, max_tokens=17) == observed
+    assert plain.client.chat.completions.create.call_args == provider.client.chat.completions.create.call_args
+
+
+def test_generation_counters_preserve_unknown_usage_including_error_fallback(tmp_path):
+    provider = _provider([
+        _response(content='failed draft', finish_reason='error'),
+        _response(content='fallback draft', finish_reason='stop'),
+    ])
+    provider.chat_with_tools('sys', 'go', [], max_turns=1, max_tokens=123, stream_callback=_runner(tmp_path))
+    records = _records(tmp_path)
+    requests = [r for r in records if r['event'] == 'request']
+    responses = [r for r in records if r['event'] == 'response']
+    assert len(requests) == len(responses) == 2
+    assert [r['max_tokens'] for r in requests] == [123, 123]
+    for response in responses:
+        assert response['input_tokens'] is None
+        assert response['output_tokens'] is None
+        assert response['reasoning_tokens'] is None
+        assert response['reasoning_chars'] is None
+        assert response['visible_chars'] > 0
+
+
+@pytest.mark.parametrize('bad', [True, -1, 1.5, '123', 'secret-counter', 1_000_001, None])
+def test_generation_diagnostics_never_coerce_or_leak_invalid_counters(bad):
+    fields = ['input_tokens', 'output_tokens', 'reasoning_tokens', 'reasoning_chars', 'visible_chars']
+    record = sanitize_event(
+        _event(**dict.fromkeys(fields, bad)), provider='test', model='test',
+        invocation_id='test', known_tools=set(),
+    )
+    assert all(record[key] is None for key in fields)
+    assert 'secret-counter' not in json.dumps(record)
+    invocation = sanitize_event(
+        {'event': 'invocation_started', 'max_tokens': bad, 'max_turns': bad},
+        provider='test', model='test', invocation_id='test', known_tools=set(),
+    )
+    assert 'max_tokens' not in invocation and 'max_turns' not in invocation

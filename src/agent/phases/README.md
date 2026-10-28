@@ -168,6 +168,12 @@ Le garde de destination commun refuse les actions réseau hors des CIDR du
 scénario. Un nom de programme suivi de `/` dans un chemin, comme le répertoire
 `.ssh/`, ne constitue pas à lui seul une action réseau. Les exécutables comme
 `/usr/bin/ssh` et les actions ajoutées ensuite à la commande restent contrôlés.
+Les noms réseau utilisés comme données dans un petit pipeline local de lecture
+(`ls`, `grep`, `head`, `tail`, `which`) ne suffisent pas non plus à déclencher un
+refus. `find` n'entre dans cette exception que pour des chemins et prédicats
+littéraux de lecture ; ses actions d'exécution, d'écriture, options inconnues,
+expansions et commandes ajoutées restent exclues. Une recherche locale de
+`.ssh` peut ainsi être autorisée sans autoriser `find -exec ssh`.
 Cette reconnaissance lexicale ne certifie pas le comportement d'un binaire
 personnalisé ni les droits obtenus par son exécution.
 
