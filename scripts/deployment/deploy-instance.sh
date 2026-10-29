@@ -16,7 +16,17 @@ esac
 [[ "${RUNNER_NAME:-}" == nato-master ]] || { echo 'Requires nato-master runner' >&2; exit 1; }
 # The Tailscale address is a setting, not an identity: a rebuilt container
 # receives a new one and must still be able to deploy its own instances.
-expected_ip=${LANCE_DEPLOY_EXPECTED_IP:-100.103.253.86}
+# Unless an address is declared explicitly, the host identity is the first
+# Tailscale address of this machine, so a reconstruction needs no edit.
+if [[ -n "${LANCE_DEPLOY_EXPECTED_IP:-}" ]]; then
+  expected_ip=$LANCE_DEPLOY_EXPECTED_IP
+else
+  expected_ip=$(ip -o -4 addr show | awk '$2 == "tailscale0" {split($4, a, "/"); print a[1]; exit}')
+fi
+if [[ -z "$expected_ip" ]]; then
+  echo 'No Tailscale address found; set LANCE_DEPLOY_EXPECTED_IP' >&2
+  exit 1
+fi
 if ! ip -o -4 addr show | grep -q "${expected_ip//./\\.}/"; then
   echo "Not the nato-master host: $expected_ip absent (set LANCE_DEPLOY_EXPECTED_IP)" >&2
   exit 1
