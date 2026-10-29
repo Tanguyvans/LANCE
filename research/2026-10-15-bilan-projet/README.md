@@ -42,9 +42,10 @@ comparaisons et gains scientifiques restant à établir.
 Cette révision développe ce que le premier rapport survolait et couvre les
 chantiers d'octobre.
 
-- [Rapport PDF](etat-2026-10-30.pdf) : **19 pages**, cinq parties rédigées par
-  des volets spécialisés et relues contre le code, puis une synthèse transverse.
-- Source LaTeX et fragments éditables :
+- [Rapport PDF](etat-2026-10-30.pdf) : **22 pages**, résumé exécutif et deux
+  figures d'ensemble, cinq parties rédigées par des volets spécialisés et relues
+  contre le code, puis une synthèse transverse.
+- Source LaTeX et fragments éditables : [résumé et vue d'ensemble](partie-intro.tex),
   [architecture](partie-architecture.tex), [protocoles](partie-protocoles.tex),
   [harnais](partie-harnais.tex), [infrastructure](partie-infrastructure.tex),
   [benchmark](partie-benchmark.tex), [synthèse](partie-synthese.tex), assemblés
