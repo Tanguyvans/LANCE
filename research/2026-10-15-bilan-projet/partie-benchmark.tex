@@ -1,0 +1,195 @@
+\section{Benchmark et avancement scientifique}
+\label{sec:benchmark}
+
+Le benchmark n'est pas une liste de scénarios mais un registre d'hypothèses.
+Cette partie décrit ce qui est réellement mesuré, ce qui bloque l'inférence et
+ce qui peut être publié aujourd'hui. Chaque chiffre est recalculé depuis un
+artefact du dépôt, ou signalé comme lu dans un document.
+
+\subsection{Le registre d'hypothèses et la porte V0}
+
+Le registre place avant toute hypothèse une \emph{porte de validité} V0 : si une
+tâche de contrôle soluble sans inférence échoue à l'un des deux bras, aucun
+résultat en aval n'est lisible. Le seuil est gelé dans
+\code{benchmarks/experiments/v0-control-manifest.json}, qui porte une valeur de
+0,9, 24 étapes, 3 répétitions et la mention \code{saturating: true}. Le passage
+de calibration rend un contrôle valide aux deux bras, trois fois sur trois. Le
+registre en tire une porte \emph{partiellement franchie} : l'instrument est
+lisible pour la parité d'exécution et pour un défaut répété, pas pour un défaut
+rare.
+
+Deux réserves doivent être écrites. D'une part, V0 ne couvre que MQTT : le
+harnais SSH garde un dictionnaire d'identifiants fixe et n'est donc pas une
+instance tenue à l'écart. D'autre part, et c'est un défaut de méthode, le seuil
+n'est pas appliqué par la porte : la fonction de porte lit les quatre issues sur
+« tous les essais réussis », tandis que le contrôle de seuil est calculé
+séparément et ne conditionne rien. Avec trois répétitions, deux succès sur trois
+valent 0,67, donc les deux formulations coïncident --- mais par coïncidence
+numérique, non par application du seuil.
+
+\begin{table}[H]
+\centering
+\caption{Statut du registre, recoupé avec les protocoles.}
+\label{tab:registre}
+\small
+\begin{tabular}{@{}p{1.1cm}p{3.4cm}p{8.2cm}@{}}
+\toprule
+Item & Statut & Ce que cela signifie \\
+\midrule
+V0 & partiellement franchie & Contrôle valide sur MQTT, seuil gelé mais non appliqué par la porte ; contrôle saturant ; SSH non couverte \\
+H1 & conditionnelle, non ouverte & La famille de chaînage d'identités n'existe pas dans le plan de couverture \\
+H2 & mesurée le 22 octobre & Prédiction tenue, gain absorbé par un bras par convention \\
+H3 & non implémentée & Les familles de contrat public sont planifiées \\
+H4 & non ouverte & La famille de registres constructeur n'existe pas dans le corpus \\
+H5 & conditionnelle, planifiée & Contre-épreuve de budget à écrire \\
+H6 & prévue en sous-test & Greffable sur H2 ou H3, sans simulateur propre \\
+C2 & rejetée & Deux relectures adverses, mort sur papier, aucun run \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Le corpus : une strate logique minuscule}
+
+Le catalogue énumère 29 scénarios. Le fichier dérivé
+\code{benchmarks/labels/derived_index.json} compte 288 entrées attendues, dont
+282 classées par le champ de type comme détectables par signature et 6 comme
+relevant de la logique, soit 2,08~\%. Je les ai recomptés entrée par entrée.
+
+Deux comptages coexistent et ne mesurent pas la même chose. La lecture
+\emph{mécanique} range toutes les catégories sauf deux en signature. La lecture
+\emph{interprétative} juge catégorie par catégorie si une règle bien conçue peut
+conclure seule ; en reprenant ses catégories de signature sur l'index, on obtient
+243 entrées sur 288, soit 84,4~\%, et les quatre lectures totalisent bien 288.
+Les deux chiffres sont légitimes mais ne doivent jamais être cités l'un pour
+l'autre.
+
+\begin{table}[H]
+\centering
+\caption{Répartition des 288 entrées par catégorie et lecture interprétative.}
+\label{tab:corpus}
+\small
+\begin{tabular}{@{}lrl@{}}
+\toprule
+Catégorie & Nombre & Lecture interprétative \\
+\midrule
+\code{misconfiguration} & 70 & signature \\
+\code{data_exposure} & 54 & signature \\
+\code{no_authentication} & 50 & signature \\
+\code{default_credentials} & 41 & signature \\
+\code{info_disclosure} & 16 & signature \\
+\code{code_injection} & 13 & mixte \\
+\code{insecure_update} & 12 & mixte \\
+\code{weak_crypto} & 10 & mixte \\
+\code{cve} & 9 & signature \\
+\code{privilege_escalation} & 4 & chaînage \\
+\code{broken_access_control} & 4 & logique \\
+\code{missing_header} & 3 & signature \\
+\code{auth_bypass} & 2 & logique \\
+\midrule
+Total & 288 & 243 signature, 35 mixte, 4 chaînage, 6 logique \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La strate logique n'occupe que trois scénarios, et 55 entrées seulement sont
+rattachées à un chaînage d'au moins deux sauts. Un duel global sur ce corpus
+mesurerait donc surtout la qualité des règles. C'est exactement ce que H2 a
+observé.
+
+\subsection{Les acquis réels}
+
+\paragraph{H2, mesurée le 22 octobre.} Le corpus contient huit dossiers, deux par
+groupe, pour 25 messages au total. Le run documenté exécute trois bras par
+dossier, soit 24 bras par répétition et 72 bras pour les trois répétitions.
+Sur les variantes brutes, le bras LLM obtient 0,5 --- un dossier gagné sur deux
+---, le parseur déclaré 0,0, et le troisième bras, qui lit par convention sans
+aucune clé du corpus, couvre 1,0. La prédiction tient au sens littéral, mais le
+gain du modèle est absorbé par la convention.
+
+\paragraph{C2, rejetée.} La revue conclut à l'arrêt : le premier candidat se
+contredit, le second est mal rattaché et n'a que des issues non conformes, et le
+comptage de familles n'est pas une mesure d'indépendance. Aucune fixture, aucun
+run : c'est un résultat négatif de méthode, publiable comme limite.
+
+\subsection{Le blocage de l'inférence}
+
+L'outil d'inférence
+(\code{src/benchmark/inference.py}) porte un défaut structurel. Les écarts valent
+la différence entre les deux politiques ; or la p-value calculée est la
+probabilité que la moyenne rééchantillonnée change de signe, non la p-value de
+l'écart contre son seuil.
+
+Je l'ai vérifié en exécutant la fonction : une série presque constante donne une
+p-value nulle ; une série très dispersée de même moyenne donne aussi zéro ; une
+série entièrement négative donne encore zéro. Quatre séries de comportements
+différents produisent donc le même chiffre. En outre, le seuil n'entre dans
+aucune décision : il ne sert qu'à produire un champ informatif. Enfin, en
+dessous de trois familles, l'intervalle retourné est structurellement dégénéré.
+
+\textbf{Aucune correction n'a eu lieu.} L'historique ne compte que deux commits
+sur ce fichier, et toutes les branches disponibles portent le même calcul. Le
+défaut est déjà écrit dans l'état courant du projet : l'outil produit
+l'apparence d'une inférence qu'il ne fournit pas.
+
+À ce défaut s'ajoute une impossibilité structurelle : la configuration d'un
+essai inclut le commit, les empreintes et les budgets, donc deux familles
+distinctes forment deux configurations distinctes. Chaque configuration ne
+contient qu'une famille, et l'inférence en exige deux au minimum.
+
+\subsection{L'admission de campagne}
+
+Le module d'admission combine conditions de paire et conditions de campagne. La
+condition d'adoption explicite des métriques de confirmation est un paramètre à
+valeur par défaut fausse, jamais mis à vrai par le résumé ni par la ligne de
+commande. Le module justifie ce verrou par un argument de contrat : les harnais
+pilotes n'émettent pas ces compteurs. C'est exact de l'état actuel, mais ce n'est
+pas une preuve d'insatisfiabilité : la condition redeviendrait vraie le jour où
+un harnais publie ces compteurs. Aujourd'hui, elle n'est donc pas satisfaite.
+
+Un second défaut, relevé pendant la rédaction puis vérifié, mérite relecture. La
+condition de parité de budget exige que la première valeur existe et que les
+deux soient égales ; l'absence de budget est donc correctement refusée, et ce
+point est conforme à la règle annoncée. En revanche, le même module ne vérifie
+pas que les budgets manquants sont distingués des budgets non comparables dans
+les autres conditions ; la revue recommandait ce contrôle sans le retrouver.
+
+\subsection{Ce qui est publiable aujourd'hui}
+
+\textbf{Le publiable est la méthode, pas un résultat de supériorité.} Le dépôt ne
+supporte aucune revendication de performance comparative : il n'existe ni
+démonstration qu'un modèle bat un script compétent, ni intervalle de confiance
+calculable, ni famille indépendante. Ce qui tient, en revanche, est consistant
+et vérifiable :
+
+\begin{itemize}
+\item un registre d'hypothèses falsifiable, avec contraste déclaré avant la
+fixture, oracle privé et mesure recalculée depuis le journal ;
+\item une leçon de mesure sur H2 : une prédiction peut tenir au sens littéral et
+ne rien démontrer, parce qu'un bras par convention absorbe le gain ;
+\item un résultat négatif propre sur C2, documenté avant toute zone d'ombre ;
+\item un inventaire honnête des trous : strate logique réduite, protocole
+inconnu absent, bruit non encodé.
+\end{itemize}
+
+\subsection{Ce qui n'est pas démontré}
+
+Ne doivent pas être écrits comme acquis : la supériorité du LLM ; un écart
+significatif, puisque l'outil d'inférence produit une p-value sans rapport avec
+l'écart et que publier un tel chiffre serait une faute ; la généralité, H2 ne
+couvrant qu'un schéma, une question et un modèle ; le gain de coût, le pilote
+exploratoire ne comptant qu'une paire sans intervalle ; la validité du seuil,
+non appliqué par la porte ; et l'intégrité du corpus, le contrôle sain officiel
+n'étant pas dans le catalogue.
+
+\subsection{Les autres études actives}
+
+Le plan V2 porte 44 fiches, 25 ensembles et plusieurs centaines de bras
+conditionnels. Les qualifications réellement exécutées --- SSH en octobre, MQTT
+quelques jours plus tard --- sont consignées comme qualifiant l'instrument, pas
+un avantage. Le pilote à trois répétitions donne douze paires admissibles et ne
+calcule aucun intervalle.
+
+L'étude historique sur l'agent contre l'automatisation reste active et porte la
+paire S1 et le programme sans modèle. Sa synthèse le dit sans détour : un
+résultat descriptif réel, aucune supériorité générale établie. C'est la
+formulation à conserver.

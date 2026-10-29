@@ -1,0 +1,179 @@
+\section{Harnais d'expérimentation et bac à sable hermétique}\label{sec:harnais-sandbox}
+
+Cette partie décrit le chantier récent qui a unifié le cycle de vie des harnais
+de calibration et ajouté un bac à sable hermétique exécutable hors du
+laboratoire. Elle sépare trois objets : l'anatomie d'un harnais, le noyau
+partagé qui construit son objet d'exécution, et le bac à sable qui exécute un
+bras déterministe sous un garde-fou d'audit. Trois commits en portent la trace
+sur la branche \code{dev/1} : \code{11b820c} (bac à sable), \code{02320d5}
+(fermeture des trous du garde-fou) et \code{5101523} (noyau partagé).
+
+\subsection{Anatomie d'un harnais}
+
+Un harnais est un jeu de fichiers à responsabilité unique, sous
+\code{benchmarks/experiments/}. Le harnais MQTT en donne la forme complète. Le
+\textbf{contrat} est \code{mqtt\_reference.py} : il valide le briefing, lie
+l'outil à la frontière d'exécution, fournit l'\textbf{adaptateur D1} par le bras
+déterministe \code{run\_rules} et recompte le run par \code{evaluate\_trial}. Le
+\textbf{bras LLM} est \code{mqtt\_reference\_llm.py} ;
+\code{mqtt\_formats\_llm.py} en est la variante H2, qui ne reçoit aucun parseur.
+Le \textbf{contrôleur live} est \code{mqtt\_reference\_live.py}, à ne pas
+confondre avec le bras : il construit l'agent LLM, l'enveloppe d'un
+\code{RecordingClient} qui journalise chaque appel de transport et écrit
+\code{decision.json}, \code{cost\_summary.json} et \code{run\_meta.json}. Le
+\textbf{déploiement} est \code{mqtt\_reference\_proxmox.py} : la classe
+\code{Proxmox} soumet des opérations via \code{ansible-playbook}, la classe
+\code{Fixture} démarre le broker depuis l'allocation.
+
+La même anatomie se répète pour SSH, l'API et le contrôle V0, avec une
+différence importante : le harnais H2 (\code{mqtt\_formats.py}) ne possède ni
+déploiement Proxmox ni client live actif dans le bac à sable, car son corpus est
+gelé.
+
+\subsection{Le noyau partagé}
+
+Le noyau existe pour une raison précise, consignée dans son en-tête : la
+frontière de gouvernance de \code{src/agent/core/executor.py} lit un ensemble
+fixe d'attributs par \code{getattr} avec valeur par défaut. Une omission ne se
+manifeste donc qu'au moment où un appel d'outil se comporte mal. Chaque harnais
+reconstruisait cet objet à la main ; le noyau remplace les copies par un unique
+\code{build\_run}.
+
+\code{REQUIRED\_ATTRIBUTES} énumère treize attributs : le dossier du run, les
+trois budgets, le verrou d'archivage, le verrou de preuve, le compteur d'appels,
+l'horloge de départ, le motif de limite, puis la portée, le contexte, la
+politique et le suivi de coût. Un attribut mérite un commentaire particulier :
+\code{\_evidence\_integrity\_failed}. \code{check\_execution\_limits} le lit en
+première instruction et lève \code{EvidenceWriteError} s'il est vrai ;
+\code{wrap\_tool.archive} le pose quand l'archive ne peut pas être écrite. Ce
+verrou documente une règle : une preuve perdue doit rester visible, et le run
+devient non vérifiable. Un harnais qui l'oublierait retomberait sur la valeur
+par défaut et poursuivrait un run dont l'archive est trouée.
+
+Le refus est à deux niveaux : \code{build\_run} vérifie l'attribut manquant et
+la clé de contexte absente avant de rendre l'objet, et
+\code{require\_attributes} rejoue le même contrôle sur un objet quelconque. Une
+variante déterministe ne déclare ni modèle ni fournisseur.
+
+La couverture reste incomplète : les quatre harnais \code{*\_live.py} passent
+par une fonction locale homonyme \code{new\_run}, et \code{new\_run} du noyau
+n'a aucun appelant direct ; la délégation passe par \code{build\_run}.
+
+\subsection{Le bac à sable}
+
+\code{benchmarks/experiments/sandbox.py} prouve, sur un poste de développement
+comme en intégration continue, qu'un harnais s'exécute sans broker, sans modèle
+et sans laboratoire. Il charge le corpus gelé (huit fixtures) et, pour chaque
+dossier : valide le dossier, ouvre un journal, exécute le bras choisi, écrit les
+artefacts, puis recompte par l'évaluateur existant. Cinq artefacts sont produits
+par essai : \code{dossier.json}, \code{oracle.json}, \code{answer.json},
+\code{journal.jsonl} et \code{evaluation.json}. Un
+\code{sandbox-report.json} agrège les essais et le bloc \code{guard}.
+
+Le bras est un paramètre explicite, et un nom inconnu lève une erreur. Ce choix
+est une correction : la version d'origine lisait le bras depuis le corpus, qui
+ne le déclare pas, rendant le bras par convention inatteignable et faisant
+inventer au rapport la politique testée.
+
+\subsection{Le garde-fou d'audit et ses limites}
+
+Le garde-fou repose sur \code{sys.addaudithook}. La classe \code{Guard} reste
+installée dans le processus, mais n'inspecte les événements que lorsqu'elle est
+armée : le gestionnaire \code{active()} borne l'application au run.
+\code{install\_guard} n'installe le hook qu'une fois et rebinde ensuite le
+dossier autorisé et la liste des violations à chaque run ; sans ce rebind, un
+second run observerait le dossier du premier et étoufferait ses propres
+violations. Les événements bloqués couvrent les sockets, les sous-processus, la
+famille \code{exec}/\code{spawn}/\code{posix\_spawn}, \code{ctypes} et les
+opérations de renommage et de suppression. Les écritures sont traitées à part :
+l'événement \code{open} est refusé si les drapeaux contiennent un mode
+d'écriture et si le chemin résolu sort du dossier autorisé.
+
+L'honnêteté de ce mécanisme se lit au commit \code{02320d5}. Un audit en lecture
+seule a cassé la première version par deux échappées mesurées :
+\code{os.posix\_spawn} démarrait un processus, et \code{ctypes.CDLL(None).system()}
+exécutait du code natif, alors que le rapport annonçait une exécution hermétique
+sans violation. Le rapport a donc été corrigé sur trois points : la clé
+\code{hermetic} est remplacée par \code{guard\_clean}, qui ne dit que l'absence
+d'événement listé ; un bloc \code{guard} déclare le mécanisme, les événements
+bloqués et, explicitement, les angles morts ; et \code{claims\_isolation} est
+fixé à \code{false}. Ce dernier indicateur est faux par construction : un hook
+d'audit observe des événements de l'interpréteur Python, pas des appels système.
+Il ne voit pas le code natif atteint hors \code{ctypes}, ni une écriture par un
+descripteur ouvert avant l'armement, ni un appel système émis hors CPython.
+
+Cette limite a une conséquence méthodologique : \code{guard\_clean: true}
+signifie « aucun des événements listés n'est survenu », jamais « le run est
+isolé ».
+
+\begin{table}[H]
+\centering
+\caption{Ce que le garde-fou couvre, et ce qu'il laisse hors d'observation.}
+\label{tab:guard-limits}
+\small
+\begin{tabular}{@{}p{6.2cm}p{7.6cm}@{}}
+\toprule
+Couvert, avec refus levé & Hors d'observation \\
+\midrule
+Sockets : connexion, résolution, envoi, écoute & Code natif atteint sans \code{ctypes}, \code{Popen} ou \code{posix\_spawn} \\
+Processus : \code{subprocess}, \code{os.system}, \code{exec*}, \code{fork}, \code{spawn*}, \code{posix\_spawn*} & Écritures via un descripteur ouvert avant l'armement \\
+\code{ctypes} : chargement, résolution de symbole, appel & Appels système émis hors de l'interpréteur CPython \\
+Renommage et suppression : \code{os.rename}, \code{remove}, \code{replace}, \code{unlink}, \code{shutil} & Tout comportement après désarmement : le hook reste installé mais inerte \\
+Écritures par \code{open} hors du dossier autorisé (chemins résolus) & Aucune garantie d'isolation du processus \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Ce que le bac à sable démontre}
+
+Sur les huit fixtures gelées, le bras à parser déclaré réussit six essais sur
+huit : les deux échecs sont les essais \code{variant/raw}, où le parseur
+déclaré ne couvre pas le schéma et s'abstient sur chaque message, d'où une
+conclusion fautive. Le bras par convention, qui lit les clés sans schéma
+déclaré, réussit huit sur huit. La réussite n'est pas comptée sur la conclusion
+seule : l'évaluateur l'impose comme conclusion correcte, sans contradiction et
+sans aucun verdict erroné.
+
+Les deux bras produisent la même leçon hors ligne que H2 : l'échec sur
+\code{variant/raw} ne vient pas d'un manque d'intelligence mais d'une frontière
+du parseur déclaré, et un script qui essaie rétablit la couverture. Le bac à
+sable instrumente le contraste ; il ne le mesure pas sur un modèle. Aucun bras
+LLM n'y figure, aucune attestation de pré-vol n'est produite, et ni
+\code{pair\_admissible} ni \code{mt\_admissible} n'en sortent.
+
+\subsection{Limites du bac à sable}
+
+Cinq limites doivent être lues avec les résultats précédents. D'abord, le bac à
+sable ne met en jeu aucun modèle : sa réussite est une propriété du harnais, pas
+un résultat expérimental, et le rapport porte \code{claims\_measurement: false}.
+Ensuite, \code{guard\_clean} est une observation de Python et non une preuve
+d'isolation. Troisièmement, la portée est partielle : les tests négatifs qui
+prouvent que le hook refuse réellement réseau, processus, \code{posix\_spawn} et
+\code{ctypes} passent par l'appel direct du garde, et aucun test de bout en bout
+ne confirme que le run déclenche effectivement le hook installé ; le chemin de
+détection n'est prouvé qu'au niveau unitaire. Quatrièmement, le corpus est gelé,
+n'a qu'une scénario et huit fixtures, ce qui suffit à instrumenter le contraste
+mais pas à estimer un taux. Enfin, le bac à sable contourne la frontière de
+gouvernance qu'il est censé accompagner : il appelle le bras directement, sans
+construire de run ni passer par l'enveloppe d'outils, et le journal est écrit
+par le harnais lui-même ; le noyau partagé et le garde-fou restent deux
+instruments séparés, chacun vérifié isolément.
+
+\subsection{Tests}
+
+L'ensemble compte vingt-quatre tests : quatorze pour le bac à sable et dix pour
+le noyau. Ils prouvent quatre propriétés. Pour le noyau, le run expose la
+surface de gouvernance, un run incomplet est refusé à la construction,
+\code{check\_execution\_limits} accepte un run neuf, et le dépassement du budget
+d'appels est levé par l'enveloppe d'outils et non par le contrôle de limites.
+Pour le bac à sable, les huit fixtures produisent les cinq artefacts et un
+rapport cohérent, et le bras est déclaré et jamais lu depuis le corpus. Pour la
+leçon H2, le parser déclaré échoue sur au moins un essai quand le bras par
+convention réussit partout. Pour le garde-fou, des tests négatifs refusent les
+écritures hors dossier, le réseau, les sous-processus, \code{posix\_spawn} et
+\code{ctypes}, tandis qu'un test vérifie que le hook reste inerte après
+désarmement et qu'un second garde observe son propre dossier.
+
+Ce que ces tests ne prouvent pas : aucun n'exécute un bras LLM, aucun ne mesure
+d'intervalle de confiance, et aucun ne vérifie que le hook installé est atteint
+pendant le run plutôt que seulement quand il est appelé à la main.
