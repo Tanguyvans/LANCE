@@ -127,6 +127,24 @@ jobs:
         # a wall-clock trade only: the suite is verified green at -n 4.
         run: python -m pytest -q tests model_training/tests -p xdist -n 4
 
+      - name: Run the hermetic sandbox
+        if: steps.scope.outputs.full == 'true'
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        # Deterministic arms only, under an audit hook: proves the harness
+        # runs without a broker, a model or the laboratory. It never claims a
+        # measurement and never yields pair_admissible or mt_admissible.
+        run: python -m benchmarks.experiments.sandbox --output sandbox-out
+
+      - name: Publish the sandbox report
+        if: always() && steps.scope.outputs.full == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-report
+          path: sandbox-out/sandbox-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Documentation checks complete
         if: steps.scope.outputs.full == 'false'
         run: echo "Only known documentation files changed; full validation and deployment are not needed."
