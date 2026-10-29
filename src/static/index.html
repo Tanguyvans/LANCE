@@ -167,6 +167,17 @@
         <label><input type="radio" name="run-mode" value="custom"> Personnalisé</label>
       </div>
 
+      <!-- Device / architecture / weakness filters (Scénario and Batch modes) -->
+      <div id="axis-filters" class="axis-filters">
+        <label for="sel-filter-device">Appareil</label>
+        <select id="sel-filter-device"><option value="">Tous</option></select>
+        <label for="sel-filter-architecture" title="Architecture mesurée dans la topologie déployée">Architecture</label>
+        <select id="sel-filter-architecture"><option value="">Tous</option></select>
+        <label for="sel-filter-weakness">Faille</label>
+        <select id="sel-filter-weakness"><option value="">Tous</option></select>
+        <small id="axis-filter-count" aria-live="polite"></small>
+      </div>
+
       <!-- Preset mode -->
       <div id="preset-mode">
         <label for="sel-scenario">Scénario</label>

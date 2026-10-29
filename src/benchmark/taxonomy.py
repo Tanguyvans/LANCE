@@ -262,6 +262,43 @@ def build_index(benchmarks_root: Path = DEFAULT_BENCHMARKS_ROOT) -> dict:
     }
 
 
+_AXES_CACHE: dict[Path, tuple[tuple, dict]] = {}
+
+
+def _sources_fingerprint(benchmarks_root: Path) -> tuple:
+    paths = [benchmarks_root / "taxonomy.yaml", benchmarks_root / "catalog.yaml"]
+    for pattern in ("scenarios/*/S*.yaml", "topologies/*.yaml", "ground_truth/*/scenario_*.yaml"):
+        paths += sorted(benchmarks_root.glob(pattern))
+    return tuple((str(p), p.stat().st_mtime_ns, p.stat().st_size) for p in paths if p.is_file())
+
+
+def scenario_axes(benchmarks_root: Path = DEFAULT_BENCHMARKS_ROOT) -> dict:
+    """Axis classes and per-scenario labels, as exposed to the dashboard filters.
+
+    The result is cached until a source file changes (path, mtime or size).
+    """
+    fingerprint = _sources_fingerprint(benchmarks_root)
+    cached = _AXES_CACHE.get(benchmarks_root)
+    if cached is not None and cached[0] == fingerprint:
+        return cached[1]
+    taxonomy = load_taxonomy(benchmarks_root / "taxonomy.yaml")
+    index = build_index(benchmarks_root)
+    axes = {
+        "classes": taxonomy["classes"],
+        "scenarios": {
+            s["scenario_id"]: {
+                "devices": s["devices"],
+                "architecture_target": s["architecture"]["target"],
+                "architecture_measured": s["architecture"]["measured"],
+                "weaknesses": s["weaknesses"],
+            }
+            for s in index["scenarios"]
+        },
+    }
+    _AXES_CACHE[benchmarks_root] = (fingerprint, axes)
+    return axes
+
+
 def _matrix(rows: list[str], cols: list[str], counts: Counter, row_title: str) -> list[str]:
     lines = [f"| {row_title} | " + " | ".join(cols) + " | Total |",
              "| --- | " + " | ".join("---:" for _ in cols) + " | ---: |"]

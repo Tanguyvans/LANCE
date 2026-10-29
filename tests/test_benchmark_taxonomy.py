@@ -13,6 +13,7 @@ from src.benchmark.taxonomy import (
     load_taxonomy,
     main,
     measure_architecture,
+    scenario_axes,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -127,3 +128,28 @@ def test_mini_corpus_is_labelled(tmp_path):
 def test_unclassified_values_are_rejected(tmp_path, kwargs, needle):
     with pytest.raises(TaxonomyError, match=needle):
         build_index(_mini_corpus(tmp_path, **kwargs))
+
+
+def test_scenario_axes_are_cached_until_a_source_changes(tmp_path):
+    root = _mini_corpus(tmp_path)
+    first = scenario_axes(root)
+    assert scenario_axes(root) is first
+    gt_path = root / "ground_truth" / "dev" / "scenario_1.yaml"
+    gt_path.write_text(yaml.safe_dump({
+        "scenario_id": "1",
+        "vulnerabilities": [{"id": "V1", "role": "web_server", "category": "data_exposure"},
+                            {"id": "V2", "role": "web_server", "category": "data_exposure"}],
+    }), encoding="utf-8")
+    assert scenario_axes(root) is not first
+
+
+def test_dashboard_api_exposes_axes_for_public_scenarios():
+    from src.api.routes import scenarios
+
+    payload = scenarios.list_scenarios()
+    assert set(payload["taxonomy"]) == {"device", "architecture", "weakness"}
+    entries = {item["id"]: item for item in payload["scenarios"]}
+    assert entries["6"]["axes"]["architecture_target"] == "star"
+    assert entries["6"]["axes"]["architecture_measured"] == "flat"
+    assert entries["20"]["axes"]["architecture_measured"] == "multi_hop"
+    assert all("axes" in entries[str(i)] for i in range(1, 30))

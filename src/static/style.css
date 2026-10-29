@@ -2146,3 +2146,13 @@ button:disabled { opacity: .35; cursor: default; }
   .activity-card-title { flex-direction: column; gap: 3px; }
   .activity-state { min-height: 30px; }
 }
+
+.axis-filters {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 8px;
+  align-items: center; margin-bottom: 8px;
+}
+.axis-filters label { font-size: 12px; color: var(--muted); }
+.axis-filters select { min-width: 0; }
+.axis-filters small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.axis-filters small:empty { display: none; }
+.axis-filters[hidden] { display: none; }

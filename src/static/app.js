@@ -535,8 +535,79 @@ async function loadScenariosConfig() {
     _scenariosData = FALLBACK_SCENARIOS;
   }
 
+  populateAxisFilters();
+  renderScenarioChoices();
+  populateBenchmarkScenarioFilter();
+
+  // Populate architecture dropdown
+  const archSel = document.getElementById('sel-architecture');
+  archSel.innerHTML = '';
+  for (const a of _scenariosData.architectures) {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = `${a.name} (${a.services_count} devices)`;
+    archSel.appendChild(opt);
+  }
+
+  // Build packs UI
+  buildPacksUI();
+  updateSelectedScenarioActions();
+
+  // When architecture changes, rebuild packs to show only applicable vulns
+  archSel.addEventListener('change', () => buildPacksUI());
+}
+
+// Device / architecture / weakness filters. Labels come from /api/scenarios
+// (src/benchmark/taxonomy.py); scenarios without labels (Lab exports, sealed)
+// are listed only while every filter is "Tous".
+const AXIS_FILTERS = [
+  {id: 'sel-filter-device', axis: 'device', field: 'devices'},
+  {id: 'sel-filter-architecture', axis: 'architecture', field: 'architecture_measured'},
+  {id: 'sel-filter-weakness', axis: 'weakness', field: 'weaknesses'},
+];
+
+function scenarioAxisValues(scenario, field) {
+  const value = scenario.axes ? scenario.axes[field] : undefined;
+  if (value === undefined || value === null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function activeAxisFilters() {
+  return AXIS_FILTERS
+    .map(f => ({...f, value: document.getElementById(f.id).value}))
+    .filter(f => f.value);
+}
+
+function scenarioMatchesAxisFilters(scenario, filters = activeAxisFilters()) {
+  return filters.every(f => scenarioAxisValues(scenario, f.field).includes(f.value));
+}
+
+function populateAxisFilters() {
+  const classes = _scenariosData.taxonomy || {};
+  for (const f of AXIS_FILTERS) {
+    const select = document.getElementById(f.id);
+    const previous = select.value;
+    select.innerHTML = '<option value="">Tous</option>';
+    for (const [key, description] of Object.entries(classes[f.axis] || {})) {
+      const count = _scenariosData.scenarios.filter(s => scenarioAxisValues(s, f.field).includes(key)).length;
+      if (!count) continue;
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = `${key} (${count})`;
+      opt.title = description;
+      select.appendChild(opt);
+    }
+    select.value = [...select.options].some(opt => opt.value === previous) ? previous : '';
+  }
+}
+
+function renderScenarioChoices() {
+  const filters = activeAxisFilters();
+  const scenarios = _scenariosData.scenarios.filter(s => scenarioMatchesAxisFilters(s, filters));
+
   // Populate preset dropdown
   const sel = document.getElementById('sel-scenario');
+  const previous = sel.value;
   sel.innerHTML = '<option value="">— Lab physique —</option>';
 
   const vulnGroup = document.createElement('optgroup');
@@ -548,7 +619,7 @@ async function loadScenariosConfig() {
   const exportedGroup = document.createElement('optgroup');
   exportedGroup.label = 'Exports Scenario Lab';
 
-  for (const s of _scenariosData.scenarios) {
+  for (const s of scenarios) {
     const opt = document.createElement('option');
     opt.value = s.id;
     opt.textContent = s.exported ? `Lab · ${s.name}` : `S${s.id} · ${s.name}`;
@@ -568,12 +639,16 @@ async function loadScenariosConfig() {
   if (vulnGroup.children.length) sel.appendChild(vulnGroup);
   if (hardGroup.children.length) sel.appendChild(hardGroup);
   if (sealedGroup.children.length) sel.appendChild(sealedGroup);
-  populateBenchmarkScenarioFilter();
+  // Keep the current choice when it survives the filters; otherwise reset it
+  // so the topology preview and the actions follow the visible list.
+  const stillListed = [...sel.options].some(opt => opt.value === previous && !opt.disabled);
+  sel.value = stillListed ? previous : '';
+  if (sel.value !== previous) sel.dispatchEvent(new Event('change'));
 
   // Populate batch checkboxes (all non-hardened scenarios)
   const batchBox = document.getElementById('batch-checkboxes');
   batchBox.innerHTML = '';
-  for (const s of _scenariosData.scenarios) {
+  for (const s of scenarios) {
     if (s.posture === 'hardened' || isSealedScenario(s)) continue;
     const lbl = document.createElement('label');
     lbl.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer';
@@ -586,23 +661,9 @@ async function loadScenariosConfig() {
     lbl.appendChild(document.createTextNode(`S${s.id} · ${s.name} (${s.difficulty || ''})`));
     batchBox.appendChild(lbl);
   }
-
-  // Populate architecture dropdown
-  const archSel = document.getElementById('sel-architecture');
-  archSel.innerHTML = '';
-  for (const a of _scenariosData.architectures) {
-    const opt = document.createElement('option');
-    opt.value = a.id;
-    opt.textContent = `${a.name} (${a.services_count} devices)`;
-    archSel.appendChild(opt);
-  }
-
-  // Build packs UI
-  buildPacksUI();
-  updateSelectedScenarioActions();
-
-  // When architecture changes, rebuild packs to show only applicable vulns
-  archSel.addEventListener('change', () => buildPacksUI());
+  document.getElementById('axis-filter-count').textContent = filters.length
+    ? `${scenarios.length} scénario(s) correspondant(s)`
+    : '';
 }
 
 function getArchRoles() {
@@ -778,6 +839,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('preset-mode').hidden  = val !== 'preset';
       document.getElementById('batch-mode').hidden   = val !== 'batch';
       document.getElementById('custom-mode').hidden  = val !== 'custom';
+      document.getElementById('axis-filters').hidden = val === 'custom';
       document.getElementById('btn-start').hidden       = val === 'batch' && activeExecutionKind === 'lance';
       document.getElementById('btn-batch-start').hidden = val !== 'batch' || activeExecutionKind !== 'lance';
     });
@@ -798,6 +860,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (scen) loadTopology(scen.id);
   });
 
+  AXIS_FILTERS.forEach(f => document.getElementById(f.id).addEventListener('change', renderScenarioChoices));
   document.getElementById('sel-scenario').addEventListener('change', function () {
     if (isSealedScenarioId(this.value)) this.value = '';
     loadTopology(this.value || null);

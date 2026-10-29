@@ -54,6 +54,24 @@ propre.
 Après toute modification d'un scénario, d'une topologie, d'une vérité terrain
 ou de la taxonomie, régénérer puis committer la page.
 
+## Filtres du dashboard
+
+`GET /api/scenarios` (`src/api/routes/scenarios.py`) ajoute à chaque scénario
+public un champ `axes` (classes d'appareils, architecture visée et mesurée,
+familles de failles) et renvoie le vocabulaire des classes sous `taxonomy`.
+Le calcul passe par `scenario_axes`, mis en cache jusqu'à la modification
+d'un fichier source. Une erreur de taxonomie est journalisée et laisse la
+liste des scénarios disponible, sans étiquettes.
+
+Le dashboard propose trois filtres, **Appareil**, **Architecture** et
+**Faille**, en modes Scénario et Batch. Le filtre Architecture porte sur
+l'architecture **mesurée**, c'est-à-dire ce qui est réellement déployé. Les
+filtres se combinent ; chaque option indique le nombre de scénarios qui la
+portent. Les scénarios sans étiquettes (exports du Scenario Lab, scénarios
+scellés) ne restent visibles que lorsque tous les filtres valent « Tous ».
+Le menu « Architecture » du mode Personnalisé est distinct : il liste les
+topologies.
+
 ## Garde-fous
 
 `tests/test_benchmark_taxonomy.py` vérifie :
@@ -65,6 +83,10 @@ ou de la taxonomie, régénérer puis committer la page.
 - les règles de mesure sur des topologies synthétiques ;
 - que la page versionnée est à jour et que les empreintes de sources de
   l'index correspondent aux fichiers.
+
+Pour le dashboard, `tests/test_benchmark_taxonomy.py` vérifie aussi les axes
+renvoyés par l'API et l'invalidation du cache. `tests/test_axis_filters_ui.py`
+exécute les filtres de `src/static/app.js` sous Node.js.
 
 ## Limites
 

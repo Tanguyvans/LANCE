@@ -1,6 +1,7 @@
 """Scenarios route — expose architectures, packs, and pre-configured scenarios."""
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
@@ -10,7 +11,9 @@ from fastapi import APIRouter
 from src.benchmark.catalog import EVAL_SEALED, load_catalog, load_eval_profile
 from src.benchmark.scenario_exports import default_export_store
 from src.benchmark.scenario_generator import ScenarioGenerator
+from src.benchmark.taxonomy import TaxonomyError, scenario_axes
 
+log = logging.getLogger(__name__)
 router = APIRouter()
 generated_scenarios = ScenarioGenerator()
 
@@ -150,10 +153,22 @@ def list_scenarios():
             "control_count": variant.get("control_count", 0),
         }
 
+    # Device / architecture / weakness labels for the dashboard filters. They
+    # cover the public scenarios only; a taxonomy error leaves the list usable.
+    try:
+        axes = scenario_axes()
+    except TaxonomyError as exc:
+        log.warning("Scenario taxonomy unavailable: %s", exc)
+        axes = {"classes": {}, "scenarios": {}}
+    for scenario in scenarios_by_id.values():
+        if scenario["id"] in axes["scenarios"]:
+            scenario["axes"] = axes["scenarios"][scenario["id"]]
+
     scenarios = sorted(scenarios_by_id.values(), key=_scenario_sort_key)
 
     return {
         "architectures": architectures,
         "packs": packs,
         "scenarios": scenarios,
+        "taxonomy": axes["classes"],
     }
