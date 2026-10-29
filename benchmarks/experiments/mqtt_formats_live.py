@@ -66,22 +66,11 @@ def load_corpus(path=CORPUS):
 
 
 def new_run(directory, policy, args):
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "tool_calls.jsonl").touch(exist_ok=False)
-    run = SimpleNamespace(
-        run_dir=directory, max_tool_calls=args.max_tool_calls,
-        max_duration_s=args.max_duration_s, max_turns=args.max_turns,
-        _artifact_log_lock=threading.Lock(), _tool_call_count=0,
-        _run_started=time.monotonic(), _execution_limit_reason=None,
-        experiment_scope=SCOPE, context={"target_subnet": "127.0.0.1/32"},
-        decision_policy=policy,
-        tracker=CostTracker(model=args.model if policy == "llm" else "",
-                            provider=args.provider if policy == "llm" else "",
-                            max_cost_usd=args.max_cost_usd, execution_metrics=True),
-    )
-    run.tracker.start_run()
-    run.tracker.start_phase(SCOPE)
-    return run
+    """Build one H2 arm through the shared harness core."""
+    from benchmarks.experiments.harness import build_run
+
+    return build_run(directory=directory, scope=SCOPE, phase=SCOPE,
+                     policy=policy, args=args)
 
 
 def _write_journal(directory, journal):

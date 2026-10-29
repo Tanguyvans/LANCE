@@ -65,22 +65,11 @@ def require_nato():
 
 
 def new_run(directory, policy, args, network='127.0.0.1/32'):
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / 'tool_calls.jsonl').touch(exist_ok=False)
-    run = SimpleNamespace(
-        run_dir=directory, max_tool_calls=args.max_tool_calls,
-        max_duration_s=args.max_duration_s, max_turns=args.max_turns,
-        _artifact_log_lock=threading.Lock(), _tool_call_count=0,
-        _run_started=time.monotonic(), _execution_limit_reason=None,
-        experiment_scope='mqtt-reference-calibration', context={'target_subnet': network},
-        decision_policy=policy,
-        tracker=CostTracker(model=args.model if policy == 'llm' else '',
-                            provider=args.provider if policy == 'llm' else '',
-                            max_cost_usd=args.max_cost_usd, execution_metrics=True),
-    )
-    run.tracker.start_run()
-    run.tracker.start_phase('mqtt-reference')
-    return run
+    """Build one arm through the shared harness core."""
+    from benchmarks.experiments.harness import build_run
+
+    return build_run(directory=directory, scope='mqtt-reference-calibration', phase='mqtt-reference',
+                     policy=policy, args=args, network=network)
 
 
 def case_configuration(flaws):
