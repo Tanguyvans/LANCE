@@ -14,9 +14,6 @@ import signal
 import socket
 import subprocess
 import tarfile
-import threading
-import time
-from types import SimpleNamespace
 from uuid import uuid4
 
 from benchmarks.experiments.api_reference import (
@@ -29,7 +26,6 @@ from benchmarks.experiments.ssh_reference_llm import RecordingClient
 from benchmarks.experiments import v2_campaign as v2
 from scripts.benchmark.pilot_support import archive_trial
 from src.agent.audit_experiment import digest, resource_manifest
-from src.agent.cost_tracker import CostTracker
 
 
 ROOT = Path(__file__).resolve().parents[2]

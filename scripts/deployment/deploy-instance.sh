@@ -115,9 +115,13 @@ fi
 # Each checkout owns its dependencies, database and run artifacts.
 if [[ ! -x venv/bin/python ]]; then python3 -m venv venv; fi
 venv/bin/pip install -r requirements.txt --quiet
+# The optional Codex CLI is a convenience, never a deployment precondition:
+# a download failure must not leave the instance stopped. It installs into a
+# shared directory so the path does not depend on the caller's HOME.
 codex_cli=/usr/local/bin/codex
 if [[ ! -x "$codex_cli" ]]; then
-  curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_INSTALL_DIR=/usr/local/bin sh
+  curl -fsSL https://chatgpt.com/codex/install.sh \
+    | CODEX_INSTALL_DIR=/usr/local/bin sh || echo 'Codex CLI not installed; continuing' >&2
   [[ -x "$codex_cli" ]] || codex_cli=/root/.local/bin/codex
 fi
 export LANCE_DB_PATH="$root/data/lance.db"

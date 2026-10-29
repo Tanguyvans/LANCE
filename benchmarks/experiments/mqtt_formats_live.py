@@ -13,9 +13,6 @@ import os
 from pathlib import Path
 import signal
 import subprocess
-import threading
-import time
-from types import SimpleNamespace
 
 from benchmarks.experiments.mqtt_formats import (
     CONTRACT, METRIC, SCENARIO, Journal, aggregate, evaluate, run_attempting_rules,
@@ -29,7 +26,6 @@ from benchmarks.experiments.mqtt_reference_live import (
 )
 from benchmarks.experiments.ssh_reference_llm import RecordingClient
 from src.agent.audit_experiment import digest
-from src.agent.cost_tracker import CostTracker
 from src.agent.provider import LLMProvider
 
 ROOT = Path(__file__).resolve().parents[2]
