@@ -56,9 +56,9 @@ def read_ledger(directory):
 def require_nato():
     if os.environ.get('RUNNER_NAME') != 'nato-master':
         raise RuntimeError('This controller requires the nato-master Actions runner')
-    addresses = json.loads(subprocess.check_output(['ip', '-j', '-4', 'addr'], text=True, timeout=10))
-    if not any(item.get('local') == '100.103.253.86' for interface in addresses
-               for item in interface.get('addr_info', [])):
+    from src.agent.core.runtime import tailscale_identity_present
+
+    if not tailscale_identity_present():
         raise RuntimeError('Runner identity mismatch: nato Tailscale address absent')
     if os.environ.get('LANCE_MQTT_LOCK_HELD') != '1':
         raise RuntimeError('Acquire the shared laboratory lock before running this controller')

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
+import os
 import subprocess
 from pathlib import Path
 from src.benchmark.scenario_exports import (
@@ -98,6 +100,39 @@ def local_interface_ips() -> set[str]:
         except ValueError:
             continue
     return addresses
+
+
+def tailscale_identity_present() -> bool:
+    """Report whether this host holds a Tailscale address.
+
+    A laboratory controller is identified by belonging to the tailnet, not by
+    one memorised address: a rebuilt container receives a new one. Hosts that
+    declare ``LANCE_EXPECTED_TAILSCALE_IP`` are pinned to that address, which
+    keeps the explicit identity check available for shared machines.
+    """
+    try:
+        result = subprocess.run(
+            ["ip", "-j", "-4", "addr", "show", "dev", "tailscale0"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("Unable to read the Tailscale interface: %s", exc)
+        return False
+    expected = os.environ.get("LANCE_EXPECTED_TAILSCALE_IP", "").strip()
+    if result.returncode != 0:
+        return False
+    try:
+        interfaces = json.loads(result.stdout or "[]")
+    except ValueError:
+        return False
+    present = {
+        str(item.get("local"))
+        for interface in interfaces
+        for item in interface.get("addr_info", [])
+    }
+    if expected:
+        return expected in present
+    return bool(present)
 
 
 def _resolve_model_provider(model: str) -> str:
