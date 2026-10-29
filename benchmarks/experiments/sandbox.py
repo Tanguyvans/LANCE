@@ -36,9 +36,20 @@ CORPUS = ROOT / "benchmarks" / "experiments" / "mqtt-formats-corpus.json"
 
 # Events the audit hook treats as a breach of the sandbox contract. ``open``
 # is handled separately because reading is legitimate and writing is not.
+#
+# The list is deliberately not just the obvious ones: ``os.posix_spawn`` starts
+# a process without going through ``subprocess``, and ``ctypes`` can reach the C
+# library without any Python-level process API. Both were measured escaping an
+# earlier version of this guard.
 BLOCKED_EVENTS = frozenset({
     "socket.connect", "socket.connect_ex", "socket.getaddrinfo", "socket.sendto",
-    "subprocess.Popen", "os.system", "os.exec", "os.fork",
+    "socket.bind", "socket.__new__",
+    "subprocess.Popen",
+    "os.system", "os.exec", "os.fork", "os.execv", "os.execl", "os.execve",
+    "os.spawn", "os.posix_spawn", "os.posix_spawnp",
+    "ctypes.dlopen", "ctypes.dlsym", "ctypes.call_function",
+    "os.rename", "os.remove", "os.rmdir", "os.replace", "os.unlink",
+    "shutil.move", "shutil.rmtree", "shutil.copyfile",
 })
 WRITE_FLAGS = 1 | 2 | 64 | 512 | 1024  # O_WRONLY | O_RDWR | O_CREAT | O_TRUNC | O_APPEND
 
@@ -103,12 +114,22 @@ _INSTALLED: list[Guard] = []
 
 
 def install_guard(allowed_output: Path, breaches: list[str]) -> Guard:
-    """Install the process-wide hook once and return the armed guard."""
+    """Install the process-wide hook once, rebound to this run's scope.
+
+    An audit hook cannot be removed, so the same guard stays registered for
+    the process. Each call must still observe *its own* directory and report
+    into *its own* list, otherwise a second run would authorise the first
+    run's directory and silence its own breaches.
+    """
     if not _INSTALLED:
         guard = Guard(allowed_output, breaches)
         sys.addaudithook(guard.__call__)
         _INSTALLED.append(guard)
-    return _INSTALLED[0]
+    else:
+        guard = _INSTALLED[0]
+        guard.allowed = allowed_output.resolve()
+        guard.breaches = breaches
+    return guard
 
 
 def load_corpus() -> dict[str, Any]:
@@ -120,14 +141,22 @@ def _write_json(path: Path, value: Any) -> None:
                     encoding="utf-8")
 
 
-def run_one(fixture: dict[str, Any], directory: Path) -> dict[str, Any]:
-    """Run one deterministic arm on one frozen fixture and write the trial."""
+ARMS = {"rules": run_rules, "rules_attempt": run_attempting_rules}
+
+
+def run_one(fixture: dict[str, Any], directory: Path, arm: str = "rules") -> dict[str, Any]:
+    """Run one deterministic arm on one frozen fixture and write the trial.
+
+    The arm is a parameter, never read from the corpus: the frozen corpus
+    declares a dossier and its oracle, not the policy under test.
+    """
+    if arm not in ARMS:
+        raise ValueError(f"Unknown deterministic arm: {arm}")
     dossier = validate_dossier(fixture["dossier"])
     oracle = fixture["oracle"]
     directory.mkdir(parents=True, exist_ok=True)
     journal = Journal(dossier, dossier["view"])
-    arm = fixture.get("arm", "rules")
-    answer = (run_attempting_rules if arm == "rules_attempt" else run_rules)(dossier, journal)
+    answer = ARMS[arm](dossier, journal)
     _write_json(directory / "dossier.json", dossier)
     _write_json(directory / "oracle.json", oracle)
     _write_json(directory / "answer.json", answer)
@@ -139,7 +168,7 @@ def run_one(fixture: dict[str, Any], directory: Path) -> dict[str, Any]:
     return evaluation
 
 
-def run_sandbox(output: Path) -> dict[str, Any]:
+def run_sandbox(output: Path, arm: str = "rules") -> dict[str, Any]:
     """Run every fixture under the audit hook and report what happened."""
     corpus = load_corpus()
     output.mkdir(parents=True, exist_ok=True)
@@ -150,12 +179,12 @@ def run_sandbox(output: Path) -> dict[str, Any]:
     with guard.active():
         for index, fixture in enumerate(corpus["fixtures"]):
             directory = output / f"trial-{index:02d}"
-            evaluation = run_one(fixture, directory)
+            evaluation = run_one(fixture, directory, arm)
             trials.append({
                 "trial": directory.name,
                 "view": fixture["dossier"]["view"],
                 "schema": fixture["dossier"]["schema"],
-                "arm": fixture.get("arm", "rules"),
+                "arm": arm,
                 "success": evaluation["success"],
                 "conclusion_correct": evaluation.get("conclusion_correct"),
                 "abstained": evaluation.get("abstained"),
@@ -166,9 +195,24 @@ def run_sandbox(output: Path) -> dict[str, Any]:
         "scenario_id": corpus["scenario_id"],
         "corpus_sha256_contract": corpus.get("contract"),
         "trials": trials,
-        "hermetic": not breaches,
+        "arm": arm,
+        # Scope of the claim, stated with the result so it cannot be read as
+        # more than it is: an audit hook observes Python-level events only.
+        "guard": {
+            "mechanism": "sys.addaudithook",
+            "blocked_events": sorted(BLOCKED_EVENTS),
+            "unobserved": [
+                "native code reached without ctypes/Popen/posix_spawn",
+                "writes through a descriptor opened before arming",
+                "kernel-level syscalls issued outside CPython",
+            ],
+            "scope": "None of the listed events occurred; this is not a "
+                     "native-code sandbox and does not prove the process was isolated.",
+        },
+        "guard_clean": not breaches,
         "breaches": breaches,
         "claims_measurement": False,
+        "claims_isolation": False,
         "note": ("Deterministic arms only; no LLM, no preflight, no admission. "
                  "Never yields pair_admissible or mt_admissible."),
     }
@@ -180,11 +224,14 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Hermetic deterministic H2 sandbox")
     parser.add_argument("--output", type=Path, required=True,
                         help="Directory receiving the trials and the report")
+    parser.add_argument("--arm", choices=sorted(ARMS), default="rules",
+                        help="Deterministic arm to run (default: rules)")
     args = parser.parse_args(argv)
-    report = run_sandbox(args.output)
+    report = run_sandbox(args.output, args.arm)
     print(json.dumps({key: report[key] for key in
-                      ("sandbox", "trials", "hermetic", "breaches")}, indent=2, ensure_ascii=False))
-    return 0 if report["hermetic"] else 1
+                      ("sandbox", "arm", "trials", "guard_clean", "breaches")},
+                     indent=2, ensure_ascii=False))
+    return 0 if report["guard_clean"] else 1
 
 
 if __name__ == "__main__":
