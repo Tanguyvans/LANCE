@@ -36,8 +36,9 @@ fi
 # available instead of refusing the deployment outright.
 if [[ $(id -u) != 0 ]]; then
   if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    # $0 may be relative and sudo does not resolve it in this directory.
-    exec sudo -n -- "$script_dir/$(basename -- "${BASH_SOURCE[0]}")" "$@"
+    # Re-exec through bash: the checkout may not carry the execute bit, and
+    # $0 may be relative while sudo does not resolve it in this directory.
+    exec sudo -n -- bash "$script_dir/$(basename -- "${BASH_SOURCE[0]}")" "$@"
   fi
   echo 'Root runner required: run the runner as root or grant passwordless sudo' >&2
   exit 1
