@@ -13,8 +13,10 @@ réel n'est lancé par ces workflows. Le homelab personnel reste hors périmètr
 | Développement 1 | `dev/1` | 8502 | `/opt/lance-dev-1` | `lance-dev-1` |
 | Développement 2 | `dev/2` | 8503 | `/opt/lance-dev-2` | `lance-dev-2` |
 
-Les accès utilisent l'adresse Tailscale de nato-master `100.103.253.86`, par
-exemple `http://100.103.253.86:8502`. Le code ne modifie pas le pare-feu : les
+Les accès utilisent l'adresse Tailscale de nato-master, par exemple
+`http://nato-master:8502`. Cette adresse se lit sur la machine avec
+`tailscale ip -4` ; elle change si le conteneur est reconstruit, le nom DNS
+Tailscale `nato-master` non. Le code ne modifie pas le pare-feu : les
 ports doivent être accessibles depuis le réseau autorisé. `/api/environment`
 renvoie l'emplacement, la branche, le commit réellement déployé et l'activation
 du verrou commun.

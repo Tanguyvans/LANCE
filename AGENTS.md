@@ -122,9 +122,11 @@ travail local se limite à lire, modifier, tester les unités hors ligne
 (`python -m pytest`) et committer.
 
 - L'exécution et les déploiements LANCE ciblent **nato / pve-nato**, via le
-  runner GitHub Actions **nato-master** et son adresse Tailscale
-  `100.103.253.86`. Le homelab personnel (nœud `pve`, distinct de `pve-nato`)
-  reste hors périmètre ; une intervention y exige une demande distincte.
+  runner GitHub Actions **nato-master**. Son adresse Tailscale se lit sur la
+  machine (`tailscale ip -4`) : elle change quand le conteneur est reconstruit,
+  et aucun guide ni script ne doit en figer une. Le homelab personnel (nœud
+  `pve`, distinct de `pve-nato`) reste hors périmètre ; une intervention y
+  exige une demande distincte.
 - **Circuit de livraison :** commit → push → GitHub Actions valide → l'instance
   sur le mini-PC tire le commit. Aucune copie manuelle entre la machine de
   développement et le mini-PC. Un push sur `main` valide et déploie ; les

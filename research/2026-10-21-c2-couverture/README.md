@@ -51,7 +51,7 @@ relèverait d'une autre thèse.
 
 - [revue.md](revue.md) — le verdict des deux relectures, les faits de code
   vérifiés, les trilemmes, la variante B2 et la décision.
-- [plan.md](plan.md) — la construction proposée, conservée comme trace. Son
+- La construction proposée était conservée comme trace dans `plan.md` ; le fichier a été retiré au commit `4ffadcd` (pointeurs obsolètes). Son
   en-tête porte le statut de rejet.
 
 ## Points encore ouverts

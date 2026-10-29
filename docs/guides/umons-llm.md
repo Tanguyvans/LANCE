@@ -3,7 +3,7 @@
 ## 1. Se connecter et choisir un modèle
 
 1. Se connecter au réseau **Tailscale autorisé**.
-2. Ouvrir [Main](http://100.103.253.86:8501), [Dev 1](http://100.103.253.86:8502) ou [Dev 2](http://100.103.253.86:8503).
+2. Ouvrir [Main](http://nato-master:8501), [Dev 1](http://nato-master:8502) ou [Dev 2](http://nato-master:8503) (`nato-master` est le nom Tailscale du nœud ; son adresse se lit avec `tailscale ip -4`).
 3. Dans **Model global**, choisir un modèle du groupe **`ollama-umons`**.
 4. Si le mode **Multi-modèle** est actif, vérifier aussi les modèles de chaque phase.
 
@@ -95,7 +95,7 @@ Voir les [fournisseurs](provider-auth.md) et les [instances de développement](d
 <details>
 <summary><strong>Dépannage avancé — relais et serveur Ollama</strong></summary>
 
-**Trajet :** navigateur → LANCE sur `nato-master` (`100.103.253.86`) → point d’accès sur `pve-nato` (`100.76.206.65:11435`) → serveur UMONS à confirmer.
+**Trajet :** navigateur → LANCE sur `nato-master` (nom Tailscale du nœud) → point d’accès sur `pve-nato` (`100.76.206.65:11435`) → serveur UMONS à confirmer.
 
 Le tunnel SSH a été identifié et rétabli le 4 octobre 2026 (procédure ci-dessous). Son serveur de destination est en aval du cluster UMONS ; aucun accès d'administration au serveur GPU n'a été établi. Le homelab personnel est hors périmètre.
 
