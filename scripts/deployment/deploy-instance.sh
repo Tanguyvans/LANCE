@@ -39,7 +39,13 @@ if [[ $(id -u) != 0 ]]; then
     # Re-exec through bash: the checkout may not carry the execute bit, and
     # $0 may be relative while sudo does not resolve it in this directory.
     # sudo resets the environment, so the runner identity must be carried.
-    exec sudo -n --preserve-env=RUNNER_NAME,RUNNER_TRACKING_ID \
+    # sudo resets the environment, so the runner identity and the deployment
+    # settings declared by the workflow must be carried explicitly.
+    carried=RUNNER_NAME,RUNNER_TRACKING_ID
+    for name in $(compgen -e | grep -E '^(DEPLOY_|LANCE_DEPLOY_)'); do
+      carried=$carried,$name
+    done
+    exec sudo -n --preserve-env="$carried" \
       -- bash "$script_dir/$(basename -- "${BASH_SOURCE[0]}")" "$@"
   fi
   echo 'Root runner required: run the runner as root or grant passwordless sudo' >&2
