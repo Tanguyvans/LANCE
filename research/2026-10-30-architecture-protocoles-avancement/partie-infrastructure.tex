@@ -3,6 +3,63 @@
 
 \subsection{Laboratory topology}
 
+\subsection{Why a laboratory at all}
+\label{sec:proxmox}
+
+An audit cannot be measured on a real network. The result would depend on whatever
+happens to be exposed that day, could not be repeated, and would not be
+comparable between two runs. LANCE therefore audits networks that it has itself
+built, from a description, and throws away afterwards.
+
+A scenario is that description: which devices exist, which services they run,
+which weaknesses are installed, and which connections are allowed. Deploying it
+means materialising those devices as virtual machines on a hypervisor, so that the
+audit sees a real network rather than a simulation, and destroying them afterwards
+so that the next trial starts from the same state.
+
+\textbf{Proxmox} provides that hypervisor. It is the host on which the scenario
+devices are created as LXC containers --- lightweight, unprivileged Linux
+containers, each acting as one device of the scenario: a web service, an IoT
+service, a gateway, or any other role the scenario describes. The scenario never
+runs on the workstation and never touches a real network: it exists only on the
+Proxmox host, for the duration of a trial.
+
+\textbf{Ansible} plays the other half. It configures each container from the
+scenario description --- installs the service, sets the credentials, injects the
+weakness --- and resets it to a clean state before the next trial. Deployment,
+configuration and reset are the three operations that make a trial repeatable; the
+hypervisor alone would give none of them.
+
+The cycle is therefore: deploy the scenario as containers, configure and inject,
+run the audit, destroy. A run that skipped the reset would inherit the previous
+trial's state, and its result would no longer be attributable.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=2pt, align=center, font=\footnotesize,
+              minimum height=10mm, text width=30mm, inner sep=3pt},
+  arr/.style={-{Latex[length=1.6mm]}, font=\scriptsize, draw=black!70},
+  node distance=7mm and 12mm,
+]
+\node[box] (scen) {Scenario\\[-1pt]\scriptsize devices, services,\\[-1pt]\scriptsize weaknesses, links};
+\node[box, below=10mm of scen] (ans) {Ansible\\[-1pt]\scriptsize configure, inject, reset};
+\node[box, below=10mm of ans] (px) {Proxmox host\\[-1pt]\scriptsize LXC containers:\\[-1pt]\scriptsize web, IoT, gateway};
+\node[box, right=22mm of px] (agent) {Audit agent\\[-1pt]\scriptsize plans and runs\\[-1pt]\scriptsize the tests};
+\node[box, above=10mm of agent] (eval) {Evaluator\\[-1pt]\scriptsize recomputes from\\[-1pt]\scriptsize the journal};
+% flows
+\draw[arr] (scen) -- node[left]{\scriptsize deploy} (ans);
+\draw[arr] (ans) -- (px);
+\draw[arr] (px) -- node[above]{\scriptsize tests, observations} (agent);
+\draw[arr] (agent) -- node[right]{\scriptsize journal} (eval);
+\draw[arr, dashed] (agent.west) to[bend left=35] node[below]{\scriptsize destroy} (px.east);
+\end{tikzpicture}
+\caption{The laboratory cycle. A scenario is deployed as virtual devices on the
+Proxmox host, configured by Ansible, audited, then destroyed. The evaluator reads
+the journal, never the devices.}
+\label{fig:labo}
+\end{figure}
+
 The execution of LANCE relies on a single Proxmox host and one LXC container that
 carries the entire platform. The playbook
 \code{benchmarks/ansible/playbooks/deploy\_master.yml} creates, on the Proxmox host
