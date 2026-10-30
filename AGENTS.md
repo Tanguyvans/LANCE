@@ -26,18 +26,16 @@ l'entraînement des modèles constitue un volet distinct du projet.
 
 - Avant de créer un document, consulter les index de `research/` et `docs/` et
   compléter le sujet existant lorsqu'il couvre déjà la question.
-- Placer le travail exploratoire dans `research/AAAA-MM-JJ-<sujet>/`, avec la date
-  de début de l'étude et un nom stable en minuscules et tirets. Si le début d'une
-  étude historique est inconnu, utiliser sa date de classement et le préciser.
-  Conserver ce dossier et sa date lors des révisions. Chaque dossier possède un
-  `README.md` indiquant la question, le statut, les dates, la synthèse, les
+- Placer tout travail dans `research/AAAA-MM-JJ-<sujet>/`, avec la date du jour
+  de création et un nom descriptif en minuscules et tirets. Chaque dossier possède
+  un `README.md` indiquant la question, le statut, les dates, la synthèse, les
   documents et les points encore ouverts.
   Suivre les [conventions de recherche](research/README.md).
-- **Ouvrir un dossier ou réviser l'existant.** Un dossier daté n'est créé que
-  pour une **question nouvelle et réfutable** ; une mesure, un run, une
-  révision ou un protocole d'une question existante est un **fichier daté
-  dans le dossier de cette question**. La date du dossier est celle du début
-  et ne change jamais ; la fraîcheur se lit à la date de dernière revue.
+- **Un dossier par révision.** Toute mise à jour de fond ou tout travail
+  nouveau ouvre un dossier daté distinct : `research/AAAA-MM-JJ-<sujet>/`. Un
+  dossier publié n'est plus modifié ; il devient l'archive de son état et la
+  révision suivante le référence comme travaux antérieurs. La chronologie se
+  lit dans l'index, pas dans l'historique Git.
 - **Statut fermé.** Tout dossier prend un statut parmi `proposition`, `actif`,
   `dormant`, `conclu`, `remplacé`, avec sa date de revue et une ligne de
   format fixe dans l'index `research/README.md`. Un dossier remplacé le
@@ -81,10 +79,10 @@ l'entraînement des modèles constitue un volet distinct du projet.
 
 ## Méthode de travail
 
-**Cycle d'une étude.** Ouvrir un dossier daté en `proposition` → le passer à
-`actif` au premier travail réel → ajouter chaque mesure comme **fichier daté**
-dans ce dossier → clore (`conclu`, y compris par un résultat négatif),
-remplacer en pointant le successeur, ou laisser passer en `dormant`. Une
+**Cycle d'une révision.** Ouvrir un dossier daté en `proposition` → le passer à
+`actif` au premier travail réel → clore (`conclu`, y compris par un résultat
+négatif) ou passer en `dormant`. Une révision ultérieure ouvre un **nouveau**
+dossier daté qui cite le précédent ; elle ne modifie pas l'ancien. Une
 conclusion devenue stable migre vers `docs/` ; `research/` garde les sources,
 le raisonnement et les limites.
 
