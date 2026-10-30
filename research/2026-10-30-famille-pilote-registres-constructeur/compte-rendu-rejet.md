@@ -138,10 +138,34 @@ l'exhaustivité de D1+, pas la limite de l'interprétation.
 ## 7. Ce que ce rejet ne prouve pas
 
 - Rien sur les autres mécanismes : une famille ne fait pas une carte.
-- Rien sur H4 en général : seule cette tentative est rejetée.
+- **Rien sur H4 elle-même.** Le rejet ne dit pas que H4 est fausse ; il dit
+  que **ce mécanisme-là** — un cache distingué par la propagation de son
+  écriture dans ses voisins — est franchi par une règle générique. Un
+  mécanisme différent pourrait survivre, et c'est la seule chose que la
+  famille future devra démontrer avant d'être construite, non après.
 - Rien sur le niveau du modèle : aucun modèle n'a été exécuté. Ce n'est pas
   le LLM qui a fait échouer la famille, c'est un script.
 - Rien sur l'indépendance statistique : elle exige trois familles.
+
+---
+
+## 7 bis. Un test rouge n'est pas un témoin
+
+Pendant la conception, un test a été écrit **volontairement rouge** pour
+attester un trou du plan : le module qu'il importait n'existait pas encore,
+et son échec devait rappeler que la règle de clôture du § 5 n'était pas
+définie. C'était le témoin du point d'arrêt.
+
+Il a bloqué la collecte de **4514 tests**. Un fichier de test qui importe un
+module inexistant ne marque pas un trou : il fait tomber la suite entière, et
+la panne masque tout ce que la suite aurait dit par ailleurs. Il a donc été
+supprimé quand le trou a été consigné en prose.
+
+**La leçon : un témoin se consigne, pas ne se commite cassé.** L'état
+incomplet d'un travail s'écrit dans le document qui le porte — ici, ce compte
+rendu, et le § 5 du plan de conception — jamais dans un test qui empêche la
+validation de tout le reste.
+
 
 ---
 
