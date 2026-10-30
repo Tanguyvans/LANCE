@@ -9,7 +9,7 @@ nato le 2026-10-22 : prédiction tenue, gain absorbé par un bras qui lit par
 convention. La porte V0 est **partiellement franchie**.
 
 **Dates.** Étude ouverte et classée le 2026-10-21 (Europe/Brussels, UTC+02:00).
-Dernière révision : **2026-10-23 14:33 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-30 15:30 (Europe/Brussels, UTC+01:00)**.
 
 ## Principe
 
@@ -226,6 +226,44 @@ Les lignes sont des **axes indépendants**, pas des paraphrases des hypothèses.
 Cette matrice rend les recouvrements visibles : H2 et H4 partagent l'axe
 « interprétation » et se distinguent par la provenance (déclarée vs observée) ;
 H1 et H5 partagent la sortie « plan » et se distinguent par le retour.
+
+## Une famille
+
+Une famille est un groupe de variantes qui testent **la même compétence du
+modèle**. Deux contraintes en découlent.
+
+1. **Une unité.** Les variantes d'une famille comptent pour une seule
+   observation dans le calcul. Huit variantes qui testent la même chose ne
+   valent pas huit preuves : elles valent une.
+2. **Indépendance.** Deux familles ne partagent ni simulateur, ni vocabulaire,
+   ni modèle de faille. Sinon on a la même famille répétée sous plusieurs noms,
+   et la répétition n'ajoute aucune preuve.
+
+**Le test de clôture.** Avant de mesurer une famille, une automatisation
+compétente — D1+, c'est-à-dire D1 augmenté de toutes les règles dérivables des
+entrées publiques — doit échouer. Si elle réussit, la famille ne mesure aucun
+apport du modèle. Le test doit être du code exécutable et hashé, pas une
+doctrine : c'est ce qui distingue une famille d'une intention.
+
+**Le filtre préalable.** Si la règle qui résout le cas s'écrit en une ligne,
+une automatisation l'aura. Le cas n'est pas une question d'interprétation, et le
+construire est une perte de temps. Ce filtre s'applique avant toute construction
+et coûte quelques minutes.
+
+**Pourquoi plusieurs familles.** Le calcul doit écarter le hasard. À trois ou
+quatre familles, même un modèle qui gagne partout ne permet pas de conclure :
+la probabilité que le hasard explique ce résultat reste au-dessus du seuil usuel.
+Il en faut cinq pour descendre en dessous.
+
+**Ce qu'une famille ne prouve pas.** Une famille mesure une compétence sur un
+mécanisme ; elle ne dit rien des autres. Une conclusion sur le programme exige
+plusieurs familles indépendantes qui vont dans le même sens.
+
+**Exemple de rejet.** La famille `s_registres_constructeur` a été construite
+puis rejetée le 2026-10-30 en une heure : son piège, un cache qui change sans
+commander, était franchi par une règle générique — lire les voisins. Le
+[compte rendu](../2026-10-30-famille-pilote-registres-constructeur/compte-rendu-rejet.md). Une famille future doit montrer, avant d'être construite,
+qu'aucune règle générique ne la franchit.
 
 ## Statut réel des familles
 

@@ -131,6 +131,68 @@ includes the commit, the fingerprints and the budgets, so two distinct families 
 two distinct configurations. Each configuration contains only one family, and the
 inference requires at least two.
 
+\subsection{A family built, then rejected in one hour}
+
+The report so far described the family as a concept. On 30 October 2026 a
+family was built far enough to be measured, and rejected. The record matters
+more than the rejection: it is the first time the project's own protocol
+produced a decision instead of a plan.
+
+\paragraph{What was built.} A register device serving twenty holding registers
+and as many input registers, a journal of raw reads and writes, a private
+oracle, and three arms: a declared rule set, a by-convention script, and a
+witness. The design passed six independent reviews, four revisions apart, and
+survived where earlier proposals had failed. Its addressing model was
+established against raw MBAP frames rather than a client object, after three
+successive models had been declared verified while reading the wrong offset.
+
+\paragraph{The trap.} Three registers were prepared. One commands something and
+changes when written; one is inert and does not change; the third is a cache ---
+it changes when written but commands nothing, and propagates its value into its
+neighbours. The by-convention arm reads the unit and the change: it classes the
+cache as a projection and scores two out of three. An arm reading the neighbours
+scores three out of three, and names the correct write in all three
+justifications.
+
+\paragraph{Why it was rejected.} Reading the neighbours is a rule, not an
+interpretation. Whether one places that rule inside the competent automation or
+outside it, the family measures nothing. Inside, the automation succeeds and the
+closure test rejects the family. Outside, the family measures an omission of the
+automation rather than a limit of interpretation. There is no third reading.
+
+The lesson is stated in the record as it happened: a trap that a rule crosses is
+not a question of interpretation. The filter that would have caught it applies
+in minutes and costs nothing:
+
+\begin{quote}
+If the rule that solves the case can be written in one line, a script will have
+it. Do not build the family.
+\end{quote}
+
+\paragraph{What survives the rejection.} Three findings remain, and they are
+what the next attempt inherits.
+
+First, absence can be deduced. A register that does not change when written,
+after a declared test, is attested as non-commanding without any observation
+labelled ``absent'' in the journal. Labelling would have put the answer in the
+journal.
+
+Second, a journal must be attributable. The probe exposed three defects of the
+same kind: a \texttt{null} value posing as an observation, reads that named no
+write, and a missing \texttt{before} phase that let a register inherit its
+neighbour's history. The rule now written is that no observation may belong to
+two causes.
+
+Third, the protocol works. Six reviews validated a design that one hour of
+observation rejected. The observation was cheaper than a campaign, and it
+produced a defensible negative result rather than a family that would have
+measured its own limit.
+
+\paragraph{What the rejection does not prove.} It does not refute H4. It shows
+that this mechanism, on this corpus, is crossed by a generic rule. A different
+mechanism could survive, and any future family on H4 must demonstrate before
+construction that no generic rule crosses it.
+
 \subsection{Campaign admission}
 
 The admission module combines pair conditions and campaign conditions. The

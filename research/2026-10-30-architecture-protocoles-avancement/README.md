@@ -20,7 +20,7 @@ fond ouvre désormais son propre dossier daté.
 
 ## Documents
 
-- [Rapport PDF](etat-2026-10-30.pdf) : **21 pages, en anglais**, résumé
+- [Rapport PDF](etat-2026-10-30.pdf) : **22 pages, en anglais**, résumé
   exécutif, deux figures d'ensemble, cinq parties rédigées par des volets
   spécialisés et relues contre le code, puis une synthèse transverse.
 - Source LaTeX et fragments éditables : [résumé et vue d'ensemble](partie-intro.tex),
