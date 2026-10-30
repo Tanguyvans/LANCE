@@ -3,11 +3,14 @@
 **Cycle de vie : Conclu — synthèse d'état** — rapport commencé le **2026-10-15**.
 C'est un état daté, pas une page de référence courante : il ne fait pas autorité
 sur le comportement actuel du système.
-Dernière révision : **2026-10-30 10:15 (Europe/Brussels, UTC+01:00)** —
-nouveau rapport [architecture, protocoles et avancement](etat-2026-10-30.pdf),
-19 pages, cinq volets relus contre le code ; le rapport du 15 octobre reste
-conservé ci-dessous.
+Dernière révision : **2026-10-23 14:33 (Europe/Brussels, UTC+02:00)** —
+retrait des jalons datés de novembre et décembre, sans changement de contenu
+technique.
 Statut : **bilan documentaire approfondi, résultats historiques attribués et travaux proposés identifiés**.
+
+**Successeur.** Le [rapport du 30 octobre 2026](../2026-10-30-architecture-protocoles-avancement/README.md)
+développe l'architecture et les protocoles que ce bilan survolait. Ce dossier-ci
+reste l'archive du premier bilan et n'est plus modifié.
 
 ## Question et périmètre
 
@@ -36,52 +39,6 @@ produit. Le résumé distingue les essais historiques déjà réalisés des
 comparaisons et gains scientifiques restant à établir.
 
 ## Documents et parcours de lecture
-
-### Rapport au 30 octobre 2026 : architecture, protocoles et avancement
-
-Cette révision développe ce que le premier rapport survolait et couvre les
-chantiers d'octobre.
-
-- [Rapport PDF](etat-2026-10-30.pdf) : **21 pages**, **en anglais**, résumé
-  exécutif et deux figures d'ensemble, cinq parties rédigées par des volets
-  spécialisés et relues contre le code, puis une synthèse transverse.
-- [Version française](archive-fr/etat-2026-10-30-fr.pdf) : conservée comme
-  archive ; elle précède la traduction et n'est plus maintenue.
-- Source LaTeX et fragments éditables : [résumé et vue d'ensemble](partie-intro.tex),
-  [architecture](partie-architecture.tex), [protocoles](partie-protocoles.tex),
-  [harnais](partie-harnais.tex), [infrastructure](partie-infrastructure.tex),
-  [benchmark](partie-benchmark.tex), [synthèse](partie-synthese.tex), assemblés
-  par [etat-2026-10-30.tex](etat-2026-10-30.tex). Compilation :
-  `latexmk -pdf etat-2026-10-30.tex`.
-
-La synthèse relève quatre contradictions entre volets, toutes vérifiées avant
-d'être retenues : le seuil du contrôle V0 n'est pas appliqué par la porte, le
-corpus H2 ne code pas le mode d'échec que le protocole décrit, le blocage de
-l'inférence n'est pas la condition d'admission mais l'absence de familles
-indépendantes, et la panne de routage du 29 octobre n'est consignée nulle part.
-
-### Rapport du 15 octobre 2026
-
-### Rapport au 30 octobre 2026 : architecture, protocoles et avancement
-
-Cette révision de fond développe ce que le premier rapport survolait et couvre
-les chantiers d'octobre.
-
-- [Rapport PDF](etat-2026-10-30.pdf) : **19 pages**, cinq parties rédigées par
-  des volets spécialisés, relues contre le code, puis synthèse transverse.
-- [Source LaTeX](etat-2026-10-30.tex) et fragments éditables
-  ([architecture](partie-architecture.tex), [protocoles](partie-protocoles.tex),
-  [harnais](partie-harnais.tex), [infrastructure](partie-infrastructure.tex),
-  [benchmark](partie-benchmark.tex), [synthèse](partie-synthese.tex)).
-  Compilation : `latexmk -pdf etat-2026-10-30.tex`.
-
-La synthèse relève quatre contradictions entre volets, toutes vérifiées avant
-d'être retenues : le seuil du contrôle V0 n'est pas appliqué par la porte, le
-corpus H2 ne code pas le mode d'échec que le protocole décrit, le blocage de
-l'inférence n'est pas la condition d'admission mais l'absence de familles
-indépendantes, et la panne de routage du 29 octobre n'est consignée nulle part.
-
-### Rapport du 15 octobre 2026
 
 - [Rapport PDF](report.pdf) : **44 pages**, huit figures éditables, dix tableaux,
   un glossaire et 136 références locales.
