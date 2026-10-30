@@ -111,8 +111,8 @@ is performed.
 \subsection{Corrections to the deployment script}
 
 The history of the script shows a tight sequence of commits on 29 October 2026.
-The founding version checked the host identity by a hard-coded address and
-required the root user.
+Until then, the script checked the host identity by a hard-coded address and
+required the root user; the first commit of that day removes both assumptions.
 
 \begin{table}[H]
 \centering
@@ -132,8 +132,10 @@ Commit & Correction & Cause addressed \\
 \end{table}
 
 Each correction corresponds to a concrete failure mode, not to an aesthetic
-refinement. The same identity logic now applies to the benchmark controllers, with
-an explicit suspension variable, and a dedicated test covers it.
+refinement. The same identity logic now applies to the benchmark controllers, which
+read the Tailscale interface through the shared helper and are covered by a
+dedicated test; a laboratory lock variable lets an operator suspend that check
+explicitly rather than by disabling the code.
 
 \subsection{The UMONS model and its relay}
 

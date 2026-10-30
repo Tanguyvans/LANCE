@@ -1,0 +1,90 @@
+\section{Vocabulary}
+
+The report uses a small vocabulary throughout. Each term is defined here, in the
+order a newcomer meets them, so that no later section has to introduce it.
+
+\subsection{What is compared}
+
+\begin{description}[leftmargin=3.1cm, style=nextline]
+\item[Policy (politique)] One way of carrying out an audit. The programme
+compares two: a declared automation and an agent driven by a language model.
+
+\item[Arm (bras)] One concrete implementation of a task inside a family. The
+arms share the briefing and the journal; only the interpreter changes. A family
+is typically run with four: the declared rules, a script reading by convention,
+the model, and a witness.
+
+\item[D1] The declared automation: the rules written explicitly for the task.
+\item[D1+] D1 \emph{augmented with every rule derivable from the public inputs}.
+This is the reference a model must beat for a result to mean anything. A
+competent reader who knows the briefing must not be able to state the rule; if
+they can, D1+ would have it, and the family measures nothing.
+
+\item[Family (famille)] A group of variants testing the same competence. Its
+variants count as a single observation, because they test one thing. Two
+families share no simulator, no vocabulary and no failure mechanism.
+
+\item[Closure test (test de clôture)] The check performed before measuring a
+family: a competent automation must fail. If it succeeds, the family measures
+nothing about the model and is rejected. The test must be executable code, not a
+doctrine.
+
+\item[Filter (filtre préalable)] The cheaper check that precedes construction: if
+the rule solving the case can be written in one line, a script will have it.
+\end{description}
+
+\subsection{What makes a result verifiable}
+
+The chain has four links, and each section of this report describes one of them.
+
+\begin{description}[leftmargin=3.1cm, style=nextline]
+\item[Briefing (public)] Everything given to an arm before it runs: the task, the
+target, the tools. It never contains the posture or the expected verdict.
+
+\item[Oracle (private)] The expected answer, written before the run and never
+shown to the arms. It states which state was installed and which fact is
+observable, never which decision the policy should return.
+
+\item[Witness (témoin)] A fresh value drawn when the fixture starts, whose value
+appears nowhere in the briefing. It proves that an observed disclosure is fresh
+and not a stale artefact.
+
+\item[Journal] The archived log of every tool call made during a run, with its
+arguments, its result and its reference. It is what the evaluator recounts; the
+policy's own conclusion is not trusted.
+
+\item[Evaluator (offline)] The program that rereads the journal and recomputes
+the outcome. A cited piece of evidence absent from the log is rejected.
+
+\item[Fixture] The state installed on the target before a trial: a healthy
+posture, a vulnerable one, or a frozen corpus read offline.
+\end{description}
+
+\subsection{How results are judged}
+
+\begin{description}[leftmargin=3.1cm, style=nextline]
+\item[Funnel] The three stages of a finding, in order: \texttt{candidates},
+\texttt{filtered}, \texttt{confirmed}. Only the last counts as a true positive.
+
+\item[Strict-v3] The normalised vulnerability contract and the metrics derived
+from it. The \texttt{confirmed.*} metrics count only findings whose evidence has
+been independently validated against the tool log.
+
+\item[Campaign admission] The set of conditions a campaign must meet before its
+results can be aggregated. When one is unsatisfied, the results remain
+descriptive and are declared as such.
+
+\item[V0] The validity gate placed before every hypothesis: a control task that
+is solvable without inference. If either arm fails it, no downstream result is
+readable.
+
+\item[H1 to H6] The six hypotheses of the register, each naming a kind of
+competence a model might have where a script does not. H2 is the only one
+measured; H4 is the one the rejected family attempted.
+
+\item[C2] A candidate scenario rejected after two adversarial reviews, on paper,
+before any run. Its rejection is a published negative result.
+
+\item[Posture] The state of a fixture with respect to security: healthy (no flaw
+installed) or vulnerable (flaw installed).
+\end{description}

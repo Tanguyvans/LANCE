@@ -12,6 +12,25 @@ writes a report. Two policies can carry out this audit: a rule-based automation
 and an agent based on a language model. The project seeks to determine which of
 the two succeeds better, with identical tools, evidence and budgets.
 
+The audit runs in six phases, each producing a deliverable the next one consumes:
+the topology graph, the reconnaissance, the vulnerability hypotheses, the
+exploitation attempts, the intrusion campaign, and the report. Every tool call
+passes through a single boundary that archives its arguments, its result and its
+cost in a journal; that journal, not the policy's own conclusion, is what the
+evaluator recounts.
+
+A run can use one of four execution modes. The full pipeline runs all six phases
+with a model. A rule-based mode replaces the model with declared rules for
+analysis and verification, on phases three and four only. A bare mode gives the
+model a bounded tool loop on an address range, without scenario or score. A
+scripted mode runs versioned deterministic procedures. Of the four, only the full
+pipeline is scored against a ground truth; the others produce results that are
+read but not benchmarked.
+
+The system runs in a laboratory: scenarios are deployed on a Proxmox host, audited
+over a dedicated network, then torn down. A browser interface, served by three
+instances, starts runs, streams their events and reads their results.
+
 \subsection{Where the project stands}
 
 \begin{table}[H]
@@ -57,16 +76,24 @@ declare it as such.
 \item \textbf{The opening condition.} Several families remain undecidable for lack
 of a written reference automation. Either write it, or explicitly renounce these
 families.
+
+\item \textbf{The comparable arm.} A comparison of the two policies supposes that
+both receive the same observations. Four mechanisms currently favour the rules:
+the phase-four probes only they may emit, a supplement that rewrites the scan
+files, the scanner findings added to every aggregation, and a benchmark score
+reserved for the full pipeline. Either give the model an equivalent access, or
+state that the comparison measures verification rather than interpretation.
 \end{enumerate}
 
 \subsection{How to read this report}
 
-Part~\ref{sec:architecture-pipeline} describes the path of an audit.
-Part~\ref{sec:protocoles} describes what makes a result verifiable.
-Part~\ref{sec:harnais-sandbox} describes the experimental tooling.
-Part~\ref{sec:infrastructure} describes the machine and the delivery.
-Part~\ref{sec:benchmark} establishes what is measured.
-The conclusion confronts these strands and notes their contradictions.
+Section~\ref{sec:architecture-pipeline} describes the path of an audit.
+Section~\ref{sec:protocoles} describes what makes a result verifiable.
+Section~\ref{sec:harnais-sandbox} describes the experimental tooling.
+Section~\ref{sec:infrastructure} describes the machine and the delivery.
+Section~\ref{sec:benchmark} establishes what is measured.
+The conclusion confronts these areas and notes their contradictions; it does not
+repeat the summary above.
 
 Each statement refers to the file that supports it. Behaviours that the code does
 not allow to be established are flagged as such rather than filled in.

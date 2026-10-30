@@ -144,21 +144,26 @@ family was built far enough to be measured, and rejected. The record matters
 more than the rejection: it is the first time the project's own protocol
 produced a decision instead of a plan.
 
-\paragraph{What was built.} A register device serving twenty holding registers
-and as many input registers, a journal of raw reads and writes, a private
-oracle, and three arms: a declared rule set, a by-convention script, and a
-witness. The design passed six independent reviews, four revisions apart, and
-survived where earlier proposals had failed. Its addressing model was
-established against raw MBAP frames rather than a client object, after three
-successive models had been declared verified while reading the wrong offset.
+\paragraph{What was built.} Not the family: a probe. One dossier of three
+registers --- one that commands something, one inert, one cache --- with real
+neighbour reads, test writes, and every read attributed to a single write. The
+probe applies two arms: a convention arm reading the unit and the change, and an
+arm reading the neighbours. Neither an oracle, nor the closure test, nor the
+eight dossiers were built: the rejection came first.
+
+What did exist before the probe was the design, and it resisted six recorded
+reviews. Its addressing model was established against raw MBAP frames rather
+than through a client object, and reproduced by three readers, including on a
+newer driver version. The earlier drafts had been checked by reading; the frames
+checked the offset the readings had assumed.
 
 \paragraph{The trap.} Three registers were prepared. One commands something and
 changes when written; one is inert and does not change; the third is a cache ---
 it changes when written but commands nothing, and propagates its value into its
 neighbours. The by-convention arm reads the unit and the change: it classes the
 cache as a projection and scores two out of three. An arm reading the neighbours
-scores three out of three, and names the correct write in all three
-justifications.
+scores three out of three, names the correct write for each register, and states
+why the cache is not a projection.
 
 \paragraph{Why it was rejected.} Reading the neighbours is a rule, not an
 interpretation. Whether one places that rule inside the competent automation or
@@ -237,9 +242,9 @@ absent, noise not encoded.
 \subsection{What is not demonstrated}
 
 Must not be written as established: the superiority of the LLM; a significant gap,
-since the inference tool produces a p-value unrelated to the gap and publishing such
-a figure would be a fault; generality, H2 covering only one schema, one question and
-one model; the cost gain, the exploratory pilot counting only one pair without an
+since no independent family exists to compute one, the inference tool being now
+repaired but left without anything to compute on; generality, H2 covering only one
+schema, one question and one model; the cost gain, the exploratory pilot counting only one pair without an
 interval; the validity of the threshold, not applied by the gate; and the integrity
 of the corpus, the official healthy control not being in the catalogue.
 
