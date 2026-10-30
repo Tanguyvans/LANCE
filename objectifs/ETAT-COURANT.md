@@ -32,7 +32,7 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 | V0, SSH | non couverte : dictionnaire d'identifiants fixe | `v0-protocole.md` |
 | H2, `s_mqtt_formats` | mesurée le 2026-10-22, 3 répétitions, 72 bras ; prédiction tenue mais **gain absorbé par un bras par convention** (0,5 contre 0,0 pour les parseurs déclarés, 1,0 pour le bras convention ; 1 dossier sur 2) | `research/2026-10-21-hypotheses-benchmark/h2-protocole.md` |
 | Pilotes SSH et MQTT | 6/6 pour les deux bras, 3 répétitions, `qwen3.8:27b` et `gemma4:26b-a4b-it` ; MoE ≈ 2× le coût et 1,3–1,7× la durée | runs `39465619725`, `39467657683`, `39480713050`, `39482737529` |
-| `s_api_organisations` | étude de cas de couverture, **non admise** (une famille, une répétition) | `benchmarks/experiments/api-reference/` |
+| `s_api_organisations` | étude de cas de couverture, **non admise** (une famille, une répétition). Ses deux fixtures ne constituent pas un contrôle positif de D1+ : la politesse filtrante ne renvoie aucun canari, si bien que `run_rules` et un bras qui énumère les collections renvoient tous deux `private_disclosed=False`. Le contrôle de D1+ est **en cours de revue** ; le fait source est la note du dossier de la famille pilote | `benchmarks/experiments/api-reference/`, `tests/test_api_reference.py::test_adaptation_crosses_the_collection_boundary_only_when_the_flaw_exists` |
 | Admission de campagne | `mt_admissible = false` ; `strict_v3_metrics_adopted` n'est jamais satisfait | `src/benchmark/v2_campaign.py` |
 | Inférence | unilatérale, corrigée le 2026-10-30 ; exige 5 familles pour décider, 3 pour produire un chiffre | `src/benchmark/inference.py`, `tests/test_inference.py` |
 | Familles H1, H3, H4, H5 | non ouvertes ; `s_chaines_identites` et `s_registres_constructeur` n'existent pas | registre d'hypothèses |
@@ -119,6 +119,16 @@ brutes collectées par le scanner et doit produire des constats étayés par une
 référence d'observation. Il ne reçoit ni les constats des règles, ni la vérité
 terrain, ni le nombre attendu de failles. L'écart entre `rules` et
 `llm_on_evidence` mesure alors la seule qualité d'interprétation.
+
+**Ce que ce bras exclut (tranché le 2026-10-30, à l'ouverture de la famille
+pilote).** Le modèle reçoit un **journal d'observations figé** et **aucun
+outil** : il ne peut pas sonder pour confirmer. La comparaison porte donc sur
+l'interprétation seule, et **la famille pilote ne mesure pas la vérification par
+sondes**. Ce n'est pas une limite qu'on espère régler plus tard : dès que le
+bras émet des sondes, il mesure « qui peut vérifier » et retombe dans le
+premier des quatre mécanismes ci-dessous. Mesurer les deux à la fois exige un
+design distinct — mêmes outils d'exécution des deux côtés, même budget de
+sondes, et une attestation d'égalité de budget.
 
 **Ce qui empêche aujourd'hui une comparaison honnête.** Quatre mécanismes du
 code avantagent `rules`, et chacun rendrait l'écart ininterprétable :

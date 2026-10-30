@@ -162,3 +162,23 @@ travail local se limite à lire, modifier, tester les unités hors ligne
 
 Pour commencer : [README](README.md), [recherches](research/README.md), [documentation](docs/README.md),
 [structure du pipeline](src/agent/phases/README.md) et [tests](tests/README.md).
+
+## Ne pas réinventer ce qui a échoué
+
+La section « Ce qui a déjà été essayé, et pourquoi ça n'a pas abouti » du cahier
+des charges de la famille pilote
+([`research/2026-10-30-famille-pilote-registres-constructeur`](research/2026-10-30-famille-pilote-registres-constructeur/README.md#ce-qui-a-déjà-été-essayé-et-pourquoi-ça-a-échoué))
+énumère des impasses déjà payées : regrouper les scénarios existants en familles,
+supposer un `family_id` significatif, écrire un scénario sans test de clôture
+exécutable, comparer deux bras qui n'ont pas le même pouvoir de vérification.
+Lire cette section avant tout nouveau scénario ou toute nouvelle comparaison.
+
+## Provenance des chiffres du code
+
+Un commentaire ou un markdown qui justifie une décision technique par un chiffre
+issu du code (couverture, sévérité, nombre d'entrées) doit citer l'artefact
+régénérable et sa date. Un chiffre copié à la main vieillit sans bruit : la
+comptabilité du corpus (84,4 % à signature, 282/288 dans l'index) a produit
+quatre valeurs différentes en trois semaines, compilées de trois manières et
+obsolètes dès qu'une entrée change sans régénération. Le chiffre se recalcule ou
+se cite avec sa date ; il ne se rédige pas.
