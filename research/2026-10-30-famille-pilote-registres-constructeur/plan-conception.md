@@ -1,298 +1,361 @@
-# Plan de conception — famille pilote `s_registres_constructeur` (révision 2)
+# Plan de conception — étude de cas `s_registres_constructeur` (révision 4)
 
-**Cycle de vie : Actif — plan de conception soumis à relecture** — ouvert le
-**2026-10-30**, dernière révision **2026-10-30 14:35 (Europe/Brussels, UTC+01:00)**.
+**Cycle de vie : Actif — plan de conception final avant code** — ouvert le
+**2026-10-30**, dernière révision **2026-10-30 14:50 (Europe/Brussels, UTC+01:00)**.
 
-> **Révision 2.** La révision 1 a été rejetée par deux relectures
-> indépendantes : neuf risques méthodologiques, sept techniques. Les
-> décisions qui suivent ont été prises par l'auteur du cahier des charges le
-> 2026-10-30. Ce document remplace la révision 1 ; les motifs de rejet sont
-> consignés dans `relectures.md`.
+> **Révision 4, la dernière avant le code.** Les quatre relectures
+> indépendantes des révisions 1 à 3 sont consignées dans `relectures.md`.
+> Décisions verrouillées par l'auteur du cahier des charges le 2026-10-30.
+
+> **Statut.** Cette famille est une **étude de cas de faisabilité**, hors
+> registre d'hypothèses, au même titre que `s_api_organisations`. Elle
+> **n'ouvre aucune hypothèse** ; elle établit la faisabilité d'une famille
+> indépendante et d'un test de clôture exécutable. Une ouverture ultérieure
+> de H3 ou H4 réutilisera ce mécanisme, avec le corpus élargi que
+> l'hypothèse exigera.
 
 ---
 
 ## 0. Décisions verrouillées
 
-| # | Décision | Motif | Levée par |
-| --- | --- | --- | --- |
-| D1 | **Interprétation seule, journal figé, aucun outil.** | Dès que le bras émet des sondes, la comparaison mesure « qui peut vérifier ». | R8 révision 1 |
-| D2 | **Vocabulaire = noms, jamais nature** : le libellé nomme une unité de mesure, pas un rôle. La règle de sécurité dépend de l'unité. | Une convention sur les rôles serait juste par hasard ; une échelle de valeurs (classe a) rendrait toute règle générique juste. | — |
-| D3 | **Le test de clôture vit avec la famille.** `src/benchmark/` ne reçoit que des primitives génériques. | — | — |
-| D4 | **Inférence inchangée** : la famille pilote est descriptive. Vingt registres sont vingt observations d'**une** famille. Aucune décision statistique ne peut en sortir, et la famille ne prétendra rien de tel. | l'inférence exige au moins trois familles pour émettre un chiffre et cinq pour décider ; la famille pilote ne lève rien. | arbitrage du 2026-10-30 |
-| D5 | **Rattachement à H4, avec un contraste réécrit.** Le registre ambigu est un problème de **sémantique**, pas d'extraction : un extracteur H3 lirait parfaitement le libellé et conclurait faux. Le contraste de H4 est **l'absence de table de correspondance côté LLM**, pas un catalogue identique aux trois bras. | révision 1 : catalogue identique ⇒ mesurait H3. | arbitrage du 2026-10-30 |
-| D6 | **Contrôle positif partiel assumé.** Il couvre `intentional_flaws` 0 et 1 ; il ne couvre pas les collections. Un bras écrit pour le contrôle ne prouve rien sur D1+. | `run_rules` ne lit jamais une collection. | arbitrage du 2026-10-30 |
-
-### D5 appliquée : ce que chaque bras reçoit
-
-| Bras | Documentation publique | Table de correspondance (libellé → unité) | Observations |
-| --- | --- | --- | --- |
-| **D1+** | oui | **oui** — la table lui est fournie, c'est sa condition de compétence | oui |
-| **Convention** | oui | non — il **devine** la table depuis le texte | oui |
-| **LLM** | oui | **non** — il lit le texte, exactement comme pour H4 | oui |
-| **Témoin de borne** (`bound`) | oui | oui | oui |
-
-Le **témoin de borne** est un bras à règles qui possède la table : il mesure
-si D1+ échoue *faute de table* ou *faute de règle*. S'il réussit et que D1+
-échoue, la cause est la table, donc le contraste de H4 est bien celui qui est
-mesuré. S'il échoue aussi, la famille est mal conçue et doit être rejetée
-avant toute mesure.
-
-**Ce que D5 exclut.** Si le LLM réussit à reconstruire la table depuis le texte
-public, la famille ne sépare plus rien : c'est un résultat, il rejette la
-famille au même titre que l'absorption par la convention.
-
----
-
-## 1. Modèle d'adressage — établi par trames brutes
-
-**Vérifié le 2026-10-30 sur le dépôt**, pymodbus 3.15.0, boucle locale, par
-trames MBAP brutes (le parcours exact du chemin de service est décrit ci-dessous).
-
-| Fait constaté | Preuve |
+| # | Décision |
 | --- | --- |
-| `ModbusServerContext` expose `simdevices` et `async_getValues` ; `async_getValues` renvoie `ExcCodes.DEVICE_BUSY` (6) sur le chemin 3.x déprécié. | `datastore/context.py`, `context.async_getValues(...)` → `6` |
-| Un serveur `ModbusTcpServer` construit avec `ModbusServerContext(devices={u: ModbusDeviceContext(...)})` **sert bien** ses registres. | `fc3 addr 10 unit 47` → `0x2332` = 9010, la valeur placée au registre 10 ; `fc6` accepté |
-| L'adresse n'est **pas** décalée par le bloc : un bloc déclaré à `lo` expose `lo` sur le fil, pas `lo-1`. | `fc3 addr 100` → **exception 02** ; `fc3 addr 10` → 9010. La révision 1 concluait `lo+1`, à tort. |
-| `ModbusSequentialDataBlock(0, ...)` lève `TypeError` (`address-1 = -1`). | `sequential.py` l.17-18 |
+| D1 | **Interprétation seule** : journal figé, aucun outil. La vérification par sondes n'est pas mesurée. |
+| D2 | **Vocabulaire = noms, jamais nature** : le libellé nomme une unité de mesure. |
+| D3 | **Le test de clôture vit avec la famille.** |
+| D4 | **Décompte par registre ambigu** ; aucune décision statistique. |
+| D5 | **Aucune hypothèse ouverte**, et **aucun effet revendiqué**, même si l'écart est là. |
+| D6 | **Contrôle positif partiel assumé** : couvre `intentional_flaws` 0/1, pas les collections. |
 
-**Le piège de la révision 1.** La sonde de révision 1 utilisait
-`ModbusSequentialDataBlock(lo + 1, …)` et lisait `[9912]` au registre 100.
-Ce chiffre venait de la **table de test** (valeurs sentinelles construites
-pour cet offset), pas du fil : le serveur répondait correctement à l'adresse
-100 d'une table décalée d'un cran, ce qui **donne l'impression** que
-l'écriture isole bien `n` alors que le registre réellement écrit n'était pas
-celui de la documentation. La vérification du relecteur technique a débusqué
-ce point, bien que sa description du mécanisme fût inexacte (elle invoquait
-`ModbusDeviceContext.async_getValues`, méthode absente dans la version
-installée) : le résultat mesuré, lui, est reproductible par trames brutes.
-
-**Règle retenue.** Le simulateur déclare `ModbusSequentialDataBlock(lo, …)` et
-expose l'adresse `lo` telle que la documentation de la famille la nomme.
-**Le test d'offset ne s'exécute pas via l'objet client** : il envoie des
-trames MBAP brutes et vérifie (a) que `n` change, (b) que `n-1`, `n+1` et le
-registre d'entrée de même adresse sont intacts, (c) qu'une adresse hors
-fenêtre renvoie **exception 02**. Un test qui passerait sur une table décalée
-doit échouer.
-
-**Portabilité.** `pymodbus==3.15.0` est épinglé dans un `requirements.txt`
-de la famille, la version est lue et imprimée dans le manifeste, et un test
-échoue hors intervalle. La 3.15 est retenue parce qu'elle est celle du dépôt,
-et parce que sa conversion `SimCore` est celle qui sert ; ce fait est testé,
-pas supposé.
+**Ce que cette étude ne rapporte pas, et l'écrira ainsi :** aucun écart de
+performance entre bras ; aucune inférence statistique ; aucune comparaison
+avec une autre famille ; aucune portée sur H3, H4 ou une autre hypothèse ;
+aucune extrapolation au-delà des huit dossiers ; aucune recommandation sur le
+choix d'une politique d'audit. Les scores par bras existent dans l'artefact
+de mesure, **jamais dans la conclusion**.
 
 ---
 
-## 2. Le journal : une capture enregistrée
+## 1. Historique des chemins faux, et le protocole qui les distingue
 
-Le journal **n'est pas** « ce que le scanner aurait produit » : ni le scanner
-(`nmap -sV -p 502`, `modbus-discover`) ni `modbus_write` ne relisent un
-registre. C'est une **capture enregistrée**, produite par le générateur de la
-famille, avec sa provenance et son hash.
+Trois chemins ont été déclarés « vérifiés » à tort, avant que le quatrième ne
+tienne devant trois relectures indépendantes.
+
+| # | Chemin | Ce que la sonde disait | Ce que la mesure complète a montré |
+| --- | --- | --- | --- |
+| 1 | `ModbusSequentialDataBlock(lo + 1, …)` | « écriture du registre 100 isolée » | Faux : les sentinelles étaient construites pour l'offset supposé. |
+| 2 | `ModbusSequentialDataBlock(lo, …)` | « pas de décalage » | Faux : `SimData(lo - 1, …)` ; `fc3 100` renvoie `valeurs[1]`. |
+| 3 | `SimDevice(unit, simdata=(co, di, hr, ir))` | « adresse exacte » | Inutilisable : quatre listes obligatoires, mode binaire forcé. |
+| 4 | **`ModbusSparseDataBlock`** | — | **Tient** : trois relectures indépendantes, sur 3.15.0 et 3.14.0. |
+
+**Cause commune.** Chaque sonde validait le décalage qu'elle supposait juste :
+valeurs construites pour cet offset, puis table à zéros. **Un test de fenêtre
+sur des zéros passe sur une table décalée.**
+
+**Protocole figé**, qui rend l'erreur détectable — il fait partie du test de
+clôture (étape 3) :
+
+1. Table à **valeurs toutes distinctes et non nulles** :
+   `hr[100+i] = 5000+i`, `ir[100+i] = 6000+i`.
+2. L'égalité porte sur **la valeur attendue à l'adresse documentée**, jamais
+   sur une valeur choisie après coup.
+3. Bornes vérifiées : `99` et `120` → **exception 02** ; `100` et `119` →
+   leurs valeurs.
+4. `fc4 addr 100` → `6000`, **différent** de `fc3 addr 100`.
+5. `fc3 addr 100 count=3` → `[5000, 5001, 5002]` ; `fc3 addr 99 count=3` →
+   exception.
+6. `fc6 addr 100 = 777` laisse `99`, `101` et `ir[100]` **exactement**
+   inchangés.
+7. **`fc3 addr 100` avec l'unité `9` → exception 04** : l'unité
+   d'identification filtre, et `hr` et `ir` coexistent sous une seule unité.
+
+---
+
+## 2. Adressage retenu et garde de version
+
+`ModbusSparseDataBlock` dans un `ModbusDeviceContext`, servi par
+`ModbusServerContext(devices={unit_id: device}, single=False)`.
+
+Mesure du 2026-10-30 (pymodbus 3.15.0, unité 47, trames MBAP brutes),
+reproduite à l'identique par deux relecteurs indépendants, et sur 3.14.0 :
+
+| Trame | Réponse |
+| --- | --- |
+| `fc3 99` | exception 02 |
+| `fc3 100` | 5000 |
+| `fc3 101` | 5001 |
+| `fc3 119` | 5019 |
+| `fc3 120` | exception 02 |
+| `fc4 100` | 6000 |
+| `fc3 100 c3` | `[5000, 5001, 5002]` |
+| `fc3 99 c3` | exception 02 |
+| `fc3 100 unit 9` | exception 04 |
+| `fc6 100 = 777` | `100 = 777` ; `99` exc 02, `101` = 5001, `fc4 100` = 6000 |
+
+**La sentinelle.** Le bloc déclaré construit **20 entrées** (100..119).
+`SimDevice.build_device` y ajoute une **sentinelle `DataType.INVALID`** en fin
+de bloc (soit 21 registres internes), identique pour tout bloc, **non exposée
+sur le fil** et **hors de l'oracle**. Ce n'est ni une définition d'adressage
+ni un objet de test : le test de fenêtre vérifie les **bornes** `99`, `100`,
+`119`, `120`, que la table seule définit.
+
+**Garde de version.** `benchmarks/experiments/registres-constructeur/requirements.txt`
+**à créer** (étape 1) avec `pymodbus==3.15.0`. Le test de garde échoue
+**explicitement**, jamais en saut silencieux :
+
+- `pymodbus.__version__ == "3.15.0"` — **égalité exacte** : `startswith` passe
+  sur 3.16, et une borne en chaînes échoue même sur la version correcte ;
+- les noms `ModbusSparseDataBlock`, `ModbusDeviceContext`,
+  `ModbusServerContext` sont importables depuis `pymodbus.datastore` ;
+- un aller-retour `fc3`/`fc6` réel sur la boucle locale reproduit la première
+  ligne du tableau ;
+- message d'échec nommant l'API attendue et l'API trouvée.
+
+Le garde **n'utilise pas** `pytest.importorskip` : un saut silencieux serait
+un succès non comptabilisé.
+
+---
+
+## 3. Le journal : capture enregistrée
+
+Ni le scanner (`nmap -sV -p 502`, `modbus-discover`) ni `modbus_write` ne
+relisent un registre. Le journal est une **capture enregistrée**, produite par
+le générateur de la famille.
 
 ```json
 {
   "schema_version": 1,
   "family": "s_registres_constructeur",
   "provenance": "recorded_capture",
-  "producer": {"sut": "fixture/sut.py", "sut_sha256": "…", "generator_sha256": "…",
-               "pymodbus": "3.15.0", "captured_at": "…", "seed_sha256": "…"},
+  "api": {"pymodbus": "3.15.0"},
+  "sut_sha256": "…", "generator_sha256": "…",
+  "seed": "<graine en clair>",
   "journal_sha256": "…",
-  "target": {"asset_id": "…", "ip": "…", "port": 502, "unit_id": 47},
-  "documentation": "…texte public, ou null…",
+  "unit_id": 47,
+  "window": {"hr": [100, 119], "ir": [100, 119]},
+  "initial_state": {"hr": {"100": 5000, "…": "…"}, "ir": {"100": 6000, "…": "…"}},
   "observations": [
-    {"observation_ref": "obs-0001", "kind": "holding_read", "address": 100, "value": 4120, "raw_type": "uint16"},
-    {"observation_ref": "obs-0002", "kind": "holding_write", "address": 100, "written": 4120, "read_back": 4120, "raw_type": "uint16"},
-    {"observation_ref": "obs-0003", "kind": "input_read", "address": 100, "value": 24, "raw_type": "uint16"}
+    {"seq": 1, "observation_ref": "obs-0001", "space": "hr", "kind": "read", "address": 100, "value": 5000},
+    {"seq": 2, "observation_ref": "obs-0002", "space": "hr", "kind": "write", "address": 100, "written": 5000, "read_back": 5000},
+    {"seq": 3, "observation_ref": "obs-0003", "space": "hr", "kind": "neighbour", "address": 99, "result": "exception_02"}
   ]
 }
 ```
 
-**Rejeu déterministe.** `replay(journal, sut) -> dict[ref, état observé]` :
-le générateur recrée la SUT à l'état initial, rejoue les `fc6` dans l'ordre
-d'`observation_ref`, lit chaque registre nommé **et ses voisins immédiats et
-son registre d'entrée**, et produit un état comparé **à l'identique** à
-celui du journal. Le rejeu est testé sur un cas vert et sur un cas falsifié
-(`written ≠ read_back`). Sans rejeu vert, le journal n'est qu'un
-enregistrement, pas une preuve.
+`window`, `unit_id`, l'API, `sut_sha256` et l'espace (`hr`/`ir`) sont
+**exigés** : sans eux, `initial_state` ne détermine pas l'état servi.
 
-**Ce que le journal ne contient jamais** : l'oracle, la classe (a/b/c), le
-nombre attendu de registres ambigus, la consigne de sécurité, la table de
-correspondance.
+**Rejeu.** `replay(journal, sut)` recrée la SUT depuis `initial_state` avec la
+fenêtre et l'unité déclarées, applique les écritures dans l'ordre de `seq`,
+relit chaque registre nommé, ses voisins et son registre d'entrée, et compare
+à l'identique. Testé sur un cas vert et un cas falsifié (`written ≠
+read_back`).
 
-**Types.** Le fait vérifiable est seulement « le registre accepte un entier
-0–65535 et le rend tel quel ». Aucun libellé de type (`float32_high_word`,
-etc.) n'est imposé : il était une pétition de principe en révision 1.
+**Ce que le journal ne contient jamais** : l'oracle, la classe, le nombre
+attendu de projections, la consigne de sécurité, la seed des tirages de la
+variante, ni la table de correspondance.
 
 ---
 
-## 3. Les huit dossiers, et le décompte
+## 4. Les huit dossiers
 
-Huit dossiers, `{référence, variante} × {sans, avec défaut}`. Chaque dossier
-contient **vingt registres ambigus** : un registre est ambigu lorsque son
-libellé nomme une unité de mesure et qu'une situation — un second libellé, une
-valeur, un comportement — peut le contredire. C'est le dénominateur du
-décompte : **vingt par dossier**, pas huit.
-
-| Dossier | Défaut ? | Ce qui est ambigu |
+| Dossier | Défaut ? | Ambiguïté |
 | --- | --- | --- |
-| `t01` (réf.) | non | aucun registre n'est ambigu : libellés, unités et valeurs concordent |
-| `t02` (var.) | non | mêmes unités, autres mots, ordre de configuration différent |
-| `t03` (réf.) | **oui** | vingt registres ambigus, dont **un** est réellement projeté |
-| `t04` (var.) | **oui** | même défaut, **place** de l'ambiguïté tirée par le générateur |
-| `t05` (réf.) | non | les vingt registres sont ambigus, aucune projection ; documentation complète |
-| `t06` (var.) | non | ambigus, aucune projection, **documentation partielle** |
-| `t07` (réf.) | **oui** | **documentation absente** : la table n'est pas fournie, seul le texte public reste |
-| `t08` (var.) | **oui** | défaut présent, **témoin de borne** nécessaire pour d'autres raisons (voir § 6) |
+| `t01` | non | aucune |
+| `t02` | non | mêmes unités, autres mots, ordre différent |
+| `t03` | **oui** | vingt ambigus, **un** porteur d'une projection |
+| `t04` | **oui** | même défaut, place tirée par le générateur |
+| `t05` | non | vingt ambigus, aucune projection, documentation complète |
+| `t06` | non | vingt ambigus, aucune projection, documentation partielle |
+| `t07` | **oui** | documentation absente |
+| `t08` | **oui** | documentation présente, majeure partie hors documentation |
 
-**F0 (témoin sain)** = `t01`, `t02`, `t05`, `t06`. `t01`/`t02` n'ont pas
-d'ambiguïté par construction ; `t05`/`t06` en ont mais leur oracle dit
-`none` : c'est le cas qui rejette un bras qui dit `projection` dès qu'un
-libellé est ambigu. Le taux de base est **4 dossiers sur 8** ; il est publié,
-et P1 ne peut donc se lire qu'à la marge au-dessus.
+**Génération, pour que deux implémenteurs obtiennent les mêmes fichiers.**
+Deux tirages indépendants :
 
-**Pool de registres.** Le générateur tire adresses, unités, ordre de
-configuration et valeurs d'une graine non publiée. Le pool de libellés est
-**commun à `t01`–`t08`** : la variante recombine, elle n'apprend pas d'un
-dossier à l'autre. Il contient **vingt fois plus de libellés** que de
-registres nécessaires, si bien que D1+ ne peut pas apprendre par cœur.
+- **tirage public** (la seed est dans `pre_register.json`, publiée après
+  préenregistrement, jamais transmise aux bras) : adresses,
+  unités, ordre de configuration, valeurs chiffrées, libellés de rôle ;
+- **tirage de variante** (secret, seulement hashé) : recombinaison pour
+  `t02`, `t04`, `t06`, `t08`.
+
+Le générateur est une fonction pure `generate(seed) -> {t01…t08}` ; un test
+recalcule les huit dossiers depuis la seule seed et échoue au moindre écart.
+
+**Pool de libellés.** Commun à `t01`–`t08`, vingt fois plus de libellés que
+nécessaire ; la variante recombine, elle n'apprend pas.
+
+**F0** = `t01`, `t02`, `t05`, `t06`, consigné comme **choix préenregistré**,
+pas comme témoin neutre : `t05`/`t06` portent une ambiguïté réelle sans
+projection.
 
 ---
 
-## 4. L'oracle privé
+## 5. L'oracle
 
-Table `(appareil, registre, classe, propriété attendue, preuve admissible)`.
+`(appareil, registre, espace, classe, statut attendu, preuve admissible)`.
 
-**Classes.** (a) décodage et (b) comportement observable sont des
-**témoins** : une erreur sur elles invalide la famille, elle ne se compare
-pas. Seule la classe (c) est mesurée. La révision 1 comptait l'échelle dans
-l'oracle de mesure ; elle est retirée. La règle générique sur le comportement
-observable est une **règle de témoin**, pas de classification.
+- **Classe (c)** : une propriété = **un registre × son statut** (`projection`
+  ou `none`) → **20 propriétés par dossier**.
+- **Classes (a) et (b)** : témoins, jamais mesurées comme résultat.
 
-**Preuve liée.** Une décision n'est attestée que si son `observation_ref`
-apparaît dans l'oracle **avec ses deux voisins immédiats et son registre
-d'entrée**, de sorte qu'un identifiant devinable ne suffit pas : le rejeu doit
-reproduire l'état cité.
+**`is_supported`, pseudo-code typé.**
 
-**Préenregistrement.** Avant tout run, `closure/pre_register.json` contient la
-version de D1+, de la convention et du témoin de borne, leurs `sha256`, le
-`journal_sha256` des huit dossiers, le `sha256` de l'oracle, la graine
-hashée, les seuils P1-P4, le taux de base et la liste des propriétés (c).
-Le rapport porte le `sha256` de ce fichier. **L'étape 5 n'exécute que les
-hashs du manifeste** ; toute réécriture d'un bras exige un nouveau
+```
+refs      : frozenset[str]        # observation_ref seules ; seq jamais accepté
+register  : tuple[str, int]       # (espace: "hr"|"ir", adresse)
+admissible(propriété) -> frozenset[str]   # NON VIDE, y compris pour statut "none"
+```
+
+```
+is_supported(answer, oracle):
+    erreurs = []
+    if answer.register not in oracle.registres:      erreurs += ["registre_inconnu"]
+    if answer.refs - journal.refs:                   erreurs += ["ref_inexistante"]
+    p = oracle.propriété(answer.register)
+    if answer.decision != p.statut:                  erreurs += ["statut"]
+    if answer.refs != p.admissible:                  erreurs += ["preuve_non_egale"]
+    return (not erreurs, erreurs)
+```
+
+Règles fermées :
+- une `ref` **en trop** ⇒ `preuve_non_egale` (pas de tolérance) ;
+- une `ref` **inexistante** au journal ⇒ `ref_inexistante`, réponse
+  **rejetée**, jamais d'exception ;
+- pour un statut `none`, l'ensemble admissible **n'est jamais vide** : il
+  contient la lecture qui montre l'absence de projection (voisin, registre
+  d'entrée, exception). Sinon la seule réponse possible serait
+  `undetermined`, donc `inconclusive` par construction ;
+- une réponse **non soutenue** (`is_supported` faux) est
+  `unsupported_finding`, comptée dans P3, **jamais un succès**.
+
+---
+
+## 6. Les bras
+
+| Bras | Reçoit | Interdiction |
+| --- | --- | --- |
+| **D1+** | journal, documentation, table | **11 règles maximum, 60 requêtes maximum**, déposées et hashées à l'étape 1 |
+| **Convention** | journal, documentation | aucune clé du corpus ; test exécuté qui l'établit contre `t01`–`t08` |
+| **Témoin de borne** | journal, documentation, table | — |
+| **LLM** | journal, documentation | aucun outil |
+| **Aléatoire** | rien d'utile | script seedé déposé à l'étape 1, **borne inférieure descriptive**, pas un critère d'issue |
+
+Les sorties des cinq bras sont **écrites** à l'étape 5 et **ne sont pas
+comparées** dans la conclusion (§ 7).
+
+---
+
+## 7. Le test de clôture
+
+### Fonction de verdict, pure et déterministe
+
+```
+verdict(journal, oracle, sortie_d1plus, sortie_convention, sortie_temoin,
+        sortie_aleatoire) -> verdict
+```
+
+Aucune horloge, aucun fichier hors ceux du manifeste, aucun paramètre laissé
+au juge. **`found_by_design` n'existe pas** : il n'existe qu'un cas où les
+règles battent le test, et c'est `d1plus_succeeds`, vérifié par une égalité,
+pas par un jugement de mérite.
+
+### Le critère d'issue est binaire : **l'instrument discrimine ou il ne discrimine pas**
+
+Sur les **20 registres à projection** :
+
+1. **le témoin de borne obtient exactement le score de l'oracle** — la
+   réponse est atteignable ;
+2. **le bras convention ne reproduit pas le témoin sur au moins un registre**
+   — le poste n'est pas trivial ;
+3. **les sorties des deux bras à règle ne sont pas identiques au témoin sur
+   l'ensemble des registres** — l'instrument sépare.
+
+Trois **égalités sur des ensembles**, aucun seuil, aucun α. Le bras aléatoire
+est une **borne inférieure préenregistrée pour l'analyse descriptive** et
+n'entre dans aucune de ces trois conditions.
+
+### Table de vérité, exhaustive et exclusive
+
+Ordre de priorité explicite, évalué de haut en bas ; le premier satisfait
+l'emporte :
+
+| Priorité | Verdict | Condition (égalités sur ensembles) |
+| --- | --- | --- |
+| 1 | `closed` | un bras conclut un statut **attesté** différent de l'oracle sur au moins un registre |
+| 2 | `d1plus_succeeds` | D1+ conclut le bon statut, **attesté**, sur au moins un registre à projection |
+| 3 | `not_binary_issue` | les trois conditions de discrimination ne sont pas **toutes** satisfaites |
+| 4 | `inconclusive` | un bras rend `undetermined` sur une propriété (c) ; un serveur absent ou une `EvidenceWriteError` en posture de contrôle ; préenregistrement incomplet |
+| 5 | `discriminates` | les trois conditions de discrimination sont satisfaites, et aucun cas 1 à 4 |
+
+`undetermined` **n'est jamais neutre** : il tombe dans `inconclusive`, donc
+dans une issue non favorable.
+
+### Contrôle positif PC-a
+
+Rapporté à **`benchmarks/experiments/api_reference.py`, `run_rules`, ligne
+186** (`EvidenceWriteError` levé ligne 239). **Ne pas** confondre avec
+`mqtt_formats.py:326`, qui est la fonction H2.
+
+Trois issues distinctes, mesurées par la relecture technique :
+
+- **nominal** : `status=completed`, `finding=false` dans les deux postures ;
+- **serveur absent** : `status=completed, finding=false` — **indiscernable
+  d'un F0 réussi** si l'on ne vérifie que `status`. Le test de clôture exige
+  `control_proven` et `inventory_proven` **issus du journal**, sinon
+  `inconclusive` ;
+- **journal non inscriptible** : `EvidenceWriteError` levée, sans `status` ni
+  `error_type`. L'assertion vise donc `pytest.raises(EvidenceWriteError)`
+  et la présence d'au moins une observation archivée, jamais
+  `exc.value.status` (qui lèverait `AttributeError`).
+
+**PC-b non couvert** : `run_rules` ne lit jamais une collection. Le contrôle
+est **partiel** et l'est déclaré.
+
+### Préenregistrement
+
+`closure/pre_register.json`, écrit **avant toute fixture**, contient : les
+hashs de D1+ (11 règles, 60 requêtes), de la convention, du témoin et du bras
+aléatoire ; les hashs des huit journaux et de l'oracle ; la **graine en
+clair** ; la table de vérité du § 7 ; les seuils P1-P4 et le taux de base ; la
+série attendue du bras aléatoire.
+
+**Une fois l'étape 2 passée, la grille est fermée.** L'étape 5 n'exécute que
+les hashs du manifeste ; toute réécriture d'un bras exige un nouveau
 préenregistrement complet, et la mesure précédente est jetée.
 
----
-
-## 5. Le test de clôture
-
-```
-verdict ∈ {closed, absorbed, found_by_design, inconclusive, qualified}
-```
-
-**Même grille pour les quatre bras** (R2) :
-
-| Verdict | Condition | Conséquence |
-| --- | --- | --- |
-| `closed` | D1+ ou le témoin de borne conclut `projection` sur un dossier dont l'oracle dit `none` (ou l'inverse) | rejet consigné |
-| `found_by_design` | D1+ conclut correctement `projection` (attestée) sur au moins un dossier où l'oracle dit `projection` | rejet consigné : la famille ne mesure rien |
-| `absorbed` | la convention devine **au moins aussi bien que D1+** sur la classe (c) — même nombre de propriétés attestées — donc impossible de parler d'un gain du LLM | rejet consigné |
-| `inconclusive` | tout bras rend `undetermined` sur une propriété (c), ou le préenregistrement est incomplet | rejet consigné : pas de mesure |
-| `qualified` | la convention devine **moins bien** que D1+ sur (c) ; tous les bras sont exacts sur les témoins (a)/(b) | passage à l'étape 6, puis point d'arrêt |
-
-**Le mode « abstention » est déclaré, pas implicite (R1).** Un bras a le droit
-de répondre `undetermined`. Un `undetermined` sur une propriété (c) rend le
-test `inconclusive`, **ce qui rejette la famille** : il ne peut jamais servir
-à la qualifier. La révision 1 laissait un D1+ prudent obtenir `inconclusive`
-sans conséquence ; ce trou est fermé.
-
-**Un `no_projection` sans preuve de la non-projection** est `unsupported_gap`,
-compté à part des faux négatifs, et ne vaut jamais un succès.
-
-**Contrôle positif (D6).** Deux sous-contrôles, tous deux **sur le comportement
-de D1+**, pas sur un bras écrit exprès :
-
-- **PC-a** : sur la politique protégée (`intentional_flaws = 0`), `run_rules`
-  réussit et ne cite aucune divulgation ; sur la vulnérable
-  (`intentional_flaws = 1`), il échoue sans en citer. Si l'un des deux n'est
-  plus vrai, le contrôle est cassé.
-- **PC-b (non couvert)** : la fuite par col­lection n'est **pas** détectée par
-  `run_rules`, qui ne lit que `/v1/objects/{id}`. Le contrôle est
-  **partiel** et l'est déclaré : il ne mesure pas une famille dont la règle
-  de sécurité porte sur un canal que les règles ne peuvent pas inspecter.
-  C'est une raison de plus de mesurer l'interprétation.
-
-Le contrôle est déclaré valide quand PC-a passe. La révision 1 annonçait un
-contrôle complet ; il ne l'est pas, et le renoncement est écrit ici.
+Les fichiers cités ici — `requirements.txt`, `closure/manifest.json`,
+`pre_register.json`, dossier `benchmarks/experiments/registres-constructeur/` —
+**n'existent pas encore** et sont créés aux étapes 1 et 2.
 
 ---
 
-## 6. Les quatre bras
-
-### D1+ — compétent, mais sans table
-
-`run_d1plus(journal_for_d1plus)` reçoit **le journal, la documentation et la
-table de correspondance**. Ses règles sont versionnées, une par ligne, chacune
-avec sa `derived_from`. Sa limite est **déclarée** : sans la table, il ne
-peut pas rattacher un libellé à une unité, donc il doit s'abstenir
-(`undetermined`) sur une désignation qu'il ne résout pas. **C'est cette
-limite qui fait échouer la clôture si elle est fausse.**
-
-Le **témoin de borne** (`bound`) reçoit la même table et applique la règle
-complète ; il ne sert qu'à séparer l'absence de table de l'absence de règle,
-et il n'entre dans aucun prédicat.
-
-### Convention élargie — obligatoire dès la conception
-
-`run_convention(journal)` devine, **sans aucune clé du corpus**, la classe
-d'unité depuis le texte. Il n'applique pas la règle de sécurité fine : il
-conclut `projection` sur le premier registre qu'il croit porteur d'une
-quantité facturée. Il ne contient **aucun** libellé, adresse ou identifiant de
-la famille, et un **test exécuté** vérifie qu'aucune clé du corpus n'y figure
-(contre `t01`–`t08`).
-
-**Il est écrit et hashé avant `t03`–`t08`.** La révision 1 pouvait le
-réécrire après coup ; cette révision l'écrit en même temps que D1+, et l'étape
-5 refuse tout manifeste dont les hashs ne correspondent pas.
-
-### LLM — sans table, avec le texte
-
-Le prompt contient le journal, la documentation ; **il ne contient pas la
-table de correspondance** (D5). Le modèle rend
-`{decision, register, refs, raw_type}`. Une `projection` sans
-`observation_ref` admissible est `unsupported_finding`.
-
-### Budget
-
-P4 est reformulé : le budget n'est pas un nombre de tentatives (le LLM n'a
-pas d'outils), c'est la **longueur du journal**. Trois passages : 40, 120,
-360 observations. P4 exige que l'écart ne dépende pas du journal. La
-révision 1 exigeait « 1, 3 puis 10 tentatives » sans mécanisme.
-
----
-
-## 7. Prédicats
+## 8. Prédicats (descriptifs, aucune décision statistique)
 
 | # | Prédicat | Mesure |
 | --- | --- | --- |
-| P1 | A1 > D1+ sur la **justesse attestée**, classe (c), **par registre** | propriétés (c) attestées / 20 par dossier ; gain contre D1+ **et** contre la convention ; **descriptif**, aucune p-value |
-| P2 | Égalité des bras sur les témoins (a) et (b) | **succès commun** exigé, pas une simple égalité ; tout écart rejette la famille |
-| P3 | Faux positifs « sémantique inventée » ≤ τ | τ = 1 / 4 dossiers F0 ; **étalonné sur `t01`–`t08`, pas sur des fixtures d'entraînement séparées** |
-| P4 | L'écart ne dépend pas du budget | passages à journal de 40, 120 et 360 observations |
+| P1 | A1 > D1+ sur la justesse attestée, classe (c), par registre | propriétés attestées / 20 ; **descriptif** |
+| P2 | Succès commun sur les témoins (a) et (b) | aucun écart entre bras |
+| P3 | Faux positifs « sémantique inventée » | τ = 1 / 4 dossiers **à défaut** (`t03`, `t04`, `t07`, `t08`) ; `unsupported_finding` compte comme faux positif |
+| P4 | Écart indépendant du budget | journal de 40, 120, 360 observations ; **taux d'attestation** = propriétés attestées / 20 par dossier ; seuil X préenregistré, ne décroît pas de plus de X points |
+
+P1 et P4 sont des **descriptions**, pas des tests : aucun p-value, aucune
+décision.
 
 ---
 
-## 8. Ordre des livrables
+## 9. Ordre des livrables
 
-| Étape | Livrable | Artefact vérifiable |
-| --- | --- | --- |
-| 0 | **Ce plan, deux relectures** | `relectures.md` |
-| 1 | D1+, convention, témoin de borne | `closure/manifest.json` |
-| 2 | Test de clôture + préenregistrement + contrôle PC-a | `pre_register.json`, `tests/test_closure.py` |
-| 3 | Simulateur et modèle d'adressage par trames brutes | `tests/test_registre_simulator.py` |
-| 4 | Huit dossiers, oracle, rejeu | `journal-t0N.json`, `oracle/t0N.yaml` |
-| 5 | **Passage du test de clôture** | `closure-report.json` ; si `closed`, `found_by_design` ou `absorbed` → **arrêt**, rejet consigné |
-| 6 | Mesure quatre bras, trois passages de budget | journaux de runs |
-| 7 | Conclusion P1-P4 ou « non qualifiée » | rapport anglais |
+| Étape | Livrable |
+| --- | --- |
+| 0 | Ce plan ; relectures consignées |
+| 1 | D1+ (11 règles, 60 requêtes), convention, témoin, aléatoire, SUT, `requirements.txt`, garde de version |
+| 2 | `pre_register.json`, fonction de verdict, PC-a (y compris serveur absent et `EvidenceWriteError`) |
+| 3 | Test d'adressage par trames brutes, protocole § 1 en 7 points |
+| 4 | Huit dossiers par `generate(seed)`, oracle, rejeu |
+| 5 | **Passage du test de clôture** : `discriminates` ou issue alternative consignée |
+| 6 | Mesure descriptive : **annexe**, jamais la conclusion |
+| 7 | Conclusion : faisabilité établie ou non ; famille non admise dans la campagne |
 
-**Point d'arrêt réel.** Toute issue autre que `qualified` arrête la famille à
-l'étape 5 et se consigne dans `README.md` et l'index.
+**Aucune conséquence de l'étape 5 ne ressemble à une ouverture d'hypothèse.**
+L'issue dit que l'instrument fonctionne ou non, jamais qui gagne.

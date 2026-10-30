@@ -1,8 +1,18 @@
 # Famille pilote `s_registres_constructeur` : cahier des charges
 
-**Cycle de vie : Actif — cahier des charges** — étude ouverte le **2026-10-30**.
-Dernière révision : **2026-10-30 13:35 (Europe/Brussels, UTC+01:00)**.
-Statut : **spécification à exécuter en session dédiée ; aucune fixture, aucun run.**
+> **Rejetée le 2026-10-30.** Cette famille ne mesure rien : le piège du cache
+> est franchi par une règle générique (« lire les voisins »), donc elle
+> mesure l'exhaustivité de D1+, pas une limite de l'interprétation. Le
+> cahier des charges ci-dessous est **conservé comme archive de sa
+> spécification**, non modifiée. Le dispositif cette famille n'a pas pu
+> produire est décrit dans le [compte rendu de rejet](compte-rendu-rejet.md),
+> qui fait foi sur l'état du sujet.
+
+**Cycle de vie : Conclu — rejet** — étude ouverte le **2026-10-30**, close le
+**2026-10-30**. Dernière révision : **2026-10-30 13:35 (Europe/Brussels, UTC+01:00)**
+pour le cahier des charges ; **[compte rendu de rejet](compte-rendu-rejet.md)**
+rédigé le **2026-10-30 15:20 (Europe/Brussels, UTC+01:00)**.
+Statut : **famille rejetée ; aucune fixture, aucun run, aucune mesure.**
 
 ## Question et périmètre
 
