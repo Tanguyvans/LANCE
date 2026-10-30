@@ -256,6 +256,44 @@ certifient ni une véritable installation Node-RED ni l'exécution d'un flow.
 Le comportement reste à vérifier sur nato après déploiement ; les scores et
 références des runs historiques ne sont pas modifiés.
 
+### Hypothèses et preuves MQTT sur WebSocket
+
+Un HTTP 101 est une observation de négociation de transport. Il ne confirme
+pas l'acceptation MQTT, l'abonnement ou la réception de messages. Le scanner
+conserve cette observation comme hypothèse `suspected` sur l'IP, le port et
+le chemin exacts. Seul un résultat natif `mqtt_ws_listen` satisfaisant le
+contrôle de preuve existant (attestation de destination, CONNACK, SUBACK et
+PUBLISH complet sans authentification) confirme `no_auth`. Une réponse d'un
+autre hôte, port ou chemin ne peut pas être réutilisée. Les diagnostics de
+service réellement non couvert restent visibles ; cette correction ne crée
+aucun alias `tor-orport` vers MQTT et ne réécrit pas les anciens runs.
+Sur les endpoints de la matrice MQTT, le scanner peut ensuite exécuter une
+souscription native bornée (`count=1`, `timeout=5`) si sa négociation HTTP fraîche
+est complète : destination et chemin exacts sans redirection, en-têtes Upgrade
+et Connection, version 13 et Sec-WebSocket-Accept apparié à la clé envoyée selon
+[RFC 6455](https://www.rfc-editor.org/rfc/rfc6455#section-4.2.2).
+Le nom de service incertain rapporté par Nmap n'est résolu que si une preuve
+applicative native complète est enregistrée sur ce même port TCP. Le reçu garde
+`resolved_services`, le nom original et le motif de résolution. Un refus, un
+outil absent, une panne ou un résultat sans message complet reste diagnostiqué ;
+HTTP seul ne certifie jamais MQTT. Cela ajoute une sonde effective, dont la durée
+et la charge restent à vérifier sur NATO ; les budgets du profil ne changent pas.
+Voir le [journal des corrections](../../../research/2026-10-05-corrections-lance/README.md).
+
+### Couverture DNS du scanner
+
+Les services `domain` et `dns` disposent d'une sonde fraîche `nmap_scan`
+avec `dns-nsid`, sur le port et le transport déclarés ou observés. UDP
+reste limité au port demandé ; TCP ne se transforme pas en UDP ; un transport absent ou inconnu reste
+une erreur de couverture. Cette sonde
+interroge les informations NSID, `id.server` et `version.bind`, conformément
+au [script Nmap](https://svn.nmap.org/nmap/scripts/dns-nsid.nse)
+(source consultée le 5 octobre 2026). Elle ne teste ni transfert de zone ni
+récursion et n'ajoute aucune vulnérabilité automatiquement. L'absence de
+réponse NSID ne prouve pas l'absence d'un service DNS ni sa sécurité ; une
+indisponibilité d'outil ou erreur d'exécution conserve le statut partiel.
+Voir le [journal des corrections](../../../research/2026-10-05-corrections-lance/README.md).
+
 ### Interprétation des erreurs d'outils
 
 Le statut du scanner et le compteur global `total_tool_errors` distinguent
@@ -263,9 +301,14 @@ l'échec d'exécution du résultat d'un audit. Les codes 2/3 de `ssh-audit`, ave
 une sortie d'audit, signalent des avertissements/faiblesses ; ils ne rendent pas
 la phase partielle à eux seuls. Le code 27 de `mqtt_listen`, accompagné de
 l'interprétation de fin d'écoute du wrapper, signifie que la fenêtre d'écoute
-est terminée. Les interruptions du processus, refus d'authentification et
-erreurs de connexion restent comptés comme erreurs. Une écoute sans message
-reste non concluante : cette distinction ne confirme aucune vulnérabilité.
+est terminée. Un refus MQTT natif avec code entier 5, interprétation
+`connection_refused_auth_required`, stdout vide et message explicite du broker
+« Connection Refused: not authorised » est un test d'accès négatif achevé.
+Il ne confirme ni accès anonyme ni vulnérabilité. Une sortie contradictoire,
+un code non reconnu, une interruption ou une erreur de connexion restent
+comptés comme erreurs. Une écoute sans message reste non concluante.
+L'argumentation et les limites sont suivies dans la
+[recherche sur les corrections LANCE](../../../research/2026-10-05-corrections-lance/README.md).
 Les résultats et codes d'origine sont conservés dans le journal des outils.
 Pour le listener WebSocket MQTT optionnel sur 9001, le scanner conserve d'abord
 la sonde de port. Si elle réussit et observe explicitement un port fermé qui

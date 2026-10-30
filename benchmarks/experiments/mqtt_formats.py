@@ -439,7 +439,7 @@ def evaluate(dossier, oracle, answer, journal):
             "expected_conclusion": oracle["conclusion"],
             "conclusion_correct": conclusion_correct,
             "contradiction": contradiction,
-            # A right conclusion read from wrong verdicts is not an étayée one.
+            # A right conclusion read from wrong verdicts is not a proven one.
             "success": conclusion_correct and not contradiction and not wrong,
             "messages": total, "correct": correct, "wrong": wrong,
             "abstained": abstained, "coverage": correct / total,

@@ -1,6 +1,8 @@
 """Phase 3: protocol scanners and bounded evidence extraction."""
 import json
 
+import pytest
+
 
 def test_compact_mode_requires_protocol_evidence_for_ot_ports_and_preserves_full_mode():
     from src.agent import scanner as scanner_mod
@@ -323,7 +325,7 @@ def test_nmap_service_labels_tor_orport_and_domain_have_scanner_rules():
     device = {
         "id": "router", "ip": "192.0.2.1", "role": "test-role",
         "services": [
-            {"name": "domain", "port": 53},
+            {"name": "domain", "port": 53, "protocol": "tcp"},
             {"name": "tor-orport", "port": 9001},
         ],
     }
@@ -331,6 +333,24 @@ def test_nmap_service_labels_tor_orport_and_domain_have_scanner_rules():
     scanner_mod.scan_device(device, tools_map, diagnostics=diagnostics)
     assert diagnostics == []
     assert {call.get("ports") for call in calls} >= {"53", "9001"}
+
+
+def test_dns_label_without_transport_is_reported_not_guessed():
+    """A DNS service without a declared transport is never probed.
+
+    The scanner cannot know whether the endpoint speaks dns over tcp or udp,
+    so it reports the missing transport instead of substituting one.
+    """
+    from src.agent import scanner as scanner_mod
+
+    device = {
+        "id": "router", "ip": "192.0.2.1", "role": "test-role",
+        "services": [{"name": "domain", "port": 53}],
+    }
+    diagnostics = []
+    scanner_mod.scan_device(device, {"nmap_scan": lambda **kw: pytest.fail("no transport guessed")},
+                            diagnostics=diagnostics)
+    assert diagnostics == ["router: unsupported DNS transport unspecified"]
 
 
 def test_repeated_tool_failures_fold_into_one_counted_error():
@@ -480,7 +500,7 @@ class TestScannerEvidenceExtraction:
         assert len(findings) == 1
         assert findings[0]["type"] == "no_auth"
         assert findings[0]["severity"] == "HIGH"
-        assert findings[0]["exploitation_status"] == "confirmed"
+        assert findings[0]["exploitation_status"] == "suspected"
         assert "no_auth" in CANONICAL_TYPES
         assert "no_auth" not in NOISE_TYPES
 

@@ -160,7 +160,7 @@ The result must contain all five model IDs before configuring OpenWebUI.
 
 ## Access from a remote LANCE application
 
-The dashboard on `nato-master` (`100.103.253.86:8501`) runs on a different host.
+The dashboard on `nato-master` (`nato-master:8501`) runs on a different host.
 The HMoE process remains bound to `172.17.0.1` so OpenWebUI can reach it without
 exposing the API on every interface. A socket-activated proxy publishes the same
 process only on the GPU host's Tailscale address:

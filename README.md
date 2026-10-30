@@ -35,9 +35,9 @@ first implementation: analysis and verification from a shared public inventory,
 with a no-LLM policy and a separate paired comparator.
 
 Current submission objective: [AsiaCCS 2027](objectifs/asiaccs-2027/README.md)
-(round 2, 11 December 2026) — target and proven-contribution requirements. The
-submission decision follows a written condition (readable manuscript, ready
-artifact), not an internal date.
+(round 2) — target and proven-contribution requirements. The submission decision
+follows a written condition (readable manuscript, ready artifact), not a
+calendar date.
 
 Resuming work: [current state and task plan](objectifs/ETAT-COURANT.md) — where
 the repository stands, what is ready, what runs in parallel and what is strictly

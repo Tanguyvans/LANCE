@@ -132,9 +132,10 @@ def test_require_nato_refuses_a_foreign_runner(monkeypatch):
         live.require_nato()
     monkeypatch.setenv("RUNNER_NAME", "nato-master")
     monkeypatch.delenv("LANCE_API_LOCK_HELD", raising=False)
-    # The runner identity is checked through `ip`; this host may not provide it.
-    monkeypatch.setattr(live.subprocess, "check_output", lambda *a, **k: json.dumps(
-        [{"addr_info": [{"local": "100.103.253.86"}]}]))
+    # The runner identity is the presence of a Tailscale address, not one
+    # memorised value: a rebuilt container receives a new one.
+    import src.agent.core.runtime as runtime
+    monkeypatch.setattr(runtime, "tailscale_identity_present", lambda: True)
     with pytest.raises(RuntimeError, match="laboratory lock"):
         live.require_nato()
 

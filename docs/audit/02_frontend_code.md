@@ -1,5 +1,9 @@
 # 02 — Code JavaScript du dashboard (`src/static/app.js`)
 
+> **Archive du 2026-07-05 — ne décrit plus l'état courant.**
+> `app.js` compte aujourd'hui plus de 4 100 lignes : tous les numéros de ligne cités
+> ci-dessous ont changé. Le fichier est conservé comme trace de l'audit, pas comme référence.
+
 Fichier principal : `src/static/app.js` (~2612 lignes). Points déjà **corrects** (vérifiés, ne rien
 faire) : `renderMarkdown` échappe le HTML avant d'appliquer le markdown inline et ne parse ni liens
 ni images (pas d'injection `javascript:`) ; tous les `JSON.parse` sont sous try/catch ; aucun

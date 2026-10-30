@@ -1,0 +1,91 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\frenchsetup{SmallCapsFigTabCaptions=false}
+\usepackage{lmodern,microtype,amsmath}
+\usepackage[margin=23mm]{geometry}
+\usepackage{booktabs,array,tabularx,longtable}
+\usepackage{xcolor,tikz,enumitem,float}
+\usepackage{hyperref}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\definecolor{ink}{HTML}{1F242C}
+\definecolor{muted}{HTML}{5C626C}
+\definecolor{line}{HTML}{D9DEE5}
+\definecolor{accent}{HTML}{AF0032}
+\definecolor{rose}{HTML}{FDF0F4}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=ink,
+ pdftitle={LANCE : architecture, protocoles et état d'avancement},
+ pdfauthor={Projet LANCE},pdflang={fr-FR}}
+\urlstyle{same}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\DeclareRobustCommand{\code}[1]{{\small\path{#1}}}
+\newcommand{\source}[2]{\href{../../#1}{\nolinkurl{#1}}. #2}
+\newcommand{\revision}{2026-10-30 09:00 (Europe/Brussels, UTC+01:00)}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=5mm,topsep=3pt}
+\clubpenalty=10000 \widowpenalty=10000
+\setcounter{tocdepth}{1}
+
+\title{LANCE\\[4pt]
+\large Architecture, protocoles et état d'avancement\\[2pt]
+\normalsize Rapport au 30 octobre 2026}
+\author{Projet LANCE\\\small Rédaction par volets spécialisés, relecture et synthèse indépendantes}
+\date{Dernière révision : \revision\\[3pt]
+\small État documentaire au 30 octobre 2026 ; aucune expérience nouvelle rapportée}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+LANCE est une plateforme d'audit de sécurité de réseaux d'objets connectés
+autorisés, développée dans le cadre des travaux UMONS du programme NATO SPS
+G6259. Ce rapport décrit l'architecture du pipeline, les protocoles d'audit et
+leurs contrats de preuve, les harnais d'expérimentation et leur bac à sable
+hermétique, l'infrastructure d'exécution et le circuit de livraison, puis
+l'état réel du benchmark. Il succède au rapport d'ensemble du 15 octobre 2026,
+qui survolait l'architecture et les protocoles : les parties correspondantes
+sont ici développées jusqu'au contrat de code.
+
+Le document distingue systématiquement ce qui est implémenté, ce qui est
+mesuré et ce qui reste proposé. Aucune expérience nouvelle n'est rapportée :
+les mesures citées sont celles déjà consignées, avec leur date. Les limites de
+chaque composant sont explicites, y compris celles du bac à sable, dont le
+garde-fou n'est pas un bac à sable natif exhaustif.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+\input{partie-intro}
+
+\section{Objet et méthode}
+
+Ce rapport répond à une question de lecture : \emph{comment le système est-il
+construit, et où en est-il réellement ?} Il ne remplace pas les pages de
+référence de \code{docs/}, qui décrivent le comportement courant, ni les
+protocoles détaillés de \code{research/}, qui portent le raisonnement.
+
+Chaque partie a été rédigée par un rédacteur spécialisé travaillant sur le code
+de la branche \code{dev/1}, puis relue contre ce même code par un relecteur
+indépendant. Une synthèse transverse a été produite séparément. Les affirmations
+non vérifiables dans le dépôt sont signalées comme telles plutôt que comblées.
+
+Le rapport est daté : il décrit un état, pas un contrat. Un comportement
+ultérieur peut le contredire sans que le rapport soit faux.
+
+% === PARTIES RÉDIGÉES PAR LES AGENTS ===
+\input{partie-architecture}
+\input{partie-protocoles}
+\input{partie-harnais}
+\input{partie-infrastructure}
+\input{partie-benchmark}
+
+\section{Conclusion}
+
+% === SYNTHÈSE ===
+\input{partie-synthese}
+
+\end{document}

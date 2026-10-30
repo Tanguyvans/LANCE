@@ -6,6 +6,9 @@ and extracts obvious findings via regex/pattern matching.
 """
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import json
 import logging
 import re
@@ -27,6 +30,12 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
+    "dns": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "{port}",
+            "scripts": "dns-nsid", "skip_discovery": True,
+        }),
+    ],
     "ssh": [
         ("ssh_audit", {"host": "{ip}", "port": "{port}"}),
         ("nmap_scan", {
@@ -67,9 +76,6 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
     ],
     "telnet": [
         ("nmap_scan", {"target": "{ip}", "ports": "23", "skip_discovery": True}),
-    ],
-    "dns": [
-        ("nmap_scan", {"target": "{ip}", "ports": "53", "skip_discovery": True}),
     ],
     "mysql": [
         ("nmap_scan", {
@@ -477,12 +483,76 @@ def _ssh_audit_observed(entry: dict) -> bool:
             and bool(re.search(r"(?m)^\((?:gen|kex|key|enc|mac)\) ", str(result.get("stdout", "")))))
 
 
+
+def _mqtt_ws_followup_request(entry: dict, ip: str) -> dict | None:
+    """Probe an MQTT hypothesis only after a fresh, bound WebSocket handshake."""
+    from src.agent.evidence.mqtt_ws import mqtt_ws_actual_request
+
+    if (entry.get("tool") != "http_request" or entry.get("evidence_phase") != 3
+            or entry.get("authoritative") is not True):
+        return None
+    kwargs = entry.get("kwargs", {})
+    result = _parse_result(entry)
+    if (tool_execution_failed("http_request", result)
+            or type(result.get("status_code")) is not int or result["status_code"] != 101
+            or kwargs.get("follow_redirects") is not False
+            or result.get("redirect_chain")
+            or result.get("final_url") != kwargs.get("url")):
+        return None
+    try:
+        url = urlsplit(kwargs.get("url", ""))
+        if (url.scheme != "http" or url.hostname != ip or url.username is not None
+                or url.password is not None or url.query or url.fragment):
+            return None
+        request = {"ip": ip, "port": url.port, "path": url.path or "/",
+                   "topic": "#", "count": 1, "timeout": 5}
+        if mqtt_ws_actual_request(request) is None:
+            return None
+    except (TypeError, ValueError):
+        return None
+
+    def headers(value: object) -> dict[str, str] | None:
+        if not isinstance(value, dict):
+            return None
+        normalized = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not isinstance(item, str):
+                return None
+            name = key.casefold()
+            if name in normalized:
+                return None
+            normalized[name] = item
+        return normalized
+
+    sent, received = headers(kwargs.get("headers")), headers(result.get("headers"))
+    if sent is None or received is None:
+        return None
+    key = sent.get("sec-websocket-key", "")
+    try:
+        if len(base64.b64decode(key, validate=True)) != 16:
+            return None
+        expected = base64.b64encode(hashlib.sha1(
+            (key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")
+        ).digest()).decode("ascii")
+    except (ValueError, UnicodeError, binascii.Error):
+        return None
+    if (sent.get("sec-websocket-version") != "13"
+            or sent.get("upgrade", "").casefold() != "websocket"
+            or "upgrade" not in {v.strip().casefold() for v in sent.get("connection", "").split(",")}
+            or received.get("upgrade", "").casefold() != "websocket"
+            or "upgrade" not in {v.strip().casefold() for v in received.get("connection", "").split(",")}
+            or received.get("sec-websocket-accept") != expected):
+        return None
+    return request
+
+
 def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[str] | None = None) -> dict[str, list[dict]]:
     """Run all applicable tools for a device. Returns {service: [{tool, kwargs, result}]}."""
     ip = device.get("ip", "")
     device_id = device.get("id", "unknown")
     results: dict[str, list[dict]] = {}
     seen_calls: set[str] = set()  # avoid duplicate calls
+    unmapped_services: list[dict] = []
 
     def _call(tool_name: str, kwargs: dict, svc_key: str, *, retry: bool = False):
         call_key = f"{tool_name}|{json.dumps(kwargs, sort_keys=True)}"
@@ -523,14 +593,25 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
         port = svc.get("port", 0)
         matrix_key = service_matrix_key(svc_name)
         if not matrix_key or matrix_key not in SCAN_MATRIX:
-            if diagnostics is not None:
-                diagnostics.append(f"{device_id}: no scanner rule for service {svc_name}")
+            unmapped_services.append(svc)
             continue
+
+        if matrix_key == "dns":
+            # A DNS probe is only scheduled on a transport the inventory
+            # actually declares. A missing transport is reported and never
+            # substituted, so the scanner cannot invent tcp or udp.
+            protocol = str(svc.get("protocol") or "").casefold()
+            if protocol not in {"tcp", "udp"}:
+                if diagnostics is not None:
+                    diagnostics.append(f"{device_id}: unsupported DNS transport {protocol or 'unspecified'}")
+                continue
 
         for tool_name, kwargs_tmpl in SCAN_MATRIX[matrix_key]:
             kwargs = _resolve_kwargs(kwargs_tmpl, ip, port)
             if tool_name == "ssh_audit":
                 kwargs["port"] = port
+            if matrix_key == "dns" and protocol == "udp":
+                kwargs["udp_scan"] = True
             if matrix_key == "mqtt" and tool_name == "http_request":
                 closed = _closed_optional_mqtt_ws_probe(device, results)
                 if closed is not None:
@@ -574,6 +655,40 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
     for tool_name, kwargs_tmpl in ROLE_EXTRA_SCANS.get(role, []):
         kwargs = _resolve_kwargs(kwargs_tmpl, ip, 80)
         _call(tool_name, kwargs, f"role_{role}")
+
+    # An unknown Nmap label is not an alias. Test the MQTT hypothesis on the
+    # exact freshly observed WebSocket endpoint before resolving its coverage.
+    for svc_key, entries in list(results.items()):
+        if service_matrix_key(svc_key) != "mqtt":
+            continue
+        for entry in list(entries):
+            request = _mqtt_ws_followup_request(entry, ip)
+            if request is not None:
+                _call("mqtt_ws_listen", request, svc_key)
+
+    from src.agent.evidence.mqtt_ws import mqtt_ws_actual_request, trusted_mqtt_ws_messages
+    for svc in unmapped_services:
+        resolved = False
+        if str(svc.get("protocol") or "").casefold() == "tcp" and type(svc.get("port")) is int:
+            for entries in results.values():
+                for entry in entries:
+                    if entry.get("tool") != "mqtt_ws_listen":
+                        continue
+                    args = entry.get("kwargs", {})
+                    actual = mqtt_ws_actual_request(args)
+                    if (actual is None or actual[0] != ip or actual[1] != svc["port"]
+                            or not trusted_mqtt_ws_messages(
+                                _parse_result(entry), args, ip, svc["port"], actual[2], actual[3])):
+                        continue
+                    resolution = {"reported_name": svc.get("name", ""), "port": svc["port"],
+                                  "protocol": "tcp", "identified_service": "mqtt-ws",
+                                  "basis": "bound_native_mqtt_ws_exchange"}
+                    rows = entry.setdefault("resolved_services", [])
+                    if resolution not in rows:
+                        rows.append(resolution)
+                    resolved = True
+        if not resolved and diagnostics is not None:
+            diagnostics.append(f"{device_id}: no scanner rule for service {str(svc.get('name', '')).lower()}")
 
     # Follow only suspicious file links already disclosed by same-host directory
     # listings. This remains bounded and avoids benchmark-specific filenames.
@@ -1010,7 +1125,32 @@ def _extract_mqtt_sys(entries: list[dict], device: dict, svc_name: str) -> list[
 
 
 def _extract_mqtt_websocket(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """Confirm a WebSocket handshake when possible; otherwise retain exposure."""
+    """HTTP Upgrade is a hypothesis; only bound native MQTT messages confirm access."""
+    from src.agent.evidence.mqtt_ws import mqtt_ws_actual_request, trusted_mqtt_ws_messages
+
+    for entry in entries:
+        if entry.get("tool") != "mqtt_ws_listen":
+            continue
+        kwargs = entry.get("kwargs", {})
+        request = mqtt_ws_actual_request(kwargs)
+        if request is None or request[0] != device.get("ip"):
+            continue
+        ip, port, path, topic = request
+        result = _parse_result(entry)
+        messages = trusted_mqtt_ws_messages(result, kwargs, ip, port, path, topic)
+        if messages:
+            finding = _make_finding(
+                device, "no_auth", "HIGH", "mqtt-ws", port,
+                f"Anonymous MQTT-over-WebSocket subscription received messages at {path}",
+                f"Native MQTT CONNACK/SUBACK accepted; {len(messages)} complete message(s) "
+                f"received for topic filter {topic}",
+                status="confirmed", endpoint=path,
+                technique="Verify the anonymous MQTT-over-WebSocket subscription at the exact endpoint",
+                tools=["mqtt_ws_listen"],
+            )
+            finding["mqtt_topic"] = topic
+            return [finding]
+
     role = device.get("role", "")
     if "mqtt" not in role and "mqtt" not in svc_name:
         return []
@@ -1018,34 +1158,44 @@ def _extract_mqtt_websocket(entries: list[dict], device: dict, svc_name: str) ->
         if entry.get("tool") != "http_request":
             continue
         kwargs = entry.get("kwargs", {})
-        if ":9001" not in str(kwargs.get("url", "")):
+        try:
+            parsed = urlsplit(str(kwargs.get("url", "")))
+            if parsed.hostname != device.get("ip") or parsed.port != 9001:
+                continue
+        except ValueError:
             continue
         result = _parse_result(entry)
-        if result.get("status_code") == 101:
+        if (
+            kwargs.get("follow_redirects", False) is not False
+            or result.get("redirect_chain")
+            or ("final_url" in result and result["final_url"] != kwargs.get("url"))
+        ):
+            continue
+        if result.get("status_code") == 101 and not tool_execution_failed("http_request", result):
             return [_make_finding(
                 device, "no_auth", "HIGH", "mqtt-ws", 9001,
-                "MQTT WebSocket listener accepts an unauthenticated HTTP upgrade",
-                "HTTP 101 Switching Protocols returned for a WebSocket upgrade on port 9001",
-                status="confirmed",
-                technique="Connect to the MQTT broker over the accepted unauthenticated WebSocket",
-                tools=["http_request"],
+                "HTTP Upgrade observed; anonymous MQTT application access remains unverified",
+                "HTTP 101 returned on the observed endpoint; no MQTT CONNACK, SUBACK or message proof",
+                status="suspected", endpoint=parsed.path or "/",
+                technique="Verify MQTT CONNECT, SUBSCRIBE and received PUBLISH on the exact WebSocket endpoint",
+                tools=["mqtt_ws_listen"],
             )]
     for entry in entries:
-        if entry["tool"] != "nmap_scan":
+        if entry.get("tool") != "nmap_scan":
             continue
         kwargs = entry.get("kwargs", {})
-        if "9001" not in kwargs.get("ports", ""):
+        if kwargs.get("target") != device.get("ip"):
             continue
         result = _parse_result(entry)
-        stdout = result.get("stdout", "")
-        if "9001/tcp" in stdout and "open" in stdout:
+        stdout = str(result.get("stdout") or "")
+        if not tool_execution_failed("nmap_scan", result) and re.search(r"(?m)^9001/tcp\s+open\s", stdout):
             return [_make_finding(
                 device, "network_exposure", "LOW", "mqtt-ws", 9001,
-                "MQTT WebSocket listener exposed on the network",
+                "Possible MQTT WebSocket listener exposed on the network; protocol unverified",
                 f"nmap port 9001: {stdout.strip()[:200]}",
                 status="suspected",
-                technique="Verify with an HTTP WebSocket upgrade request before claiming no_auth",
-                tools=["http_request"],
+                technique="Verify the application protocol before claiming anonymous MQTT access",
+                tools=["mqtt_ws_listen"],
             )]
     return []
 

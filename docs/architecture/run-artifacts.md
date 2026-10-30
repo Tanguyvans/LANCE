@@ -173,3 +173,27 @@ Validation locale du 15 septembre 2026 sous Python 3.12 : **14 tests d'isolation
 réussis ; suite complète : 2 456 réussis, 1 ignoré, 3 avertissements de dépréciation,
 aucun échec**. Les tests nécessitant des sockets localhost ont été autorisés ;
 aucun scénario S1 ni appel au fournisseur UMONS n'a été lancé.
+
+## Compteurs du fournisseur pour diagnostiquer une troncature
+
+Le journal `provider_events.jsonl` conserve des métadonnées optionnelles du
+fournisseur compatible Chat Completions, sous le schéma additif `model.obs1` :
+`max_turns` et `max_tokens` au début d'une invocation, `max_tokens` à la frontière
+d'une requête effectivement envoyée, puis `input_tokens`, `output_tokens`,
+`reasoning_tokens`, `reasoning_chars` et `visible_chars` pour chaque réponse
+avec un choix, y compris la réponse de repli après erreur de génération.
+
+Les compteurs ne sont conservés que comme entiers bornés non négatifs ; une
+valeur absente ou invalide reste `null`, jamais zéro par défaut. La longueur du
+contenu visible vaut zéro lorsqu'aucun texte visible n'est présent. Le texte du
+raisonnement et des réponses n'entre pas dans ce journal. Une réponse sans
+choix n'offre pas de message à mesurer ; une erreur SDK ne fournit pas de
+consommation supposée. Ces observations n'élargissent aucun budget et ne
+modifient ni les requêtes, ni les décisions de reprise ou de sauvegarde.
+
+`max_tokens` décrit la limite envoyée par LANCE, pas un plafond effectivement
+imposé par le serveur. `reasoning_tokens` n'est disponible que si le fournisseur
+le rapporte. Les longueurs en caractères ne se convertissent pas en jetons et
+ne mesurent pas une capacité de contexte. Les archives historiques ne sont pas
+complétées rétroactivement. Voir le
+[journal argumenté des corrections](../../research/2026-10-05-corrections-lance/README.md).

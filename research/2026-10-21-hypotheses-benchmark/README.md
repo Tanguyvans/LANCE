@@ -4,12 +4,12 @@
 langage apporte quelque chose qu'un script ne peut pas apporter — et lesquelles
 ne le font pas ?
 
-**Statut.** `registre en construction` — une famille ouverte (H2), harnais
-hors ligne prêt, aucun run de famille. La porte V0 est **partiellement
-franchie**.
+**Statut.** `registre en construction` — une famille ouverte (H2), mesurée sur
+nato le 2026-10-22 : prédiction tenue, gain absorbé par un bras qui lit par
+convention. La porte V0 est **partiellement franchie**.
 
 **Dates.** Étude ouverte et classée le 2026-10-21 (Europe/Brussels, UTC+02:00).
-Dernière révision : **2026-10-21 22:37 (Europe/Brussels, UTC+02:00)**.
+Dernière révision : **2026-10-23 14:33 (Europe/Brussels, UTC+02:00)**.
 
 ## Principe
 
@@ -27,9 +27,9 @@ existants sans apporter la spécificité IoT — hétérogénéité de protocole
 appareils contraints, artefacts constructeur, identités partagées à l'échelle
 d'une flotte.
 
-Ce document est un registre de travail, pas un rapport d'étude : il ne porte ni
-résultat ni figure, et n'est donc pas compilé en LaTeX. Il deviendra un rapport
-au premier run, avec source et PDF.
+Ce document est un registre de travail. Il porte désormais une mesure (H2) mais
+pas encore de rapport compilé : lorsqu'une deuxième famille sera mesurée, il
+deviendra un rapport avec source LaTeX et PDF.
 
 ## Porte de validité V0 — avant les hypothèses
 
@@ -125,13 +125,16 @@ comme hypothèse de supériorité.
 - **Familles.** `s_mqtt_formats` (variante de `s_mqtt_lecture`) et
   `s_ot_formats` (variante de `s_ot_ecriture`). **Variantes** : elles ne
   comptent pas comme familles indépendantes.
-- **Statut.** `s_mqtt_formats` : **ouverte, prédiction tenue mais faible**
-  (67 tests hors ligne). Premier run lisible le 2026-10-22 : le bras LLM fait
-  `0,5` en `variant/raw` contre `0,0` pour les parsers déclarés, et `1,0`
-  partout ailleurs comme eux. Le gain tient à **un dossier sur deux** ; les deux
-  bras échouent sur `t07`. Une répétition, un seul schéma non déclaré : à
-  consolider, et à départager d'une baseline déclarée qui essaie.
-  `s_ot_formats` reste
+- **Statut.** `s_mqtt_formats` : **ouverte, gain absorbé par la convention**
+  (71 tests hors ligne). Mesure du 2026-10-22, stable sur trois répétitions et
+  72 bras : le bras LLM fait `0,5` en `variant/raw` contre `0,0` pour les
+  parseurs déclarés et `1,0` partout ailleurs comme eux ; le gain tient à **un
+  dossier sur deux** (`t03` gagné, `t07` perdu à chaque répétition). Le troisième
+  bras, qui lit par convention sans aucune clé du corpus, couvre toute la vue
+  brute à `1,0` : ce que le modèle gagne sur le parseur déclaré, un script élargi
+  le gagne aussi. La prédiction tient au sens littéral mais ne sépare plus le
+  modèle de la déclaration. Un seul schéma non déclaré, un seul modèle : à
+  étendre avant toute conclusion générale. `s_ot_formats` reste
   `planned_not_implemented_or_attested`.
 - **Protocole.** [h2-protocole.md](h2-protocole.md).
 
@@ -231,7 +234,7 @@ H1 et H5 partagent la sortie « plan » et se distinguent par le retour.
 | SSH | oui | pilote | mesurée | n/a |
 | MQTT | oui | pilote | mesurée | n/a |
 | `s_api_organisations` | oui | C06-D02 | pilote, non admis | non établie |
-| `s_mqtt_formats` | oui | variante de `s_mqtt_lecture` | ouverte, prédiction tenue faiblement | non établie |
+| `s_mqtt_formats` | oui | variante de `s_mqtt_lecture` | ouverte, prédiction tenue mais gain absorbé par la convention | non établie |
 | `s_ot_formats` | oui | variante de `s_ot_ecriture` | planifiée | non établie |
 | `s_edge_contrat`, `s_ota_contrat` | oui | C05 | planifiées | non établie |
 | `s_ot_reprise` | oui | C10-D06 | planifiée | non établie |
@@ -259,12 +262,13 @@ indépendantes : `statistical_independence: not_established` partout.
    d'interprétation de tout le reste. **Faite, partiellement franchie** :
    `valid_control`, `X = 0,9`, saturation déclarée.
 2. **H2** sur `s_mqtt_formats` : dossier hors ligne, oracle d'interprétation,
-   double vue déjà prévue par C04. La famille la moins chère. **Ouverte** :
-   harnais hors ligne, corpus et bras règles prêts ; reste le premier run sur
-   nato, puis la lecture de la prédiction.
+   double vue déjà prévue par C04. La famille la moins chère. **Mesurée** le
+   2026-10-22 : prédiction tenue, gain stable sur trois répétitions, absorbé par
+   le bras par convention. Reste ouverte : élargir les schémas et les modèles.
 3. **H3** sur C05 : réutilise le patron du harnais API (routes documentées,
    oracle à frontières, évaluateur depuis le journal).
 4. **H4** : après H2, pour que la frontière syntaxe / sens soit instrumentée.
+   **Prochaine** : c'est la vue normalisée que H2 n'ouvre pas.
 5. **H1** : seulement après écriture du contraste et disponibilité du harnais
    paramétrable.
 6. **H5** : en dernier, avec contre-épreuve de budget.

@@ -1,0 +1,185 @@
+\section{Protocoles d'audit et contrats de preuve}
+\label{sec:protocoles}
+
+Cette partie décrit l'infrastructure expérimentale : les familles d'audit, le
+contrat en trois parties qui les structure, l'oracle privé, l'évaluateur hors
+ligne, le contrôle de fidélité V0, la famille H2 et la métrique de
+confirmation. Chaque affirmation renvoie à un fichier du dépôt. La lecture
+distingue trois registres : \emph{implémenté} (le code existe et force la
+propriété), \emph{mesuré} (un run documenté produit une valeur) et
+\emph{proposé} (déclaré dans un protocole, sans code).
+
+\subsection{Familles implémentées}
+
+Le dépôt contient cinq familles, chacune avec un fichier de contrat centralisé,
+un bras déterministe, un bras LLM borné et un lanceur réservé au laboratoire.
+
+\begin{table}[H]
+\centering
+\caption{Familles, ce qu'elles mesurent et ce qu'elles laissent hors portée.}
+\label{tab:familles}
+\small
+\begin{tabular}{@{}p{2.4cm}p{3.0cm}p{4.0cm}p{3.8cm}@{}}
+\toprule
+Famille & Contrat & Ce qu'elle mesure & Ce qu'elle ne mesure pas \\
+\midrule
+SSH & \code{ssh\_reference.py} & Si un identifiant du dictionnaire public lit l'objet témoin que le contrôle légitime lit aussi & Reset de la fixture, provenance du modèle \\
+MQTT & \code{mqtt\_reference.py} & Si un abonné anonyme reçoit le témoin privé frais ; en posture saine, le refus évalué & Purge des messages conservés, reset du broker \\
+API & \code{api\_reference.py} & Couverture des quatre frontières d'autorisation & La limite de la baseline est \emph{déclarée} : le script ne lit aucune collection \\
+V0 & \code{v0\_control.py} & Fidélité d'exécution : procédure publique exécutée et prouvée & Une hypothèse sur le modèle \\
+H2 & \code{mqtt\_formats.py} & Lecture d'une présentation MQTT gelée & Collecte réseau, sémantique des champs, indépendance statistique \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La limite n'est pas seulement rédactionnelle : elle est inscrite dans chaque
+résultat, sous la clé \code{scope}, et dans
+\code{measurement\_status: evidence\_only\_not\_admitted}.
+
+\subsection{Un contrat en trois parties}
+
+Chaque famille sépare trois artefacts, et la séparation est forcée par le code.
+
+\paragraph{Le briefing public} ne contient que la tâche.
+\code{ssh\_reference.validate\_briefing} exige exactement l'ensemble de champs
+attendu, ce qui interdit d'ajouter une posture ou un verdict. Le dictionnaire
+SSH ne peut pas contenir l'identité de contrôle, et
+\code{mqtt\_reference.validate\_briefing} refuse qu'un sujet public soit égal au
+sujet privé. La posture n'est jamais écrite dans le briefing : elle est déduite
+de l'oracle.
+
+\paragraph{L'oracle privé} est ficelé au briefing par le digest de ce dernier,
+et ses champs sont bornés par un ensemble fermé. Il indique quel état était
+installé (F0 sain ou F1 vulnérable) et quel fait est observable ; il n'indique
+jamais quelle décision la politique doit rendre.
+
+\paragraph{L'évaluateur hors ligne} relit le journal et la décision terminale,
+puis recalcule l'issue. Le fichier de preuve est \code{tool\_calls.jsonl} pour
+SSH, MQTT, API et V0 ; c'est \code{journal.jsonl} pour H2, réattaché par
+\code{Journal.replayed} qui refuse un enregistrement issu d'un autre dossier.
+Chaque enregistrement porte une référence produite par l'exécuteur commun
+(\code{src/agent/core/executor.py}).
+
+\subsection{L'oracle : construction et garanties}
+
+Les oracles sont produits par des fonctions \code{oracle\_for}, présentes dans
+trois modules. SSH construit le sien en ligne, à partir de
+\code{case\_configuration} qui tire l'objet avec \code{secrets.token\_hex(32)} ;
+MQTT produit deux témoins neufs par essai ; l'API randomise organisations,
+utilisateurs, objets et collections à chaque essai.
+
+Trois barrières empêchent de dériver la réponse de la politique. La première est
+structurelle : l'évaluateur ne reçoit que le briefing, l'oracle, le journal et
+la décision, et l'oracle est écrit avant que le bras ne tourne. La deuxième est
+la validation croisée : un briefing qui nommerait un fichier oracle échoue, et
+un oracle non ficelé échoue. La troisième est la contradiction vérifiée sur le
+journal entier : sous oracle protégé, une divulgation observée rend l'essai
+\code{oracle\_conflict} et non un succès. L'oracle ne peut donc pas être ajusté
+après coup.
+
+Le témoin (\code{canary} dans le code) est une valeur fraîche tirée à chaque
+démarrage de fixture, dont le digest est dans l'oracle et la valeur nulle part
+dans le briefing. Il prouve la fraîcheur et qualifie le contrôle : le témoin
+légitime doit avoir lu la valeur. Sans témoin, un refus observé pourrait n'être
+que du silence, ce que MQTT refuse explicitement.
+
+\subsection{L'évaluateur hors ligne : recompte et statuts}
+
+La décision terminale n'est jamais crue seule. L'évaluateur exige que ses
+références de preuve soient un sous-ensemble du journal, et sinon renvoie
+\code{outcome: unknown}. Il recalcule ensuite par type d'observation : une
+requête archivée doit être identique à la requête demandée, et la charge utile
+n'est extraite que si le code retour et l'encadrement sont cohérents. Une preuve
+non liée ne compte pas, même citée.
+
+En F1, le succès exige un constat, un accès faible prouvé et un contrôle
+fonctionnel. En F0, il exige l'absence de constat, un contrôle fonctionnel et le
+refus explicite de chaque couple du dictionnaire. Le code distingue
+\emph{non-succès} (essai mené à terme, contrat non satisfait) et \emph{manquant}
+(preuve ou décision absente). La distinction n'est pas cosmétique : un manquant
+n'entre pas dans un dénominateur de taux de succès, un non-succès le remplit.
+En V0 s'ajoute \code{instrument\_defect} quand le script vainc et que le LLM
+échoue : c'est un défaut de l'instrument, pas une faiblesse du modèle.
+
+\subsection{Le contrôle V0}
+
+V0 est la porte de validité, pas une hypothèse. La tâche est solvable sans
+inférence : chaque sujet, identifiant et fenêtre figure dans le briefing.
+
+Un \emph{contrôle saturant} est un contrôle que les deux bras réussissent
+partout : il ne détecte pas de défaut. Le manifeste
+\code{benchmarks/experiments/v0-control-manifest.json} fige \code{X = 0,9},
+24 étapes et 3 répétitions, et déclare \code{saturating: true} avec sa lecture :
+le contrôle ne peut pas détecter un défaut plus rare qu'une défaillance sur
+trois. La preuve est un run à trois répétitions où les deux bras réussissent
+partout. Le seuil est lu par \code{frozen\_threshold}, qui refuse un manifeste
+non gelé ou calibré sur un autre nombre d'étapes.
+
+\subsection{H2 : trois bras, une prédiction absorbée}
+
+H2 teste si un modèle lit une présentation qu'aucun parseur déclaré ne couvre.
+Les huit dossiers du corpus croisent \code{\{reference, variant\}} et
+\code{\{raw, normalized\}}, deux dossiers par groupe. Trois bras partagent le
+même journal et le même vocabulaire de verdicts.
+
+\begin{table}[H]
+\centering
+\caption{Taux de succès par groupe pour les trois bras de H2 (mesure du 22 octobre).}
+\label{tab:h2}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Groupe & Parser déclaré & Par convention & LLM \\
+\midrule
+\code{reference/raw} & 1,0 & 1,0 & 1,0 \\
+\code{reference/normalized} & 1,0 & 1,0 & 1,0 \\
+\code{variant/raw} & 0,0 & \textbf{1,0} & \textbf{0,5} \\
+\code{variant/normalized} & 1,0 & 1,0 & 1,0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le gain du LLM tient à un dossier sur deux. Mais le bras par convention couvre
+les deux sans modèle, car la convention suffit à lire le variant. Le contrôle
+publie donc \code{convention\_gain\_absorbed: true} : ce que le LLM gagne sur le
+parseur déclaré, un script qui essaie le gagne aussi. La prédiction reste tenue
+au sens littéral, mais elle ne distingue plus le modèle de la déclaration.
+
+\subsection{Le contrat strict-v3 et les métriques confirmées}
+
+Le contrat \code{src/benchmark/strict\_v3.py} ne contient aucun code de score :
+il normalise le contrat par vulnérabilité et dérive une valeur prudente pour
+les vérités terrain antérieures. La métrique \code{confirmed.*} est construite
+dans le comparateur en préfixant les noms d'étages du funnel
+(\code{src/benchmark/funnel.py}) : \code{candidates}, \code{filtered},
+\code{confirmed}. L'étage \code{confirmed} désigne les constats dédupliqués dont
+la preuve a été indépendamment validée contre les sorties d'outils. Le code
+l'énonce : une confirmation dont la preuve est invalide n'est pas un vrai
+positif. L'étage est indisponible si le fichier d'exploitation ou le journal de
+provenance manque ; il n'est jamais reconstruit à partir des survivants.
+
+\subsection{Ce que ces contrats ne prouvent pas}
+
+\begin{enumerate}
+\item \textbf{Rien sur la vérité terrain.} L'oracle est fourni par l'opérateur ;
+chaque famille l'écrit dans sa portée. Un oracle faux rend tous les verdicts faux.
+\item \textbf{Rien sur l'admission.} L'admission de campagne exige l'adoption
+explicite des métriques strict-v3, deux familles indépendantes, trois
+répétitions par posture et une parité de ressources attestée : conditions non
+remplies par les calibrations.
+\item \textbf{Rien sur la parité des bras.} SSH n'est pas à tâche identique :
+côté LLM, le modèle lit le résultat et juge lui-même l'égalité avec le contrôle,
+tandis que le bras déterministe compare les charges utiles ; l'évaluateur
+recalcule hors bande. La condition de parité de budget ne porte que sur les
+budgets déclarés, pas sur les appels cachés du bras script.
+\item \textbf{Rien sur un défaut rare.} V0 est saturant : à trois répétitions,
+il ne détecte qu'un défaut répété.
+\item \textbf{Rien sur l'espace réel.} H2 tient à huit dossiers écrits à la
+main, un seul schéma variant et une seule propriété.
+\item \textbf{Rien sur la sémantique ni sur l'injection} : ce sont H4 et H6,
+hors du périmètre de ces contrats.
+\item \textbf{Rien sur le coût comparatif} : le bras déterministe ne consomme
+aucun jeton.
+\item \textbf{Certaines garanties relèvent du protocole écrit}, pas d'une
+assertion du code : le décompte de bras de H2 et l'invariant « une observation
+ne peut pas répondre à deux étapes ».
+\end{enumerate}

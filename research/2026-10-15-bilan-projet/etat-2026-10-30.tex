@@ -1,0 +1,101 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\frenchsetup{SmallCapsFigTabCaptions=false}
+% The English language files of this Babel installation are broken, so the
+% French language is loaded for hyphenation only and every caption is renamed.
+\addto\captionsfrench{%
+  \renewcommand{\contentsname}{Contents}%
+  \renewcommand{\abstractname}{Abstract}%
+  \renewcommand{\figurename}{Figure}%
+  \renewcommand{\tablename}{Table}%
+  \renewcommand{\refname}{References}%
+}
+\usepackage{lmodern,microtype,amsmath}
+\usepackage[margin=23mm]{geometry}
+\usepackage{booktabs,array,tabularx,longtable}
+\usepackage{xcolor,tikz,enumitem,float}
+\usepackage{hyperref}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\definecolor{ink}{HTML}{1F242C}
+\definecolor{muted}{HTML}{5C626C}
+\definecolor{line}{HTML}{D9DEE5}
+\definecolor{accent}{HTML}{AF0032}
+\definecolor{rose}{HTML}{FDF0F4}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=ink,
+ pdftitle={LANCE: architecture, protocols and current state},
+ pdfauthor={LANCE project},pdflang={en-GB}}
+\urlstyle{same}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\DeclareRobustCommand{\code}[1]{{\small\path{#1}}}
+\newcommand{\source}[2]{\href{../../#1}{\nolinkurl{#1}}. #2}
+\newcommand{\revision}{2026-10-30 09:00 (Europe/Brussels, UTC+01:00)}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=5mm,topsep=3pt}
+\clubpenalty=10000 \widowpenalty=10000
+\setcounter{tocdepth}{1}
+
+\title{LANCE\\[4pt]
+\large Architecture, protocols and current state\\[2pt]
+\normalsize Report as of 30 October 2026}
+\author{LANCE project\\\small Written by specialist strands, independently reviewed and synthesised}
+\date{Last revision: \revision\\[3pt]
+\small Documentation state as of 30 October 2026; no new experiment is reported}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+LANCE is a platform for the security audit of authorised connected-object
+networks, developed in the context of the UMONS work of the NATO SPS G6259
+programme. This report describes the pipeline architecture, the audit protocols
+and their evidence contracts, the experimentation harnesses and their hermetic
+sandbox, the execution infrastructure and the delivery pipeline, and the actual
+state of the benchmark. It succeeds the 15 October 2026 overview, which skimmed
+over the architecture and the protocols: those parts are developed here down to
+the code contract.
+
+The document consistently distinguishes what is implemented, what is measured and
+what remains proposed. No new experiment is reported: the measurements cited are
+those already recorded, with their date. The limits of each component are
+explicit, including those of the sandbox, whose guard is not an exhaustive
+native-code sandbox.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+\input{partie-intro}
+
+\section{Scope and method}
+\label{sec:scope}
+
+This report answers a reading question: \emph{how is the system built, and where
+does it actually stand?} It does not replace the reference pages of \code{docs/},
+which describe the current behaviour, nor the detailed protocols of
+\code{research/}, which carry the reasoning.
+
+Each part was written by a specialist working on the \code{dev/1} branch, then
+reviewed against that same code by an independent reader. A cross-cutting
+synthesis was produced separately. Statements that cannot be verified in the
+repository are flagged as such rather than filled in.
+
+The report is dated: it describes a state, not a contract. Later behaviour may
+contradict it without making it false.
+
+% === PARTIES RÉDIGÉES PAR LES AGENTS ===
+\input{partie-architecture}
+\input{partie-protocoles}
+\input{partie-harnais}
+\input{partie-infrastructure}
+\input{partie-benchmark}
+
+\section{Conclusion}
+
+% === SYNTHÈSE ===
+\input{partie-synthese}
+
+\end{document}

@@ -1,7 +1,7 @@
 # Relecture adverse du plan C2 : résultat
 
 **Date : 2026-10-21 (Europe/Brussels, UTC+02:00).**
-Deux relectures indépendantes, en lecture seule, sur le [plan](plan.md) :
+Deux relectures indépendantes, en lecture seule, sur le plan (retiré au commit `4ffadcd`) :
 une lentille « honnêteté de la baseline et test de clôture », une lentille
 « mesurabilité et faisabilité ». Toutes deux concluent à l'arrêt de C2 tel que
 spécifié.
@@ -31,7 +31,7 @@ d'indépendance. Le registre le dit déjà pour toutes les variantes API
 ## Candidat A — `s_api_jetons` : mort par construction
 
 Le plan se contredit en deux lignes. Il attribue à D1+ la règle « demande un
-jeton pour chaque service de l'inventaire » ([plan](plan.md) § Candidat A), puis
+jeton pour chaque service de l'inventaire » (plan § Candidat A), puis
 suppose pour la survie que « l'ensemble des services n'est pas public ». Les
 deux ne peuvent pas être vraies ensemble. Trilemme exhaustif :
 

@@ -1,13 +1,17 @@
 # Accès labo nato-master depuis la machine dev (Tailscale)
 
-Plateforme LANCE : `http://100.103.253.86:8501/` (nœud `nato-master`,
-réseau Tailscale `100.64/10`). Procédure vérifiée le **7 octobre 2026**.
+Plateforme LANCE : `http://nato-master:8501/` (nœud `nato-master`, réseau
+Tailscale `100.64/10`). L'adresse Tailscale du nœud se lit avec
+`tailscale status` ou `tailscale ip -4` sur la machine ; elle change si le
+conteneur qui la porte est reconstruit, le nom `nato-master` non.
+Procédure vérifiée le **7 octobre 2026**, adresse rendue neutre le
+**29 octobre 2026**.
 
 ## 1. Prérequis
 
 - Tailscale **connecté sur la machine dev** (l'icône « Connected » ne
   suffit pas : `tailscale status` doit lister `nato-master` en vert).
-- Sans Tailscale actif, `100.103.253.86` est injoignable (pas de route).
+- Sans Tailscale actif, l'adresse du nœud est injoignable (pas de route).
 
 ## 2. Accès direct (recommandé)
 
@@ -15,7 +19,9 @@ Contourner tout proxy HTTP : la cible est une IP de tailnet, le proxy
 ne fait que renvoyer des réponses vides.
 
 ```bash
-curl --noproxy '*' --max-time 25 http://100.103.253.86:8501/api/pipeline/status
+# Remplacer par l'adresse courante du nœud :
+NATO_IP=$(tailscale ip -4 nato-master)
+curl --noproxy '*' --max-time 25 "http://$NATO_IP:8501/api/pipeline/status"
 ```
 
 ## 3. Cas particulier : shell sandboxé de l'agent

@@ -1,0 +1,182 @@
+\section{Execution infrastructure and delivery pipeline}
+\label{sec:infrastructure}
+
+\subsection{Laboratory topology}
+
+The execution of LANCE relies on a single Proxmox host and one LXC container that
+carries the entire platform. The playbook
+\code{benchmarks/ansible/playbooks/deploy\_master.yml} creates, on the Proxmox host
+group, an unprivileged LXC container with identifier 200 named \code{nato-master}
+(Debian 13, 20~GB, 4096~MB of memory, 2~cores, \code{nesting=1}, \code{onboot 1}).
+Two interfaces are attached: \code{eth0} on \code{vmbr0} in DHCP for management,
+and \code{eth1} on \code{vmbr1} in \code{192.168.100.200/24} for the scenario test
+network. The playbook adds the TUN device authorisation and the mount
+\code{/dev/net/tun}, required by Tailscale, then rebuilds an \code{OUTPUT} chain
+of \code{iptables}: on \code{eth0} only the local interface, the
+\code{ESTABLISHED,RELATED} states, DNS, HTTP, HTTPS, SSH, the Proxmox API (port
+8006), UDP 41641 and the apt cache are allowed; everything else is rejected. On
+\code{eth1}, outbound traffic is fully allowed. \code{eth1} has no gateway, which
+confines the scans to the isolated network.
+
+The Proxmox host name is given as \code{pve-nato} by \code{AGENTS.md},
+\code{objectifs/ETAT-COURANT.md} and \code{docs/guides/umons-llm.md}, but neither
+the playbook nor \code{docs/guides/development-instances.md} names it: the
+versioned Ansible inventory is a template whose address literally equals
+\code{<PROXMOX\_IP>}, and the only constant readable in the repository is the
+container identifier, 200. The actual configuration lives outside the repository.
+
+\subsection{The three instances}
+
+The script \code{scripts/deployment/deploy-instance.sh} fixes the slot, port,
+directory and service, and rejects any other name. The stable service is produced
+by the playbook; the development units are written by the script.
+
+\begin{table}[H]
+\centering
+\caption{Instances deployed on the master container.}
+\label{tab:instances}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Slot & Branch & Port & Checkout and service \\
+\midrule
+\code{main} & \code{main} & 8501 & \code{/opt/nato-smartcity-iot} / \code{nato-fastapi} \\
+\code{dev-1} & \code{dev/1} & 8502 & \code{/opt/lance-dev-1} / \code{lance-dev-1} \\
+\code{dev-2} & \code{dev/2} & 8503 & \code{/opt/lance-dev-2} / \code{lance-dev-2} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Each slot has its own Python environment, its database, its \code{.env} file and
+its artefacts. The shared configuration is written into
+\code{/var/lib/lance/<slot>.env} and imported by a systemd override; these entries
+feed \code{GET /api/environment}, which returns the slot, the branch, the commit
+and the activation of the lock. After start-up the script checks that the HTTP
+response announces exactly the validated commit and the expected slot, and that
+the lock is active.
+
+The common lock is a single file, \code{/var/lib/lance/lab.lock}, opened by
+\code{exec 9>>} and then locked by \code{flock -x 9} before any mutation; the
+comment is explicit: never delete this file. The same value is passed to the APIs,
+which allows the three instances to coordinate. Waiting is cooperative, without
+arrival ordering, and kept in memory. A deployment of a development slot checks
+that the stable instance announces the lock: an older stable instance would not
+participate in it.
+
+\subsection{The runner and the delivery pipeline}
+
+The GitHub Actions runner is installed in \code{/opt/actions-runner}, registered
+with the label \code{nato-master} and run as a systemd service.
+
+The pipeline reads as four links. A \code{push} to \code{main}, \code{dev/1} or
+\code{dev/2}, or a merge request into these branches, triggers
+\code{.github/workflows/benchmark-integrity.yml}. The first job runs
+\code{.github/scripts/ci\_scope.py}, which classifies the modified files and
+publishes the \code{full} flag. The second builds the image of the isolated worker
+and checks the absence of ground truth. The deployment jobs then call
+\code{.github/workflows/update-master.yml}, which runs the deployment script with
+the slot, the validated SHA, the branch and the remote repository.
+
+\begin{table}[H]
+\centering
+\caption{Triggers and paths through the pipeline.}
+\label{tab:circuit}
+\small
+\begin{tabular}{@{}p{3.1cm}p{5.6cm}p{4.8cm}@{}}
+\toprule
+Event & Path & Deployment \\
+\midrule
+documentation \code{push} & classification to \code{full=false}: diff of the previous commit and whitespace check & none \\
+code \code{push} & full tests, scenario and Ansible checks, sandbox, worker image & \code{main} to 8501, \code{dev/*} to 8502 or 8503 \\
+Merge request & same path according to classification & none \\
+Manual trigger & \code{full=true} forced & chosen slot, or checks only \\
+Version tag & \code{full=true} forced & \code{main} only \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The light path covers the Markdown, LaTeX, PDF and image files under
+\code{docs/}, \code{objectifs/} and \code{research/}, as well as a closed list of
+presentation files. The classification keeps deletions and the two paths of a
+rename; any undetermined event falls back to the full path, and a failure blocks
+the deployment. A documentation push therefore restarts no instance.
+
+On the machine side, the update script fetches the SHA and applies a fast-forward
+merge for \code{main}, or a detachment after checking for a clean tree for the
+development branches; it then verifies that \code{HEAD} equals the validated SHA.
+Before that, the service is stopped, the lock acquired, and the instance queried
+in order to refuse mutating active or pending work. In the event of a failure after
+stopping, the service remains stopped: no automatic rollback to an earlier version
+is performed.
+
+\subsection{Corrections to the deployment script}
+
+The history of the script shows a tight sequence of commits on 29 October 2026.
+The founding version checked the host identity by a hard-coded address and
+required the root user.
+
+\begin{table}[H]
+\centering
+\caption{Successive corrections and cause addressed.}
+\label{tab:fixes}
+\small
+\begin{tabular}{@{}p{1.6cm}p{3.4cm}p{7.4cm}@{}}
+\toprule
+Commit & Correction & Cause addressed \\
+\midrule
+\code{6b0a9ff} & address in an environment variable, \code{sudo} re-execution, checks of the stable instance and of the configuration made optional, Codex CLI under \code{/usr/local/bin} & a rebuilt container broke every deployment: identity, privileges and neighbouring instances assumed inherited \\
+\code{433e2a3} & identity deduced from the \code{tailscale0} interface, failing a variable & removes the last constant dependent on a rebuild \\
+\code{a568c68} to \code{dcd5903} & absolute path, execution via \code{bash}, propagation of the runner name and of the whole deployment environment & \code{sudo} does not resolve a relative path nor preserve the environment \\
+\code{150eb8a} & Codex CLI download failure tolerated & under \code{set -e}, the failure stopped the deployment and left the instance stopped \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Each correction corresponds to a concrete failure mode, not to an aesthetic
+refinement. The same identity logic now applies to the benchmark controllers, with
+an explicit suspension variable, and a dedicated test covers it.
+
+\subsection{The UMONS model and its relay}
+
+The \code{ollama-umons} provider is reached through a local SSH transfer on the
+Proxmox host, towards the university cluster (\code{docs/guides/umons-llm.md}). The
+path was identified and restored on 4~October 2026, with a successful minimal
+generation; the authentication observed is interactive. The restoration command is
+documented, as are the listening checks. The guide is explicit: neither start-up
+at boot, nor reconnection after the process ends; the administration of the
+downstream GPU server remains to be confirmed with the administrator. The
+fragility is established in the facts: the relay went down again on 22 October,
+and it was the provider pre-flight that named the failure without executing any
+arm.
+
+\subsection{The outage of 29 October}
+
+The outages actually traced in the repository for that day are those of the
+container rebuild, which rendered obsolete the fixed address and the assumption of
+a privileged runner. By contrast, \emph{no mention of a multipath default route on
+the laboratory router exists in the repository}: the search on the corresponding
+terms returns nothing. This fact, observed in session but not recorded, must not be
+presented as documented. It constitutes a gap in the project's memory, since the
+same outage will recur at the next router restart.
+
+\subsection{Known fragilities}
+
+\begin{itemize}
+\item \textbf{Unreplicated failure points}: single Proxmox host, single container,
+single runner. The runner registration tolerating failure, an absent runner does
+not block the playbook but blocks every deployment.
+\item \textbf{UMONS relay}: no supervised service, interactive authentication,
+address still fixed in the examples of the guide although commit
+\code{e54da24} claimed to have stopped fixing addresses in the documentation.
+Restarting LANCE does not repair the relay.
+\item \textbf{Cooperative lock}: without arrival ordering, in memory, not covered
+for an Ansible script launched directly, an old checkout or a manual
+intervention. This is not security isolation between collaborators.
+\item \textbf{Manual recovery}: a failure after stopping leaves the service
+stopped, with no automatic rollback.
+\item \textbf{Host identity}: without a declared variable, the identity depends on
+the presence of any address on the Tailscale interface; the script does not verify
+that this host is indeed the one that should host the instance.
+\item \textbf{Partial documentation}: the name of the Proxmox host and the
+physical segment correspond only imperfectly to the playbook; the versioned
+inventory is a template.
+\end{itemize}

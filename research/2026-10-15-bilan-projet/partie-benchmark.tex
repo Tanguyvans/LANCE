@@ -1,0 +1,188 @@
+\section{Benchmark and scientific progress}
+\label{sec:benchmark}
+
+The benchmark is not a list of scenarios but a register of hypotheses. This part
+describes what is actually measured, what blocks inference and what can be
+published today. Every figure is recomputed from an artefact of the repository, or
+reported as read in a document.
+
+\subsection{The hypothesis register and the V0 gate}
+
+The register places before every hypothesis a \emph{validity gate} V0: if a control
+task solvable without inference fails on one of the two arms, no downstream result
+is readable. The threshold is frozen in
+\code{benchmarks/experiments/v0-control-manifest.json}, which carries a value of
+0.9, 24 steps, 3 repetitions and the entry \code{saturating: true}. The calibration
+pass returns a valid control on both arms, three times out of three. The register
+draws from it a \emph{partially passed} gate: the instrument is readable for
+execution parity and for a repeated defect, not for a rare defect.
+
+Two caveats must be stated. On the one hand, V0 covers only MQTT: the SSH harness
+keeps a fixed credential dictionary and is therefore not an instance held apart. On
+the other hand, and this is a methodological flaw, the threshold is not applied by
+the gate: the gate function reads the four outcomes on ``all trials succeeded'',
+whereas the threshold check is computed separately and conditions nothing. With
+three repetitions, two successes out of three equal 0.67, so the two formulations
+coincide, but by numerical coincidence, not by application of the threshold.
+
+\begin{table}[H]
+\centering
+\caption{Status of the register, cross-checked with the protocols.}
+\label{tab:registre}
+\small
+\begin{tabular}{@{}p{1.1cm}p{3.4cm}p{8.2cm}@{}}
+\toprule
+Item & Status & What this means \\
+\midrule
+V0 & partially passed & Valid control on MQTT, threshold frozen but not applied by the gate; saturating control; SSH not covered \\
+H1 & conditional, not opened & The identity-chaining family does not exist in the coverage plan \\
+H2 & measured on 22 October & Prediction held, gain absorbed by an arm by convention \\
+H3 & not implemented & The public-contract families are planned \\
+H4 & not opened & The vendor-register family does not exist in the corpus \\
+H5 & conditional, planned & Budget counter-test to be written \\
+H6 & planned as a sub-test & Graftable onto H2 or H3, without its own simulator \\
+C2 & rejected & Two adversarial reviews, dead on paper, no run \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The corpus: a minuscule logic stratum}
+
+The catalogue enumerates 29 scenarios. The derived file
+\code{benchmarks/labels/derived\_index.json} counts 288 expected entries, of which
+282 classified by the type field as detectable by signature and 6 as belonging to
+logic, that is 2.1~\%. I recounted them entry by entry.
+
+Two counts coexist and do not measure the same thing. The \emph{mechanical}
+reading places every category except two in signature. The \emph{interpretive}
+reading judges category by category whether a well-designed rule can conclude on
+its own; by taking its signature categories on the index, one obtains 243 entries
+out of 288, that is 84.4~\%, and the four readings indeed total 288. Both figures
+are legitimate but must never be cited one for the other.
+
+\begin{table}[H]
+\centering
+\caption{Distribution of the 288 entries by category and interpretive reading.}
+\label{tab:corpus}
+\small
+\begin{tabular}{@{}lrl@{}}
+\toprule
+Category & Count & Interpretive reading \\
+\midrule
+\code{misconfiguration} & 70 & signature \\
+\code{data\_exposure} & 54 & signature \\
+\code{no\_authentication} & 50 & signature \\
+\code{default\_credentials} & 41 & signature \\
+\code{info\_disclosure} & 16 & signature \\
+\code{code\_injection} & 13 & mixed \\
+\code{insecure\_update} & 12 & mixed \\
+\code{weak\_crypto} & 10 & mixed \\
+\code{cve} & 9 & signature \\
+\code{privilege\_escalation} & 4 & chaining \\
+\code{broken\_access\_control} & 4 & logic \\
+\code{missing\_header} & 3 & signature \\
+\code{auth\_bypass} & 2 & logic \\
+\midrule
+Total & 288 & 243 signature, 35 mixed, 4 chaining, 6 logic \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The logic stratum occupies only three scenarios, and only 55 entries are attached to
+a chaining of at least two hops. A global duel on this corpus would therefore
+measure above all the quality of the rules. This is exactly what H2 observed.
+
+\subsection{Genuine achievements}
+
+\paragraph{H2, measured on 22 October.} The corpus contains eight dossiers, two per
+group, for 25 messages in total. The documented run executes three arms per
+dossier, that is 24 arms per repetition and 72 arms for the three repetitions. On
+the raw variants, the LLM arm obtains 0.5 (one dossier won out of two), the
+declared parser 0.0, and the third arm, which reads by convention without any key
+from the corpus, covers 1.0. The prediction holds in the literal sense, but the
+gain of the model is absorbed by the convention.
+
+\paragraph{C2, rejected.} The review concludes to a halt: the first candidate is
+self-contradictory, the second is poorly attached and has only non-conforming
+outcomes, and the count of families is not a measure of independence. No fixture,
+no run: this is a negative methodological result, publishable as a limitation.
+
+\subsection{The blocking of inference}
+
+The inference tool (\code{src/benchmark/inference.py}) carries a structural defect.
+The gaps equal the difference between the two policies; yet the computed p-value is
+the probability that the resampled mean changes sign, not the p-value of the gap
+against its threshold.
+
+I verified this by executing the function: an almost constant series gives a null
+p-value; a highly dispersed series of the same mean also gives zero; a series
+entirely negative still gives zero. Four series of different behaviours therefore
+produce the same figure. Moreover, the threshold enters into no decision: it serves
+only to produce an informative field. Finally, below three families, the returned
+interval is structurally degenerate.
+
+\textbf{No correction has taken place.} The history counts only two commits on this
+file, and all available branches carry the same computation. The defect is already
+written in the current state of the project: the tool produces the appearance of an
+inference that it does not provide.
+
+To this defect is added a structural impossibility: the configuration of a trial
+includes the commit, the fingerprints and the budgets, so two distinct families form
+two distinct configurations. Each configuration contains only one family, and the
+inference requires at least two.
+
+\subsection{Campaign admission}
+
+The admission module combines pair conditions and campaign conditions. The
+condition for explicit adoption of the confirmation metrics is a parameter with a
+default value of false, never set to true by the summary nor by the command line.
+The module justifies this lock by a contract argument: the driver harnesses do not
+emit these counters. This is accurate as to the current state, but it is not a proof
+of unsatisfiability: the condition would become true again the day a harness
+publishes these counters. Today, it is therefore not satisfied.
+
+A second defect, noted during drafting and then verified, deserves review. The
+budget-parity condition requires that the first value exists and that the two are
+equal; the absence of a budget is therefore correctly refused, and this point
+complies with the announced rule. By contrast, the same module does not verify that
+missing budgets are distinguished from non-comparable budgets in the other
+conditions; the review recommended this check without finding it again.
+
+\subsection{What is publishable today}
+
+\textbf{The publishable element is the method, not a result of superiority.} The
+repository supports no claim of comparative performance: there exists neither a
+demonstration that a model beats a competent script, nor a computable confidence
+interval, nor an independent family. What holds, by contrast, is consistent and
+verifiable:
+
+\begin{itemize}
+\item a falsifiable register of hypotheses, with contrast declared before the
+fixture, private oracle and measurement recomputed from the log;
+\item a measurement lesson on H2: a prediction can hold in the literal sense and
+demonstrate nothing, because an arm by convention absorbs the gain;
+\item a clean negative result on C2, documented before any grey area;
+\item an honest inventory of the holes: reduced logic stratum, unknown protocol
+absent, noise not encoded.
+\end{itemize}
+
+\subsection{What is not demonstrated}
+
+Must not be written as established: the superiority of the LLM; a significant gap,
+since the inference tool produces a p-value unrelated to the gap and publishing such
+a figure would be a fault; generality, H2 covering only one schema, one question and
+one model; the cost gain, the exploratory pilot counting only one pair without an
+interval; the validity of the threshold, not applied by the gate; and the integrity
+of the corpus, the official healthy control not being in the catalogue.
+
+\subsection{The other active studies}
+
+Plan V2 carries 44 records, 25 sets and several hundred conditional arms. The
+qualifications actually executed, SSH in October and MQTT a few days later, are
+recorded as qualifying the instrument, not an advantage. The three-repetition pilot
+yields twelve admissible pairs and computes no interval.
+
+The historical study on the agent versus automation remains active and carries the
+S1 pair and the model-free programme. Its synthesis states it plainly: a real
+descriptive result, no general superiority established. This is the formulation to
+keep.

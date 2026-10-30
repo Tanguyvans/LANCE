@@ -68,8 +68,8 @@ def public_spec(scenario_id: str) -> dict:
 
 
 def runtime_readiness() -> dict:
-    from src.agent.core.runtime import local_interface_ips
-    ready = (bool(os.environ.get("LANCE_LAB_LOCK")) and "100.103.253.86" in local_interface_ips()
+    from src.agent.core.runtime import tailscale_identity_present
+    ready = (bool(os.environ.get("LANCE_LAB_LOCK")) and tailscale_identity_present()
              and bool(shutil.which("ansible-playbook")) and bool(shutil.which("nmap")))
     return {"available": ready, "reason": None if ready else
             "Le lancement exige le contrôleur nato, sa réservation de laboratoire, Ansible et Nmap."}

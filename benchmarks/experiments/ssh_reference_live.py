@@ -14,9 +14,7 @@ import signal
 import socket
 import subprocess
 import tarfile
-import threading
 import time
-from types import SimpleNamespace
 from uuid import uuid4
 
 from benchmarks.experiments.ssh_reference import (
@@ -28,7 +26,6 @@ from benchmarks.experiments.ssh_reference_proxmox import Proxmox, Fixture as Pro
 from benchmarks.experiments import v2_campaign as v2
 from scripts.benchmark.pilot_support import archive_trial
 from src.agent.audit_experiment import digest, resource_manifest
-from src.agent.cost_tracker import CostTracker
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,9 +50,9 @@ def read_ledger(directory):
 def require_nato():
     if os.environ.get('RUNNER_NAME') != 'nato-master':
         raise RuntimeError('This controller requires the nato-master Actions runner')
-    addresses = json.loads(subprocess.check_output(['ip', '-j', '-4', 'addr'], text=True, timeout=10))
-    if not any(item.get('local') == '100.103.253.86' for interface in addresses
-               for item in interface.get('addr_info', [])):
+    from src.agent.core.runtime import tailscale_identity_present
+
+    if not tailscale_identity_present():
         raise RuntimeError('Runner identity mismatch: nato Tailscale address absent')
     if os.environ.get('LANCE_SSH_LOCK_HELD') != '1':
         raise RuntimeError('Acquire the shared laboratory lock before running this controller')
@@ -98,24 +95,11 @@ class Docker:
 
 
 def new_run(directory, policy, args, network='127.0.0.1/32'):
-    directory.mkdir(parents=True, exist_ok=True)
-    # An explicitly opened empty collection is distinct from missing evidence
-    # when the provider fails before its first SSH operation.
-    (directory / 'tool_calls.jsonl').touch(exist_ok=False)
-    run = SimpleNamespace(
-        run_dir=directory, max_tool_calls=args.max_tool_calls,
-        max_duration_s=args.max_duration_s, max_turns=args.max_turns,
-        _artifact_log_lock=threading.Lock(), _tool_call_count=0,
-        _run_started=time.monotonic(), _execution_limit_reason=None,
-        experiment_scope='ssh-reference-calibration', context={'target_subnet': network},
-        decision_policy=policy,
-        tracker=CostTracker(model=args.model if policy == 'llm' else '',
-                            provider=args.provider if policy == 'llm' else '',
-                            max_cost_usd=args.max_cost_usd, execution_metrics=True),
-    )
-    run.tracker.start_run()
-    run.tracker.start_phase('ssh-reference')
-    return run
+    """Build one arm through the shared harness core."""
+    from benchmarks.experiments.harness import build_run
+
+    return build_run(directory=directory, scope='ssh-reference-calibration', phase='ssh-reference',
+                     policy=policy, args=args, network=network)
 
 
 def preflight(public, oracle, directory, args):

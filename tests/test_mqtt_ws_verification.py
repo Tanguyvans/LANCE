@@ -289,3 +289,55 @@ def test_planner_and_full_compact_scope_use_dedicated_tool_only():
     assert "mqtt_ws_listen" in COMPACT_PHASE_TOOL_NAMES[5]
     assert "mqtt_ws_listen" in {tool["name"] for tool in filter_profile_tools(EXECUTION_PROFILES["compact"], 5, tools)}
     assert {"http_request", "http_get", "curl_headers"} <= PHASE4_LOCAL_SERVICE_TOOL_NAMES["mqtt-ws"]
+
+
+def test_scanner_only_confirms_native_bound_mqtt_ws_messages():
+    from src.agent.scanner import _extract_mqtt_websocket
+
+    device = {"id": "broker", "ip": IP, "role": "mqtt_broker"}
+    receipt = _result()
+    entry = {"tool": "mqtt_ws_listen", "kwargs": _args(), "result": json.dumps(receipt)}
+    finding, = _extract_mqtt_websocket([entry], device, "mqtt")
+    assert finding["type"] == "no_auth"
+    assert finding["exploitation_status"] == "confirmed"
+    assert finding["port"] == 9001
+    assert finding["endpoint"] == PATH
+    assert finding["mqtt_topic"] == TOPIC
+    assert finding["suggested_tools"] == ["mqtt_ws_listen"]
+
+
+@pytest.mark.parametrize("change", [
+    {"connack": {"received": True, "reason_code": 5, "accepted": False}},
+    {"messages": [], "received_count": 0},
+    {"output_truncated": True},
+    {"error": "transport error"},
+])
+def test_scanner_does_not_confirm_incomplete_or_denied_mqtt_ws(change):
+    from src.agent.scanner import _extract_mqtt_websocket
+
+    entry = {"tool": "mqtt_ws_listen", "kwargs": _args(), "result": json.dumps(_result(**change))}
+    assert _extract_mqtt_websocket([entry], {"id": "broker", "ip": IP, "role": "mqtt_broker"}, "mqtt") == []
+
+
+@pytest.mark.parametrize("url", [f"http://198.51.100.1:9001/", f"http://{IP}:90010/"])
+def test_scanner_cannot_borrow_another_http_endpoint_for_mqtt_ws(url):
+    from src.agent.scanner import _extract_mqtt_websocket
+
+    entry = {"tool": "http_request", "kwargs": {"url": url}, "result": json.dumps({"status_code": 101})}
+    assert _extract_mqtt_websocket([entry], {"id": "broker", "ip": IP, "role": "mqtt_broker"}, "mqtt") == []
+
+
+@pytest.mark.parametrize("result_change", [
+    {"final_url": f"http://198.51.100.1:9001/"},
+    {"final_url": f"http://{IP}:9001/other"},
+    {"final_url": f"http://{IP}:9002/"},
+    {"final_url": None},
+    {"redirect_chain": [f"http://{IP}:9001/elsewhere"]},
+])
+def test_scanner_http_hypothesis_is_not_borrowed_from_redirect(result_change):
+    from src.agent.scanner import _extract_mqtt_websocket
+
+    url = f"http://{IP}:9001/"
+    entry = {"tool": "http_request", "kwargs": {"url": url, "follow_redirects": False},
+             "result": json.dumps({"status_code": 101, "final_url": url, "redirect_chain": [], **result_change})}
+    assert _extract_mqtt_websocket([entry], {"id": "broker", "ip": IP, "role": "mqtt_broker"}, "mqtt") == []

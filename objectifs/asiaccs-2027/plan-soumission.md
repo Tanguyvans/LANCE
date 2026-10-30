@@ -15,9 +15,9 @@ et [dates importantes](https://asiaccs2027.cityu.edu.mo/important-dates/index.ht
 
 | Exigence | Valeur AsiaCCS 2027 | État LANCE |
 | --- | --- | --- |
-| Round visé | Round 2, soumission **2026-12-11 (AoE)** ; rejet précoce 2027-02-05 ; révision majeure 2027-02-12 ; rebuttal 8-12 mars 2027 ; notification 2027-03-31 | À tenir |
+| Round visé | Round 2 ; calendrier de revue (rejet précoce, révision majeure, rebuttal, notification) publié par la conférence | À tenir |
 | Conférence | 12-16 juillet 2027, Macao | — |
-| Langue et format | Anglais, PDF, template ACM Sigconf double colonne | À produire (les documents internes restent en français) |
+| Langue et format | Anglais, PDF, template ACM Sigconf double colonne | Les rapports d'avancement sont rédigés en anglais depuis le 30 octobre 2026 ; les notes de travail internes restent en français |
 | Longueur | **12 pages max** hors bibliographie et annexes ; jusqu'à 10 pages supplémentaires de bibliographie/annexes, sans garantie de lecture | Squelette à créer |
 | Revue | Double aveugle ; anonymat du papier et des artefacts | À appliquer (noms, affiliations, auto-références, dépôt) |
 | Open Science | Appendice **obligatoire** (0,5 page max après les références) avec lien d'artefact anonymisé accessible pendant toute la revue ; absence = desk-reject possible | **Bloquant à préparer tôt** (voir §6) |
@@ -26,8 +26,8 @@ et [dates importantes](https://asiaccs2027.cityu.edu.mo/important-dates/index.ht
 | Double soumission | Interdite ; prépublication (arXiv) autorisée sans publicité large | Exclut EuroS&P 2027 simultané |
 | Tracks pertinentes | Security Usability and Measurement ; Hardware, Side Channels and Cyber-Physical Systems ; AI Security | Choisir au dépôt selon l'angle final |
 
-EuroS&P 2027 (soumission 2026-12-02) n'est **pas** un filet : le papier y
-serait encore en revue le 2026-12-11. Si AsiaCCS échoue, les revues seront
+EuroS&P 2027 n'est **pas** un filet : les fenêtres de revue des deux
+conférences se chevauchent. Si AsiaCCS échoue, les revues seront
 réutilisées pour un workshop puis une version élargie (EuroS&P 2028 ou revue).
 
 ## 2. Contributions candidates (3 maximum)
@@ -68,7 +68,7 @@ sans revendication d'inférence.
 
 | Exp. | Question | Bras et conditions | Mesures primaires | État |
 | --- | --- | --- | --- | --- |
-| E1 | Où l'écart apparaît-il ? (H1-H6) | D1 contre A1 ; chaînage, hétérogénéité de représentation, contrat public nouveau, sémantique constructeur, adaptabilité, contenu hostile | Mesure propre à chaque hypothèse, spécificité sur négatifs/leurres | À mesurer |
+| E1 | Où l'écart apparaît-il ? (H1-H6) | D1 contre A1 ; chaînage, hétérogénéité de représentation, contrat public nouveau, sémantique constructeur, adaptabilité, contenu hostile | Mesure propre à chaque hypothèse, spécificité sur négatifs/leurres | Partiel : H2 mesurée le 2026-10-22 (gain absorbé par un bras convention), autres familles à mesurer |
 | E2 | L'adaptation sert-elle ? (H5) | A0 (plan LLM figé) contre A1 (adaptatif), même préfixe ; contre-épreuve de budget | Reprises abouties, spécificité | À mesurer |
 | E3 | Que coûte l'avantage ? (C3) | Mêmes runs que E1/E2 | Coût par TP confirmé, temps par jalon, variance inter-graines (≥3 graines) | À mesurer |
 
@@ -97,10 +97,9 @@ N'entrent au papier que si E1-E3 sont bouclées et relues.
 
 ## 5. Séquence de travail
 
-Aucune étape interne n'est datée : une étape commence quand la précédente est
-vérifiée. La seule contrainte externe est la soumission du **2026-12-11 (AoE)**.
-Elle n'ordonne pas les travaux et ne justifie ni un périmètre non validé, ni un
-résultat non mesuré.
+Aucune étape n'est datée : une étape commence quand la précédente est vérifiée.
+Aucune contrainte calendaire n'ordonne les travaux et ne justifie ni un
+périmètre non validé, ni un résultat non mesuré.
 
 | Étape | Critère de sortie |
 | --- | --- |

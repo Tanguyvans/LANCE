@@ -1,0 +1,206 @@
+\section{End-to-end pipeline architecture}
+\label{sec:architecture-pipeline}
+
+This part describes the effective path of a LANCE audit, from the selection of an
+execution mode to the files deposited in the run folder, relying exclusively on
+the code of the \code{dev/1} branch. The statements refer to the module and,
+where useful, to the function that implements them; behaviours that the code does
+not allow to be established are flagged as such rather than filled in by
+inference.
+
+\subsection{Overview and mode selection}
+
+The application does not carry the audit logic: it validates the request,
+guarantees a single active run per instance, streams the SSE events and re-reads
+the artefacts (\code{docs/architecture/run-modes.md}). It is \code{make\_runner}
+(\code{src/agent/run\_modes.py}) that chooses the execution strategy. For
+\code{lance} and \code{rules}, it instantiates a \code{Pipeline} and wraps it in
+\code{LanceRunner}, an adapter that reuses the pipeline object and its public
+API. For \code{vanilla} and \code{scripted}, it builds a \code{SimpleRunner}, a
+standalone class that shares with the pipeline only the tool execution boundary,
+the evidence log, the cost tracking and the laboratory reservation.
+
+\begin{table}[H]
+\centering
+\caption{Execution modes and corresponding boundary.}
+\label{tab:run-modes}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Mode & Engine & Model & Effects \\
+\midrule
+\code{lance} & \code{Pipeline} (6 phases) & required & scenario, deployment, evaluation \\
+\code{rules} & \code{Pipeline} (phases 3--4) & none & scenario and deterministic audit \\
+\code{vanilla} & \code{SimpleRunner} & required & bounded Nmap probe on CIDR \\
+\code{scripted} & \code{SimpleRunner} & none & versioned procedures \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The \code{rules} mode is not a second engine: \code{make\_runner} sets
+\code{decision\_policy="rules"}, \code{phases=[3, 4]} and
+\code{execution\_profile="full"}, and rejects any provider, direct network or
+monetary budget. The \code{vanilla} and \code{scripted} modes, conversely, reject
+\code{scenario\_id} and any harness-specific setting. The qualifier
+\code{full}/\code{compact} designates the orchestration of the pipeline, never the
+type of runner.
+
+\subsection{The six phases and their deliverables}
+
+The declarative registry \code{src/agent/registry.py} (\code{AGENTS}) assigns to
+each phase a prompt template, a tool group, a validator and a deliverable name.
+The routing is explicit in \code{src/agent/phases/registry.py}:
+\code{PHASE\_MODULES} maps the numbers 1 to 6 to fixed modules, without dynamic
+import.
+
+\begin{table}[H]
+\centering
+\caption{Phases, modules, main deliverables and associated artefacts.}
+\label{tab:phases}
+\small
+\begin{tabular}{@{}lp{2.7cm}p{3.2cm}p{4.05cm}@{}}
+\toprule
+Phase & Module & Main deliverable & Associated artefacts \\
+\midrule
+1 & \code{graph/run.py} & \code{01\_graph\_analysis.md} & \code{01\_graph\_evidence.json} \\
+2 & \code{recon/run.py} & \code{02\_recon.md} & \code{02\_recon\_evidence.json}, \code{02\_topology\_edges.json} \\
+3 & \code{analysis/run.py} & \code{03\_vuln\_analysis.json} & \code{03\_vuln\_analysis\_raw.json}, \code{03\_phase3\_status.json}, \code{03\_device\_*} \\
+4 & \code{verification/run.py} & \code{04\_exploitation.json} & \code{execution\_errors} diagnostics \\
+5 & \code{intrusion/run.py} & \code{05\_intrusion.json} & \code{05\_intrusion\_context.json} \\
+6 & \code{report/run.py} & \code{06\_report.md} & \code{06\_report\_analysis.md}, per-section sheets \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Phase 1 projects the results of the graph tools into a log of facts independent
+of the model's discourse
+(\code{GraphPhase.\_build\_graph\_evidence\_projection}), and the runner rejects
+a submission whose per-device coverage is incomplete
+(\code{src/agent/core/runner.py}). Phase 2 lets the model choose the probes, but
+\code{02\_recon.md} is rendered from the tool log, not copied by the model. Phase
+3 runs in three steps: \code{scan.scan\_phase} (deterministic observations),
+\code{devices.analyze\_devices} (analysts per device) and then
+\code{run.aggregate\_phase}, which normalises, deduplicates and projects the
+findings and writes \code{03\_vuln\_analysis.json}. Phase 4 launches micro-agents
+per vulnerability and aggregates their results. Phase 5 produces its assessment
+from the log: the model supplies only an end marker, and the status remains
+\code{objectives\_status=not\_certified}. Phase 6 is particular: its
+\code{AgentConfig} declares no tool and \code{max\_turns=1}; the report is
+assembled deterministically from sheets, the model writing only a bounded analyst
+note (\code{06\_report\_analysis.md}).
+
+\subsection{Graph and run context}
+
+The graph is built in two layers. \code{src/loader.py} reads the infrastructure
+YAML into dataclasses (\code{load\_yaml}) and then populates a backend
+(\code{build\_graph}, default backend \code{NetworkXBackend}).
+\code{src/graph\_backend.py} defines the abstract interface \code{GraphBackend}
+(\code{get\_device}, \code{get\_neighbors}, \code{find\_all\_paths},
+\code{get\_attack\_surface}, \code{get\_graph\_stats}, \code{to\_dict}) and its
+NetworkX implementation on a \code{DiGraph}. Two details deserve to be stressed:
+\code{get\_neighbors} returns the sorted union of successors and predecessors, and
+\code{find\_all\_paths} works on an undirected view (\code{to\_undirected}) in
+order to find paths in both directions, including through the abstract backend.
+
+The state belongs to the run. Each \code{Pipeline} creates an immutable
+\code{RunContext} (run folder and \code{GraphContext}); \code{GraphContext}
+carries the backend, the infrastructure, the CVE reports, the risk scores, the
+scenario or discovery topology, the weighted graph and the latest delta. The graph
+tools retrieve this context via a \code{ContextVar}
+(\code{src/agent/core/graph\_context.py}), without modifying the arguments exposed
+to the model; \code{graph\_bound} and \code{bind\_graph\_callable} explicitly
+capture the owner, including for thread workers, rather than relying on implicit
+context propagation.
+
+\subsection{The tool governance boundary}
+
+All profiles and all modes go through \code{wrap\_tool}
+(\code{src/agent/core/executor.py}). On each call, the wrapped function:
+(1) checks that the previous piece of evidence could be archived, cooperative
+stop and the budgets via \code{check\_execution\_limits}; (2) atomically
+increments a counter and refuses the call if \code{max\_tool\_calls} is reached;
+(3) assigns a reference \code{tc-<uuid>}; (4) applies the scope refusals;
+(5) executes the tool; (6) systematically archives an entry in
+\code{tool\_calls.jsonl}, including for a refusal or an exception.
+
+\begin{table}[H]
+\centering
+\caption{Controls applied by \code{check\_execution\_limits} and \code{wrap\_tool}.}
+\label{tab:executor}
+\small
+\begin{tabular}{@{}p{2.6cm}p{4.6cm}p{6.0cm}@{}}
+\toprule
+Control & Mechanism & Consequence of a failure \\
+\midrule
+Evidence integrity & flag \code{\_evidence\_integrity\_failed} & \code{EvidenceWriteError}, run not verifiable \\
+User stop & \code{\_stop\_event} (experimental scope) & \code{RunStopped} \\
+Time budget & \code{max\_duration\_s} via \code{time.monotonic()} & \code{BudgetExceeded} \\
+Monetary budget & \code{tracker.check\_budget()} & \code{BudgetExceeded} \\
+Call budget & counter under \code{\_artifact\_log\_lock} & \code{BudgetExceeded} \\
+Scope & \code{\_intrusion\_scope\_violation} & refused call archived as JSON \\
+Free execution & \code{python\_exec} & refusal \code{unverifiable\_execution\_scope} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two properties are important for the interpretation of the results. On the one
+hand, a failure to write the log is never ignored: it is converted into
+\code{EvidenceWriteError}, which interrupts the run rather than leaving untraced
+actions. On the other hand, the cost limit of \code{check\_budget} applies to
+observed usage (\code{total\_cost()}), not to a reservation of in-flight calls;
+the code docstring says so explicitly. The scope is checked on the destination
+fields (\code{ip}, \code{host}, \code{target}, \code{url}) against the
+\code{target\_subnet} of the run; an action without a verifiable destination is
+refused upstream (\code{python\_exec}), and the module header specifies that these
+are application guards, not a system sandbox.
+
+\subsection{Artefacts and cost tracking}
+
+The run folder is created exclusively under \code{output/agent/}
+(\code{Pipeline.\_\_init\_\_}); in the event of a collision, a hexadecimal suffix
+is appended and no earlier folder is overwritten. \code{run\_meta.json} records
+phase, profile, policies, commit and limits; \code{cost\_summary.json} is written
+in the \code{finally} block of the pipeline, and therefore even on exception. The
+collection contract (\code{src/benchmark/artifacts.py}) defines a positive list of
+allowed files (\code{\_ALLOWED\_ROOT\_FILES}) and \code{03\_device\_*.json}
+patterns; \code{create\_submission\_bundle} produces a zip equipped with a
+SHA-256 manifest and re-checks the manifest after writing. On the agent side, a
+deliverable attempt is archived in \code{.attempts/} and recorded in
+\code{deliverable\_attempts.jsonl}; the route
+\code{GET /api/runs/\{id\}/download/zip} excludes private files and hidden
+entries.
+
+Cost tracking (\code{src/agent/cost\_tracker.py}) resolves the price once per
+phase (\code{\_resolve\_pricing}) and records it in \code{PhaseUsage}, so that a
+completed run cannot be re-evaluated after the fact. Each phase carries the source
+of the price (\code{dynamic\_catalog}, \code{static\_catalog},
+\code{subscription}, \code{default\_estimate}) and a \code{cost\_is\_estimate}
+indicator. \code{summary()} explicitly distinguishes the cumulative duration of
+the agents (\code{total\_agent\_duration\_s}) from the wall-clock time
+(\code{wall\_clock\_duration\_s}); the former does not measure the time actually
+elapsed.
+
+\subsection{What the architecture does not guarantee}
+
+The architecture is isolated per run for the deliverables and the graph, but it is
+not entirely so: \code{src/agent/phases/README.md} indicates that the phase
+services may still call the common engine and that the simultaneity of scenarios
+on a shared laboratory is not guaranteed. \code{reserve\_lab} is only active if
+\code{LANCE\_LAB\_LOCK} is set and is only reentrant in the same thread. Moreover,
+without an explicit parameter, the interactive pipeline imposes neither a call
+ceiling nor an analysis timeout per device: the budgets of
+table~\ref{tab:executor} are therefore conditional.
+
+Three points could not be established by reading the code. \emph{One}: no
+mechanism for archiving or compacting run folders was found in \code{src/} (no
+occurrence of \code{tarfile}, \code{shutil.make\_archive} or equivalent);
+retention appears to be that of the file system, which the documentation does not
+describe. \emph{Two}: \code{02\_recon\_evidence.json} is read by
+\code{src/agent/scanner.py} and \code{src/agent/core/runner.py}, but its main
+producer has not been identified; asserting it would be a supposition.
+\emph{Three}: \code{provider\_events.jsonl} is recorded by the provider callback
+(\code{core/runner.py}) via \code{provider\_diagnostics}, and the exact content of
+the fields has not been verified line by line. Finally, a \code{completed} status
+means that the runner has finished its work, never that the target is exhaustively
+covered nor that an access has been proven
+(\code{docs/architecture/run-modes.md}).

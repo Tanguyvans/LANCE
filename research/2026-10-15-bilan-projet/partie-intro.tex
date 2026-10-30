@@ -1,0 +1,150 @@
+\section{Executive summary}
+
+This page answers four questions without jargon: what the system does, where it
+stands, what is proven, and what has to be decided.
+
+\subsection{What the system does}
+
+LANCE conducts a security audit on a network of connected objects \emph{whose
+ownership and authorisation are established}. It explores the network, issues
+hypotheses of flaws, attempts to verify them by observable evidence, and then
+writes a report. Two policies can carry out this audit: a rule-based automation
+and an agent based on a language model. The project seeks to determine which of
+the two succeeds better, with identical tools, evidence and budgets.
+
+\subsection{Where the project stands}
+
+\begin{table}[H]
+\centering
+\caption{Status in one line per strand.}
+\label{tab:etat-volet}
+\small
+\begin{tabular}{@{}p{3.3cm}p{1.9cm}p{8.3cm}@{}}
+\toprule
+Strand & Status & Detail \\
+\midrule
+Audit engine & mature & Six phases in service, four modes, execution boundary that logs every call \\
+Evidence & mature & Briefing/oracle/evaluator contract applied to five families; the log is authoritative, not the decision \\
+Harness & consolidated & Core shared since 29 October; sandbox executable outside the laboratory \\
+Infrastructure & restored & Three instances, automatic delivery pipeline, seven defects fixed \\
+Benchmark & partial & One hypothesis measured out of six, one family rejected, no inference computable \\
+Scientific proof & absent & No superiority of the model has been established to date \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{What is proven, and what is not}
+
+\textbf{Proven.} Every tool call is traced and bounded; a lost piece of evidence
+interrupts the run. A harness can run outside the laboratory, under a guard whose
+blind spots are declared. On the best-documented family, a third script, which
+reads by convention and uses no model, obtains the same result as the agent,
+which \emph{absorbs} the gain attributed to the model. The corpus is mostly
+detectable by signature, which makes a null gap expected by construction.
+
+\textbf{Not proven.} That a model does better than a competent script. That a gap
+is significant. That the results generalise beyond eight cases and one property.
+
+\subsection{The three decisions that govern what follows}
+
+\begin{enumerate}
+\item \textbf{The inference tool.} It currently produces p-values that do not
+distinguish four series of different behaviours. Either fix it so that it refuses
+to produce a number, or remove it from the decision path.
+\item \textbf{The opening condition.} Several families remain undecidable for lack
+of a written reference automation. Either write it, or explicitly renounce these
+families.
+\item \textbf{The independent families.} Either produce three of them, or publish
+a bounded methodological result and declare it as such. It is this decision that
+determines whether an inference can ever exist.
+\end{enumerate}
+
+\subsection{How to read this report}
+
+Part~\ref{sec:architecture-pipeline} describes the path of an audit.
+Part~\ref{sec:protocoles} describes what makes a result verifiable.
+Part~\ref{sec:harnais-sandbox} describes the experimental tooling.
+Part~\ref{sec:infrastructure} describes the machine and the delivery.
+Part~\ref{sec:benchmark} establishes what is measured.
+The conclusion confronts these strands and notes their contradictions.
+
+Each statement refers to the file that supports it. Behaviours that the code does
+not allow to be established are flagged as such rather than filled in.
+
+\clearpage
+\section{System overview}
+\label{sec:vue-ensemble}
+
+Before going into the contracts, a map of the system and of the laboratory. It
+situates the components described below and shows where evidence passes.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=8mm and 9mm,
+  box/.style={draw=line, fill=white, rounded corners=2pt, line width=.55pt,
+    text=ink, align=center, inner sep=5pt, font=\sffamily\footnotesize,
+    text width=29mm, minimum height=12mm},
+  focal/.style={box, draw=accent, fill=rose, line width=.75pt},
+  flow/.style={-{Latex[length=1.8mm,width=1.1mm]}, draw=muted, line width=.6pt}
+]
+\node[box] (lab) {Simulated IoT\\laboratory};
+\node[box, right=of lab] (run) {Audit engine\\six phases};
+\node[focal, right=of run] (tools) {Execution boundary\\evidence log};
+\node[box, below=of lab] (eval) {Evaluator\\offline};
+\node[box, right=of eval] (verdict) {Verdict};
+\node[box, above=of eval] (art) {Run\\artefacts, 01 to 06};
+\node[box, above=of verdict] (oracle) {Private oracle\\fixed before the run};
+
+\draw[flow] (lab) -- (run);
+\draw[flow] (run) -- (tools);
+\draw[flow] (run) -- (art);
+\draw[flow] (art) -- (eval);
+\draw[flow] (oracle) -- (verdict);
+\draw[flow] (eval) -- (verdict);
+\draw[flow, dashed] (tools.south) -- (verdict.north east);
+\end{tikzpicture}
+\caption{The journey of a piece of evidence. The tools produce logged
+observations; the private oracle, written before execution, makes it possible to
+recompute the verdict from the log without believing the system's decision.}
+\label{fig:tripwire}
+\end{figure}
+
+Three properties can be read from this map.
+
+\textbf{The log is the source.} A result is not the conclusion written by the
+policy, but what the evaluator recomputes from the archived observations. A cited
+piece of evidence that does not appear in the log is rejected.
+
+\textbf{The oracle precedes the run.} It is fixed before the policy runs, and a
+finding that contradicts it invalidates the trial instead of correcting it. This
+precedence is what prevents the answer from being adjusted after the fact.
+
+\textbf{The sandbox is not the measurement.} It executes the deterministic arms
+without a model or a laboratory; it instruments the contrast, it does not measure
+it.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=3mm and 5mm,
+  h/.style={draw=line, fill=white, rounded corners=2pt, line width=.55pt,
+    text=ink, align=center, inner sep=3pt, font=\sffamily\footnotesize},
+  dev/.style={h, fill=rose, draw=accent},
+  flow/.style={-{Latex[length=1.6mm,width=1mm]}, draw=muted, line width=.6pt}
+]
+\node[h, text width=22mm] (poste) {Development\\workstation};
+\node[h, text width=24mm, right=of poste] (ci) {GitHub Actions\\validation};
+\node[dev, text width=26mm, right=of ci] (lxc) {Master container\\three instances};
+\node[h, text width=22mm, right=of lxc] (umons) {UMONS relay\\model};
+
+\draw[flow] (poste) -- node[above, font=\sffamily\tiny, text=muted] {push} (ci);
+\draw[flow] (ci) -- node[above, font=\sffamily\tiny, text=muted] {deploys} (lxc);
+\draw[flow] (lxc) -- node[above, font=\sffamily\tiny, text=muted] {calls} (umons);
+\end{tikzpicture}
+\caption{The delivery pipeline. No execution work takes place on the development
+workstation: the push triggers validation, which deploys to the container.}
+\label{fig:circuit}
+\end{figure}
+
+\clearpage

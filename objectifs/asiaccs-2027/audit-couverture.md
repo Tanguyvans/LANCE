@@ -5,6 +5,22 @@ Date : 2026-10-12. Source : calcul sur `benchmarks/ground_truth/dev/` et
 faille), `benchmarks/catalog.yaml`, `benchmarks/packs/definitions/`.
 Aucun run exécuté pour cet audit.
 
+**Correction du 2026-10-23 (Europe/Brussels, UTC+02:00).** Le constat 1 annonçait
+215/288 (75 %) alors que son propre tableau somme 243/288 (84,4 %) : trois lignes
+étiquetées « Signature » (`info_disclosure`, `cve`, `missing_header`) étaient
+omises du total. Le constat 2 attribuait la strate logique à S15 seul ; elle
+couvre S15, S22 et S28. Aucun chiffre du tableau n'a changé, seuls les totaux.
+
+**Deux comptages coexistent dans ce document, et ils ne mesurent pas la même
+chose.** Le premier est **interprétatif** : la colonne « Lecture » du constat 1
+juge si une règle bien conçue peut conclure seule, et range chaque catégorie en
+signature, mixte, chaînage ou logique. Le second est **mécanique** : le champ
+`type` de `benchmarks/labels/derived_index.json` est binaire et ne connaît que
+`logique` (catégories `broken_access_control` et `auth_bypass`) et `signature`
+(tout le reste). Les deux sont légitimes ; ils ne doivent jamais être cités
+l'un pour l'autre. Ce document emploie le comptage interprétatif ; l'index
+dérivé donne, lui, 282/288 `signature` et 6/288 `logique`.
+
 ## Constat 1 — Le corpus est massivement « routine »
 
 Répartition des 288 vulnérabilités attendues par catégorie :
@@ -25,8 +41,10 @@ Répartition des 288 vulnérabilités attendues par catégorie :
 | auth_bypass | 2 | Logique |
 | missing_header | 3 | Signature |
 
-**215 vulnérabilités sur 288 (75 %) relèvent de catégories à signature**
-qu'une automatisation à règles bien conçue détecte par construction.
+**243 vulnérabilités sur 288 (84,4 %) relèvent de catégories à signature**
+qu'une automatisation à règles bien conçue détecte par construction ; 35
+(12,2 %) sont mixtes, 4 relèvent du chaînage et 6 de la logique d'autorisation.
+Le total des quatre lectures fait bien 288.
 Un duel global sur ce corpus mesurerait donc surtout la qualité des
 règles, pas l'apport du modèle. C'est le biais que la proposition de
 recentrage cherche à isoler par conditions.
@@ -35,7 +53,7 @@ recentrage cherche à isoler par conditions.
 
 | Condition visée | Couverture réelle | Détail |
 | --- | --- | --- |
-| Faille logique / autorisation | 1 scénario | S15 seul (3 broken_access_control) + 1 cas dans S28 |
+| Faille logique / autorisation | 3 scénarios, 6 entrées | S15 (3 `broken_access_control`), S22 (1 `auth_bypass`), S28 (1 `broken_access_control` + 1 `auth_bypass`) |
 | Chaînage multi-saut (hop ≥ 2) | Concentrée | S11, S12, S13 (gros dev) et S20, S24-S27 (test) |
 | Faible prévalence | 2 scénarios | S14 (4 failles), S21 (2 failles) |
 | Protocole inconnu | Aucune en tant que telle | Aucune catégorie ne l'encode |
@@ -79,7 +97,7 @@ sans changer de topologie.
 | --- | --- | --- |
 | S1 (plat, routine) | Garder | Référence routine, apparié à S1h |
 | S14 (épars, faible prévalence) | Garder | Seule strate basse prévalence du dev avec S21 |
-| S15 (API multi-tenant) | Garder | Unique strate logique du corpus entier |
+| S15 (API multi-tenant) | Garder | Plus grosse part de la strate logique, qui couvre aussi S22 et S28 (6 entrées au total) |
 | Contrôle `healthy` fictif | **Remplacer par S1h** | Existe, déployable, apparié à S1 |
 | 3 répétitions, ordre alterné | Garder pour le pilote | Calibration de mesure, pas conclusion |
 

@@ -1,0 +1,173 @@
+\section{Experimentation harness and hermetic sandbox}\label{sec:harnais-sandbox}
+
+This part describes the recent work that unified the life cycle of calibration
+harnesses and added a hermetic sandbox executable outside the laboratory. It
+separates three objects: the anatomy of a harness, the shared core that builds its
+execution object, and the sandbox that executes a deterministic arm under an audit
+guard. Three commits trace it on the \code{dev/1} branch: \code{11b820c} (sandbox),
+\code{02320d5} (closure of the guard's gaps) and \code{5101523} (shared core).
+
+\subsection{Anatomy of a harness}
+
+A harness is a set of files with a single responsibility, under
+\code{benchmarks/experiments/}. The MQTT harness gives its complete form. The
+\textbf{contract} is \code{mqtt\_reference.py}: it validates the briefing, binds
+the tool to the execution boundary, provides the \textbf{D1 adapter} through the
+deterministic arm \code{run\_rules} and recounts the run through
+\code{evaluate\_trial}. The \textbf{LLM arm} is \code{mqtt\_reference\_llm.py};
+\code{mqtt\_formats\_llm.py} is its H2 variant, which receives no parser. The
+\textbf{live controller} is \code{mqtt\_reference\_live.py}, not to be confused
+with the arm: it builds the LLM agent, the wrapper of a \code{RecordingClient}
+that journals every transport call, and writes \code{decision.json},
+\code{cost\_summary.json} and \code{run\_meta.json}. The \textbf{deployment} is
+\code{mqtt\_reference\_proxmox.py}: the class \code{Proxmox} submits operations
+via \code{ansible-playbook}, the class \code{Fixture} starts the broker from the
+allocation.
+
+The same anatomy is repeated for SSH, the API and the V0 control, with one
+important difference: the H2 harness (\code{mqtt\_formats.py}) has neither a
+Proxmox deployment nor an active live client in the sandbox, since its corpus is
+frozen.
+
+\subsection{The shared core}
+
+The core exists for a precise reason, recorded in its header: the governance
+boundary of \code{src/agent/core/executor.py} reads a fixed set of attributes via
+\code{getattr} with a default value. An omission therefore manifests only when a
+tool call misbehaves. Each harness rebuilt this object by hand; the core replaces
+the copies with a single \code{build\_run}.
+
+\code{REQUIRED\_ATTRIBUTES} enumerates thirteen attributes: the run directory, the
+three budgets, the archival lock, the evidence lock, the call counter, the start
+clock, the limit reason, then the scope, the context, the policy and the cost
+tracking. One attribute deserves a particular comment:
+\code{\_evidence\_integrity\_failed}. \code{check\_execution\_limits} reads it as
+its first instruction and raises \code{EvidenceWriteError} if it is true;
+\code{wrap\_tool.archive} sets it when the archive cannot be written. This lock
+documents a rule: lost evidence must remain visible, and the run becomes
+unverifiable. A harness that forgot it would fall back to the default value and
+pursue a run whose archive is holed.
+
+The refusal is two-level: \code{build\_run} checks the missing attribute and the
+absent context key before returning the object, and \code{require\_attributes}
+replays the same check on an arbitrary object. A deterministic variant declares
+neither model nor provider.
+
+Coverage remains incomplete: the four \code{*\_live.py} harnesses go through a
+local function of the same name \code{new\_run}, and the core's \code{new\_run}
+has no direct caller; the delegation goes through \code{build\_run}.
+
+\subsection{The sandbox}
+
+\code{benchmarks/experiments/sandbox.py} proves, on a development workstation as
+well as in continuous integration, that a harness executes without a broker,
+without a model and without a laboratory. It loads the frozen corpus (eight
+fixtures) and, for each dossier: validates the dossier, opens a journal, executes
+the chosen arm, writes the artefacts, then recounts via the existing evaluator.
+Five artefacts are produced per trial: \code{dossier.json}, \code{oracle.json},
+\code{answer.json}, \code{journal.jsonl} and \code{evaluation.json}. A
+\code{sandbox-report.json} aggregates the trials and the \code{guard} block.
+
+The arm is an explicit parameter, and an unknown name raises an error. This choice
+is a correction: the original version read the arm from the corpus, which does not
+declare it, rendering the conventional arm unreachable and causing the report to
+invent the tested policy.
+
+\subsection{The audit guard and its limits}
+
+The guard relies on \code{sys.addaudithook}. The \code{Guard} class remains
+installed in the process, but inspects events only when armed: the
+\code{active()} context manager bounds the enforcement to the run.
+\code{install\_guard} installs the hook only once and then rebinds the authorised
+directory and the list of violations at each run; without this rebind, a second run
+would observe the first run's directory and stifle its own violations. The blocked
+events cover sockets, subprocesses, the \code{exec}/\code{spawn}/\code{posix\_spawn}
+family, \code{ctypes} and rename and delete operations. Writes are handled
+separately: the \code{open} event is refused if the flags contain a write mode and
+if the resolved path leaves the authorised directory.
+
+The honesty of this mechanism can be read in commit \code{02320d5}. A read-only
+audit broke the first version with two measured escapes: \code{os.posix\_spawn}
+started a process, and \code{ctypes.CDLL(None).system()} executed native code,
+while the report announced a hermetic execution without violation. The report was
+therefore corrected on three points: the key \code{hermetic} is replaced by
+\code{guard\_clean}, which states only the absence of a listed event; a
+\code{guard} block declares the mechanism, the blocked events and, explicitly, the
+blind spots; and \code{claims\_isolation} is set to \code{false}. This last
+indicator is false by construction: an audit hook observes events of the Python
+interpreter, not system calls. It does not see native code reached outside
+\code{ctypes}, nor a write through a descriptor opened before arming, nor a system
+call issued outside CPython.
+
+This limit has a methodological consequence: \code{guard\_clean: true} means
+``none of the listed events occurred'', never ``the run is isolated''.
+
+\begin{table}[H]
+\centering
+\caption{What the guard covers, and what it leaves unobserved.}
+\label{tab:guard-limits}
+\small
+\begin{tabular}{@{}p{6.2cm}p{7.6cm}@{}}
+\toprule
+Covered, with refusal raised & Unobserved \\
+\midrule
+Sockets: connection, resolution, sending, listening & Native code reached without \code{ctypes}, \code{Popen} or \code{posix\_spawn} \\
+Processes: \code{subprocess}, \code{os.system}, \code{exec*}, \code{fork}, \code{spawn*}, \code{posix\_spawn*} & Writes through a descriptor opened before arming \\
+\code{ctypes}: loading, symbol resolution, call & System calls issued outside the CPython interpreter \\
+Rename and delete: \code{os.rename}, \code{remove}, \code{replace}, \code{unlink}, \code{shutil} & Any behaviour after disarming: the hook remains installed but inert \\
+Writes via \code{open} outside the authorised directory (resolved paths) & No guarantee of process isolation \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{What the sandbox demonstrates}
+
+On the eight frozen fixtures, the declared-parser arm succeeds in six trials out of
+eight: the two failures are the \code{variant/raw} trials, where the declared
+parser does not cover the schema and abstains on every message, hence an erroneous
+conclusion. The conventional arm, which reads the keys without a declared schema,
+succeeds eight out of eight. Success is not counted on the conclusion alone: the
+evaluator imposes it as a correct conclusion, without contradiction and without
+any erroneous verdict.
+
+Both arms produce the same offline lesson as H2: the failure on
+\code{variant/raw} does not stem from a lack of intelligence but from a boundary
+of the declared parser, and a script that tries restores the coverage. The sandbox
+instruments the contrast; it does not measure it on a model. No LLM arm appears
+there, no pre-flight attestation is produced, and neither \code{pair\_admissible}
+nor \code{mt\_admissible} emerges from it.
+
+\subsection{Sandbox limits}
+
+Five limits must be read against the preceding results. First, the sandbox
+involves no model: its success is a property of the harness, not an experimental
+result, and the report carries \code{claims\_measurement: false}. Next,
+\code{guard\_clean} is a Python observation and not a proof of isolation. Third,
+the scope is partial: the negative tests that prove the hook really refuses
+network, processes, \code{posix\_spawn} and \code{ctypes} go through direct
+invocation of the guard, and no end-to-end test confirms that the run actually
+triggers the installed hook; the detection path is proved only at unit level.
+Fourth, the corpus is frozen, has a single scenario and eight fixtures, which
+suffices to instrument the contrast but not to estimate a rate. Finally, the
+sandbox bypasses the governance boundary it is meant to accompany: it calls the
+arm directly, without building a run or passing through the tool wrapper, and the
+journal is written by the harness itself; the shared core and the guard remain two
+separate instruments, each verified in isolation.
+
+\subsection{Tests}
+
+The set counts twenty-four tests: fourteen for the sandbox and ten for the core.
+They prove four properties. For the core, the run exposes the governance surface,
+an incomplete run is refused at construction, \code{check\_execution\_limits}
+accepts a new run, and the exceeding of the call budget is raised by the tool
+wrapper and not by the limit check. For the sandbox, the eight fixtures produce the
+five artefacts and a consistent report, and the arm is declared and never read
+from the corpus. For the H2 lesson, the declared parser fails on at least one trial
+when the conventional arm succeeds everywhere. For the guard, negative tests
+refuse writes outside the directory, the network, subprocesses,
+\code{posix\_spawn} and \code{ctypes}, while a test verifies that the hook remains
+inert after disarming and that a second guard observes its own directory.
+
+What these tests do not prove: none executes an LLM arm, none measures a
+confidence interval, and none verifies that the installed hook is reached during
+the run rather than only when it is called by hand.

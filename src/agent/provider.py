@@ -97,13 +97,13 @@ class _ProviderDiagnostics:
         payload.update(fields)
         _safe_provider_callback(self.callback, payload)
 
-    def request(self, *, turn: int, attempt: int) -> int:
+    def request(self, *, turn: int, attempt: int, max_tokens=None) -> int:
         self.request_num += 1
         self.last_turn = turn
-        self.emit("request", request_num=self.request_num, attempt=attempt, turn=turn)
+        self.emit("request", request_num=self.request_num, attempt=attempt, turn=turn, max_tokens=max_tokens)
         return self.request_num
 
-    def response(self, *, response_type: str, turn: int, finish_reason=None, usage_present=False, request_num=None, error_kind=None, status_code=None) -> None:
+    def response(self, *, response_type: str, turn: int, finish_reason=None, usage_present=False, request_num=None, error_kind=None, status_code=None, completion_counts=None) -> None:
         self.emit(
             "response",
             response_type=response_type,
@@ -113,6 +113,10 @@ class _ProviderDiagnostics:
             turn=turn,
             error_kind=error_kind,
             status_code=status_code,
+            **{
+                key: (completion_counts or {}).get(key)
+                for key in ("input_tokens", "output_tokens", "reasoning_tokens", "reasoning_chars", "visible_chars")
+            },
         )
 
     def provider_error(self, exc: Exception | None = None, *, turn: int, request_num: int | None) -> None:
@@ -366,7 +370,7 @@ class LLMProvider:
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
         diagnostics = _ProviderDiagnostics(self.provider, self.model, event_callback, tools)
-        diagnostics.emit("invocation_started")
+        diagnostics.emit("invocation_started", max_turns=max_turns, max_tokens=max_tokens)
         try:
             return self._openai_loop(
                 system_prompt, user_message, tools, tool_map, max_turns, cost_tracker,
@@ -410,7 +414,7 @@ class LLMProvider:
             raise ValueError("A non-empty user message is required")
         if diagnostics is None:
             diagnostics = _ProviderDiagnostics(self.provider, self.model, stream_callback, tools)
-            diagnostics.emit("invocation_started")
+            diagnostics.emit("invocation_started", max_turns=max_turns, max_tokens=max_tokens)
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -566,6 +570,7 @@ class LLMProvider:
             diagnostics.request(
                 turn=request_context["turn"],
                 attempt=request_context["attempt"],
+                max_tokens=kwargs.get("max_tokens"),
             )
             request_context["request_started"] = True
             return client.chat.completions.create(**kwargs)
@@ -754,7 +759,10 @@ class LLMProvider:
                 response_type = "textonly"
             else:
                 response_type = "emptymessage"
+            response_counts: dict = {}
+            _record_completion_metadata(response_counts, choice, response.usage)
             diagnostics.response(
+                completion_counts=response_counts,
                 response_type=response_type,
                 finish_reason=finish_reason,
                 usage_present=bool(response.usage),
@@ -795,7 +803,10 @@ class LLMProvider:
                     )
                     if fallback.choices:
                         fallback_choice = fallback.choices[0]
+                        fallback_counts: dict = {}
+                        _record_completion_metadata(fallback_counts, fallback_choice, fallback.usage)
                         diagnostics.response(
+                            completion_counts=fallback_counts,
                             response_type=(
                                 "finish_reasonerror" if getattr(fallback_choice, "finish_reason", None) == "error"
                                 else "length" if getattr(fallback_choice, "finish_reason", None) == "length"

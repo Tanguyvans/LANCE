@@ -44,14 +44,14 @@
 \title{\'Etat des lieux de la plateforme LANCE\\et feuille de route vers AsiaCCS 2027\\[4pt]
 \large Architecture \`a changer, objectifs plateforme et m\'etriques comportementales}
 \author{Projet LANCE}
-\date{Derni\`ere r\'evision : 2026-10-12 22:11 (Europe/Brussels, UTC+02:00)\\
+\date{Derni\`ere r\'evision : 2026-10-23 14:33 (Europe/Brussels, UTC+02:00)\\
 Statut : \'etat des lieux et propositions --- aucun r\'esultat exp\'erimental nouveau}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Ce rapport consolide trois analyses men\'ees en parall\`ele le 2026-10-12 (architecture, objectifs plateforme, m\'etriques) en vue de la soumission vis\'ee \`a AsiaCCS 2027 (round 2, 2026-12-11). Il \'etablit ce qui, dans l'architecture actuelle, doit changer pour rendre la contribution centrale prouvable, les objectifs mesurables que la plateforme doit atteindre, et les m\'etriques comportementales \`a montrer au-del\`a des scores agr\'eg\'es. Six chantiers sont jug\'es indispensables avant soumission, dont deux bloquants pour la preuve : le split par famille de packs et l'inf\'erence statistique appari\'ee, aujourd'hui absente. Aucun run de campagne n'ayant encore \'et\'e ex\'ecut\'e, ce document ne rapporte aucune performance ; les efforts sont des estimations \`a confirmer.
+Ce rapport consolide trois analyses men\'ees en parall\`ele le 2026-10-12 (architecture, objectifs plateforme, m\'etriques) en vue de la soumission vis\'ee \`a AsiaCCS 2027 (round 2). Il \'etablit ce qui, dans l'architecture actuelle, doit changer pour rendre la contribution centrale prouvable, les objectifs mesurables que la plateforme doit atteindre, et les m\'etriques comportementales \`a montrer au-del\`a des scores agr\'eg\'es. Six chantiers sont jug\'es indispensables avant soumission, dont deux bloquants pour la preuve : le split par famille de packs et l'inf\'erence statistique appari\'ee, aujourd'hui absente. Aucun run de campagne n'ayant encore \'et\'e ex\'ecut\'e, ce document ne rapporte aucune performance ; les efforts sont des estimations \`a confirmer.
 \end{abstract}
 
 \tableofcontents
@@ -102,22 +102,22 @@ Trois objectifs, formul\'es en crit\`eres mesurables, portent les contributions 
 
 S'y ajoute l'exp\'erience d'adaptation E2 (A0 fig\'e contre A1 adaptatif, pentes de d\'egradation sous bruit par bras) et le rappel que le pilote de 24 runs valide la mesure et calibre $\delta$ et la puissance ; aucun de ses chiffres n'entre dans les tableaux du papier.
 
-La figure~\ref{fig:route} place ces chantiers sur la fen\^etre disponible jusqu'\`a la d\'ecision du 2026-11-16.
+La figure~\ref{fig:route} place ces chantiers sur la fen\^etre disponible jusqu'\`a la d\'ecision.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[sfig diagram]
-\node[gbar, text width=38mm] (a) {12--26 oct.\\Pilote 24 runs gel\'e\\et ex\'ecut\'e};
-\node[gbar, text width=38mm, right=of a] (b) {27 oct.--9 nov.\\Variantes f11/f20\\Panel et graines gel\'es};
-\node[gbar, text width=38mm, right=of b] (c) {10--16 nov.\\Analyse appari\'ee\\IC 95~\%, Holm, co\^ut};
-\node[gmil, text width=38mm, below=of c] (d) {16 nov. 2026\\D\'ecision \'ecrite\\soumettre / repositionner};
+\node[gbar, text width=38mm] (a) {\'Etape 1\\Pilote 24 runs gel\'e\\et ex\'ecut\'e};
+\node[gbar, text width=38mm, right=of a] (b) {\'Etape 2\\Variantes f11/f20\\Panel et graines gel\'es};
+\node[gbar, text width=38mm, right=of b] (c) {\'Etape 3\\Analyse appari\'ee\\IC 95~\%, Holm, co\^ut};
+\node[gmil, text width=38mm, below=of c] (d) {D\'ecision \'ecrite\\soumettre / repositionner};
 \draw[->, draw=sfigMuted] (a) -- (b);
 \draw[->, draw=sfigMuted] (b) -- (c);
 \draw[->, draw=sfigMuted] (c) -- (d);
-\node[gbar, text width=38mm, left=of d] (e) {D\`es semaine 1, en parall\`ele\\Artefact anonymis\'e\\(risque desk-reject)};
+\node[gbar, text width=38mm, left=of d] (e) {D\`es l'\'etape 1, en parall\`ele\\Artefact anonymis\'e\\(risque desk-reject)};
 \draw[->, draw=sfigMuted, dashed] (e) -- (d);
 \end{tikzpicture}
-\caption{Feuille de route propos\'ee jusqu'\`a la d\'ecision du 2026-11-16. Calendrier de travail, pas un r\'esultat ; les crit\`eres de la d\'ecision sont ceux du dossier d'objectifs.}
+\caption{Feuille de route propos\'ee jusqu'\`a la d\'ecision. Calendrier de travail, pas un r\'esultat ; les crit\`eres de la d\'ecision sont ceux du dossier d'objectifs.}
 \label{fig:route}
 \end{figure}
 
@@ -141,10 +141,10 @@ Trois garde-fous bornent le p\'erim\`etre. \emph{Port\'ee} : pas de nouveau syst
 \section{Limites et points non r\'esolus}
 \label{sec:limites}
 
-Aucun run de campagne n'a \'et\'e ex\'ecut\'e : la puissance r\'eelle et la valeur de $\delta$ restent non calibr\'ees. L'ind\'ependance historique du split actuel S20--S29 n'est pas v\'erifi\'ee, ce qui motive le split par famille sans le rendre acquis. Le mode \'emul\'e portable hors laboratoire NATO n'existe pas ; sa faisabilit\'e et l'\'ecart tol\'erable avec le laboratoire Proxmox sont \`a prouver sur une famille. Le panneau de mod\`eles (second mod\`ele, \'eventuel mod\`ele \`a m\'elange d'experts) et le bras A0 restent \`a geler avant le 2026-11-09. Enfin, deux des trois analyses consolid\'ees ici se d\'eclaraient partielles : chaque changement du tableau~\ref{tab:archi} doit \^etre confirm\'e sur le code avant impl\'ementation.
+Aucun run de campagne n'a \'et\'e ex\'ecut\'e : la puissance r\'eelle et la valeur de $\delta$ restent non calibr\'ees. L'ind\'ependance historique du split actuel S20--S29 n'est pas v\'erifi\'ee, ce qui motive le split par famille sans le rendre acquis. Le mode \'emul\'e portable hors laboratoire NATO n'existe pas ; sa faisabilit\'e et l'\'ecart tol\'erable avec le laboratoire Proxmox sont \`a prouver sur une famille. Le panneau de mod\`eles (second mod\`ele, \'eventuel mod\`ele \`a m\'elange d'experts) et le bras A0 restent \`a geler avant l'\'etape 3. Enfin, deux des trois analyses consolid\'ees ici se d\'eclaraient partielles : chaque changement du tableau~\ref{tab:archi} doit \^etre confirm\'e sur le code avant impl\'ementation.
 
 \section{Conclusion}
 
-La plateforme est, pour l'essentiel, d\'ej\`a l'instrument qu'il faut ; ce qui manque se concentre en deux prouves (split par famille, inf\'erence appari\'ee), une ex\'ecution (le pilote), et un artefact partageable. La d\'ecision du 2026-11-16, prise sur les crit\`eres \'ecrits du dossier d'objectifs, dira si ces \'el\'ements suffisent \`a soumettre \`a AsiaCCS le 2026-12-11, \`a repositionner le papier en mesure \`a r\'esultat n\'egatif, ou \`a diff\'erer vers un workshop puis une version \'elargie. La prochaine action est le gel du pilote, pas une fonctionnalit\'e nouvelle.
+La plateforme est, pour l'essentiel, d\'ej\`a l'instrument qu'il faut ; ce qui manque se concentre en deux prouves (split par famille, inf\'erence appari\'ee), une ex\'ecution (le pilote), et un artefact partageable. La d\'ecision, prise sur les crit\`eres \'ecrits du dossier d'objectifs, dira si ces \'el\'ements suffisent \`a soumettre \`a AsiaCCS, \`a repositionner le papier en mesure \`a r\'esultat n\'egatif, ou \`a diff\'erer vers un workshop puis une version \'elargie. La prochaine action est le gel du pilote, pas une fonctionnalit\'e nouvelle.
 
 \end{document}

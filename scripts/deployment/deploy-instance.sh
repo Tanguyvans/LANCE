@@ -14,8 +14,43 @@ esac
 [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
 [[ "$branch" =~ ^[a-zA-Z0-9._/-]+$ ]] || exit 1
 [[ "${RUNNER_NAME:-}" == nato-master ]] || { echo 'Requires nato-master runner' >&2; exit 1; }
-ip -o -4 addr show | grep -q '100\.103\.253\.86/' || { echo 'Not the nato-master host' >&2; exit 1; }
-[[ $(id -u) == 0 ]] || { echo 'Root runner required' >&2; exit 1; }
+# The Tailscale address is a setting, not an identity: a rebuilt container
+# receives a new one and must still be able to deploy its own instances.
+# Unless an address is declared explicitly, the host identity is the first
+# Tailscale address of this machine, so a reconstruction needs no edit.
+if [[ -n "${LANCE_DEPLOY_EXPECTED_IP:-}" ]]; then
+  expected_ip=$LANCE_DEPLOY_EXPECTED_IP
+else
+  expected_ip=$(ip -o -4 addr show | awk '$2 == "tailscale0" {split($4, a, "/"); print a[1]; exit}')
+fi
+if [[ -z "$expected_ip" ]]; then
+  echo 'No Tailscale address found; set LANCE_DEPLOY_EXPECTED_IP' >&2
+  exit 1
+fi
+if ! ip -o -4 addr show | grep -q "${expected_ip//./\\.}/"; then
+  echo "Not the nato-master host: $expected_ip absent (set LANCE_DEPLOY_EXPECTED_IP)" >&2
+  exit 1
+fi
+# Privileged operations (systemd units, /var/lib/lance, chown) need root. The
+# runner may legitimately run unprivileged, so re-exec through sudo when it is
+# available instead of refusing the deployment outright.
+if [[ $(id -u) != 0 ]]; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    # Re-exec through bash: the checkout may not carry the execute bit, and
+    # $0 may be relative while sudo does not resolve it in this directory.
+    # sudo resets the environment, so the runner identity must be carried.
+    # sudo resets the environment, so the runner identity and the deployment
+    # settings declared by the workflow must be carried explicitly.
+    carried=RUNNER_NAME,RUNNER_TRACKING_ID
+    for name in $(compgen -e | grep -E '^(DEPLOY_|LANCE_DEPLOY_)'); do
+      carried=$carried,$name
+    done
+    exec sudo -n --preserve-env="$carried" \
+      -- bash "$script_dir/$(basename -- "${BASH_SOURCE[0]}")" "$@"
+  fi
+  echo 'Root runner required: run the runner as root or grant passwordless sudo' >&2
+  exit 1
+fi
 stable=/opt/nato-smartcity-iot
 shared=/var/lib/lance
 install -d -m 0700 "$shared"
@@ -23,9 +58,16 @@ install -d -m 0700 "$shared"
 exec 9>>"$shared/lab.lock"
 flock -x 9
 if [[ "$slot" != main ]]; then
-  # A legacy stable process cannot participate in mutual exclusion.
-  curl -fsS --max-time 10 http://127.0.0.1:8501/api/environment |
-    python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["instance"] == "main" and d["lab_lock_enabled"], "Update main before enabling development"'
+  # A legacy stable process cannot participate in mutual exclusion. When the
+  # stable instance is not deployed yet, there is nothing to exclude: a
+  # rebuilt container must be able to bring up its development instances
+  # before main exists. Once main answers, the check is mandatory.
+  if curl -fsS --max-time 10 http://127.0.0.1:8501/api/environment >/dev/null 2>&1; then
+    curl -fsS --max-time 10 http://127.0.0.1:8501/api/environment |
+      python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["instance"] == "main" and d["lab_lock_enabled"], "Update main before enabling development"'
+  else
+    echo 'Stable instance 8501 not deployed: development instance starts without lab exclusion' >&2
+  fi
 elif systemctl is-active --quiet "$service"; then
   # Bootstrap check also protects an old service which predates the lock.
   curl -fsS --max-time 10 http://127.0.0.1:8501/api/pipeline/status |
@@ -53,21 +95,39 @@ bash "$script_dir/update-checkout.sh" "$slot" "$sha"
 # Refuse old branches without the laboratory protocol.
 test -f src/benchmark/lab_lock.py
 if [[ "$slot" != main ]]; then
+  # Configuration files are inherited from the stable checkout when it
+  # exists. A rebuilt container may create the development instance first:
+  # keep whatever configuration the checkout already carries instead.
   for relative in benchmarks/ansible/inventory.yml benchmarks/ansible/group_vars/all/main.yml benchmarks/ansible/group_vars/all/vault_master.yml; do
-    test -f "$stable/$relative"
-    install -m 0600 "$stable/$relative" "$root/$relative"
-    git update-index --skip-worktree -- "$relative"
+    if [[ -f "$stable/$relative" ]]; then
+      install -m 0600 "$stable/$relative" "$root/$relative"
+      git update-index --skip-worktree -- "$relative"
+    elif [[ ! -f "$root/$relative" ]]; then
+      echo "Configuration $relative absent from both $stable and $root" >&2
+      exit 1
+    fi
   done
-  if [[ ! -f .env ]]; then install -m 0600 "$stable/.env" .env; fi
+  if [[ ! -f .env ]]; then
+    [[ -f "$stable/.env" ]] || { echo 'No .env in the checkout or the stable instance' >&2; exit 1; }
+    install -m 0600 "$stable/.env" .env
+  fi
 fi
 # Each checkout owns its dependencies, database and run artifacts.
 if [[ ! -x venv/bin/python ]]; then python3 -m venv venv; fi
 venv/bin/pip install -r requirements.txt --quiet
-if [[ ! -x /root/.local/bin/codex ]]; then
-  curl -fsSL https://chatgpt.com/codex/install.sh | sh
+# The optional Codex CLI is a convenience, never a deployment precondition:
+# a download failure must not leave the instance stopped. It installs into a
+# shared directory so the path does not depend on the caller's HOME.
+codex_cli=/usr/local/bin/codex
+if [[ ! -x "$codex_cli" ]]; then
+  curl -fsSL https://chatgpt.com/codex/install.sh \
+    | CODEX_INSTALL_DIR=/usr/local/bin sh || echo 'Codex CLI not installed; continuing' >&2
+  [[ -x "$codex_cli" ]] || codex_cli=/root/.local/bin/codex
 fi
 export LANCE_DB_PATH="$root/data/lance.db"
-venv/bin/python scripts/deployment/seed-registry.py "$stable/data/lance.db"
+if [[ -f "$stable/data/lance.db" ]]; then
+  venv/bin/python scripts/deployment/seed-registry.py "$stable/data/lance.db"
+fi
 venv/bin/python -m src.db.inject_moe
 install -d -m 0755 "/etc/systemd/system/$service.service.d"
 # EnvironmentFile entries take precedence over Environment and the copied .env.
@@ -95,7 +155,7 @@ User=root
 WorkingDirectory=$root
 Environment=LANG=C.UTF-8
 Environment=LC_ALL=C.UTF-8
-Environment=LANCE_CODEX_CLI_PATH=/root/.local/bin/codex
+Environment=LANCE_CODEX_CLI_PATH=$codex_cli
 EnvironmentFile=$root/.env
 ExecStart=$root/venv/bin/uvicorn src.api.main:app --host 0.0.0.0 --port $port --workers 1
 Restart=on-failure

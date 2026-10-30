@@ -125,7 +125,17 @@ def sanitize_event(
         value = _safe_int(event.get(key))
         if value is not None:
             record[key] = value
+    if name in {"invocation_started", "request"}:
+        for key in ("max_tokens", "max_turns"):
+            value = event.get(key)
+            # Exact configured limits; do not coerce a string or boolean.
+            if type(value) is int and 0 < value <= 1_000_000:
+                record[key] = value
     if name == "response":
+        for key in ("input_tokens", "output_tokens", "reasoning_tokens", "reasoning_chars", "visible_chars"):
+            if key in event:
+                value = event[key]
+                record[key] = value if type(value) is int and 0 <= value <= 1_000_000 else None
         response_type = event.get("response_type")
         if response_type in _RESPONSE_TYPES:
             record["response_type"] = response_type
