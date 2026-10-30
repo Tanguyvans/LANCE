@@ -45,6 +45,12 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 
 ## Blocages
 
+0. **Les familles sont fabriquées.** `policy_pair_runner.py:225` écrit
+   `family_id: "ui-public-scenario"` en dur, et chaque scénario du catalogue
+   porte son propre identifiant comme famille. Le corpus ne contient au mieux
+   que trois familles défendables, alors que l'inférence en exige cinq pour
+   décider. Tant que ce point n'est pas résolu, aucun test statistique ne peut
+   être présenté comme une conclusion. C'est l'objet de la famille pilote.
 1. **La mesure — corrigée le 2026-10-30.** Le module calcule désormais une
    p-value unilatérale : test du signe exact jusqu'à sept familles, bootstrap
    au-delà, refus explicite sous trois familles. Une décision exige cinq
@@ -68,22 +74,27 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 
 Dans l'ordre des dépendances, sans dates.
 
-1. **Comparer les trois politiques sur un même scénario.** C'est l'objectif de
+1. **Construire une famille réellement indépendante.** Une seule, menée de bout
+   en bout : D1+ exécutable, test de clôture hashé, simulateur propre, huit
+   fixtures, trois bras. C'est le gabarit des suivantes et la condition de toute
+   conclusion défendable. Cahier des charges :
+   [famille pilote `s_registres_constructeur`](../research/2026-10-30-famille-pilote-registres-constructeur/README.md).
+2. **Comparer les trois politiques sur un même scénario.** C'est l'objectif de
    fond : sur un scénario donné, savoir ce que trouvent les automatisations
    (`scripted`), les règles déclarées (`rules`) et le modèle seul
    (`llm_on_evidence`), avec les mêmes observations et le même cadre
    d'évaluation. Voir la section « Comparer les trois politiques » ci-dessous,
    qui expose ce que cela exige et ce qui manque aujourd'hui.
-2. **Trancher la métrique** : crédit gradué de strict-v3 écrasé en TP binaire
+3. **Trancher la métrique** : crédit gradué de strict-v3 écrasé en TP binaire
    par le funnel ; réparer ou retirer `inference.py`, qui produit une p-value
    identique sur quatre séries de comportements différents.
-3. **Décider D1+** : l'implémenter, ou abandonner H1/H3/H4/H5 pour cette
+4. **Décider D1+** : l'implémenter, ou abandonner H1/H3/H4/H5 pour cette
    campagne et l'écrire comme limite.
-4. **Ouvrir une famille** (H3 ou H4) et étendre H2 (autres schémas, second
+5. **Étendre aux autres familles** et H2 (autres schémas, second
    modèle).
-5. **Produire l'artefact anonymisé** : fixtures H2, oracle, évaluateur et
+6. **Produire l'artefact anonymisé** : fixtures H2, oracle, évaluateur et
    contrôle V0, exécutables hors laboratoire.
-6. **La plateforme** : déploiement et lancement reproductibles.
+7. **La plateforme** : déploiement et lancement reproductibles.
 
 ## Comparer les trois politiques sur un scénario
 
