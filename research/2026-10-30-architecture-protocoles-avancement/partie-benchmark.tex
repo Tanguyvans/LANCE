@@ -107,29 +107,35 @@ self-contradictory, the second is poorly attached and has only non-conforming
 outcomes, and the count of families is not a measure of independence. No fixture,
 no run: this is a negative methodological result, publishable as a limitation.
 
-\subsection{The blocking of inference}
+\subsection{Inference: repaired, and still unusable}
 
-The inference tool (\code{src/benchmark/inference.py}) carries a structural defect.
-The gaps equal the difference between the two policies; yet the computed p-value is
-the probability that the resampled mean changes sign, not the p-value of the gap
-against its threshold.
+The inference tool (\code{src/benchmark/inference.py}) carried a structural
+defect. It computed a two-sided p-value around zero, so every outcome returned
+the same figure. Executing the function confirmed it: an almost constant series,
+a highly dispersed series of the same mean, and a series entirely negative all
+produced a null p-value. A model performing strictly worse than the rules looked
+as certain as one performing better. The tool produced the appearance of an
+inference that it did not provide.
 
-I verified this by executing the function: an almost constant series gives a null
-p-value; a highly dispersed series of the same mean also gives zero; a series
-entirely negative still gives zero. Four series of different behaviours therefore
-produce the same figure. Moreover, the threshold enters into no decision: it serves
-only to produce an informative field. Finally, below three families, the returned
-interval is structurally degenerate.
+\textbf{The defect was repaired on 30 October 2026.} The test is now one-sided
+against the pre-registered threshold. An exact sign test is used up to seven
+families, a paired bootstrap beyond, both centred on the threshold rather than
+on zero. Below three families no p-value and no interval are emitted; the
+observed mean remains only as a descriptive figure. A decision requires five
+families, because a lower bound of five agreeing families is the first that can
+reach the usual threshold at all.
 
-\textbf{No correction has taken place.} The history counts only two commits on this
-file, and all available branches carry the same computation. The defect is already
-written in the current state of the project: the tool produces the appearance of an
-inference that it does not provide.
+Measured behaviour, five agreeing families: the difference is significant.
+Mixed results and a strictly losing model are both returned as not rejected.
+The threshold now enters the decision.
 
-To this defect is added a structural impossibility: the configuration of a trial
-includes the commit, the fingerprints and the budgets, so two distinct families form
-two distinct configurations. Each configuration contains only one family, and the
-inference requires at least two.
+\textbf{Repairing the computation did not make a conclusion possible.} A second
+obstacle stands behind the first, and it is not a defect of the tool: the number
+of independent families available. The trial configuration includes the commit,
+the fingerprints and the budgets, so two distinct families form two distinct
+configurations; each configuration contains only one family, and the inference
+requires several. Whatever the tool computes, no figure can be produced from
+families that do not exist.
 
 \subsection{A family built, then rejected in one hour}
 
