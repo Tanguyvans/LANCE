@@ -266,7 +266,7 @@ def summarize_campaign(path: Path):
         "planned_pairs": len(pairs), "eligible_pairs": sum(p["campaign_eligible"] for p in pairs),
         "operational": summaries, "technical_on_eligible_pairs": technical, "trials": rows, "pairs": pairs,
         "uncertainty": (
-            {"available": True, "reason": "Family-level bootstrap inference reported per configuration group"}
+            {"available": True, "reason": "One-sided family-level inference reported per configuration group"}
             if any(g["inference"]["available"] for g in technical) else
             {"available": False, "reason": "Descriptive pilot only; no independence or sample-size claim"}),
         "environment_scope": "Preflight/reset is operator-declared; its file is hashed but not independently certified",

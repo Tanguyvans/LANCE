@@ -34,7 +34,7 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 | Pilotes SSH et MQTT | 6/6 pour les deux bras, 3 répétitions, `qwen3.8:27b` et `gemma4:26b-a4b-it` ; MoE ≈ 2× le coût et 1,3–1,7× la durée | runs `39465619725`, `39467657683`, `39480713050`, `39482737529` |
 | `s_api_organisations` | étude de cas de couverture, **non admise** (une famille, une répétition) | `benchmarks/experiments/api-reference/` |
 | Admission de campagne | `mt_admissible = false` ; `strict_v3_metrics_adopted` n'est jamais satisfait | `src/benchmark/v2_campaign.py` |
-| Inférence | aucun intervalle calculable ; à n = 2 familles, pseudo-intervalle seulement | `src/benchmark/inference.py`, `configuration_uniformity` |
+| Inférence | unilatérale, corrigée le 2026-10-30 ; exige 5 familles pour décider, 3 pour produire un chiffre | `src/benchmark/inference.py`, `tests/test_inference.py` |
 | Familles H1, H3, H4, H5 | non ouvertes ; `s_chaines_identites` et `s_registres_constructeur` n'existent pas | registre d'hypothèses |
 | Corpus | 29 scénarios, 288 entrées de vérité terrain. **243/288 (84,4 %)** à signature selon la lecture interprétative de l'audit ; l'index dérivé, binaire, donne **282/288** et 6 entrées logiques (S15, S22, S28) | `benchmarks/ground_truth/`, `benchmarks/labels/derived_index.json`, [audit de couverture](asiaccs-2027/audit-couverture.md) |
 | Noyau de harnais | quatre harnais délèguent à `build_run` ; un run incomplet est refusé à la construction | `benchmarks/experiments/harness/run.py`, `tests/test_harness_core.py` |
@@ -45,10 +45,12 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 
 ## Blocages
 
-1. **La mesure.** `inference.py` calcule une p-value bilatérale autour de 0 :
-   le signe est perdu, `delta_threshold` n'entre dans aucune décision, et à
-   n = 2 familles la p-value ne peut valoir que 0, 0,5 ou 1. L'outil produit
-   l'apparence d'une inférence qu'il ne fournit pas.
+1. **La mesure — corrigée le 2026-10-30.** Le module calcule désormais une
+   p-value unilatérale : test du signe exact jusqu'à sept familles, bootstrap
+   au-delà, refus explicite sous trois familles. Une décision exige cinq
+   familles au moins, faute de quoi même cinq familles concordantes ne peuvent
+   atteindre le seuil. Le blocage restant n'est plus le calcul mais **l'absence
+   de familles indépendantes** : aucune donnée existante ne permet de conclure.
 2. **La condition d'ouverture.** D1+ (« D1 + toutes les règles dérivables des
    entrées publiques ») n'existe qu'en doctrine. H1, H3, H4 et H5 en dépendent :
    sans lui, aucune ne peut être ouverte de façon défendable.

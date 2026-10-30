@@ -500,8 +500,11 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = parser.parse_args(argv)
     try:
-        if args.minimum_families < 2:
-            raise ValueError("Paired inference requires at least two independent families")
+        # A descriptive summary is legitimate at any family count. Inference is
+        # refused by the module itself: three families for a number, five for a
+        # decision. The CLI therefore only rejects what cannot be summarised.
+        if args.minimum_families < 1:
+            raise ValueError("minimum_families must be at least one")
         if args.minimum_repetitions < 1:
             raise ValueError("minimum repetitions must be at least one")
         if args.delta_threshold is not None and args.delta_threshold <= 0:

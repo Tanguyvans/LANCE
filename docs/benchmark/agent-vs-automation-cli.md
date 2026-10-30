@@ -324,7 +324,7 @@ contrat `benchmarks.experiments.v2_campaign` :
 
 Le résumé hors ligne agrège plusieurs racines d'expérience et délègue
 l'inférence à `src.benchmark.inference.family_inference` (moyenne par famille,
-puis bootstrap et correction de Holm). L'inférence est calculée **séparément
+puis une inférence unilatérale (test du signe exact jusqu'à sept familles, bootstrap au-delà) et correction de Holm). L'inférence est calculée **séparément
 pour F0 et F1** et n'est jamais regroupée entre postures ni entre modèles :
 
 ```bash
@@ -335,7 +335,7 @@ python -m benchmarks.experiments.v2_campaign \
   --minimum-families 2 --minimum-repetitions 3
 ```
 
-`--minimum-families` vaut 2 par défaut et refuse une valeur inférieure ;
+`--minimum-families` vaut 2 côté CLI, mais le module exige 3 familles pour produire un chiffre par défaut et refuse une valeur inférieure ;
 `--minimum-repetitions` vaut 3 ; `--delta-threshold` est désactivé par défaut
 (aucun seuil n'est supposé gelé) ; `--seed` et `--campaign-id` sont optionnels.
 Le résumé distingue les paires incluses, exclues (condition non satisfaite
@@ -355,7 +355,7 @@ Git, l'empreinte du manifeste de ressources, les empreintes d'implémentation du
 harnais et les budgets. Deux familles mesurées par **deux harnais différents**
 sont donc deux configurations distinctes, même avec le même modèle. Le résumé
 les sépare, chacune ne contient alors qu'une famille, et `family_inference`
-refuse de calculer un intervalle — il en faut au moins deux indépendantes. Une
+refuse de calculer un intervalle — il en faut au moins trois, et cinq pour qu'une décision soit possible. Une
 campagne ne produit d'inférence par famille que si **au moins deux scénarios
 partagent le même harnais** ; SSH et MQTT, instruments distincts, ne se
 regroupent pas. Le résumé reste descriptif dans ce cas et le dit.
