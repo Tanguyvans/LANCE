@@ -3,7 +3,7 @@
 **Cycle de vie : Conclu — synthèse d'état** — rapport commencé le **2026-10-15**.
 C'est un état daté, pas une page de référence courante : il ne fait pas autorité
 sur le comportement actuel du système.
-Dernière révision : **2026-10-30 21:00 (Europe/Brussels, UTC+01:00)** —
+Dernière révision : **2026-10-30 10:15 (Europe/Brussels, UTC+01:00)** —
 nouveau rapport [architecture, protocoles et avancement](etat-2026-10-30.pdf),
 19 pages, cinq volets relus contre le code ; le rapport du 15 octobre reste
 conservé ci-dessous.
