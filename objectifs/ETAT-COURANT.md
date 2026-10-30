@@ -1,6 +1,6 @@
 # État courant
 
-**Dernière mise à jour : 2026-10-23 14:33 (Europe/Brussels, UTC+02:00).**
+**Dernière mise à jour : 2026-10-30 11:50 (Europe/Brussels, UTC+01:00).**
 
 Point de reprise : ce qui est vrai, ce qui bloque, ce qui vient ensuite. Le
 détail des études reste dans `research/` ; l'historique des runs reste dans git.
@@ -37,6 +37,10 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 | Inférence | aucun intervalle calculable ; à n = 2 familles, pseudo-intervalle seulement | `src/benchmark/inference.py`, `configuration_uniformity` |
 | Familles H1, H3, H4, H5 | non ouvertes ; `s_chaines_identites` et `s_registres_constructeur` n'existent pas | registre d'hypothèses |
 | Corpus | 29 scénarios, 288 entrées de vérité terrain. **243/288 (84,4 %)** à signature selon la lecture interprétative de l'audit ; l'index dérivé, binaire, donne **282/288** et 6 entrées logiques (S15, S22, S28) | `benchmarks/ground_truth/`, `benchmarks/labels/derived_index.json`, [audit de couverture](asiaccs-2027/audit-couverture.md) |
+| Noyau de harnais | quatre harnais délèguent à `build_run` ; un run incomplet est refusé à la construction | `benchmarks/experiments/harness/run.py`, `tests/test_harness_core.py` |
+| Bac à sable | bras déterministes hors laboratoire sous garde-fou d'audit ; `guard_clean`, angles morts déclarés, `claims_isolation = false` | `benchmarks/experiments/sandbox.py`, `tests/test_sandbox.py`, CI `benchmark-integrity.yml` |
+| Circuit de livraison | trois instances, déploiement automatique validé sur `main` et `dev/1` ; identité Tailscale déduite de l'interface | `scripts/deployment/deploy-instance.sh`, [rapport du 30 octobre](../research/2026-10-30-architecture-protocoles-avancement/README.md) |
+| **Bras LLM comparable** | **absent** : `vanilla` prend un CIDR et ne produit pas de score ; `rules` produit un score sans modèle | `src/agent/run_modes.py`, `docs/architecture/run-modes.md` |
 | Branche `dev/2` | 16 commits derrière `main` | `git log origin/dev/2..main` |
 
 ## Blocages
@@ -62,18 +66,82 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 
 Dans l'ordre des dépendances, sans dates.
 
-1. **Trancher la métrique** : crédit gradué de strict-v3 écrasé en TP binaire
-   par le funnel ; réparer ou retirer `inference.py`.
-2. **Décider D1+** : l'implémenter, ou abandonner H1/H3/H4/H5 pour cette
+1. **Comparer les trois politiques sur un même scénario.** C'est l'objectif de
+   fond : sur un scénario donné, savoir ce que trouvent les automatisations
+   (`scripted`), les règles déclarées (`rules`) et le modèle seul
+   (`llm_on_evidence`), avec les mêmes observations et le même cadre
+   d'évaluation. Voir la section « Comparer les trois politiques » ci-dessous,
+   qui expose ce que cela exige et ce qui manque aujourd'hui.
+2. **Trancher la métrique** : crédit gradué de strict-v3 écrasé en TP binaire
+   par le funnel ; réparer ou retirer `inference.py`, qui produit une p-value
+   identique sur quatre séries de comportements différents.
+3. **Décider D1+** : l'implémenter, ou abandonner H1/H3/H4/H5 pour cette
    campagne et l'écrire comme limite.
-3. **Extraire le harnais paramétrable** : `scenario_id`, `families=1`, oracle
-   et évaluateur sont verrouillés par module ; les harnais sont dupliqués à
-   73–80 %.
 4. **Ouvrir une famille** (H3 ou H4) et étendre H2 (autres schémas, second
    modèle).
 5. **Produire l'artefact anonymisé** : fixtures H2, oracle, évaluateur et
    contrôle V0, exécutables hors laboratoire.
 6. **La plateforme** : déploiement et lancement reproductibles.
+
+## Comparer les trois politiques sur un scénario
+
+**But.** Sur un même scénario déployé, lancer trois politiques et comparer ce
+qu'elles trouvent, à observations et cadre d'évaluation identiques :
+
+| Politique | Ce qu'elle apporte | Existe aujourd'hui |
+| --- | --- | --- |
+| `scripted` | Procédures déterministes : découvrir, inventorier, auditer | Oui, sans score de benchmark |
+| `rules` | Baseline déclarée : scanner puis règles d'interprétation | Oui, avec score strict-v3 |
+| `llm_on_evidence` | **Le modèle interprète les observations produites par le scanner** | **Non** |
+
+**Pourquoi ce troisième bras.** Les deux premiers ne répondent pas à la
+question du programme : savoir si un modèle fait mieux qu'une automatisation
+lorsqu'il reçoit la même information. Le mode `vanilla` réalise une exploration
+libre sur une plage d'adresses et ne produit pas de score comparable ; le mode
+`lance` conduit le pipeline complet sur six phases et ne se prête pas au même
+contraste. Il manque donc le bras où seule **l'interprétation** change.
+
+**Ce que ce bras mesurerait.** Le modèle reçoit, par appareil, les observations
+brutes collectées par le scanner et doit produire des constats étayés par une
+référence d'observation. Il ne reçoit ni les constats des règles, ni la vérité
+terrain, ni le nombre attendu de failles. L'écart entre `rules` et
+`llm_on_evidence` mesure alors la seule qualité d'interprétation.
+
+**Ce qui empêche aujourd'hui une comparaison honnête.** Quatre mécanismes du
+code avantagent `rules`, et chacun rendrait l'écart ininterprétable :
+
+1. La phase 4 de `rules` émet de **nouvelles sondes** pour confirmer chaque
+   candidat ; l'étage `confirmed` du funnel exige cette provenance. Un bras qui
+   ne peut pas sonder n'atteindrait jamais cet étage.
+2. `supplemental.py` **réécrit** les fichiers `03_scans` en y ajoutant des
+   sondes dérivées (familles S16 à S18). L'observation n'est donc pas figée au
+   sortir du scanner.
+3. L'agrégation **ajoute les constats des règles** aux constats du modèle
+   (`add_scanner_candidates`), ce qui gonflerait mécaniquement le score du bras
+   modèle.
+4. Le score de benchmark n'est calculé que pour les runs du mode `lance` ;
+   l'attestation de pré-vol n'est écrite que par un déploiement de scénario.
+
+**Décisions à prendre avant toute implémentation.** Elles portent sur ce qu'on
+prétendra avoir mesuré, pas sur la faisabilité :
+
+- **L'étage de comparaison** : constats candidats (interprétation seule) ou
+  constats confirmés (interprétation et vérification confondues). Le second
+  n'est comparable que si les deux bras peuvent sonder avec le même budget.
+- **L'ouverture du calcul de score** aux modes autres que `lance`, et
+  l'attestation de pré-vol associée.
+- **Le rendu identique des observations** aux deux interpréteurs, vérifié plutôt
+  qu'affirmé : une empreinte des fichiers lus avant et après chaque bras.
+- **Le traitement des désaccords** entre les constats des règles et ceux du
+  modèle : les constats des règles ne sont pas la référence, seule la vérité
+  terrain l'est.
+
+**État de la conception.** Une conception a été soumise à deux relectures : l'une
+méthodologique, l'autre technique. La faisabilité est établie — environ quatre
+jours de travail sans modifier le scanner ni l'évaluateur — mais la comparaison
+n'est pas valide en l'état, pour les quatre raisons ci-dessus. Aucun code n'a
+été écrit. Les principes restent valables ; les décisions doivent être prises
+avant l'implémentation.
 
 Sérialisation du laboratoire : deux runs ne se parallélisent pas (verrou
 `lance-lab-dev2`), et un déploiement doit précéder tout run.
