@@ -1,211 +1,206 @@
-\section{Architecture du pipeline de bout en bout}
+\section{End-to-end pipeline architecture}
 \label{sec:architecture-pipeline}
 
-Cette partie décrit le chemin effectif d'un audit LANCE, depuis la sélection
-d'un mode d'exécution jusqu'aux fichiers déposés dans le dossier du run, en
-s'appuyant exclusivement sur le code de la branche \code{dev/1}. Les
-affirmations renvoient au module et, lorsque c'est utile, à la fonction qui les
-implémente ; les comportements que le code ne permet pas d'établir sont
-signalés comme tels plutôt que comblés par inférence.
+This part describes the effective path of a LANCE audit, from the selection of an
+execution mode to the files deposited in the run folder, relying exclusively on
+the code of the \code{dev/1} branch. The statements refer to the module and,
+where useful, to the function that implements them; behaviours that the code does
+not allow to be established are flagged as such rather than filled in by
+inference.
 
-\subsection{Vue d'ensemble et sélection du mode}
+\subsection{Overview and mode selection}
 
-L'application ne porte pas la logique d'audit : elle valide la demande, garantit
-un seul run actif par instance, diffuse les événements SSE et relit les
-artefacts (\code{docs/architecture/run-modes.md}). C'est \code{make\_runner}
-(\code{src/agent/run\_modes.py}) qui choisit la stratégie d'exécution. Pour
-\code{lance} et \code{rules}, il instancie un \code{Pipeline} et l'encapsule
-dans \code{LanceRunner}, adaptateur qui réutilise l'objet pipeline et son API
-publique. Pour \code{vanilla} et \code{scripted}, il construit un
-\code{SimpleRunner}, classe autonome qui ne partage avec le pipeline que la
-frontière d'exécution des outils, le journal de preuves, le suivi de coût et la
-réservation du laboratoire.
+The application does not carry the audit logic: it validates the request,
+guarantees a single active run per instance, streams the SSE events and re-reads
+the artefacts (\code{docs/architecture/run-modes.md}). It is \code{make\_runner}
+(\code{src/agent/run\_modes.py}) that chooses the execution strategy. For
+\code{lance} and \code{rules}, it instantiates a \code{Pipeline} and wraps it in
+\code{LanceRunner}, an adapter that reuses the pipeline object and its public
+API. For \code{vanilla} and \code{scripted}, it builds a \code{SimpleRunner}, a
+standalone class that shares with the pipeline only the tool execution boundary,
+the evidence log, the cost tracking and the laboratory reservation.
 
 \begin{table}[H]
 \centering
-\caption{Modes d'exécution et frontière correspondante.}
+\caption{Execution modes and corresponding boundary.}
 \label{tab:run-modes}
 \small
 \begin{tabular}{@{}llll@{}}
 \toprule
-Mode & Moteur & Modèle & Effets \\
+Mode & Engine & Model & Effects \\
 \midrule
-\code{lance} & \code{Pipeline} (6 phases) & requis & scénario, déploiement, évaluation \\
-\code{rules} & \code{Pipeline} (phases 3--4) & aucun & scénario + audit déterministe \\
-\code{vanilla} & \code{SimpleRunner} & requis & sonde Nmap bornée sur CIDR \\
-\code{scripted} & \code{SimpleRunner} & aucun & procédures versionnées \\
+\code{lance} & \code{Pipeline} (6 phases) & required & scenario, deployment, evaluation \\
+\code{rules} & \code{Pipeline} (phases 3--4) & none & scenario and deterministic audit \\
+\code{vanilla} & \code{SimpleRunner} & required & bounded Nmap probe on CIDR \\
+\code{scripted} & \code{SimpleRunner} & none & versioned procedures \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Le mode \code{rules} n'est pas un second moteur : \code{make\_runner} fixe
-\code{decision\_policy="rules"}, \code{phases=[3, 4]} et
-\code{execution\_profile="full"}, et refuse tout fournisseur, réseau direct ou
-budget monétaire. Les modes \code{vanilla} et \code{scripted} rejettent au
-contraire \code{scenario\_id} et tout réglage propre au harnais. Le qualificatif
-\code{full}/\code{compact} désigne l'orchestration du pipeline, jamais le type
-de runner.
+The \code{rules} mode is not a second engine: \code{make\_runner} sets
+\code{decision\_policy="rules"}, \code{phases=[3, 4]} and
+\code{execution\_profile="full"}, and rejects any provider, direct network or
+monetary budget. The \code{vanilla} and \code{scripted} modes, conversely, reject
+\code{scenario\_id} and any harness-specific setting. The qualifier
+\code{full}/\code{compact} designates the orchestration of the pipeline, never the
+type of runner.
 
-\subsection{Les six phases et leurs livrables}
+\subsection{The six phases and their deliverables}
 
-Le registre déclaratif \code{src/agent/registry.py} (\code{AGENTS}) attribue à
-chaque phase un modèle de prompt, un groupe d'outils, un validateur et un nom de
-livrable. Le routage est explicite dans \code{src/agent/phases/registry.py} :
-\code{PHASE\_MODULES} associe les numéros 1 à 6 à des modules fixes, sans import
-dynamique.
+The declarative registry \code{src/agent/registry.py} (\code{AGENTS}) assigns to
+each phase a prompt template, a tool group, a validator and a deliverable name.
+The routing is explicit in \code{src/agent/phases/registry.py}:
+\code{PHASE\_MODULES} maps the numbers 1 to 6 to fixed modules, without dynamic
+import.
 
 \begin{table}[H]
 \centering
-\caption{Phases, modules, livrables principaux et artefacts associés.}
+\caption{Phases, modules, main deliverables and associated artefacts.}
 \label{tab:phases}
 \small
 \begin{tabular}{@{}lp{2.7cm}p{3.2cm}p{4.05cm}@{}}
 \toprule
-Phase & Module & Livrable principal & Artefacts associés \\
+Phase & Module & Main deliverable & Associated artefacts \\
 \midrule
 1 & \code{graph/run.py} & \code{01\_graph\_analysis.md} & \code{01\_graph\_evidence.json} \\
 2 & \code{recon/run.py} & \code{02\_recon.md} & \code{02\_recon\_evidence.json}, \code{02\_topology\_edges.json} \\
 3 & \code{analysis/run.py} & \code{03\_vuln\_analysis.json} & \code{03\_vuln\_analysis\_raw.json}, \code{03\_phase3\_status.json}, \code{03\_device\_*} \\
-4 & \code{verification/run.py} & \code{04\_exploitation.json} & diagnostics \code{execution\_errors} \\
+4 & \code{verification/run.py} & \code{04\_exploitation.json} & \code{execution\_errors} diagnostics \\
 5 & \code{intrusion/run.py} & \code{05\_intrusion.json} & \code{05\_intrusion\_context.json} \\
-6 & \code{report/run.py} & \code{06\_report.md} & \code{06\_report\_analysis.md}, fiches par section \\
+6 & \code{report/run.py} & \code{06\_report.md} & \code{06\_report\_analysis.md}, per-section sheets \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-La phase 1 projette les résultats des outils de graphe en un journal de faits
-indépendant du discours du modèle
-(\code{GraphPhase.\_build\_graph\_evidence\_projection}), et le runner refuse
-une soumission dont la couverture par appareil est incomplète
-(\code{src/agent/core/runner.py}). La phase 2 laisse le modèle choisir les
-sondes, mais \code{02\_recon.md} est rendu depuis le journal d'outils, non
-recopié par le modèle. La phase 3 s'exécute en trois temps :
-\code{scan.scan\_phase} (observations déterministes),
-\code{devices.analyze\_devices} (analystes par appareil) puis
-\code{run.aggregate\_phase}, qui normalise, déduplique et projette les constats
-et écrit \code{03\_vuln\_analysis.json}. La phase 4 lance des micro-agents par
-vulnérabilité et agrège leurs résultats. La phase 5 produit son bilan depuis le
-journal : le modèle ne fournit qu'un marqueur de fin, et le statut reste
-\code{objectives\_status=not\_certified}. La phase 6 est particulière : son
-\code{AgentConfig} ne déclare aucun outil et \code{max\_turns=1} ; le rapport
-est assemblé de façon déterministe à partir de fiches, le modèle ne rédigeant
-qu'une note d'analyste bornée (\code{06\_report\_analysis.md}).
+Phase 1 projects the results of the graph tools into a log of facts independent
+of the model's discourse
+(\code{GraphPhase.\_build\_graph\_evidence\_projection}), and the runner rejects
+a submission whose per-device coverage is incomplete
+(\code{src/agent/core/runner.py}). Phase 2 lets the model choose the probes, but
+\code{02\_recon.md} is rendered from the tool log, not copied by the model. Phase
+3 runs in three steps: \code{scan.scan\_phase} (deterministic observations),
+\code{devices.analyze\_devices} (analysts per device) and then
+\code{run.aggregate\_phase}, which normalises, deduplicates and projects the
+findings and writes \code{03\_vuln\_analysis.json}. Phase 4 launches micro-agents
+per vulnerability and aggregates their results. Phase 5 produces its assessment
+from the log: the model supplies only an end marker, and the status remains
+\code{objectives\_status=not\_certified}. Phase 6 is particular: its
+\code{AgentConfig} declares no tool and \code{max\_turns=1}; the report is
+assembled deterministically from sheets, the model writing only a bounded analyst
+note (\code{06\_report\_analysis.md}).
 
-\subsection{Graphe et contexte de run}
+\subsection{Graph and run context}
 
-Le graphe est construit en deux couches. \code{src/loader.py} lit le YAML
-d'infrastructure en dataclasses (\code{load\_yaml}) puis remplit un backend
-(\code{build\_graph}, backend par défaut \code{NetworkXBackend}).
-\code{src/graph\_backend.py} définit l'interface abstraite \code{GraphBackend}
---- \code{get\_device}, \code{get\_neighbors}, \code{find\_all\_paths},
-\code{get\_attack\_surface}, \code{get\_graph\_stats}, \code{to\_dict} --- et son
-implémentation NetworkX sur un \code{DiGraph}. Deux détails méritent d'être
-soulignés : \code{get\_neighbors} renvoie l'union triée des successeurs et
-prédécesseurs, et \code{find\_all\_paths} travaille sur une vue non orientée
-(\code{to\_undirected}) afin de trouver des chemins dans les deux sens, y
-compris à travers le backend abstrait.
+The graph is built in two layers. \code{src/loader.py} reads the infrastructure
+YAML into dataclasses (\code{load\_yaml}) and then populates a backend
+(\code{build\_graph}, default backend \code{NetworkXBackend}).
+\code{src/graph\_backend.py} defines the abstract interface \code{GraphBackend}
+(\code{get\_device}, \code{get\_neighbors}, \code{find\_all\_paths},
+\code{get\_attack\_surface}, \code{get\_graph\_stats}, \code{to\_dict}) and its
+NetworkX implementation on a \code{DiGraph}. Two details deserve to be stressed:
+\code{get\_neighbors} returns the sorted union of successors and predecessors, and
+\code{find\_all\_paths} works on an undirected view (\code{to\_undirected}) in
+order to find paths in both directions, including through the abstract backend.
 
-L'état appartient au run. Chaque \code{Pipeline} crée un \code{RunContext}
-immuable (dossier du run et \code{GraphContext}) ; \code{GraphContext} porte le
-backend, l'infrastructure, les rapports CVE, les scores de risque, la topologie
-de scénario ou de découverte, le graphe pondéré et le dernier delta. Les outils
-de graphe retrouvent ce contexte par un \code{ContextVar}
-(\code{src/agent/core/graph\_context.py}), sans modifier les arguments exposés
-au modèle ; \code{graph\_bound} et \code{bind\_graph\_callable} capturent
-explicitement le propriétaire, y compris pour les workers en threads, plutôt
-que de compter sur la propagation implicite du contexte.
+The state belongs to the run. Each \code{Pipeline} creates an immutable
+\code{RunContext} (run folder and \code{GraphContext}); \code{GraphContext}
+carries the backend, the infrastructure, the CVE reports, the risk scores, the
+scenario or discovery topology, the weighted graph and the latest delta. The graph
+tools retrieve this context via a \code{ContextVar}
+(\code{src/agent/core/graph\_context.py}), without modifying the arguments exposed
+to the model; \code{graph\_bound} and \code{bind\_graph\_callable} explicitly
+capture the owner, including for thread workers, rather than relying on implicit
+context propagation.
 
-\subsection{La frontière de gouvernance des outils}
+\subsection{The tool governance boundary}
 
-Tous les profils et tous les modes passent par \code{wrap\_tool}
-(\code{src/agent/core/executor.py}). À chaque appel, la fonction enveloppée :
-(1) vérifie que la preuve précédente a pu être archivée, l'arrêt coopératif et
-les budgets via \code{check\_execution\_limits} ; (2) incrémente atomiquement un
-compteur et refuse l'appel si \code{max\_tool\_calls} est atteint ; (3) attribue
-une référence \code{tc-<uuid>} ; (4) applique les refus de portée ; (5) exécute
-l'outil ; (6) archive systématiquement une entrée dans \code{tool\_calls.jsonl},
-y compris pour un refus ou une exception.
+All profiles and all modes go through \code{wrap\_tool}
+(\code{src/agent/core/executor.py}). On each call, the wrapped function:
+(1) checks that the previous piece of evidence could be archived, cooperative
+stop and the budgets via \code{check\_execution\_limits}; (2) atomically
+increments a counter and refuses the call if \code{max\_tool\_calls} is reached;
+(3) assigns a reference \code{tc-<uuid>}; (4) applies the scope refusals;
+(5) executes the tool; (6) systematically archives an entry in
+\code{tool\_calls.jsonl}, including for a refusal or an exception.
 
 \begin{table}[H]
 \centering
-\caption{Contrôles appliqués par \code{check\_execution\_limits} et \code{wrap\_tool}.}
+\caption{Controls applied by \code{check\_execution\_limits} and \code{wrap\_tool}.}
 \label{tab:executor}
 \small
 \begin{tabular}{@{}p{2.6cm}p{4.6cm}p{6.0cm}@{}}
 \toprule
-Contrôle & Mécanisme & Conséquence d'un échec \\
+Control & Mechanism & Consequence of a failure \\
 \midrule
-Intégrité des preuves & drapeau \code{\_evidence\_integrity\_failed} & \code{EvidenceWriteError}, run non vérifiable \\
-Arrêt utilisateur & \code{\_stop\_event} (portée expérimentale) & \code{RunStopped} \\
-Budget de temps & \code{max\_duration\_s} via \code{time.monotonic()} & \code{BudgetExceeded} \\
-Budget monétaire & \code{tracker.check\_budget()} & \code{BudgetExceeded} \\
-Budget d'appels & compteur sous \code{\_artifact\_log\_lock} & \code{BudgetExceeded} \\
-Périmètre & \code{\_intrusion\_scope\_violation} & refus JSON archivé \\
-Exécution libre & \code{python\_exec} & refus \code{unverifiable\_execution\_scope} \\
+Evidence integrity & flag \code{\_evidence\_integrity\_failed} & \code{EvidenceWriteError}, run not verifiable \\
+User stop & \code{\_stop\_event} (experimental scope) & \code{RunStopped} \\
+Time budget & \code{max\_duration\_s} via \code{time.monotonic()} & \code{BudgetExceeded} \\
+Monetary budget & \code{tracker.check\_budget()} & \code{BudgetExceeded} \\
+Call budget & counter under \code{\_artifact\_log\_lock} & \code{BudgetExceeded} \\
+Scope & \code{\_intrusion\_scope\_violation} & refused call archived as JSON \\
+Free execution & \code{python\_exec} & refusal \code{unverifiable\_execution\_scope} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Deux propriétés sont importantes pour l'interprétation des résultats. D'une
-part, un échec d'écriture du journal n'est jamais ignoré : il est converti en
-\code{EvidenceWriteError}, ce qui interrompt le run plutôt que de laisser des
-actions non tracées. D'autre part, la limite de coût de \code{check\_budget}
-porte sur l'usage observé (\code{total\_cost()}), pas sur une réservation des
-appels en vol ; le docstring du code le dit explicitement. Le périmètre est
-contrôlé sur les champs de destination (\code{ip}, \code{host},
-\code{target}, \code{url}...) contre le \code{target\_subnet} du run ; une
-action sans destination vérifiable est refusée en amont (\code{python\_exec}),
-et l'en-tête du module précise qu'il s'agit de gardes applicatives, non d'un
-bac à sable système.
+Two properties are important for the interpretation of the results. On the one
+hand, a failure to write the log is never ignored: it is converted into
+\code{EvidenceWriteError}, which interrupts the run rather than leaving untraced
+actions. On the other hand, the cost limit of \code{check\_budget} applies to
+observed usage (\code{total\_cost()}), not to a reservation of in-flight calls;
+the code docstring says so explicitly. The scope is checked on the destination
+fields (\code{ip}, \code{host}, \code{target}, \code{url}) against the
+\code{target\_subnet} of the run; an action without a verifiable destination is
+refused upstream (\code{python\_exec}), and the module header specifies that these
+are application guards, not a system sandbox.
 
-\subsection{Artefacts et suivi de coût}
+\subsection{Artefacts and cost tracking}
 
-Le dossier du run est créé de façon exclusive sous \code{output/agent/}
-(\code{Pipeline.\_\_init\_\_}) ; en cas de collision, un suffixe hexadécimal est
-ajouté et aucun dossier antérieur n'est écrasé. \code{run\_meta.json} consigne
-phase, profil, politiques, commit et limites ; \code{cost\_summary.json} est
-écrit dans le bloc \code{finally} du pipeline, donc même sur exception. Le
-contrat de collecte (\code{src/benchmark/artifacts.py}) définit une liste
-positive de fichiers autorisés (\code{\_ALLOWED\_ROOT\_FILES}) et des motifs
-\code{03\_device\_*.json} ; \code{create\_submission\_bundle} produit un zip muni
-d'un manifeste SHA-256 et revérifie le manifeste après écriture. Côté agent, une
-tentative de livrable est archivée dans \code{.attempts/} et consignée dans
-\code{deliverable\_attempts.jsonl} ; la route
-\code{GET /api/runs/\{id\}/download/zip} exclut les fichiers privés et les
-entrées cachées.
+The run folder is created exclusively under \code{output/agent/}
+(\code{Pipeline.\_\_init\_\_}); in the event of a collision, a hexadecimal suffix
+is appended and no earlier folder is overwritten. \code{run\_meta.json} records
+phase, profile, policies, commit and limits; \code{cost\_summary.json} is written
+in the \code{finally} block of the pipeline, and therefore even on exception. The
+collection contract (\code{src/benchmark/artifacts.py}) defines a positive list of
+allowed files (\code{\_ALLOWED\_ROOT\_FILES}) and \code{03\_device\_*.json}
+patterns; \code{create\_submission\_bundle} produces a zip equipped with a
+SHA-256 manifest and re-checks the manifest after writing. On the agent side, a
+deliverable attempt is archived in \code{.attempts/} and recorded in
+\code{deliverable\_attempts.jsonl}; the route
+\code{GET /api/runs/\{id\}/download/zip} excludes private files and hidden
+entries.
 
-Le suivi de coût (\code{src/agent/cost\_tracker.py}) résout le prix une fois par
-phase (\code{\_resolve\_pricing}) et l'inscrit dans \code{PhaseUsage}, de sorte
-qu'un run terminé ne peut pas être réévalué a posteriori. Chaque phase porte la
-source du prix (\code{dynamic\_catalog}, \code{static\_catalog},
-\code{subscription}, \code{default\_estimate}) et un indicateur
-\code{cost\_is\_estimate}. \code{summary()} distingue explicitement la durée
-cumulée des agents (\code{total\_agent\_duration\_s}) du temps mural
-(\code{wall\_clock\_duration\_s}) ; la première ne mesure pas le temps
-réellement écoulé.
+Cost tracking (\code{src/agent/cost\_tracker.py}) resolves the price once per
+phase (\code{\_resolve\_pricing}) and records it in \code{PhaseUsage}, so that a
+completed run cannot be re-evaluated after the fact. Each phase carries the source
+of the price (\code{dynamic\_catalog}, \code{static\_catalog},
+\code{subscription}, \code{default\_estimate}) and a \code{cost\_is\_estimate}
+indicator. \code{summary()} explicitly distinguishes the cumulative duration of
+the agents (\code{total\_agent\_duration\_s}) from the wall-clock time
+(\code{wall\_clock\_duration\_s}); the former does not measure the time actually
+elapsed.
 
-\subsection{Ce que l'architecture ne garantit pas}
+\subsection{What the architecture does not guarantee}
 
-L'architecture est isolée par run pour les livrables et le graphe, mais elle ne
-l'est pas totalement : \code{src/agent/phases/README.md} indique que les
-services de phase peuvent encore appeler le moteur commun et que la simultanéité
-de scénarios sur un laboratoire partagé n'est pas garantie. \code{reserve\_lab}
-n'est actif que si \code{LANCE\_LAB\_LOCK} est défini et n'est réentrant que dans
-le même thread. Par ailleurs, sans paramètre explicite, le pipeline interactif
-n'impose ni plafond d'appels ni délai d'analyse par équipement : les budgets du
-tableau~\ref{tab:executor} sont donc conditionnels.
+The architecture is isolated per run for the deliverables and the graph, but it is
+not entirely so: \code{src/agent/phases/README.md} indicates that the phase
+services may still call the common engine and that the simultaneity of scenarios
+on a shared laboratory is not guaranteed. \code{reserve\_lab} is only active if
+\code{LANCE\_LAB\_LOCK} is set and is only reentrant in the same thread. Moreover,
+without an explicit parameter, the interactive pipeline imposes neither a call
+ceiling nor an analysis timeout per device: the budgets of
+table~\ref{tab:executor} are therefore conditional.
 
-Trois points n'ont pas pu être établis par lecture du code. \emph{Un} : aucun
-mécanisme d'archivage ou de compactage des dossiers de run n'a été trouvé dans
-\code{src/} (aucune occurrence de \code{tarfile},
-\code{shutil.make\_archive} ou équivalent) ; la conservation semble être celle du
-système de fichiers, ce que la documentation ne décrit pas. \emph{Deux} :
-\code{02\_recon\_evidence.json} est lu par \code{src/agent/scanner.py} et
-\code{src/agent/core/runner.py}, mais son producteur principal n'a pas été
-identifié ; l'affirmer serait une supposition. \emph{Trois} :
-\code{provider\_events.jsonl} est consigné par le callback du fournisseur
-(\code{core/runner.py}) via \code{provider\_diagnostics}, et le contenu exact des
-champs n'a pas été vérifié ligne à ligne. Enfin, un statut \code{completed}
-signifie que le runner a terminé son travail, jamais que la cible est couverte
-exhaustivement ni qu'un accès a été prouvé
+Three points could not be established by reading the code. \emph{One}: no
+mechanism for archiving or compacting run folders was found in \code{src/} (no
+occurrence of \code{tarfile}, \code{shutil.make\_archive} or equivalent);
+retention appears to be that of the file system, which the documentation does not
+describe. \emph{Two}: \code{02\_recon\_evidence.json} is read by
+\code{src/agent/scanner.py} and \code{src/agent/core/runner.py}, but its main
+producer has not been identified; asserting it would be a supposition.
+\emph{Three}: \code{provider\_events.jsonl} is recorded by the provider callback
+(\code{core/runner.py}) via \code{provider\_diagnostics}, and the exact content of
+the fields has not been verified line by line. Finally, a \code{completed} status
+means that the runner has finished its work, never that the target is exhaustively
+covered nor that an access has been proven
 (\code{docs/architecture/run-modes.md}).

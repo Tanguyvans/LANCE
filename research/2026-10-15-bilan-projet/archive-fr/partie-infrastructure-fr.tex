@@ -1,0 +1,187 @@
+\section{Infrastructure d'exécution et circuit de livraison}
+\label{sec:infrastructure}
+
+\subsection{Topologie du laboratoire}
+
+L'exécution de LANCE repose sur un hôte Proxmox unique et un conteneur LXC qui
+porte toute la plateforme. Le playbook
+\code{benchmarks/ansible/playbooks/deploy\_master.yml} crée, sur le groupe
+d'hôtes Proxmox, un conteneur LXC non privilégié d'identifiant 200 nommé
+\code{nato-master} (Debian 13, 20~Go, 4096~Mo de mémoire, 2~cœurs,
+\code{nesting=1}, \code{onboot 1}). Deux interfaces sont attachées :
+\code{eth0} sur \code{vmbr0} en DHCP pour le management, et \code{eth1} sur
+\code{vmbr1} en \code{192.168.100.200/24} pour le réseau de test des scénarios.
+Le playbook ajoute l'autorisation de périphérique TUN et le montage
+\code{/dev/net/tun}, requis par Tailscale, puis reconstruit une chaîne
+\code{OUTPUT} d'\code{iptables} : sur \code{eth0} seuls sont autorisés
+l'interface locale, les états \code{ESTABLISHED,RELATED}, le DNS, HTTP, HTTPS,
+SSH, l'API Proxmox (port 8006), UDP 41641 et le cache apt ; tout le reste est
+rejeté. Sur \code{eth1}, la sortie est intégralement autorisée.
+\code{eth1} n'a pas de passerelle, ce qui confine les scans au réseau isolé.
+
+Le nom d'hôte Proxmox est donné comme \code{pve-nato} par \code{AGENTS.md},
+\code{objectifs/ETAT-COURANT.md} et \code{docs/guides/umons-llm.md}, mais ni le
+playbook ni \code{docs/guides/development-instances.md} ne le nomment :
+l'inventaire Ansible versionné est un gabarit dont l'adresse vaut littéralement
+\code{<PROXMOX\_IP>}, et la seule constante lisible dans le dépôt est
+l'identifiant de conteneur, 200. La configuration réelle vit hors du dépôt.
+
+\subsection{Les trois instances}
+
+Le script \code{scripts/deployment/deploy-instance.sh} fixe le triplet
+emplacement, port, répertoire et service, et refuse tout autre nom. Le service
+stable est produit par le playbook ; les unités de développement sont écrites
+par le script.
+
+\begin{table}[H]
+\centering
+\caption{Instances déployées sur le conteneur maître.}
+\label{tab:instances}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Emplacement & Branche & Port & Checkout et service \\
+\midrule
+\code{main} & \code{main} & 8501 & \code{/opt/nato-smartcity-iot} / \code{nato-fastapi} \\
+\code{dev-1} & \code{dev/1} & 8502 & \code{/opt/lance-dev-1} / \code{lance-dev-1} \\
+\code{dev-2} & \code{dev/2} & 8503 & \code{/opt/lance-dev-2} / \code{lance-dev-2} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Chaque emplacement possède son environnement Python, sa base, son fichier
+\code{.env} et ses artefacts. La configuration partagée est écrite dans
+\code{/var/lib/lance/<slot>.env} et importée par une surcharge systemd ; ces
+entrées alimentent \code{GET /api/environment}, qui renvoie l'emplacement, la
+branche, le commit et l'activation du verrou. Le script vérifie après démarrage
+que la réponse HTTP annonce exactement le commit validé et l'emplacement attendu,
+et que le verrou est actif.
+
+Le verrou commun est un fichier unique, \code{/var/lib/lance/lab.lock}, ouvert
+par \code{exec 9>>} puis verrouillé par \code{flock -x 9} avant toute mutation ;
+le commentaire est explicite : ne jamais supprimer ce fichier. La même valeur est
+transmise aux API, ce qui permet aux trois instances de se coordonner. L'attente
+est coopérative, sans ordre d'arrivée, et conservée en mémoire. Un déploiement
+d'un emplacement de développement vérifie que l'instance stable annonce le
+verrou : une instance stable antérieure n'y participerait pas.
+
+\subsection{Le runner et le circuit de livraison}
+
+Le runner GitHub Actions est installé dans \code{/opt/actions-runner},
+enregistré avec le libellé \code{nato-master} et exécuté comme service systemd.
+
+Le circuit se lit en quatre maillons. Un \code{push} sur \code{main},
+\code{dev/1} ou \code{dev/2}, ou une demande de fusion vers ces branches,
+déclenche \code{.github/workflows/benchmark-integrity.yml}. Le premier job
+exécute \code{.github/scripts/ci\_scope.py}, qui classe les fichiers modifiés et
+publie le drapeau \code{full}. Le second construit l'image du worker isolé et
+vérifie l'absence de vérité terrain. Les jobs de déploiement appellent ensuite
+\code{.github/workflows/update-master.yml}, qui lance le script de déploiement
+avec l'emplacement, le SHA validé, la branche et le dépôt distant.
+
+\begin{table}[H]
+\centering
+\caption{Déclencheurs et parcours du circuit.}
+\label{tab:circuit}
+\small
+\begin{tabular}{@{}p{3.1cm}p{5.6cm}p{4.8cm}@{}}
+\toprule
+Événement & Parcours & Déploiement \\
+\midrule
+\code{push} documentaire & classement à \code{full=false} : diff du commit précédent et contrôle d'espaces & aucun \\
+\code{push} de code & tests complets, contrôles de scénario et Ansible, sandbox, image du worker & \code{main} vers 8501, \code{dev/*} vers 8502 ou 8503 \\
+Demande de fusion & même parcours selon classement & aucun \\
+Déclenchement manuel & \code{full=true} forcé & emplacement choisi, ou contrôles seuls \\
+Étiquette de version & \code{full=true} forcé & \code{main} uniquement \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le parcours léger couvre les fichiers Markdown, LaTeX, PDF et images sous
+\code{docs/}, \code{objectifs/} et \code{research/}, ainsi qu'une liste fermée
+de fichiers de présentation. Le classement conserve les suppressions et les deux
+chemins d'un renommage ; tout événement indéterminé bascule sur le parcours
+complet, et un échec bloque le déploiement. Un push documentaire ne redémarre
+donc aucune instance.
+
+Côté machine, le script de mise à jour récupère le SHA et applique une fusion en
+avance rapide pour \code{main}, ou un détachement après contrôle de l'arbre
+propre pour les branches de développement ; il vérifie ensuite que
+\code{HEAD} égale le SHA validé. Avant cela, le service est arrêté, le verrou
+repris, et l'instance interrogée pour refuser de muter un travail actif ou en
+attente. En cas d'échec après l'arrêt, le service reste arrêté : aucun retour
+automatique à une ancienne version n'est effectué.
+
+\subsection{Corrections du script de déploiement}
+
+L'historique du script montre une séquence serrée de commits le 29 octobre
+2026. La version fondatrice vérifiait l'identité de l'hôte par une adresse
+codée en dur et exigeait l'utilisateur root.
+
+\begin{table}[H]
+\centering
+\caption{Corrections successives et cause traitée.}
+\label{tab:fixes}
+\small
+\begin{tabular}{@{}p{1.6cm}p{3.4cm}p{7.4cm}@{}}
+\toprule
+Commit & Correction & Cause traitée \\
+\midrule
+\code{6b0a9ff} & adresse en variable d'environnement, ré-exécution \code{sudo}, contrôles de l'instance stable et de la configuration devenus optionnels, CLI Codex sous \code{/usr/local/bin} & un conteneur reconstruit cassait tous les déploiements : identité, privilèges et instances voisines supposés hérités \\
+\code{433e2a3} & identité déduite de l'interface \code{tailscale0}, à défaut de variable & supprime la dernière constante dépendante d'une reconstruction \\
+\code{a568c68} à \code{dcd5903} & chemin absolu, exécution via \code{bash}, transport du nom de runner et de tout l'environnement de déploiement & \code{sudo} ne résout pas un chemin relatif ni ne conserve l'environnement \\
+\code{150eb8a} & échec de téléchargement du CLI Codex toléré & sous \code{set -e}, l'échec arrêtait le déploiement et laissait l'instance arrêtée \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Chaque correction correspond à un mode de défaillance concret, non à un
+raffinement esthétique. La même logique d'identité s'applique désormais aux
+contrôleurs de benchmark, avec une variable de suspension explicite, et un test
+dédié la couvre.
+
+\subsection{Le modèle UMONS et son relais}
+
+Le fournisseur \code{ollama-umons} est atteint par un transfert local SSH sur
+l'hôte Proxmox, vers le cluster universitaire
+(\code{docs/guides/umons-llm.md}). Le trajet a été identifié et rétabli le
+4~octobre 2026, avec une génération minimale réussie ; l'authentification
+observée est interactive. La commande de rétablissement est documentée, ainsi
+que les contrôles d'écoute. Le guide est explicite : ni démarrage au boot, ni
+reconnexion après la fin du processus ; l'administration du serveur GPU en aval
+reste à confirmer avec l'administrateur. La fragilité est constatée dans les
+faits : le relais est retombé le 22 octobre, et c'est le pré-vol fournisseur qui
+a nommé la panne sans exécuter de bras.
+
+\subsection{La panne du 29 octobre}
+
+Les pannes réellement tracées dans le dépôt pour cette journée sont celles de la
+reconstruction du conteneur, qui rendit caduques l'adresse figée et l'hypothèse
+d'un runner privilégié. En revanche, \emph{aucune mention d'une route par défaut
+multipath sur le routeur du laboratoire n'existe dans le dépôt} : la recherche
+sur les termes correspondants ne renvoie rien. Ce fait, constaté en séance mais
+non consigné, ne doit pas être présenté comme documenté. Il constitue une
+lacune de la mémoire du projet, puisque la même panne se reproduira au prochain
+redémarrage du routeur.
+
+\subsection{Fragilités connues}
+
+\begin{itemize}
+\item \textbf{Points de défaillance non répliqués} : hôte Proxmox unique,
+conteneur unique, runner unique. L'enregistrement du runner tolérant l'échec, un
+runner absent ne bloque pas le playbook mais bloque tout déploiement.
+\item \textbf{Relais UMONS} : aucun service supervisé, authentification
+interactive, adresse encore figée dans les exemples du guide alors que le
+commit \code{e54da24} affirmait avoir cessé de figer les adresses dans la
+documentation. Redémarrer LANCE ne répare pas le relais.
+\item \textbf{Verrou coopératif} : sans ordre d'arrivée, en mémoire, non couvert
+pour un script Ansible lancé directement, un ancien checkout ou une intervention
+manuelle. Ce n'est pas une isolation de sécurité entre collaborateurs.
+\item \textbf{Reprise manuelle} : un échec après arrêt laisse le service arrêté,
+sans retour automatique.
+\item \textbf{Identité de l'hôte} : sans variable déclarée, l'identité dépend de
+la présence d'une adresse quelconque sur l'interface Tailscale ; le script ne
+vérifie pas que cet hôte est bien celui qui doit héberger l'instance.
+\item \textbf{Documentation partielle} : le nom de l'hôte Proxmox et le segment
+physique ne correspondent qu'imparfaitement au playbook ; l'inventaire versionné
+est un gabarit.
+\end{itemize}

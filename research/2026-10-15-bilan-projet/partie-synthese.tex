@@ -1,135 +1,73 @@
-La synthèse qui suit ne résume pas les parties : elle relève ce qui les relie,
-ce qu'elles contredisent et ce que l'ensemble laisse ouvert. Elle s'appuie sur
-les cinq volets et sur la vérification directe des points contestés.
+\subsection{Three instruments, three levels of guarantee}
 
-\subsection{Trois instruments, trois niveaux de garantie}
-
-Le projet assemble trois instruments qui n'offrent pas les mêmes garanties, et
-la principale source de confusion est de les traiter comme interchangeables.
+The project assembles three instruments that do not offer the same guarantees, and the main source of confusion is to treat them as interchangeable.
 
 \begin{table}[H]
 \centering
-\caption{Ce que chaque instrument garantit et ne garantit pas.}
+\caption{What each instrument guarantees and does not guarantee.}
 \label{tab:instruments}
 \small
 \begin{tabular}{@{}p{3.4cm}p{4.6cm}p{5.0cm}@{}}
 \toprule
-Instrument & Garantit & Ne garantit pas \\
+Instrument & Guarantees & Does not guarantee \\
 \midrule
-Frontière d'exécution (\code{executor.py}) & Chaque appel d'outil est journalisé, borné et conforme au périmètre & Une isolation système ; les gardes sont applicatives \\
-Bac à sable (\code{sandbox.py}) & Aucun événement Python listé ne survient ; les bras déterministes tournent hors laboratoire & Une isolation native ; aucune mesure de modèle \\
-Harnais de calibration & Contrat, oracle séparé, évaluateur qui relit le journal & L'admission de campagne ; la parité exacte des bras \\
+Execution boundary (\code{executor.py}) & Each tool call is logged, bounded and compliant with the scope & System-level isolation; the guards are application-level \\
+Sandbox (\code{sandbox.py}) & No listed Python event occurs; the deterministic arms run outside the laboratory & Native isolation; any model measurement \\
+Calibration harness & Contract, separate oracle, evaluator that re-reads the log & Campaign admission; exact parity of the arms \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Le premier instrument rend l'audit traçable. Le deuxième rend le harnais
-portable. Le troisième rend la comparaison possible. Aucun ne prouve qu'un
-modèle fait mieux qu'un script, ce qui était l'objet du programme.
+The first instrument makes the audit traceable. The second makes the harness portable. The third makes the comparison possible. None of them proves that a model does better than a script, which was the object of the programme.
 
-\subsection{Les contradictions relevées entre volets}
+\subsection{The contradictions identified between sections}
 
-La confrontation des cinq rédactions a fait apparaître quatre écarts, tous
-vérifiés par lecture du code avant d'être retenus ici.
+Confronting the five drafts brought out four discrepancies, all of them verified by reading the code before being retained here.
 
-\paragraph{Le seuil du contrôle V0 n'est pas appliqué par la porte.} Le cadre
-protocole affirme que la porte applique \code{X = 0,9} ; la partie benchmark
-vérifie que la porte se calcule sur « tous succès » et que le contrôle de seuil
-est indépendant. Les deux formulations coïncident à trois répétitions mais
-divergent au-delà. Le rapport retient la lecture du code.
+\paragraph{The threshold of the V0 check is not applied by the gate.} The protocol framework asserts that the gate applies \code{X = 0,9}; the benchmark part verifies that the gate is computed on ``all successes'' and that the threshold check is independent. The two formulations coincide at three repetitions but diverge beyond that. The report retains the reading of the code.
 
-\paragraph{Le corpus H2 ne code pas le mode d'échec décrit.} Le protocole écrit
-que, pour un dossier donné, l'abstention est la seule réponse correcte ; la
-lecture de l'oracle montre que celui-ci attend une exposition sur le premier
-message et une non-exposition sur le troisième. Le bras par convention converge
-d'ailleurs exactement sur l'oracle. Le protocole décrit donc une intention que
-le corpus n'encode pas.
+\paragraph{The H2 corpus does not encode the described failure mode.} The protocol states that, for a given record, abstention is the only correct answer; reading the oracle shows that it expects an exposure on the first message and a non-exposure on the third. The by-convention arm moreover converges exactly on the oracle. The protocol therefore describes an intention that the corpus does not encode.
 
-\paragraph{Le blocage de l'inférence n'est pas celui qui est communément
-allégué.} La condition d'admission est citée comme cause ; la lecture montre
-qu'elle est satisfiable en principe, et que la contrainte réelle est
-l'absence de familles indépendantes. Ce déplacement importe : il change la
-priorité de travail.
+\paragraph{The blocking of inference is not the one commonly alleged.} The admission condition is cited as the cause; reading shows that it is satisfiable in principle, and that the real constraint is the absence of independent families. This shift matters: it changes the priority of the work.
 
-\paragraph{La panne de routage du 29 octobre n'est pas consignée.} Elle explique
-six heures d'interruption et la reconstruction du conteneur, mais aucun document
-du dépôt ne la décrit. C'est une lacune de mémoire du projet, pas un désaccord
-entre volets.
+\paragraph{The routing failure of 29 October is not recorded.} It accounts for six hours of interruption and the rebuilding of the container, but no document in the repository describes it. This is a gap in the project's memory, not a disagreement between sections.
 
-\subsection{Un motif commun : le gain absorbé}
+\subsection{A common pattern: absorbed gain}
 
-Trois épisodes suivent la même forme. Dans la famille H2, le gain du modèle sur
-le parseur déclaré est repris par un bras script qui lit par convention. Dans le
-bac à sable, le même contraste se reproduit hors ligne, sans modèle. Dans le
-rejet de C2, la faille visée se révèle exprimable depuis les entrées publiques,
-donc refermable par une automatisation compétente.
+Three episodes follow the same shape. In the H2 family, the model's gain over the declared parser is taken up by a script arm that reads by convention. In the sandbox, the same contrast is reproduced offline, without a model. In the rejection of C2, the targeted flaw turns out to be expressible from public inputs, and therefore closeable by a competent automation.
 
-Le motif s'énonce ainsi : \emph{ce qui distingue le modèle du script, dans les
-familles construites, est une limite de la déclaration plutôt qu'une capacité du
-modèle}. Ce n'est pas une démonstration d'infériorité ; c'est l'absence de
-situation où la différence apparaît. Or une telle situation est précisément
-l'objet du programme.
+The pattern can be stated thus: \emph{what distinguishes the model from the script, in the constructed families, is a limitation of the declaration rather than a capability of the model}. This is not a demonstration of inferiority; it is the absence of a situation in which the difference appears. Yet such a situation is precisely the object of the programme.
 
-\subsection{Ce que le projet peut affirmer aujourd'hui}
+\subsection{What the project can assert today}
 
-Quatre affirmations sont défendables, chacune avec sa limite.
+Four assertions are defensible, each with its limitation.
 
-Un audit produit des traces vérifiables : chaque appel d'outil est archivé,
-référencé et borné, et une preuve perdue interrompt le run plutôt que de
-laisser un trou silencieux. La limite est qu'il s'agit de gardes applicatives.
+An audit produces verifiable traces: each tool call is archived, referenced and bounded, and a lost piece of evidence interrupts the run rather than leaving a silent gap. The limitation is that these are application-level guards.
 
-Un harnais peut être exécuté hors du laboratoire, sans broker ni modèle, sous un
-garde-fou dont les angles morts sont déclarés. La limite est qu'il ne mesure
-rien : il instrumente.
+A harness can be executed outside the laboratory, without a broker or a model, under a safeguard whose blind spots are declared. The limitation is that it measures nothing: it instruments.
 
-Un troisième bras script absorbe un gain attribué au modèle sur la famille la
-plus documentée. La limite est que cela vaut pour huit fixtures et une propriété.
+A third script arm absorbs a gain attributed to the model on the most documented family. The limitation is that this holds for eight fixtures and one property.
 
-Le corpus est majoritairement détectable par signature, ce qui rend un écart nul
-attendu par construction. La limite est que cela concerne le corpus actuel, non
-les situations visées.
+The corpus is mostly detectable by signature, which makes a null difference expected by construction. The limitation is that this concerns the current corpus, not the targeted situations.
 
-\subsection{Ce que le projet ne peut pas affirmer}
+\subsection{What the project cannot assert}
 
-Aucune supériorité du modèle n'est établie. Aucun intervalle de confiance n'est
-calculable. Aucune généralisation n'est possible depuis les mesures existantes.
-Et le module d'inférence produit, en l'état, l'apparence d'une mesure qu'il ne
-fournit pas : c'est le point le plus sérieux, parce qu'il pourrait être cité de
-bonne foi.
+No superiority of the model is established. No confidence interval can be computed. No generalisation is possible from the existing measurements. And the inference module, as it stands, produces the appearance of a measurement that it does not provide: this is the most serious point, because it could be cited in good faith.
 
-\subsection{Les trois décisions qui commandent la suite}
+\subsection{The three decisions that govern what follows}
 
-Une première décision porte sur le module d'inférence : le corriger pour qu'il
-refuse de produire un chiffre sans familles indépendantes, ou le retirer du
-chemin de décision. Tant qu'il existe, chaque nouvelle famille ajoutée augmente
-le risque d'une mesure citée hors de sa portée.
+A first decision concerns the inference module: to correct it so that it refuses to produce a figure without independent families, or to remove it from the decision path. As long as it exists, every new family added increases the risk of a measurement cited beyond its scope.
 
-Une deuxième décision porte sur la condition d'ouverture : écrire une
-automatisation de référence compétente, ou renoncer explicitement aux hypothèses
-qui en dépendent. Cette décision rend lisibles plusieurs familles aujourd'hui
-indécidables.
+A second decision concerns the opening condition: to write a competent reference automation, or to explicitly renounce the hypotheses that depend on it. This decision makes several families that are currently undecidable legible.
 
-Une troisième décision porte sur les familles indépendantes : en produire au
-moins trois, ou publier un résultat méthodologique borné en le déclarant tel.
-C'est la décision qui détermine si l'inférence pourra un jour exister.
+A third decision concerns independent families: to produce at least three, or to publish a bounded methodological result while declaring it as such. This is the decision that determines whether inference can one day exist.
 
-Aucune de ces décisions n'est technique au sens étroit. Toutes portent sur ce
-qu'on accepte de ne pas pouvoir dire.
+None of these decisions is technical in the narrow sense. All of them concern what one accepts not to be able to say.
 
-\subsection{Une conclusion lisible}
+\subsection{A legible conclusion}
 
-Le système est construit, instrumenté et documenté. Sa chaîne de preuve est
-sérieuse : oracle séparé, évaluateur qui recompte, journal qui ne pardonne pas
-une preuve perdue, garde-fou qui déclare ses angles morts. Les défauts relevés
-dans ce rapport ont été trouvés en lisant ce que le code fait, non ce qu'il
-annonce, et c'est la meilleure preuve que la discipline de vérification
-fonctionne.
+The system is built, instrumented and documented. Its chain of evidence is sound: a separate oracle, an evaluator that recounts, a log that does not forgive a lost piece of evidence, a safeguard that declares its blind spots. The defects identified in this report were found by reading what the code does, not what it claims, and that is the best evidence that the verification discipline works.
 
-La question scientifique, elle, reste ouverte. Le programme demandait quand un
-modèle fait mieux qu'un script à outils identiques ; les données disponibles ne
-répondent pas, et le dispositif actuel ne permettrait pas de répondre même avec
-plus de temps machine. Ce constat n'est pas un échec du travail accompli : c'est
-le résultat d'avoir regardé les choses en face.
+The scientific question, however, remains open. The programme asked when a model does better than a script with identical tools; the available data do not answer it, and the current arrangement would not allow an answer even with more machine time. This observation is not a failure of the work accomplished: it is the result of having looked at things squarely.
 
-La suite la plus utile n'est pas d'ajouter une famille, mais de rendre
-infalsifiable ce qui prétend l'être aujourd'hui.
+The most useful continuation is not to add a family, but to make falsifiable what today claims to be so.

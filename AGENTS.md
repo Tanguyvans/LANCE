@@ -63,6 +63,10 @@ l'entraînement des modèles constitue un volet distinct du projet.
   conclusions. Citer les sources primaires avec leur date/version et préciser les
   limites de lecture ou de reproduction. Pour une expérience, référencer le code,
   la configuration, les artefacts et les conditions nécessaires à sa reproduction.
+- **Langue.** Les rapports d'avancement et de bilan de `research/` sont rédigés
+  en anglais ; les notes de travail, les README de dossier et la `docs/` de
+  référence restent en français. Une traduction archive l'original, elle ne
+  l'écrase pas.
 - Réserver `docs/` aux comportements implémentés, aux contrats retenus et aux
   procédures de référence, en précisant leur périmètre et leurs limites. Un plan
   proposé ou une piste bibliographique reste dans `research/`.

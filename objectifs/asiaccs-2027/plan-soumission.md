@@ -17,7 +17,7 @@ et [dates importantes](https://asiaccs2027.cityu.edu.mo/important-dates/index.ht
 | --- | --- | --- |
 | Round visé | Round 2 ; calendrier de revue (rejet précoce, révision majeure, rebuttal, notification) publié par la conférence | À tenir |
 | Conférence | 12-16 juillet 2027, Macao | — |
-| Langue et format | Anglais, PDF, template ACM Sigconf double colonne | À produire (les documents internes restent en français) |
+| Langue et format | Anglais, PDF, template ACM Sigconf double colonne | Les rapports d'avancement sont rédigés en anglais depuis le 30 octobre 2026 ; les notes de travail internes restent en français |
 | Longueur | **12 pages max** hors bibliographie et annexes ; jusqu'à 10 pages supplémentaires de bibliographie/annexes, sans garantie de lecture | Squelette à créer |
 | Revue | Double aveugle ; anonymat du papier et des artefacts | À appliquer (noms, affiliations, auto-références, dépôt) |
 | Open Science | Appendice **obligatoire** (0,5 page max après les références) avec lien d'artefact anonymisé accessible pendant toute la revue ; absence = desk-reject possible | **Bloquant à préparer tôt** (voir §6) |

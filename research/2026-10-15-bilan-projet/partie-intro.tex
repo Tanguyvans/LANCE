@@ -1,84 +1,82 @@
-\section{Résumé exécutif}
+\section{Executive summary}
 
-Cette page répond à quatre questions sans jargon : que fait le système, où en
-est-il, qu'est-ce qui est prouvé, et que faut-il décider.
+This page answers four questions without jargon: what the system does, where it
+stands, what is proven, and what has to be decided.
 
-\subsection{Ce que le système fait}
+\subsection{What the system does}
 
-LANCE conduit un audit de sécurité sur un réseau d'objets connectés \emph{dont
-la propriété et l'autorisation sont établies}. Il explore le réseau, émet des
-hypothèses de failles, tente de les vérifier par des preuves observables, puis
-rédige un rapport. Deux politiques peuvent mener cet audit : une automatisation
-à règles et un agent à base de modèle de langage. Le projet cherche à savoir
-laquelle des deux réussit mieux, à outils, preuves et budgets identiques.
+LANCE conducts a security audit on a network of connected objects \emph{whose
+ownership and authorisation are established}. It explores the network, issues
+hypotheses of flaws, attempts to verify them by observable evidence, and then
+writes a report. Two policies can carry out this audit: a rule-based automation
+and an agent based on a language model. The project seeks to determine which of
+the two succeeds better, with identical tools, evidence and budgets.
 
-\subsection{Où en est le projet}
+\subsection{Where the project stands}
 
 \begin{table}[H]
 \centering
-\caption{État en une ligne par volet.}
+\caption{Status in one line per strand.}
 \label{tab:etat-volet}
 \small
 \begin{tabular}{@{}p{3.3cm}p{1.9cm}p{8.3cm}@{}}
 \toprule
-Volet & État & Précision \\
+Strand & Status & Detail \\
 \midrule
-Moteur d'audit & mature & Six phases en service, quatre modes, frontière d'exécution qui journalise chaque appel \\
-Preuves & mature & Contrat briefing/oracle/évaluateur appliqué à cinq familles ; le journal fait foi, pas la décision \\
-Harnais & consolidé & Noyau partagé depuis le 29 octobre ; bac à sable exécutable hors laboratoire \\
-Infrastructure & rétablie & Trois instances, circuit de livraison automatique, sept défauts corrigés \\
-Benchmark & partiel & Une hypothèse mesurée sur six, une famille rejetée, aucune inférence calculable \\
-Preuve scientifique & absente & Aucune supériorité du modèle n'est établie à ce jour \\
+Audit engine & mature & Six phases in service, four modes, execution boundary that logs every call \\
+Evidence & mature & Briefing/oracle/evaluator contract applied to five families; the log is authoritative, not the decision \\
+Harness & consolidated & Core shared since 29 October; sandbox executable outside the laboratory \\
+Infrastructure & restored & Three instances, automatic delivery pipeline, seven defects fixed \\
+Benchmark & partial & One hypothesis measured out of six, one family rejected, no inference computable \\
+Scientific proof & absent & No superiority of the model has been established to date \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Ce qui est prouvé, et ce qui ne l'est pas}
+\subsection{What is proven, and what is not}
 
-\textbf{Prouvé.} Chaque appel d'outil est tracé et borné ; une preuve perdue
-interrompt le run. Un harnais peut tourner hors du laboratoire, sous un garde-fou
-dont les angles morts sont déclarés. Sur la famille la plus documentée, un
-troisième script --- qui lit par convention, sans modèle --- obtient le même
-résultat que l'agent, ce qui \emph{absorbe} le gain attribué au modèle. Le corpus
-est majoritairement détectable par signature, ce qui rend un écart nul attendu
-par construction.
+\textbf{Proven.} Every tool call is traced and bounded; a lost piece of evidence
+interrupts the run. A harness can run outside the laboratory, under a guard whose
+blind spots are declared. On the best-documented family, a third script, which
+reads by convention and uses no model, obtains the same result as the agent,
+which \emph{absorbs} the gain attributed to the model. The corpus is mostly
+detectable by signature, which makes a null gap expected by construction.
 
-\textbf{Non prouvé.} Qu'un modèle fasse mieux qu'un script compétent. Qu'un
-écart soit significatif. Que les résultats se généralisent au-delà de huit
-dossiers et d'une propriété.
+\textbf{Not proven.} That a model does better than a competent script. That a gap
+is significant. That the results generalise beyond eight cases and one property.
 
-\subsection{Les trois décisions qui commandent la suite}
+\subsection{The three decisions that govern what follows}
 
 \begin{enumerate}
-\item \textbf{L'outil d'inférence.} Il produit aujourd'hui des p-values qui ne
-distinguent pas quatre séries de comportements différents. À corriger pour qu'il
-refuse de produire un chiffre, ou à retirer du chemin de décision.
-\item \textbf{La condition d'ouverture.} Plusieurs familles restent indécidables
-faute d'une automatisation de référence écrite. L'écrire, ou renoncer
-explicitement à ces familles.
-\item \textbf{Les familles indépendantes.} En produire trois, ou publier un
-résultat méthodologique borné en le déclarant tel. C'est cette décision qui
-détermine si une inférence pourra exister un jour.
+\item \textbf{The inference tool.} It currently produces p-values that do not
+distinguish four series of different behaviours. Either fix it so that it refuses
+to produce a number, or remove it from the decision path.
+\item \textbf{The opening condition.} Several families remain undecidable for lack
+of a written reference automation. Either write it, or explicitly renounce these
+families.
+\item \textbf{The independent families.} Either produce three of them, or publish
+a bounded methodological result and declare it as such. It is this decision that
+determines whether an inference can ever exist.
 \end{enumerate}
 
-\subsection{Comment lire ce rapport}
+\subsection{How to read this report}
 
-La partie~\ref{sec:architecture-pipeline} décrit le chemin d'un audit.
-La partie~\ref{sec:protocoles} décrit ce qui rend un résultat vérifiable.
-La partie~\ref{sec:harnais-sandbox} décrit l'outillage expérimental.
-La partie~\ref{sec:infrastructure} décrit la machine et la livraison.
-La partie~\ref{sec:benchmark} établit ce qui est mesuré.
-La conclusion confronte ces volets et relève leurs contradictions.
+Part~\ref{sec:architecture-pipeline} describes the path of an audit.
+Part~\ref{sec:protocoles} describes what makes a result verifiable.
+Part~\ref{sec:harnais-sandbox} describes the experimental tooling.
+Part~\ref{sec:infrastructure} describes the machine and the delivery.
+Part~\ref{sec:benchmark} establishes what is measured.
+The conclusion confronts these strands and notes their contradictions.
 
-Chaque affirmation renvoie au fichier qui la porte. Les comportements que le code
-ne permet pas d'établir sont signalés comme tels plutôt que comblés.
+Each statement refers to the file that supports it. Behaviours that the code does
+not allow to be established are flagged as such rather than filled in.
 
 \clearpage
-\section{Vue d'ensemble du système}
+\section{System overview}
 \label{sec:vue-ensemble}
 
-Avant d'entrer dans les contrats, une carte du système et du laboratoire. Elle
-situe les composants décrits ensuite et montre où passent les preuves.
+Before going into the contracts, a map of the system and of the laboratory. It
+situates the components described below and shows where evidence passes.
 
 \begin{figure}[H]
 \centering
@@ -90,13 +88,13 @@ situe les composants décrits ensuite et montre où passent les preuves.
   focal/.style={box, draw=accent, fill=rose, line width=.75pt},
   flow/.style={-{Latex[length=1.8mm,width=1.1mm]}, draw=muted, line width=.6pt}
 ]
-\node[box] (lab) {Laboratoire IoT\\simulé};
-\node[box, right=of lab] (run) {Moteur d'audit\\six phases};
-\node[focal, right=of run] (tools) {Frontière d'exécution\\journal des preuves};
-\node[box, below=of lab] (eval) {Évaluateur\\hors ligne};
+\node[box] (lab) {Simulated IoT\\laboratory};
+\node[box, right=of lab] (run) {Audit engine\\six phases};
+\node[focal, right=of run] (tools) {Execution boundary\\evidence log};
+\node[box, below=of lab] (eval) {Evaluator\\offline};
 \node[box, right=of eval] (verdict) {Verdict};
-\node[box, above=of eval] (art) {Artefacts\\du run, 01 à 06};
-\node[box, above=of verdict] (oracle) {Oracle privé\\fixé avant le run};
+\node[box, above=of eval] (art) {Run\\artefacts, 01 to 06};
+\node[box, above=of verdict] (oracle) {Private oracle\\fixed before the run};
 
 \draw[flow] (lab) -- (run);
 \draw[flow] (run) -- (tools);
@@ -106,24 +104,25 @@ situe les composants décrits ensuite et montre où passent les preuves.
 \draw[flow] (eval) -- (verdict);
 \draw[flow, dashed] (tools.south) -- (verdict.north east);
 \end{tikzpicture}
-\caption{Le trajet d'une preuve. Les outils produisent des observations
-journalisées ; l'oracle privé, écrit avant l'exécution, permet de recomputer le
-verdict depuis le journal sans croire la décision du système.}
+\caption{The journey of a piece of evidence. The tools produce logged
+observations; the private oracle, written before execution, makes it possible to
+recompute the verdict from the log without believing the system's decision.}
 \label{fig:tripwire}
 \end{figure}
 
-Trois propriétés se lisent sur cette carte.
+Three properties can be read from this map.
 
-\textbf{Le journal est la source.} Un résultat n'est pas la conclusion écrite par
-la politique, mais ce que l'évaluateur recalcule depuis les observations
-archivées. Une preuve citée qui ne figure pas dans le journal est rejetée.
+\textbf{The log is the source.} A result is not the conclusion written by the
+policy, but what the evaluator recomputes from the archived observations. A cited
+piece of evidence that does not appear in the log is rejected.
 
-\textbf{L'oracle précède le run.} Il est fixé avant que la politique ne tourne,
-et un constat qui le contredit invalide l'essai au lieu de le corriger. Cette
-antériorité est ce qui empêche d'ajuster la réponse après coup.
+\textbf{The oracle precedes the run.} It is fixed before the policy runs, and a
+finding that contradicts it invalidates the trial instead of correcting it. This
+precedence is what prevents the answer from being adjusted after the fact.
 
-\textbf{Le bac à sable n'est pas la mesure.} Il exécute les bras déterministes
-sans modèle ni laboratoire ; il instrumente le contraste, il ne le mesure pas.
+\textbf{The sandbox is not the measurement.} It executes the deterministic arms
+without a model or a laboratory; it instruments the contrast, it does not measure
+it.
 
 \begin{figure}[H]
 \centering
@@ -134,17 +133,17 @@ sans modèle ni laboratoire ; il instrumente le contraste, il ne le mesure pas.
   dev/.style={h, fill=rose, draw=accent},
   flow/.style={-{Latex[length=1.6mm,width=1mm]}, draw=muted, line width=.6pt}
 ]
-\node[h, text width=22mm] (poste) {Poste de\\développement};
+\node[h, text width=22mm] (poste) {Development\\workstation};
 \node[h, text width=24mm, right=of poste] (ci) {GitHub Actions\\validation};
-\node[dev, text width=26mm, right=of ci] (lxc) {Conteneur maître\\trois instances};
-\node[h, text width=22mm, right=of lxc] (umons) {Relais UMONS\\modèle};
+\node[dev, text width=26mm, right=of ci] (lxc) {Master container\\three instances};
+\node[h, text width=22mm, right=of lxc] (umons) {UMONS relay\\model};
 
 \draw[flow] (poste) -- node[above, font=\sffamily\tiny, text=muted] {push} (ci);
-\draw[flow] (ci) -- node[above, font=\sffamily\tiny, text=muted] {déploie} (lxc);
-\draw[flow] (lxc) -- node[above, font=\sffamily\tiny, text=muted] {appelle} (umons);
+\draw[flow] (ci) -- node[above, font=\sffamily\tiny, text=muted] {deploys} (lxc);
+\draw[flow] (lxc) -- node[above, font=\sffamily\tiny, text=muted] {calls} (umons);
 \end{tikzpicture}
-\caption{Le circuit de livraison. Aucun travail d'exécution n'a lieu sur le poste
-de développement : le push déclenche la validation, qui déploie sur le conteneur.}
+\caption{The delivery pipeline. No execution work takes place on the development
+workstation: the push triggers validation, which deploys to the container.}
 \label{fig:circuit}
 \end{figure}
 

@@ -1,0 +1,135 @@
+La synthèse qui suit ne résume pas les parties : elle relève ce qui les relie,
+ce qu'elles contredisent et ce que l'ensemble laisse ouvert. Elle s'appuie sur
+les cinq volets et sur la vérification directe des points contestés.
+
+\subsection{Trois instruments, trois niveaux de garantie}
+
+Le projet assemble trois instruments qui n'offrent pas les mêmes garanties, et
+la principale source de confusion est de les traiter comme interchangeables.
+
+\begin{table}[H]
+\centering
+\caption{Ce que chaque instrument garantit et ne garantit pas.}
+\label{tab:instruments}
+\small
+\begin{tabular}{@{}p{3.4cm}p{4.6cm}p{5.0cm}@{}}
+\toprule
+Instrument & Garantit & Ne garantit pas \\
+\midrule
+Frontière d'exécution (\code{executor.py}) & Chaque appel d'outil est journalisé, borné et conforme au périmètre & Une isolation système ; les gardes sont applicatives \\
+Bac à sable (\code{sandbox.py}) & Aucun événement Python listé ne survient ; les bras déterministes tournent hors laboratoire & Une isolation native ; aucune mesure de modèle \\
+Harnais de calibration & Contrat, oracle séparé, évaluateur qui relit le journal & L'admission de campagne ; la parité exacte des bras \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le premier instrument rend l'audit traçable. Le deuxième rend le harnais
+portable. Le troisième rend la comparaison possible. Aucun ne prouve qu'un
+modèle fait mieux qu'un script, ce qui était l'objet du programme.
+
+\subsection{Les contradictions relevées entre volets}
+
+La confrontation des cinq rédactions a fait apparaître quatre écarts, tous
+vérifiés par lecture du code avant d'être retenus ici.
+
+\paragraph{Le seuil du contrôle V0 n'est pas appliqué par la porte.} Le cadre
+protocole affirme que la porte applique \code{X = 0,9} ; la partie benchmark
+vérifie que la porte se calcule sur « tous succès » et que le contrôle de seuil
+est indépendant. Les deux formulations coïncident à trois répétitions mais
+divergent au-delà. Le rapport retient la lecture du code.
+
+\paragraph{Le corpus H2 ne code pas le mode d'échec décrit.} Le protocole écrit
+que, pour un dossier donné, l'abstention est la seule réponse correcte ; la
+lecture de l'oracle montre que celui-ci attend une exposition sur le premier
+message et une non-exposition sur le troisième. Le bras par convention converge
+d'ailleurs exactement sur l'oracle. Le protocole décrit donc une intention que
+le corpus n'encode pas.
+
+\paragraph{Le blocage de l'inférence n'est pas celui qui est communément
+allégué.} La condition d'admission est citée comme cause ; la lecture montre
+qu'elle est satisfiable en principe, et que la contrainte réelle est
+l'absence de familles indépendantes. Ce déplacement importe : il change la
+priorité de travail.
+
+\paragraph{La panne de routage du 29 octobre n'est pas consignée.} Elle explique
+six heures d'interruption et la reconstruction du conteneur, mais aucun document
+du dépôt ne la décrit. C'est une lacune de mémoire du projet, pas un désaccord
+entre volets.
+
+\subsection{Un motif commun : le gain absorbé}
+
+Trois épisodes suivent la même forme. Dans la famille H2, le gain du modèle sur
+le parseur déclaré est repris par un bras script qui lit par convention. Dans le
+bac à sable, le même contraste se reproduit hors ligne, sans modèle. Dans le
+rejet de C2, la faille visée se révèle exprimable depuis les entrées publiques,
+donc refermable par une automatisation compétente.
+
+Le motif s'énonce ainsi : \emph{ce qui distingue le modèle du script, dans les
+familles construites, est une limite de la déclaration plutôt qu'une capacité du
+modèle}. Ce n'est pas une démonstration d'infériorité ; c'est l'absence de
+situation où la différence apparaît. Or une telle situation est précisément
+l'objet du programme.
+
+\subsection{Ce que le projet peut affirmer aujourd'hui}
+
+Quatre affirmations sont défendables, chacune avec sa limite.
+
+Un audit produit des traces vérifiables : chaque appel d'outil est archivé,
+référencé et borné, et une preuve perdue interrompt le run plutôt que de
+laisser un trou silencieux. La limite est qu'il s'agit de gardes applicatives.
+
+Un harnais peut être exécuté hors du laboratoire, sans broker ni modèle, sous un
+garde-fou dont les angles morts sont déclarés. La limite est qu'il ne mesure
+rien : il instrumente.
+
+Un troisième bras script absorbe un gain attribué au modèle sur la famille la
+plus documentée. La limite est que cela vaut pour huit fixtures et une propriété.
+
+Le corpus est majoritairement détectable par signature, ce qui rend un écart nul
+attendu par construction. La limite est que cela concerne le corpus actuel, non
+les situations visées.
+
+\subsection{Ce que le projet ne peut pas affirmer}
+
+Aucune supériorité du modèle n'est établie. Aucun intervalle de confiance n'est
+calculable. Aucune généralisation n'est possible depuis les mesures existantes.
+Et le module d'inférence produit, en l'état, l'apparence d'une mesure qu'il ne
+fournit pas : c'est le point le plus sérieux, parce qu'il pourrait être cité de
+bonne foi.
+
+\subsection{Les trois décisions qui commandent la suite}
+
+Une première décision porte sur le module d'inférence : le corriger pour qu'il
+refuse de produire un chiffre sans familles indépendantes, ou le retirer du
+chemin de décision. Tant qu'il existe, chaque nouvelle famille ajoutée augmente
+le risque d'une mesure citée hors de sa portée.
+
+Une deuxième décision porte sur la condition d'ouverture : écrire une
+automatisation de référence compétente, ou renoncer explicitement aux hypothèses
+qui en dépendent. Cette décision rend lisibles plusieurs familles aujourd'hui
+indécidables.
+
+Une troisième décision porte sur les familles indépendantes : en produire au
+moins trois, ou publier un résultat méthodologique borné en le déclarant tel.
+C'est la décision qui détermine si l'inférence pourra un jour exister.
+
+Aucune de ces décisions n'est technique au sens étroit. Toutes portent sur ce
+qu'on accepte de ne pas pouvoir dire.
+
+\subsection{Une conclusion lisible}
+
+Le système est construit, instrumenté et documenté. Sa chaîne de preuve est
+sérieuse : oracle séparé, évaluateur qui recompte, journal qui ne pardonne pas
+une preuve perdue, garde-fou qui déclare ses angles morts. Les défauts relevés
+dans ce rapport ont été trouvés en lisant ce que le code fait, non ce qu'il
+annonce, et c'est la meilleure preuve que la discipline de vérification
+fonctionne.
+
+La question scientifique, elle, reste ouverte. Le programme demandait quand un
+modèle fait mieux qu'un script à outils identiques ; les données disponibles ne
+répondent pas, et le dispositif actuel ne permettrait pas de répondre même avec
+plus de temps machine. Ce constat n'est pas un échec du travail accompli : c'est
+le résultat d'avoir regardé les choses en face.
+
+La suite la plus utile n'est pas d'ajouter une famille, mais de rendre
+infalsifiable ce qui prétend l'être aujourd'hui.

@@ -3,6 +3,15 @@
 \usepackage[utf8]{inputenc}
 \usepackage[french]{babel}
 \frenchsetup{SmallCapsFigTabCaptions=false}
+% The English language files of this Babel installation are broken, so the
+% French language is loaded for hyphenation only and every caption is renamed.
+\addto\captionsfrench{%
+  \renewcommand{\contentsname}{Contents}%
+  \renewcommand{\abstractname}{Abstract}%
+  \renewcommand{\figurename}{Figure}%
+  \renewcommand{\tablename}{Table}%
+  \renewcommand{\refname}{References}%
+}
 \usepackage{lmodern,microtype,amsmath}
 \usepackage[margin=23mm]{geometry}
 \usepackage{booktabs,array,tabularx,longtable}
@@ -15,8 +24,8 @@
 \definecolor{accent}{HTML}{AF0032}
 \definecolor{rose}{HTML}{FDF0F4}
 \hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=ink,
- pdftitle={LANCE : architecture, protocoles et état d'avancement},
- pdfauthor={Projet LANCE},pdflang={fr-FR}}
+ pdftitle={LANCE: architecture, protocols and current state},
+ pdfauthor={LANCE project},pdflang={en-GB}}
 \urlstyle{same}
 \def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
@@ -30,30 +39,30 @@
 \setcounter{tocdepth}{1}
 
 \title{LANCE\\[4pt]
-\large Architecture, protocoles et état d'avancement\\[2pt]
-\normalsize Rapport au 30 octobre 2026}
-\author{Projet LANCE\\\small Rédaction par volets spécialisés, relecture et synthèse indépendantes}
-\date{Dernière révision : \revision\\[3pt]
-\small État documentaire au 30 octobre 2026 ; aucune expérience nouvelle rapportée}
+\large Architecture, protocols and current state\\[2pt]
+\normalsize Report as of 30 October 2026}
+\author{LANCE project\\\small Written by specialist strands, independently reviewed and synthesised}
+\date{Last revision: \revision\\[3pt]
+\small Documentation state as of 30 October 2026; no new experiment is reported}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-LANCE est une plateforme d'audit de sécurité de réseaux d'objets connectés
-autorisés, développée dans le cadre des travaux UMONS du programme NATO SPS
-G6259. Ce rapport décrit l'architecture du pipeline, les protocoles d'audit et
-leurs contrats de preuve, les harnais d'expérimentation et leur bac à sable
-hermétique, l'infrastructure d'exécution et le circuit de livraison, puis
-l'état réel du benchmark. Il succède au rapport d'ensemble du 15 octobre 2026,
-qui survolait l'architecture et les protocoles : les parties correspondantes
-sont ici développées jusqu'au contrat de code.
+LANCE is a platform for the security audit of authorised connected-object
+networks, developed in the context of the UMONS work of the NATO SPS G6259
+programme. This report describes the pipeline architecture, the audit protocols
+and their evidence contracts, the experimentation harnesses and their hermetic
+sandbox, the execution infrastructure and the delivery pipeline, and the actual
+state of the benchmark. It succeeds the 15 October 2026 overview, which skimmed
+over the architecture and the protocols: those parts are developed here down to
+the code contract.
 
-Le document distingue systématiquement ce qui est implémenté, ce qui est
-mesuré et ce qui reste proposé. Aucune expérience nouvelle n'est rapportée :
-les mesures citées sont celles déjà consignées, avec leur date. Les limites de
-chaque composant sont explicites, y compris celles du bac à sable, dont le
-garde-fou n'est pas un bac à sable natif exhaustif.
+The document consistently distinguishes what is implemented, what is measured and
+what remains proposed. No new experiment is reported: the measurements cited are
+those already recorded, with their date. The limits of each component are
+explicit, including those of the sandbox, whose guard is not an exhaustive
+native-code sandbox.
 \end{abstract}
 
 \tableofcontents
@@ -61,20 +70,21 @@ garde-fou n'est pas un bac à sable natif exhaustif.
 
 \input{partie-intro}
 
-\section{Objet et méthode}
+\section{Scope and method}
+\label{sec:scope}
 
-Ce rapport répond à une question de lecture : \emph{comment le système est-il
-construit, et où en est-il réellement ?} Il ne remplace pas les pages de
-référence de \code{docs/}, qui décrivent le comportement courant, ni les
-protocoles détaillés de \code{research/}, qui portent le raisonnement.
+This report answers a reading question: \emph{how is the system built, and where
+does it actually stand?} It does not replace the reference pages of \code{docs/},
+which describe the current behaviour, nor the detailed protocols of
+\code{research/}, which carry the reasoning.
 
-Chaque partie a été rédigée par un rédacteur spécialisé travaillant sur le code
-de la branche \code{dev/1}, puis relue contre ce même code par un relecteur
-indépendant. Une synthèse transverse a été produite séparément. Les affirmations
-non vérifiables dans le dépôt sont signalées comme telles plutôt que comblées.
+Each part was written by a specialist working on the \code{dev/1} branch, then
+reviewed against that same code by an independent reader. A cross-cutting
+synthesis was produced separately. Statements that cannot be verified in the
+repository are flagged as such rather than filled in.
 
-Le rapport est daté : il décrit un état, pas un contrat. Un comportement
-ultérieur peut le contredire sans que le rapport soit faux.
+The report is dated: it describes a state, not a contract. Later behaviour may
+contradict it without making it false.
 
 % === PARTIES RÉDIGÉES PAR LES AGENTS ===
 \input{partie-architecture}
