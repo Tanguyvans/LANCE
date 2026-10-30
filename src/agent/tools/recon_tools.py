@@ -958,8 +958,11 @@ def modbus_write(target: str, register: int, value: int, port: int = 502, unit_i
         if not client.connect():
             return json.dumps({"error": f"Connection Refused: Cannot connect to {target}:{port}"})
 
-        # Write to holding register (function code 6)
-        response = client.write_register(register, value, slave=unit_id)
+        # Write to holding register (function code 6). The unit identifier is
+        # ``device_id`` since pymodbus 3.9; ``slave`` raises TypeError before any
+        # frame leaves, so the old spelling reported a clean failure on every
+        # target while the tool looked installed.
+        response = client.write_register(register, value, device_id=unit_id)
         
         if response.isError():
             result = {"success": False, "error": str(response)}
