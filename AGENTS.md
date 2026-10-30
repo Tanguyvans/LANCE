@@ -9,6 +9,16 @@ Une API et une interface web permettent de lancer et de suivre les exécutions.
 Le benchmark fournit des scénarios reproductibles pour comparer les résultats ;
 l'entraînement des modèles constitue un volet distinct du projet.
 
+## Par où commencer
+
+Lire d'abord [`objectifs/ETAT-COURANT.md`](objectifs/ETAT-COURANT.md) : il dit
+ce qui est vrai aujourd'hui, ce qui bloque et ce qui vient ensuite. La priorité
+courante et le cahier des charges de la prochaine session y sont liés.
+
+Ne pas déduire l'état du projet du code seul : plusieurs blocages sont des
+décisions de méthode, pas des tâches. Les écritures antérieures qui décrivent
+un état dépassé sont datées ; la plus récente fait foi.
+
 ## Organisation
 
 - `src/agent/` : pipeline et outils d'audit.
