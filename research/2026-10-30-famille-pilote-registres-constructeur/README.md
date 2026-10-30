@@ -161,6 +161,30 @@ Dans l'ordre des dépendances. Chaque étape laisse un artefact vérifiable.
 3. **Faut-il modifier l'inférence** pour admettre une famille unique, ou
    assumer que la famille pilote reste descriptive ?
 
+## Ce qui a déjà été essayé, et pourquoi ça a échoué
+
+Cette section existe pour éviter de répéter des impasses déjà payées. Chaque
+point a été constaté dans le dépôt ou mesuré, pas supposé.
+
+| Tentative | Ce qui a été fait | Pourquoi ça n'a pas abouti |
+| --- | --- | --- |
+| **Regrouper les scénarios existants en familles** | Recherche d'un axe : protocole, topologie, catégorie de faille, pack | Aucun ne sépare réellement. Les packs `f1`, `f2`, `f3` couvrent les treize scénarios de développement ; 35 titres de vérité terrain sont partagés entre scénarios. Un regroupement produirait des étiquettes, pas des unités indépendantes |
+| **Utiliser `family_id` du catalogue** | Le champ existe | Il vaut `scenario_id` : chaque scénario est sa propre famille. Aucun regroupement n'est possible en l'état |
+| **Utiliser le `family_id` du pilote** | `policy_pair_runner.py:225` en écrit un | Il est **codé en dur** (`"ui-public-scenario"`) : ce n'est pas une mesure |
+| **C2 : un scénario où la baseline échoue** | Deux relectures adverses, avant toute fixture | Le contrat public énonçait la règle, donc une automatisation compétente la refermait. **Rejeté sur papier** : le test de clôture n'était pas exécutable |
+| **Bras LLM comparé aux règles sur les observations** | Conception soumise à deux relectures | Quatre mécanismes avantagent les règles : phase 4 qui émet des sondes, `supplemental.py` qui réécrit `03_scans`, `add_scanner_candidates` qui injecte les constats déterministes, score réservé au mode `lance`. La comparaison aurait mesuré « qui peut vérifier », pas « qui interprète mieux » |
+| **Inférence statistique sur le corpus** | Module réparé le 2026-10-30 : unilatéral, signe exact, refus sous trois familles | Le calcul est désormais juste, mais **le corpus ne fournit au plus que trois familles défendables** là où cinq sont nécessaires. Aucune conclusion n'est possible quelles que soient les données collectées sur ces familles |
+| **Interface réorganisée** | Plan écrit, deux relectures | Abandonné : le DOM sert d'état (identifiants uniques, masquages CSS), et le gain mesuré est marginal face au risque de double lancement silencieux |
+
+**La leçon commune.** Toutes ces tentatives ont échoué sur le même point : elles
+cherchaient à **mesurer avec un instrument dont la condition d'application
+n'était pas remplie**. La famille pilote inverse l'ordre : construire d'abord
+l'instrument et sa condition d'application, mesurer ensuite.
+
+**Ce qui ne doit pas être refait sans raison nouvelle** : regrouper l'existant,
+supposer un `family_id` significatif, écrire un scénario sans test de clôture
+exécutable, comparer deux bras qui n'ont pas le même pouvoir de vérification.
+
 ## Documents liés
 
 - [Registre d'hypothèses](../2026-10-21-hypotheses-benchmark/README.md), H4.
