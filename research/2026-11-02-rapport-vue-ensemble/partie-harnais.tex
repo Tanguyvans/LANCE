@@ -1,0 +1,138 @@
+\section{Harnesses, and a sandbox that measures nothing}
+\label{sec:harnais-sandbox}
+
+\textbf{In brief.} A harness is the instrument that puts two policies in front of
+the same situation: one contract file per family, a deterministic arm, a model arm,
+a controller for the laboratory and the evaluator. The same anatomy is repeated
+for SSH, MQTT, the API and the V0 control. In October the life cycle of these
+objects was unified into one construction function, so that a run missing part of
+the governance surface is refused at construction rather than misbehaving later.
+
+\textbf{The sandbox and its honest limit.} A sandbox was added that runs the
+deterministic arms on any workstation and in continuous integration, without a
+broker, a model or a laboratory. It reproduces the H2 lesson offline: the declared
+parser fails where a script reading by convention succeeds. It \emph{instruments}
+a contrast; it measures nothing about a model, and its guard observes Python events,
+not system calls. The report therefore says \code{guard\_clean}, never
+``isolated''.
+
+\marginref{Harnesses, the shared core and the sandbox live under \code{benchmarks/experiments/}; tests in \code{tests/test\_harness\_core.py} and \code{tests/test\_sandbox.py}.}
+
+\subsection{Anatomy of a harness}
+
+A harness is a set of files with one responsibility each. For MQTT, which gives
+its complete form: the contract validates the briefing, binds the tool to the
+execution boundary, provides the deterministic arm and recounts the run through the
+evaluator. The model arm is a separate file, and its H2 variant receives no parser.
+The live controller builds the model, journals every transport call and writes the
+decision, the cost summary and the run metadata. The deployment uses the
+laboratory, submitting operations to the hypervisor.
+
+The same anatomy is repeated for SSH, the API and the V0 control, with one
+difference: the H2 harness has neither deployment nor a live client, because its
+corpus is frozen.
+
+\subsection{The shared core}
+
+The core exists for a precise reason, written in its header. The governance
+boundary reads a fixed set of attributes from the run object with defaults; an
+omission therefore manifests only when a tool call misbehaves. Each harness used to
+rebuild that object by hand. The core replaces the copies with a single
+construction, which enumerates thirteen required attributes --- the run directory,
+three budgets, two locks, the call counter, the start clock, the limit reason, the
+scope, the context, the policy and the cost tracking --- and refuses an incomplete
+one.
+
+One attribute deserves attention: the evidence-integrity flag. The limit check
+reads it first and raises if it is set, and the archiver sets it when the archive
+cannot be written. A harness that forgot it would pursue a run whose archive is
+holed, and the result would look complete. The refusal is two-level: at
+construction, and on any object through a replay check.
+
+\marginref{The core is \code{build\_run}; see also \code{REQUIRED\_ATTRIBUTES} and \code{require\_attributes}.}
+
+\subsection{The sandbox}
+
+The sandbox proves, on a workstation as in continuous integration, that a harness
+executes without a broker, without a model and without a laboratory: it loads the
+frozen corpus of eight fixtures and, for each one, validates the dossier, opens a
+journal, runs the chosen arm, writes the artefacts and recounts through the
+existing evaluator. Five artefacts are produced per trial, and a report aggregates
+them with a guard block.
+
+The arm is an explicit parameter and an unknown name raises an error. This was a
+correction: the first version read the arm from the corpus, which does not declare
+it, so the conventional arm was unreachable and the report invented the policy it
+believed it had tested.
+
+\subsection{The guard, and what it does not see}
+
+The guard relies on the audit hook of the interpreter. It stays installed but
+enforces only inside an explicit context, and it is rebound at each run so that a
+second run does not observe the first run's directory. It refuses sockets,
+subprocesses, the process-spawning family, native library loading, and writes
+outside the authorised directory.
+
+Its honesty is itself a result worth keeping. A read-only audit broke the first
+version with two measured escapes --- a spawned process and a native call through
+the C library --- although the report announced a hermetic execution without
+violation. Three changes followed: the key now says \code{guard\_clean}, which
+states only that no listed event occurred; a guard block declares the mechanism,
+the blocked events and the blind spots; and the isolation claim is explicitly
+false. The last is false by construction, because an audit hook observes events of
+the interpreter, not system calls.
+
+\begin{table}[H]
+\centering
+\caption{What the guard covers, and what it leaves unobserved.}
+\label{tab:guard-limits}
+\small
+\begin{tabular}{@{}p{6.2cm}p{7.6cm}@{}}
+\toprule
+Covered, with refusal raised & Unobserved \\
+\midrule
+Sockets: connection, resolution, sending, listening & Native code reached without the loading library, subprocess or spawn \\
+Processes: subprocess, system, exec, fork, spawn & Writes through a descriptor opened before arming \\
+Native libraries: loading, symbol resolution, call & System calls issued outside the interpreter \\
+Rename and delete operations & Any behaviour after disarming: the hook remains installed but inert \\
+Writes outside the authorised directory, on resolved paths & No guarantee of process isolation \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{What the sandbox demonstrates, and what it does not}
+
+On the eight frozen fixtures, the declared-parser arm succeeds in six trials: the
+two failures are the raw variants, where the declared parser does not cover the
+schema and abstains, hence an erroneous conclusion. The arm reading by convention
+succeeds eight times out of eight. Success is not counted on the conclusion alone:
+the evaluator requires a correct conclusion, no contradiction and no erroneous
+verdict.
+
+The lesson is the same as H2. The failure does not stem from a lack of
+intelligence but from a boundary of the declared parser, and a script that tries
+restores the coverage. The sandbox instruments that contrast; it does not measure
+it on a model. No model arm appears there, no pre-flight attestation is produced,
+and no admissibility flag emerges from it.
+
+Five limits must be read against those results. The sandbox involves no model, so
+its success is a property of the harness, not an experimental result, and the
+report carries \code{claims\_measurement: false}. The guard is a Python
+observation, not a proof of isolation. The negative tests prove the refusals, but
+only at unit level: no end-to-end test confirms that the installed hook is reached
+during a run. The corpus is frozen, with one scenario and eight fixtures, which
+suffices to instrument a contrast but not to estimate a rate. And the sandbox
+bypasses the governance boundary it accompanies, calling the arm directly and
+writing its own journal, so the core and the guard remain two instruments verified
+in isolation.
+
+\subsection{What the tests prove}
+
+Twenty-four tests cover the core and the sandbox. They prove that the run exposes
+the governance surface, that an incomplete run is refused at construction, that a
+new run passes the limit check, that the call budget is raised by the wrapper, that
+the fixtures produce the five artefacts and a consistent report, that the arm is
+declared and never read from the corpus, and that the hook refuses writes outside
+the directory, the network, subprocesses and native calls. What they do not prove:
+no test executes a model arm, none measures an interval, and none verifies that the
+hook is reached during the run rather than when called by hand.

@@ -1,0 +1,236 @@
+\section{The benchmark, and the distance left to a result}
+\label{sec:benchmark}
+
+\textbf{In brief.} The benchmark is a register of hypotheses, not a list of
+scenarios. Six hypotheses are planned (H1 to H6), each behind a validity gate V0
+that asks whether the instrument can reproduce a known control before anything
+downstream is read. Measured to date: V0 passes on MQTT and saturates; H2 was
+measured on 22 October and its prediction held, but the gain of the model was
+absorbed by a script reading by convention; one family (C2) was rejected on paper,
+and one (the vendor-register family) was built and rejected in an hour on
+30 October.
+
+\textbf{What this means for the question of the project.} The corpus was built
+around what signature rules find: at most 2.1\,\% of its entries need
+interpretation, and 84.4\,\% are detectable by signature. A duel on this corpus
+therefore measures above all the quality of the rules, which is exactly what H2
+observed. The conclusion is not that the model is inferior; it is that no situation
+in which the difference could appear has been produced yet.
+
+\subsection{The register, and the gate that is not applied}
+
+Before every hypothesis the register places a fidelity control: if a task solvable
+without inference fails on one of the two arms, no downstream result is readable.
+The threshold is frozen at 0.9 with 24 steps, 3 repetitions and a saturating
+control. The calibration pass returns a valid control on both arms, three times out
+of three, and the register draws from it a \emph{partially passed} gate: the
+instrument is readable for parity of execution and for a repeated defect, not for a
+rare one.
+
+Two caveats must be stated. The control covers MQTT only: the SSH harness keeps a
+fixed credential dictionary and is therefore not an instance held apart. And the
+threshold is not applied by the gate: the gate function reads the four outcomes on
+``all trials succeeded'', while the threshold is computed separately and conditions
+nothing. With three repetitions the two formulations coincide, but by numerical
+coincidence, not by application of the threshold. This is one of the four
+contradictions the conclusion confronts.
+
+\begin{table}[H]
+\centering
+\caption{Status of the register on 2 November 2026.}
+\label{tab:registre}
+\small
+\begin{tabular}{@{}p{1.1cm}p{3.4cm}p{8.2cm}@{}}
+\toprule
+Item & Status & What this means \\
+\midrule
+V0 & partially passed & valid control on MQTT; threshold frozen but not applied by the gate; SSH not covered \\
+H1 & conditional, not opened & the identity-chaining family does not exist in the coverage plan \\
+H2 & measured on 22 October & prediction held, gain absorbed by an arm by convention \\
+H3 & not implemented & the public-contract families are planned \\
+H4 & not opened & the vendor-register family was built and rejected on 30 October \\
+H5 & conditional, planned & budget counter-test to be written \\
+H6 & planned as a sub-test & graftable onto H2 or H3, without its own simulator \\
+C2 & rejected & two adversarial reviews, dead on paper, no run \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The corpus is built around what rules find}
+
+The catalogue enumerates 29 scenarios; the derived index counts 288 expected
+entries, of which 282 are classified as detectable by signature and 6 as belonging
+to logic, that is 2.1\,\%. Two counts coexist and do not measure the same thing: the
+\emph{mechanical} reading places every category except two in signature, while the
+\emph{interpretive} reading judges, category by category, whether a well-designed
+rule can conclude on its own, and finds 243 entries out of 288, that is 84.4\,\%.
+Both are legitimate and must never be cited one for the other.
+
+\begin{table}[H]
+\centering
+\caption{Distribution of the 288 entries by category and interpretive reading.}
+\label{tab:corpus}
+\small
+\begin{tabular}{@{}lrl@{}}
+\toprule
+Category & Count & Interpretive reading \\
+\midrule
+\code{misconfiguration} & 70 & signature \\
+\code{data\_exposure} & 54 & signature \\
+\code{no\_authentication} & 50 & signature \\
+\code{default\_credentials} & 41 & signature \\
+\code{info\_disclosure} & 16 & signature \\
+\code{code\_injection} & 13 & mixed \\
+\code{insecure\_update} & 12 & mixed \\
+\code{weak\_crypto} & 10 & mixed \\
+\code{cve} & 9 & signature \\
+\code{privilege\_escalation} & 4 & chaining \\
+\code{broken\_access\_control} & 4 & logic \\
+\code{missing\_header} & 3 & signature \\
+\code{auth\_bypass} & 2 & logic \\
+\midrule
+Total & 288 & 243 signature, 35 mixed, 4 chaining, 6 logic \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The logic stratum occupies only three scenarios, and only 55 entries are attached
+to a chaining of at least two hops. A global duel on this corpus would therefore
+measure above all the quality of the rules, which is exactly what H2 observed.
+
+\subsection{H2: a prediction that holds and demonstrates nothing}
+
+The corpus contains eight dossiers, two per group, for 25 messages in total. The
+documented run executes three arms per dossier: 24 arms per repetition, 72 arms for
+three repetitions, on 22 October 2026.
+
+On the raw variants, the model arm obtains 0.5 (one dossier won out of two), the
+declared parser 0.0, and the third arm, which reads by convention without any key
+from the corpus, covers 1.0. The prediction holds in the literal sense: the model
+does better than a declared parser that cannot read a schema it does not know. But
+its gain is absorbed by a convention that no one had to declare, and a convention
+is a rule.
+
+\subsection{Inference: repaired, and still idle}
+
+The inference tool carried a structural defect. It computed a two-sided p-value
+around zero, so every outcome returned the same figure: an almost constant series,
+a highly dispersed series of the same mean and a series entirely negative all
+produced a null p-value. A model performing strictly worse than the rules looked as
+certain as one performing better.
+
+\textbf{The defect was repaired on 30 October 2026.} The test is now one-sided
+against the pre-registered threshold: an exact sign test up to seven families, a
+paired bootstrap beyond, both centred on the threshold rather than on zero. Below
+three families no p-value and no interval are emitted; a decision requires five
+families, because five agreeing families are the first that can reach the usual
+threshold at all.
+
+\textbf{Repairing the computation did not make a conclusion possible.} A second
+obstacle stands behind the first, and it is not a defect of the tool: the number of
+independent families available. The trial configuration includes commit,
+fingerprints and budgets, so two distinct families form two distinct configurations;
+each configuration contains one family, and the inference requires several. No
+figure can be produced from families that do not exist.
+
+\subsection{A family built, then rejected in one hour}
+
+On 30 October 2026 a family was built far enough to be measured, and rejected. The
+record matters more than the rejection: it is the first time the project's own
+protocol produced a decision instead of a plan.
+
+\textbf{What was built.} Not the family: a probe. One dossier of three registers ---
+one that commands something, one inert, one cache --- with real neighbour reads, test
+writes, and every read attributed to a single write. The probe applies two arms: a
+convention arm reading the unit and the change, and an arm reading the neighbours.
+Neither an oracle, nor the closure test, nor the eight dossiers were built: the
+rejection came first.
+
+What existed before the probe was the design, and it resisted six recorded reviews.
+Its addressing model was established against raw protocol frames rather than through
+a client object, and reproduced by three readers. The earlier drafts had been
+checked by reading; the frames checked the offset that the readings had assumed.
+
+\textbf{The trap.} One register commands something and changes when written; one is
+inert and does not change; the third is a cache --- it changes when written but
+commands nothing, and propagates its value into its neighbours. The convention arm
+classes the cache as a projection and scores two out of three. The arm reading the
+neighbours scores three out of three and states why the cache is not a projection.
+
+\textbf{Why it was rejected.} Reading the neighbours is a rule, not an
+interpretation. Whether one places that rule inside the competent automation or
+outside it, the family measures nothing. Inside, the automation succeeds and the
+closure test rejects the family. Outside, the family measures an omission of the
+automation rather than a limit of interpretation. There is no third reading.
+
+The filter that would have caught it applies in minutes and costs nothing:
+
+\begin{quote}
+If the rule that solves the case can be written in one line, a script will have
+it. Do not build the family.
+\end{quote}
+
+\textbf{What survives the rejection.} Three findings remain, and they are what the
+next attempt inherits. First, absence can be deduced: a register that does not
+change when written, after a declared test, is attested as non-commanding without
+any observation labelled ``absent'' in the journal --- labelling would have put the
+answer in the journal. Second, a journal must be attributable: no observation may
+belong to two causes, and the probe found three defects of that kind. Third, the
+protocol works: six reviews validated a design that one hour of observation
+rejected, and the observation cost less than a campaign.
+
+\textbf{What the rejection does not prove.} It does not refute H4. It shows that
+this mechanism, on this corpus, is crossed by a generic rule. A different mechanism
+could survive, and any future family must demonstrate, before construction, that no
+generic rule crosses it.
+
+\subsection{Campaign admission}
+
+The admission module combines pair conditions and campaign conditions. The
+condition for explicit adoption of the confirmation metrics is a parameter that
+defaults to false and is never set to true by the summary nor by the command line.
+The justification is a contract argument: the driver harnesses do not emit these
+counters. This is accurate about the current state, but not a proof of
+unsatisfiability: the condition would become true again the day a harness publishes
+these counters. Today, admission is therefore refused because that condition is not
+satisfied.
+
+A second point, verified during drafting, concerns budget parity. The condition
+requires that the first value exists and that the two are equal, so a missing budget
+is correctly refused. The module does not, however, verify in its other conditions
+that a missing budget is distinguished from a non-comparable one.
+
+\subsection{What is publishable today}
+
+\textbf{The publishable element is the method, not a result of superiority.} The
+repository supports no claim of comparative performance. What holds is consistent
+and verifiable:
+
+\begin{itemize}
+\item a falsifiable register of hypotheses, with the contrast declared before the
+fixture, a private oracle and a measurement recomputed from the log;
+\item a measurement lesson from H2: a prediction can hold literally and demonstrate
+nothing, because an arm by convention absorbs the gain;
+\item a clean negative result on C2, documented before any grey area;
+\item a defensible negative result on the vendor-register family, obtained in one
+hour instead of a campaign;
+\item an honest inventory of the holes: a reduced logic stratum, an unknown protocol
+absent, noise not encoded.
+\end{itemize}
+
+\subsection{What is not demonstrated}
+
+Must not be written as established: the superiority of the model; a significant
+gap, since no independent family exists to compute one; generality, H2 covering one
+schema, one question and one model; a cost gain, the exploratory pilot counting one
+pair without an interval; the validity of the threshold, which the gate does not
+apply; and the integrity of the corpus, the official healthy control not being in
+the catalogue.
+
+The other active studies are recorded as qualifying the instrument rather than
+showing an advantage: the plan carries 44 records and several hundred conditional
+arms, of which the qualifications actually executed --- SSH in October, MQTT a few
+days later --- validate the instrument. The three-repetition pilot yields twelve
+admissible pairs and computes no interval. The formulation to keep is the one of the
+historical study on agent versus automation: a real descriptive result, no general
+superiority established.

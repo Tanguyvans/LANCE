@@ -1,0 +1,179 @@
+\section{How an audit is built}
+\label{sec:architecture-pipeline}
+
+\textbf{In brief.} An audit goes through six phases, each writing one document
+that the next one reads. The application is the thinnest part: it accepts a
+request, allows one run per instance, streams events and reads the artefacts back.
+The engine is a pipeline that wraps every tool call in a governance boundary: a
+call is checked against the budgets, archived with a reference, and archived even
+when it is refused or fails. The policy only ever reasons over evidence that the
+tools produced, and the score comes from a separate evaluator, not from the policy.
+
+\textbf{What the code enforces, and what it does not.} What is enforced: a lost
+piece of evidence stops the run; a deliverable that misses a device is rejected;
+the report is assembled deterministically; the phase-five status can never be
+certified. What is not guaranteed: the budgets only exist when they are passed
+explicitly, the laboratory lock is optional, and two scenarios on a shared
+laboratory are not mutually excluded.
+
+\marginref{\code{docs/architecture/run-modes.md} for the modes; \code{src/agent/run\_modes.py} for the selection.}
+
+\subsection{The application does not carry the logic}
+
+The web layer validates the request, guarantees a single active run per instance,
+streams the events and re-reads the artefacts. The strategy is chosen by
+\code{make\_runner}, not by the interface: for \code{lance} and \code{rules} it
+instantiates a pipeline and wraps it in an adapter that reuses the same object and
+its public API; for \code{vanilla} and \code{scripted} it builds a standalone
+runner that shares with the pipeline only the tool boundary, the evidence log, the
+cost tracking and the laboratory reservation.
+
+\begin{table}[H]
+\centering
+\caption{Execution modes and their boundary.}
+\label{tab:run-modes}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Mode & Engine & Model & Effects \\
+\midrule
+\code{lance} & full pipeline, six phases & required & scenario, deployment, evaluation \\
+\code{rules} & pipeline, phases 3--4 & none & scenario and deterministic audit \\
+\code{vanilla} & standalone runner & required & bounded network probe on an address range \\
+\code{scripted} & standalone runner & none & versioned procedures \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The \code{rules} mode is not a second engine: the factory sets the decision policy,
+restricts the phases to analysis and verification, and refuses any provider, any
+direct network access and any monetary budget. The two standalone modes, in turn,
+refuse a scenario and every harness-specific setting. The qualifier
+\code{full}/\code{compact} designates the orchestration, never the type of runner.
+
+\subsection{The six phases and what each hands over}
+
+The registry assigns to each phase a prompt, a tool group, a validator and a
+deliverable; the routing is an explicit table, not a dynamic import.
+
+\begin{table}[H]
+\centering
+\caption{Phases, main deliverables and associated artefacts.}
+\label{tab:phases}
+\small
+\begin{tabular}{@{}cllp{4.4cm}@{}}
+\toprule
+Phase & Main deliverable & Who decides & Associated artefacts \\
+\midrule
+1 & \code{01\_graph\_analysis.md} & code (projection of the graph tools) & \code{01\_graph\_evidence.json} \\
+2 & \code{02\_recon.md} & the model chooses the probes & \code{02\_recon\_evidence.json}, \code{02\_topology\_edges.json} \\
+3 & \code{03\_vuln\_analysis.json} & the model writes the hypotheses & \code{03\_vuln\_analysis\_raw.json}, \code{03\_phase3\_status.json}, per-device sheets \\
+4 & \code{04\_exploitation.json} & the model tests one flaw per micro-agent & \code{execution\_errors} diagnostics \\
+5 & \code{05\_intrusion.json} & code (assessment rendered from the log) & \code{05\_intrusion\_context.json} \\
+6 & \code{06\_report.md} & code (assembled from section sheets) & \code{06\_report\_analysis.md} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Phase 1 projects the results of the graph tools into a log of facts independent of
+the model's discourse, and the runner rejects a submission whose per-device
+coverage is incomplete. Phase 2 lets the model choose the probes, but the recon
+document is rendered from the tool log rather than copied by the model. Phase 3
+runs in three steps: deterministic scanning, one analyst per device, then an
+aggregation that normalises, deduplicates and projects the findings. Phase 4
+launches one micro-agent per vulnerability. Phase 5 produces its assessment from
+the log: the model supplies an end marker only, and the status remains
+\code{not\_certified}. Phase 6 is the extreme case: its agent declares no tool and
+runs a single turn, so that the report is assembled and the model writes only a
+bounded analyst note.
+
+\marginref{Phase modules: \code{src/agent/phases/registry.py}, \code{PHASE\_MODULES}. Phase-1 projection: \code{GraphPhase.\_build\_graph\_evidence\_projection}.}
+
+\subsection{Graph and run context}
+
+The graph is built in two layers: a loader reads the infrastructure description
+into data objects, then populates a backend. The backend is an abstract interface
+with a network-graph implementation, so that another engine can be substituted
+without touching the tools. Two details matter for reading results: the neighbour
+query is the sorted union of successors and predecessors, and path search uses an
+undirected view so that a path is found in both directions.
+
+The state belongs to the run, not to the process. Each pipeline creates an
+immutable run context carrying the backend, the infrastructure, the vulnerability
+reports, the risk scores, the scenario or discovery topology and the weighted
+graph. The graph tools retrieve that context without changing the arguments
+exposed to the model; thread workers capture the owner explicitly rather than
+relying on implicit propagation.
+
+\marginref{\code{src/loader.py} and \code{src/graph\_backend.py}; context in \code{src/agent/core/graph\_context.py}.}
+
+\subsection{The tool governance boundary}
+
+All profiles and all modes go through the same wrapper. On each call it checks the
+previous piece of evidence, the stop request and the budgets; increments a counter
+and refuses the call if the ceiling is reached; assigns a reference; applies the
+scope refusals; executes; and archives an entry, including for a refusal or an
+exception.
+
+\begin{table}[H]
+\centering
+\caption{Controls applied to every tool call and the consequence of a failure.}
+\label{tab:executor}
+\small
+\begin{tabular}{@{}p{3.6cm}p{5.2cm}p{5.0cm}@{}}
+\toprule
+Control & Mechanism & Consequence of a failure \\
+\midrule
+Evidence integrity & a flag set when the archive cannot be written & the run stops, and is not verifiable \\
+User stop & a stop event, in the experimental scope & the run stops \\
+Time budget & monotonic clock against the limit & the run stops \\
+Monetary budget & the cost tracker, on observed usage & the run stops \\
+Call budget & a counter taken under the archive lock & the run stops \\
+Scope & the destination fields against the run's target network & the call is refused and archived \\
+Free execution & the execution tool & refused as unverifiable scope \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two properties matter for interpreting a result. A failure to write the log is
+never ignored: it interrupts the run rather than leaving untraced actions, which
+is the difference between an audit and a log that only records what went well. And
+the cost limit applies to observed usage, not to a reservation of calls still in
+flight, so a run can exceed its monetary budget by the cost of the calls it had
+already started.
+
+\marginref{Implementation: \code{wrap\_tool} and \code{check\_execution\_limits}, \code{src/agent/core/executor.py}.}
+
+\subsection{Artefacts, cost tracking and retention}
+
+The run folder is created exclusively under the output tree; in the event of a
+collision a hexadecimal suffix is appended and no earlier folder is overwritten.
+The run metadata records the commit, the policies and the limits, and the cost
+summary is written in the finalisation block, hence even when the run raises. A
+submission bundle is a zip equipped with a SHA-256 manifest that is re-checked
+after writing; the download route excludes private files and hidden entries.
+
+The price of a phase is resolved once and recorded with its source, so that a
+completed run cannot be revalued after the fact; the summary distinguishes the
+cumulative duration of the agents from the wall-clock time, which are not the same
+measure.
+
+\marginref{Collection contract: \code{src/benchmark/artifacts.py}. Pricing: \code{src/agent/cost\_tracker.py}.}
+
+\subsection{What the architecture does not guarantee}
+
+The isolation is per run for the deliverables and the graph, but not entirely so:
+the phase services may still call the common engine, and the simultaneity of two
+scenarios on a shared laboratory is not guaranteed. The laboratory reservation is
+active only when its variable is set, and is reentrant only within one thread.
+Without explicit parameters, the interactive pipeline imposes neither a call
+ceiling nor an analysis timeout per device, so the budgets of
+table~\ref{tab:executor} are conditional rather than structural.
+
+Three points could not be established by reading the code, and are therefore not
+asserted: no archiving or compaction mechanism for run folders was found, so
+retention appears to be that of the file system; one evidence file is read by two
+modules but its main producer was not identified; and the exact field content of
+the provider diagnostics log was not verified line by line. Finally, a completed
+status means that the runner finished its work, never that the target was
+exhaustively covered nor that an access was proven.
