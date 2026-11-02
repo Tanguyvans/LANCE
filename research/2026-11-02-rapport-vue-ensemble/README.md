@@ -3,7 +3,7 @@
 **Cycle de vie : Conclu — synthèse d'état** — rapport ouvert le **2026-11-02**.
 C'est un état daté, pas une page de référence courante : il ne fait pas autorité
 sur le comportement ultérieur du système.
-Dernière révision : **2026-11-02 12:20 (Europe/Brussels, UTC+01:00)**.
+Dernière révision : **2026-11-02 17:00 (Europe/Brussels, UTC+01:00)**.
 Statut : **rapport documentaire ; aucune expérience nouvelle, aucun run nouveau.**
 
 ## Question et périmètre
@@ -27,12 +27,12 @@ entre les deux dates, aucun commit n'a touché le dépôt (`git rev-list --count
   `llm_on_evidence`, qui n'existe pas encore.
   [Figure 3](partie-etat.tex) : la chaîne scénario → famille → test de clôture →
   mesure, et la boucle du 30 octobre.
-- **Le code passe en marge.** Les parties de preuve ouvrent chacune sur deux
+- **Le code sort du fil.** Les parties de preuve ouvrent chacune sur deux
   paragraphes (« In brief », « What the code enforces, and what it does not »),
-  et les noms de fichiers, fonctions et commits sont déplacés dans la marge au
-  lieu de ponctuer le texte. Les descriptions d'implémentation les plus
-  détaillées sont ramenées au niveau du comportement ; aucune n'est supprimée
-  sans que son fait soit conservé.
+  et les noms de fichiers, fonctions et commits sont regroupés dans un bloc
+  « Where this lives » en fin de partie. Les descriptions d'implémentation les
+  plus détaillées sont ramenées au niveau du comportement ; aucune n'est
+  supprimée sans que son fait soit conservé.
 
 Les cinq parties factuelles sont reprises du rapport précédent : architecture
 ([partie-architecture.tex](partie-architecture.tex)), protocoles
@@ -46,9 +46,13 @@ rebaptisée « What this report can say, and what it cannot ».
 
 ## Documents
 
-- [Rapport PDF](etat-2026-11-02.pdf) : **25 pages, en anglais**, compilé à
-  `2026-11-02 12:20` (Europe/Brussels), sans erreur LaTeX ni dépassement de
-  plus de 55 pt, et vérifié page par page sur rendu image.
+- [Rapport PDF](etat-2026-11-02.pdf) : **26 pages, en anglais**, compilé à
+  `2026-11-02 17:00` (Europe/Brussels), **sans erreur LaTeX, sans débordement
+  ni renvoi cassé**, et vérifié page par page sur rendu image. Révision du
+  2 novembre après deux relectures indépendantes : les quatorze affirmations
+  fausses ou trop fortes ont été corrigées, les trois décisions et les quatre
+  modes d'exécution sont revenus dans l'ouverture, et les notes de marge sont
+  devenues un bloc « Where this lives » en fin de partie.
 - Source : [etat-2026-11-02.tex](etat-2026-11-02.tex), compilée par
   `latexmk -pdf etat-2026-11-02.tex`.
 
