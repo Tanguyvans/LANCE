@@ -16,8 +16,6 @@ certified. What is not guaranteed: the budgets only exist when they are passed
 explicitly, the laboratory lock is optional, and two scenarios on a shared
 laboratory are not mutually excluded.
 
-\marginref{\code{docs/architecture/run-modes.md} for the modes; \code{src/agent/run\_modes.py} for the selection.}
-
 \subsection{The application does not carry the logic}
 
 The web layer validates the request, guarantees a single active run per instance,
@@ -79,15 +77,15 @@ Phase 1 projects the results of the graph tools into a log of facts independent 
 the model's discourse, and the runner rejects a submission whose per-device
 coverage is incomplete. Phase 2 lets the model choose the probes, but the recon
 document is rendered from the tool log rather than copied by the model. Phase 3
-runs in three steps: deterministic scanning, one analyst per device, then an
-aggregation that normalises, deduplicates and projects the findings. Phase 4
-launches one micro-agent per vulnerability. Phase 5 produces its assessment from
-the log: the model supplies an end marker only, and the status remains
-\code{not\_certified}. Phase 6 is the extreme case: its agent declares no tool and
+runs in three steps --- deterministic scanning, one analyst per device, then an
+aggregation that normalises, deduplicates and projects the findings --- the middle
+step being skipped in the \code{rules} mode, which has no model at all. Phase 4
+launches one micro-agent per canonical finding. Phase 5 is an agent with its own tools and a turn
+budget; when its deliverable is missing or invalid, the code writes the assessment
+from the ledger, and the objectives are never certified: the file records
+\code{incomplete} or \code{blocked}. Phase 6 is the extreme case: its agent declares no tool and
 runs a single turn, so that the report is assembled and the model writes only a
 bounded analyst note.
-
-\marginref{Phase modules: \code{src/agent/phases/registry.py}, \code{PHASE\_MODULES}. Phase-1 projection: \code{GraphPhase.\_build\_graph\_evidence\_projection}.}
 
 \subsection{Graph and run context}
 
@@ -104,8 +102,6 @@ reports, the risk scores, the scenario or discovery topology and the weighted
 graph. The graph tools retrieve that context without changing the arguments
 exposed to the model; thread workers capture the owner explicitly rather than
 relying on implicit propagation.
-
-\marginref{\code{src/loader.py} and \code{src/graph\_backend.py}; context in \code{src/agent/core/graph\_context.py}.}
 
 \subsection{The tool governance boundary}
 
@@ -142,8 +138,6 @@ the cost limit applies to observed usage, not to a reservation of calls still in
 flight, so a run can exceed its monetary budget by the cost of the calls it had
 already started.
 
-\marginref{Implementation: \code{wrap\_tool} and \code{check\_execution\_limits}, \code{src/agent/core/executor.py}.}
-
 \subsection{Artefacts, cost tracking and retention}
 
 The run folder is created exclusively under the output tree; in the event of a
@@ -158,8 +152,6 @@ completed run cannot be revalued after the fact; the summary distinguishes the
 cumulative duration of the agents from the wall-clock time, which are not the same
 measure.
 
-\marginref{Collection contract: \code{src/benchmark/artifacts.py}. Pricing: \code{src/agent/cost\_tracker.py}.}
-
 \subsection{What the architecture does not guarantee}
 
 The isolation is per run for the deliverables and the graph, but not entirely so:
@@ -170,10 +162,21 @@ Without explicit parameters, the interactive pipeline imposes neither a call
 ceiling nor an analysis timeout per device, so the budgets of
 table~\ref{tab:executor} are conditional rather than structural.
 
-Three points could not be established by reading the code, and are therefore not
-asserted: no archiving or compaction mechanism for run folders was found, so
-retention appears to be that of the file system; one evidence file is read by two
-modules but its main producer was not identified; and the exact field content of
-the provider diagnostics log was not verified line by line. Finally, a completed
+Two points could not be established by reading the code and are therefore not
+asserted. No archiving or compaction mechanism for run folders was found --- the
+search covered \code{tarfile}, \code{shutil.make\_archive} and equivalents --- so
+retention appears to be that of the file system. And the exact field content of
+the provider diagnostics log was not verified line by line. The recon evidence
+file is produced by its own phase and read by the scanner, the compact validator
+and the report renderer. Finally, a completed
 status means that the runner finished its work, never that the target was
 exhaustively covered nor that an access was proven.
+
+\paragraph{Where this lives.}
+\begin{itemize}
+\item \code{docs/architecture/run-modes.md} for the modes; \code{src/agent/run\_modes.py} for the selection.
+\item Phase modules: \code{src/agent/phases/registry.py}, \code{PHASE\_MODULES}. Phase-1 projection: \code{GraphPhase.\_build\_graph\_evidence\_projection}.
+\item \code{src/loader.py} and \code{src/graph\_backend.py}; context in \code{src/agent/core/graph\_context.py}.
+\item Implementation: \code{wrap\_tool} and \code{check\_execution\_limits}, \code{src/agent/core/executor.py}.
+\item Collection contract: \code{src/benchmark/artifacts.py}. Pricing: \code{src/agent/cost\_tracker.py}.
+\end{itemize}

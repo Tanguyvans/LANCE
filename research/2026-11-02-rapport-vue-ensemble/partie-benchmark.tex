@@ -97,14 +97,17 @@ Total & 288 & 243 signature, 35 mixed, 4 chaining, 6 logic \\
 The logic stratum occupies only three scenarios, and only 55 entries are attached
 to a chaining of at least two hops. A global duel on this corpus would therefore
 measure above all the quality of the rules, which is exactly what H2 observed.
+Both counts are recomputed from the derived index, and the word \emph{signature}
+means 282 entries mechanically and 243 interpretively.
 
 \subsection{H2: a prediction that holds and demonstrates nothing}
 
-The corpus contains eight dossiers, two per group, for 25 messages in total. The
-documented run executes three arms per dossier: 24 arms per repetition, 72 arms for
-three repetitions, on 22 October 2026.
+The corpus contains eight fixtures, two per group, for 25 messages in total. The
+measurement of 22 October 2026 used two arms and one repetition; the reference run
+that followed used three arms per fixture --- 24 arms per repetition, 72 for three
+repetitions.
 
-On the raw variants, the model arm obtains 0.5 (one dossier won out of two), the
+On the raw variants, the model arm obtains 0.5 (one fixture won out of two), the
 declared parser 0.0, and the third arm, which reads by convention without any key
 from the corpus, covers 1.0. The prediction holds in the literal sense: the model
 does better than a declared parser that cannot read a schema it does not know. But
@@ -119,7 +122,8 @@ a highly dispersed series of the same mean and a series entirely negative all
 produced a null p-value. A model performing strictly worse than the rules looked as
 certain as one performing better.
 
-\textbf{The defect was repaired on 30 October 2026.} The test is now one-sided
+\textbf{The defect was repaired on 30 October 2026.} The module is
+\code{src/benchmark/inference.py}; the test is now one-sided
 against the pre-registered threshold: an exact sign test up to seven families, a
 paired bootstrap beyond, both centred on the threshold rather than on zero. Below
 three families no p-value and no interval are emitted; a decision requires five
@@ -139,11 +143,11 @@ On 30 October 2026 a family was built far enough to be measured, and rejected. T
 record matters more than the rejection: it is the first time the project's own
 protocol produced a decision instead of a plan.
 
-\textbf{What was built.} Not the family: a probe. One dossier of three registers ---
+\textbf{What was built.} Not the family: a probe. One fixture of three registers ---
 one that commands something, one inert, one cache --- with real neighbour reads, test
 writes, and every read attributed to a single write. The probe applies two arms: a
 convention arm reading the unit and the change, and an arm reading the neighbours.
-Neither an oracle, nor the closure test, nor the eight dossiers were built: the
+Neither an oracle, nor the closure test, nor the eight fixtures were built: the
 rejection came first.
 
 What existed before the probe was the design, and it resisted six recorded reviews.

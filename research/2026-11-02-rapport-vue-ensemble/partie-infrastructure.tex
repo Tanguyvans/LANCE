@@ -1,6 +1,19 @@
 \section{Execution infrastructure and delivery pipeline}
 \label{sec:infrastructure}
 
+\textbf{In brief.} An audit cannot be measured on a real network: the result would
+depend on whatever is exposed that day, and two runs would not be comparable.
+LANCE therefore audits networks it has itself built from a description, and
+delivers its platform through a push, validate, deploy chain to three instances,
+none of them on a workstation.
+
+\textbf{What this buys, and what it does not.} It buys repeatability and
+attribution: a run that skipped the reset would inherit the previous trial's state,
+and its result would no longer be attributable to it. It does not buy availability:
+the single host, the single container and the single runner are declared points of
+failure, the relay to the university model is not a supervised service, and a
+failed deployment leaves the instance stopped with no automatic rollback.
+
 \subsection{Why a laboratory at all}
 \label{sec:proxmox}
 
@@ -72,8 +85,6 @@ The only constant readable in the repository is the container identifier, 200. T
 actual configuration lives outside the repository, and the report says so rather
 than pretending otherwise.
 
-\marginref{Playbook: \code{benchmarks/ansible/playbooks/deploy\_master.yml} (Debian 13, 20~GB, 4~GB memory, 2 cores, nesting, on boot).}
-
 \subsection{The three instances}
 
 Three instances share the container, one per branch, each with its own environment,
@@ -84,13 +95,11 @@ instance answers a status route that announces its slot, its branch, its commit 
 whether the laboratory lock is active; after start-up, the script checks that the
 announced commit is exactly the one that was validated.
 
-The lock is a single file, taken exclusively before any mutation and never deleted.
-The same value is passed to the three instances, which is what allows them to
-coordinate on one physical laboratory. Waiting is cooperative, in memory and
+The lock is a single file, taken in exclusive mode by the deployment script before
+it switches the checkout, and removed only by hand. The same value is passed to
+the three instances, which lets them share one physical laboratory. Waiting is cooperative, in memory and
 without arrival ordering, so it is an etiquette between instances, not a security
 isolation between users.
-
-\marginref{Slots and ports: 8501 for \code{main}, 8502 for \code{dev/1}, 8503 for \code{dev/2}; status route \code{GET /api/environment}; lock at \code{/var/lib/lance/lab.lock}.}
 
 \subsection{The runner and the delivery pipeline}
 
@@ -159,8 +168,6 @@ The same identity logic now serves the benchmark controllers, and a laboratory l
 variable allows an operator to suspend the check explicitly rather than by
 disabling code.
 
-\marginref{Commits: \code{6b0a9ff}, \code{433e2a3}, \code{a568c68} to \code{dcd5903}, \code{150eb8a}. Script: \code{scripts/deployment/deploy-instance.sh}.}
-
 \subsection{The UMONS model and its relay}
 
 The \code{ollama-umons} provider is reached through a local SSH transfer on the
@@ -205,4 +212,11 @@ that this host is indeed the one that should host the instance.
 \item \textbf{Partial documentation}: the name of the Proxmox host and the
 physical segment correspond only imperfectly to the playbook; the versioned
 inventory is a template.
+\end{itemize}
+
+\paragraph{Where this lives.}
+\begin{itemize}
+\item Playbook: \code{benchmarks/ansible/playbooks/deploy\_master.yml} (Debian 13, 20~GB, 4~GB memory, 2 cores, nesting, on boot).
+\item Slots and ports: 8501 for \code{main}, 8502 for \code{dev/1}, 8503 for \code{dev/2}; status route \code{GET /api/environment}; lock at \code{/var/lib/lance/lab.lock}.
+\item Commits: \code{6b0a9ff}, \code{433e2a3}, \code{a568c68} to \code{dcd5903}, \code{150eb8a}. Script: \code{scripts/deployment/deploy-instance.sh}.
 \end{itemize}

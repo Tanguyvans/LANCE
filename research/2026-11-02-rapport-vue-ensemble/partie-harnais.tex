@@ -16,8 +16,6 @@ a contrast; it measures nothing about a model, and its guard observes Python eve
 not system calls. The report therefore says \code{guard\_clean}, never
 ``isolated''.
 
-\marginref{Harnesses, the shared core and the sandbox live under \code{benchmarks/experiments/}; tests in \code{tests/test\_harness\_core.py} and \code{tests/test\_sandbox.py}.}
-
 \subsection{Anatomy of a harness}
 
 A harness is a set of files with one responsibility each. For MQTT, which gives
@@ -29,8 +27,9 @@ decision, the cost summary and the run metadata. The deployment uses the
 laboratory, submitting operations to the hypervisor.
 
 The same anatomy is repeated for SSH, the API and the V0 control, with one
-difference: the H2 harness has neither deployment nor a live client, because its
-corpus is frozen.
+difference: the H2 harness needs neither deployment nor a live client in the
+sandbox, because its corpus is frozen; a live controller exists for laboratory
+runs.
 
 \subsection{The shared core}
 
@@ -39,7 +38,7 @@ boundary reads a fixed set of attributes from the run object with defaults; an
 omission therefore manifests only when a tool call misbehaves. Each harness used to
 rebuild that object by hand. The core replaces the copies with a single
 construction, which enumerates thirteen required attributes --- the run directory,
-three budgets, two locks, the call counter, the start clock, the limit reason, the
+three budgets, the archival lock, the call counter, the start clock, the limit reason, the
 scope, the context, the policy and the cost tracking --- and refuses an incomplete
 one.
 
@@ -49,13 +48,11 @@ cannot be written. A harness that forgot it would pursue a run whose archive is
 holed, and the result would look complete. The refusal is two-level: at
 construction, and on any object through a replay check.
 
-\marginref{The core is \code{build\_run}; see also \code{REQUIRED\_ATTRIBUTES} and \code{require\_attributes}.}
-
 \subsection{The sandbox}
 
 The sandbox proves, on a workstation as in continuous integration, that a harness
 executes without a broker, without a model and without a laboratory: it loads the
-frozen corpus of eight fixtures and, for each one, validates the dossier, opens a
+frozen corpus of eight fixtures and, for each one, validates the fixture, opens a
 journal, runs the chosen arm, writes the artefacts and recounts through the
 existing evaluator. Five artefacts are produced per trial, and a report aggregates
 them with a guard block.
@@ -128,11 +125,23 @@ in isolation.
 
 \subsection{What the tests prove}
 
-Twenty-four tests cover the core and the sandbox. They prove that the run exposes
-the governance surface, that an incomplete run is refused at construction, that a
-new run passes the limit check, that the call budget is raised by the wrapper, that
-the fixtures produce the five artefacts and a consistent report, that the arm is
-declared and never read from the corpus, and that the hook refuses writes outside
-the directory, the network, subprocesses and native calls. What they do not prove:
-no test executes a model arm, none measures an interval, and none verifies that the
-hook is reached during the run rather than when called by hand.
+Twenty-four tests cover the core and the sandbox. What they prove:
+
+\begin{itemize}
+\item an incomplete run is refused at construction;
+\item the call budget is raised by the wrapper rather than by the check;
+\item the eight fixtures produce the five artefacts and a consistent report;
+\item the arm is declared rather than read from the corpus;
+\item the guard refuses writes outside the directory, the network, subprocesses
+and three native-library events.
+\end{itemize}
+
+What they do not prove: no test executes a model arm, none measures an interval,
+and none makes a sandboxed run attempt a forbidden operation, so the sanction is
+proved at unit level rather than end to end.
+
+\paragraph{Where this lives.}
+\begin{itemize}
+\item Harnesses, the shared core and the sandbox live under \code{benchmarks/experiments/}; tests in \code{tests/test\_harness\_core.py} and \code{tests/test\_sandbox.py}.
+\item The core is \code{build\_run}; see also \code{REQUIRED\_ATTRIBUTES} and \code{require\_attributes}.
+\end{itemize}

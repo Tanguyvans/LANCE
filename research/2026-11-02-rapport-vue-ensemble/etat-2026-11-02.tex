@@ -36,8 +36,8 @@
 \DeclareRobustCommand{\code}[1]{{\small\path{#1}}}
 \newcommand{\source}[2]{\href{../../#1}{\nolinkurl{#1}}. #2}
 % Engineering detail lives in the margin, so the argument stays readable.
-\DeclareRobustCommand{\marginref}[1]{\marginpar{{\raggedright\scriptsize\color{muted}#1\par\vspace{1pt}\rule{\marginparwidth}{0.4pt}}}}
-\newcommand{\revision}{2026-11-02 12:20 (Europe/Brussels, UTC+01:00)}
+\DeclareRobustCommand{\marginref}[1]{\marginpar{\raggedright\scriptsize\textcolor{muted}{#1}}}
+\newcommand{\revision}{2026-11-02 17:00 (Europe/Brussels, UTC+01:00)}
 \setlength{\parskip}{3pt}
 \setlength{\emergencystretch}{2em}
 \setlist{nosep,leftmargin=5mm,topsep=3pt}
@@ -90,12 +90,10 @@ native-code sandbox.
 \end{abstract}
 
 \tableofcontents
-\clearpage
 
 % === WHERE THE PROJECT STANDS: the whole answer, before the evidence ===
 \input{partie-etat}
 
-\clearpage
 % === VOCABULARY (early, so no later section introduces a term) ===
 \input{partie-glossaire}
 
@@ -126,6 +124,32 @@ repository are flagged as such rather than filled in.
 \input{partie-harnais}
 \input{partie-infrastructure}
 \input{partie-benchmark}
+
+
+% ---------------------------------------------------------------------------
+\section*{References}
+\addcontentsline{toc}{section}{References}
+
+Internal sources are cited by path, with the date of the state they describe. No
+external publication is claimed for a result that does not exist.
+
+\begin{itemize}
+\item LANCE project. \emph{Architecture, protocols and current state, report as of
+30 October 2026}. \href{../../research/2026-10-30-architecture-protocoles-avancement/README.md}{\nolinkurl{research/2026-10-30-architecture-protocoles-avancement/}}.
+\item Rejection of the pilot family \texttt{s\_registres\_constructeur}, 30 October
+2026. \href{../../research/2026-10-30-famille-pilote-registres-constructeur/compte-rendu-rejet.md}{\nolinkurl{research/2026-10-30-famille-pilote-registres-constructeur/}}.
+\item Hypothesis register and the V0 gate.
+\href{../../research/2026-10-21-hypotheses-benchmark/README.md}{\nolinkurl{research/2026-10-21-hypotheses-benchmark/}}.
+\item H2 measurement protocol and runs.
+\href{../../research/2026-10-21-hypotheses-benchmark/h2-protocole.md}{\nolinkurl{research/2026-10-21-hypotheses-benchmark/h2-protocole.md}}.
+\item C2 rejection.
+\href{../../research/2026-10-21-c2-couverture/README.md}{\nolinkurl{research/2026-10-21-c2-couverture/}}.
+\item Derived corpus index (\code{benchmarks/labels/derived\_index.json}) and its
+generator, \code{src.benchmark.derived\_index}.
+\item V0 fidelity control manifest (\code{benchmarks/experiments/v0-control-manifest.json}).
+\item Reference material for the current behaviour: \code{docs/architecture/run-modes.md},
+\code{docs/benchmark/derived-index.md}, \code{docs/guides/development-instances.md}.
+\end{itemize}
 
 \section{Conclusion}
 \input{partie-synthese}

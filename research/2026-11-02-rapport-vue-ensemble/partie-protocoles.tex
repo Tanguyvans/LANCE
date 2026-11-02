@@ -15,8 +15,6 @@ disclosure that contradicts a protected oracle invalidates the trial instead of
 being counted as a success. It does not buy generalisation: each family covers one
 protocol, and the V0 control of fidelity covers MQTT only.
 
-\marginref{Contracts: \code{ssh\_reference.py}, \code{mqtt\_reference.py}, \code{api\_reference.py}, \code{v0\_control.py}, \code{mqtt\_formats.py} under \code{benchmarks/experiments/}.}
-
 \subsection{Implemented families}
 
 The repository contains five families, each with a centralised contract file, a
@@ -63,9 +61,9 @@ decision the policy should return.
 \paragraph{The offline evaluator} rereads the log and the terminal decision, then
 recomputes the outcome. The evidence file is \code{tool\_calls.jsonl} for SSH,
 MQTT, API and V0; it is \code{journal.jsonl} for H2, reattached by
-\code{Journal.replayed}, which refuses a record originating from another dossier.
-Each record carries a reference produced by the shared executor
-(\code{src/agent/core/executor.py}).
+\code{Journal.replayed}, which refuses a record originating from another fixture.
+In a pipeline run each record carries a reference produced by the shared
+executor; the sandbox writes its own journal instead.
 
 \subsection{The oracle: construction and guarantees}
 
@@ -125,8 +123,8 @@ not frozen or that was calibrated on a different number of steps.
 \subsection{H2: three arms, one absorbed prediction}
 
 H2 tests whether a model reads a presentation that no declared parser covers. The
-eight dossiers of the corpus cross \code{\{reference, variant\}} and
-\code{\{raw, normalized\}}, two dossiers per group. Three arms share the same
+eight fixtures of the corpus cross \code{\{reference, variant\}} and
+\code{\{raw, normalized\}}, two fixtures per group. Three arms share the same
 journal and the same verdict vocabulary.
 
 \begin{table}[H]
@@ -145,7 +143,7 @@ Group & Declared parser & By convention & LLM \\
 \end{tabular}
 \end{table}
 
-The LLM gain holds for one dossier in two. But the conventional arm covers both
+The LLM gain holds for one fixture in two. But the conventional arm covers both
 without a model, since the convention suffices to read the variant. The control
 therefore publishes \code{convention\_gain\_absorbed: true}: what the LLM gains
 over the declared parser, a script that tries also gains. The prediction remains
@@ -181,7 +179,7 @@ hidden calls of the script arm.
 \item \textbf{Nothing about a rare defect.} V0 is saturating: with three
 repetitions, it detects only a repeated defect.
 \item \textbf{Nothing about the real space.} H2 holds for eight hand-written
-dossiers, a single variant schema and a single property.
+fixtures, a single variant schema and a single property.
 \item \textbf{Nothing about semantics or injection}: these are H4 and H6, outside
 the scope of these contracts.
 \item \textbf{Nothing about comparative cost}: the deterministic arm consumes no
@@ -190,3 +188,8 @@ tokens.
 assertion: the arm count of H2 and the invariant that an observation cannot answer
 two steps.
 \end{enumerate}
+
+\paragraph{Where this lives.}
+\begin{itemize}
+\item Contracts: \code{ssh\_reference.py}, \code{mqtt\_reference.py}, \code{api\_reference.py}, \code{v0\_control.py}, \code{mqtt\_formats.py} under \code{benchmarks/experiments/}.
+\end{itemize}
