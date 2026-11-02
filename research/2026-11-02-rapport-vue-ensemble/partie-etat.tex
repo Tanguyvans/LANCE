@@ -174,14 +174,14 @@ the one observation that changed everything on 30 October 2026.
   flow/.style={-{Latex[length=1.8mm,width=1.1mm]}, draw=muted, line width=.7pt},
   ret/.style={-{Latex[length=1.6mm,width=1.0mm]}, draw=accent, line width=.7pt, dashed}]
 \node[ok] (f) at (-53,0) {\textbf{a scenario}\\[-2pt]{\tiny a deployment, resettable}};
-\node[ok] (h) at (-14,0) {\textbf{a trial}\\[-2pt]{\tiny one competence, one observation}};
+\node[ok] (h) at (-14,0) {\textbf{scenarios, a series}\\[-2pt]{\tiny one trial, one observation}};
 \node[blocked] (c) at (25,0) {\textbf{a closure test}\\[-2pt]{\tiny does a one-line rule solve it?}};
 \node[later] (m) at (60,0) {\textbf{a measure}\\[-2pt]{\tiny arm against arm, interval}};
 \draw[flow] (f) -- (h);
 \draw[flow] (h) -- (c);
 \draw[flow, accent] (c) -- (m);
 \node[font=\sffamily\tiny, text=muted, align=center, text width=58mm, above=2mm of m, anchor=south]
-  {a trial is built only if no generic rule crosses it};
+  {a trial survives only if a one-line rule does not cross it};
 \node[ok, below=13mm of f, text width=26mm] (build) {\tiny built: a probe of three registers};
 \node[ok, right=3mm of build, text width=24mm] (review) {\tiny six reviews validated it};
 \node[blocked, right=3mm of review, text width=26mm] (reject) {\tiny one hour of execution rejected it};
@@ -205,9 +205,9 @@ method this month produced.
 
 \textbf{Why this is a blockage and not a delay.} The inference tool was repaired on
 30 October: it now computes a one-sided p-value against the pre-registered
-threshold, refuses to emit a figure below three families, and requires five to
+threshold, refuses to emit a figure below three trials, and requires five to
 decide. It is therefore correct, and idle: there is nothing to compute on. Building
-more families of the same kind would not change the arithmetic.
+more trials of the same kind would not change the arithmetic.
 
 % ---------------------------------------------------------------------------
 \subsection{What must be decided}
@@ -216,7 +216,7 @@ more families of the same kind would not change the arithmetic.
 The blockage is not technical, so the way out is not more machine time. Three
 choices govern what follows, and none of them is taken yet.
 
-\textbf{1. Families.} Build families that a one-line rule does not cross, applying
+\textbf{1. Trials.} Build trials that a one-line rule does not cross, applying
 the filter that one hour of observation established, or publish a bounded
 methodological result and declare it as such. The filter matters more than the
 count: a trial crossed by a generic rule measures nothing, and five of them
@@ -224,7 +224,7 @@ measure nothing either.
 
 \textbf{2. The opening condition.} Write the competent reference automation that
 D1+ names, or renounce explicitly the hypotheses that depend on it. Several
-families remain undecidable until this is settled.
+trials remain undecidable until this is settled.
 
 \textbf{3. The comparable arm.} Give the model the observations the rules already
 receive, or state that the comparison measures verification rather than
@@ -264,7 +264,7 @@ logic (2.1\,\%). Interpretive audit: 243 decidable by a well-designed rule, 35
 mixed, 4 chaining, 6 logic (84.4\,\%) --- a sum over categories, not a field
 per entry. & \textbf{Part~\ref{sec:benchmark}} \\
 Is the measurement statistically valid? & The tool is repaired and refuses an
-indefensible figure; the families that would give it data do not exist. & \textbf{Part~\ref{sec:benchmark}} \\
+indefensible figure; the trials that would give it data do not exist. & \textbf{Part~\ref{sec:benchmark}} \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -298,6 +298,12 @@ the interpretive share rises, recomputed entry by entry \\
 \bottomrule
 \end{tabularx}
 \end{table}
+
+Three of these four depend on the first. A comparable arm, a written reference
+automation and a corpus built for the question are worth building only once a
+situation exists that a one-line rule does not settle; before that, each of them
+measures the absence of that situation. \textbf{The first line is the only work that
+can start today.}
 
 This is where the report stops. Everything up to a verified measurement is built;
 the thing to be measured is not. The next result the project can legitimately
