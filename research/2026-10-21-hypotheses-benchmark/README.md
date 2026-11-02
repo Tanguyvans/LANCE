@@ -227,37 +227,46 @@ Cette matrice rend les recouvrements visibles : H2 et H4 partagent l'axe
 « interprétation » et se distinguent par la provenance (déclarée vs observée) ;
 H1 et H5 partagent la sortie « plan » et se distinguent par le retour.
 
-## Une famille
+## Scénario, série, épreuve
 
-Une famille est un groupe de variantes qui testent **la même compétence du
-modèle**. Deux contraintes en découlent.
+Trois mots, du plus bas au plus haut.
 
-1. **Une unité.** Les variantes d'une famille comptent pour une seule
-   observation dans le calcul. Huit variantes qui testent la même chose ne
-   valent pas huit preuves : elles valent une.
-2. **Indépendance.** Deux familles ne partagent ni simulateur, ni vocabulaire,
-   ni modèle de faille. Sinon on a la même famille répétée sous plusieurs noms,
-   et la répétition n'ajoute aucune preuve.
+- **Scénario.** Un déploiement qu'on audite : les appareils, les services, la
+  faille installée, les liens autorisés.
+- **Série.** Un groupe de scénarios qui ne diffèrent que par un axe : même
+  topologie, même faille, et seule la machine vulnérable change de type. Les
+  scénarios d'une série ne valent pas pour plusieurs observations.
+- **Épreuve.** Ce qu'on soumet au filtre et au test de clôture. Une épreuve
+  contient une ou plusieurs séries, et compte pour **une seule observation**.
 
-**Le test de clôture.** Avant de mesurer une famille, une automatisation
-compétente — D1+, c'est-à-dire D1 augmenté de toutes les règles dérivables des
-entrées publiques — doit échouer. Si elle réussit, la famille ne mesure aucun
-apport du modèle. Le test doit être du code exécutable et hashé, pas une
-doctrine : c'est ce qui distingue une famille d'une intention.
+Deux contraintes en découlent.
 
-**Le filtre préalable.** Si la règle qui résout le cas s'écrit en une ligne,
+1. **Une unité.** Une épreuve vaut une observation. Dix scénarios d'une même
+   épreuve ne valent pas dix preuves : ils valent une.
+2. **Indépendance.** Deux épreuves ne partagent ni simulateur, ni vocabulaire,
+   ni mécanisme d'échec. Sinon c'est la même épreuve répétée sous deux noms, et
+   la répétition n'ajoute aucune preuve.
+
+**Le filtre préalable.** Si la règle qui tranche le cas s'écrit en une ligne,
 une automatisation l'aura. Le cas n'est pas une question d'interprétation, et le
-construire est une perte de temps. Ce filtre s'applique avant toute construction
-et coûte quelques minutes.
+construire est une perte de temps. Ce filtre s'applique avant toute
+construction et coûte quelques minutes : **une situation qu'une règle d'une
+ligne tranche n'est pas une situation, c'est une case de catalogue.**
 
-**Pourquoi plusieurs familles.** Le calcul doit écarter le hasard. À trois ou
-quatre familles, même un modèle qui gagne partout ne permet pas de conclure :
+**Le test de clôture.** Avant de mesurer une épreuve, une automatisation
+compétente — D1+, c'est-à-dire D1 augmenté de toutes les règles dérivables des
+entrées publiques — doit échouer. Si elle réussit, l'épreuve ne montre aucun
+apport du modèle. Le test doit être du code exécutable et hashé, pas une
+doctrine : c'est ce qui distingue une épreuve d'une intention.
+
+**Pourquoi plusieurs épreuves.** Le calcul doit écarter le hasard. À trois ou
+quatre épreuves, même un modèle qui gagne partout ne permet pas de conclure :
 la probabilité que le hasard explique ce résultat reste au-dessus du seuil usuel.
 Il en faut cinq pour descendre en dessous.
 
-**Ce qu'une famille ne prouve pas.** Une famille mesure une compétence sur un
+**Ce qu'une épreuve ne prouve pas.** Une épreuve mesure une compétence sur un
 mécanisme ; elle ne dit rien des autres. Une conclusion sur le programme exige
-plusieurs familles indépendantes qui vont dans le même sens.
+plusieurs épreuves indépendantes qui vont dans le même sens.
 
 **Exemple de rejet.** La famille `s_registres_constructeur` a été construite
 puis rejetée le 2026-10-30 en une heure : son piège, un cache qui change sans

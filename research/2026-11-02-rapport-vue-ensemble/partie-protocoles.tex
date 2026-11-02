@@ -1,7 +1,7 @@
 \section{Audit protocols and evidence contracts}
 \label{sec:protocoles}
 
-\textbf{In brief.} Each family splits what it tests into three artefacts that the
+\textbf{In brief.} Each trial splits what it tests into three artefacts that the
 code keeps apart. The \emph{briefing} states only the task, never the expected
 answer. The \emph{private oracle} states which state was installed and which fact is
 observable, and is written before the policy runs. The \emph{offline evaluator}
@@ -12,22 +12,22 @@ the policy did not write.
 \textbf{What this buys, and what it does not.} It buys freshness and attribution: a
 witness drawn at each trial proves the value was actually read, and an observed
 disclosure that contradicts a protected oracle invalidates the trial instead of
-being counted as a success. It does not buy generalisation: each family covers one
+being counted as a success. It does not buy generalisation: each trial covers one
 protocol, and the V0 control of fidelity covers MQTT only.
 
 \subsection{Implemented families}
 
-The repository contains five families, each with a centralised contract file, a
+The repository contains five trials, each with a centralised contract file, a
 deterministic arm, a bounded LLM arm and a launcher reserved for the laboratory.
 
 \begin{table}[H]
 \centering
-\caption{Families, what they measure and what they leave out of scope.}
-\label{tab:familles}
+\caption{Trials, what they measure and what they leave out of scope.}
+\label{tab:trials}
 \small
 \begin{tabular}{@{}p{2.4cm}p{3.0cm}p{4.0cm}p{3.8cm}@{}}
 \toprule
-Family & Contract & What it measures & What it does not measure \\
+Trial & Contract & What it measures & What it does not measure \\
 \midrule
 SSH & \code{ssh\_reference.py} & Whether a dictionary credential reads the witness object that the legitimate control also reads & Fixture reset, provenance of the model \\
 MQTT & \code{mqtt\_reference.py} & Whether an anonymous subscriber receives the fresh private witness; in a healthy posture, the evaluated refusal & Purge of retained messages, broker reset \\
@@ -43,7 +43,7 @@ The limit is not merely editorial: it is recorded in each result, under the key
 
 \subsection{A three-part contract}
 
-Each family separates three artefacts, and the separation is enforced by the
+Each trial separates three artefacts, and the separation is enforced by the
 code.
 
 \paragraph{The public briefing} contains only the task.
@@ -165,7 +165,7 @@ provenance journal is missing; it is never reconstructed from the survivors.
 
 \begin{enumerate}
 \item \textbf{Nothing about the ground truth.} The oracle is supplied by the
-operator; each family records this in its scope. A false oracle makes all verdicts
+operator; each trial records this in its scope. A false oracle makes all verdicts
 false.
 \item \textbf{Nothing about admission.} Campaign admission requires the explicit
 adoption of the strict-v3 metrics, two independent families, three repetitions

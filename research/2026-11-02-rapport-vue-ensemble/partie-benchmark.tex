@@ -6,8 +6,8 @@ scenarios. Six hypotheses are planned (H1 to H6), each behind a validity gate V0
 that asks whether the instrument can reproduce a known control before anything
 downstream is read. Measured to date: V0 passes on MQTT and saturates; H2 was
 measured on 22 October and its prediction held, but the gain of the model was
-absorbed by a script reading by convention; one family (C2) was rejected on paper,
-and one (the vendor-register family) was built and rejected in an hour on
+absorbed by a script reading by convention; one trial (C2) was rejected on paper,
+and one (the vendor-register trial) was built and rejected in an hour on
 30 October.
 
 \textbf{What this means for the question of the project.} The corpus was built
@@ -45,10 +45,10 @@ contradictions the conclusion confronts.
 Item & Status & What this means \\
 \midrule
 V0 & partially passed & valid control on MQTT; threshold frozen but not applied by the gate; SSH not covered \\
-H1 & conditional, not opened & the identity-chaining family does not exist in the coverage plan \\
+H1 & conditional, not opened & the identity-chaining trial does not exist in the coverage plan \\
 H2 & measured on 22 October & prediction held, gain absorbed by an arm by convention \\
-H3 & not implemented & the public-contract families are planned \\
-H4 & not opened & the vendor-register family was built and rejected on 30 October \\
+H3 & not implemented & the public-contract trials are planned \\
+H4 & not opened & the vendor-register trial was built and rejected on 30 October \\
 H5 & conditional, planned & budget counter-test to be written \\
 H6 & planned as a sub-test & graftable onto H2 or H3, without its own simulator \\
 C2 & rejected & two adversarial reviews, dead on paper, no run \\
@@ -129,26 +129,26 @@ certain as one performing better.
 
 \textbf{The defect was repaired on 30 October 2026.} The module is
 \code{src/benchmark/inference.py}; the test is now one-sided
-against the pre-registered threshold: an exact sign test up to seven families, a
+against the pre-registered threshold: an exact sign test up to seven trials, a
 paired bootstrap beyond, both centred on the threshold rather than on zero. Below
-three families no p-value and no interval are emitted; a decision requires five
-families, because five agreeing families are the first that can reach the usual
+three trials no p-value and no interval are emitted; a decision requires five
+trials, because five agreeing trials are the first that can reach the usual
 threshold at all.
 
 \textbf{Repairing the computation did not make a conclusion possible.} A second
 obstacle stands behind the first, and it is not a defect of the tool: the number of
-independent families available. The trial configuration includes commit,
-fingerprints and budgets, so two distinct families form two distinct configurations;
-each configuration contains one family, and the inference requires several. No
-figure can be produced from families that do not exist.
+independent trials available. The trial configuration includes commit,
+fingerprints and budgets, so two distinct trials form two distinct configurations;
+each configuration contains one trial, and the inference requires several. No
+figure can be produced from trials that do not exist.
 
-\subsection{A family built, then rejected in one hour}
+\subsection{A trial built, then rejected in one hour}
 
-On 30 October 2026 a family was built far enough to be measured, and rejected. The
+On 30 October 2026 a trial was built far enough to be measured, and rejected. The
 record matters more than the rejection: it is the first time the project's own
 protocol produced a decision instead of a plan.
 
-\textbf{What was built.} Not the family: a probe. One fixture of three registers ---
+\textbf{What was built.} Not the trial: a probe. One fixture of three registers ---
 one that commands something, one inert, one cache --- with real neighbour reads, test
 writes, and every read attributed to a single write. The probe applies two arms: a
 convention arm reading the unit and the change, and an arm reading the neighbours.
@@ -168,15 +168,15 @@ neighbours scores three out of three and states why the cache is not a projectio
 
 \textbf{Why it was rejected.} Reading the neighbours is a rule, not an
 interpretation. Whether one places that rule inside the competent automation or
-outside it, the family measures nothing. Inside, the automation succeeds and the
-closure test rejects the family. Outside, the family measures an omission of the
+outside it, the trial measures nothing. Inside, the automation succeeds and the
+closure test rejects the trial. Outside, the trial measures an omission of the
 automation rather than a limit of interpretation. There is no third reading.
 
 The filter that would have caught it applies in minutes and costs nothing:
 
 \begin{quote}
 If the rule that solves the case can be written in one line, a script will have
-it. Do not build the family.
+it. Do not build the trial.
 \end{quote}
 
 \textbf{What survives the rejection.} Three findings remain, and they are what the
@@ -190,7 +190,7 @@ rejected, and the observation cost less than a campaign.
 
 \textbf{What the rejection does not prove.} It does not refute H4. It shows that
 this mechanism, on this corpus, is crossed by a generic rule. A different mechanism
-could survive, and any future family must demonstrate, before construction, that no
+could survive, and any future trial must demonstrate, before construction, that no
 generic rule crosses it.
 
 \subsection{Campaign admission}
@@ -221,7 +221,7 @@ fixture, a private oracle and a measurement recomputed from the log;
 \item a measurement lesson from H2: a prediction can hold literally and demonstrate
 nothing, because an arm by convention absorbs the gain;
 \item a clean negative result on C2, documented before any grey area;
-\item a defensible negative result on the vendor-register family, obtained in one
+\item a defensible negative result on the vendor-register trial, obtained in one
 hour instead of a campaign;
 \item an honest inventory of the holes: a reduced logic stratum, an unknown protocol
 absent, noise not encoded.
@@ -230,7 +230,7 @@ absent, noise not encoded.
 \subsection{What is not demonstrated}
 
 Must not be written as established: the superiority of the model; a significant
-gap, since no independent family exists to compute one; generality, H2 covering one
+gap, since no independent trial exists to compute one; generality, H2 covering one
 schema, one question and one model; a cost gain, the exploratory pilot counting one
 pair without an interval; the validity of the threshold, which the gate does not
 apply; and the integrity of the corpus, the official healthy control not being in

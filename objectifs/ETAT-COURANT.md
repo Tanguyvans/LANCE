@@ -1,6 +1,6 @@
 # État courant
 
-**Dernière mise à jour : 2026-10-30 11:50 (Europe/Brussels, UTC+01:00).**
+**Dernière mise à jour : 2026-11-02 20:40 (Europe/Brussels, UTC+01:00).**
 
 Point de reprise : ce qui est vrai, ce qui bloque, ce qui vient ensuite. Le
 détail des études reste dans `research/` ; l'historique des runs reste dans git.
@@ -16,30 +16,35 @@ identiques ?**
 
 ## Ce qui compte comme résultat
 
-Un résultat n'existe que si une situation a été trouvée où **aucune règle d'une
-ligne ne tranche**, et où une décision fondée sur plusieurs observations
-tranche. La règle qui ferait l'affaire s'écrit d'abord ; si elle s'écrit, la
-situation est écartée, pas aménagée.
+Une situation où **aucune règle d'une ligne ne tranche**, et où une décision
+fondée sur plusieurs observations tranche. La règle s'écrit d'abord ; si elle
+s'écrit, la situation est écartée, pas aménagée.
 
 Tant que de telles situations ne sont pas écrites et filtrées, **rien d'autre ne
-compte** : ni une famille, ni un scénario, ni une interface, ni un rapport. Le
-premier livrable du projet n'est pas un score, c'est la **liste des situations
-candidates et, pour chacune, la règle d'une ligne qui échoue à la trancher**.
+compte** : ni épreuve, ni scénario, ni interface, ni rapport. Le premier livrable
+n'est pas un score, c'est la **liste des situations candidates et, pour chacune,
+la règle d'une ligne qui échoue à la trancher**.
 
-Trois conséquences, opposables :
+## Trois mots, du plus bas au plus haut
 
-- Un travail qui construit un instrument avant d'avoir écrit une situation
-  candidate ne produit aucun résultat, quel qu'en soit la qualité.
-- Un corpus plat ne peut pas fournir de telles situations : il ne conteste rien
-  de structurel. Le mesurer est utile, s'en servir comme source ne l'est pas.
-- Une famille ne se juge pas à la finesse de son mécanisme mais au filtre : le
-  piège résiste, ou il ne résiste pas.
+| Mot | Ce qu'il désigne |
+| --- | --- |
+| **Scénario** | Un déploiement qu'on audite : appareils, services, faille installée, liens autorisés. |
+| **Série** | Des scénarios qui ne diffèrent que par un axe — seule la machine vulnérable change de type. |
+| **Épreuve** | Ce qu'on soumet au filtre et au test de clôture ; contient une ou plusieurs séries ; compte pour **une observation**. |
+
+Une épreuve ne vaut que si elle **résiste**. Si la règle qui tranche le cas
+s'écrit en une ligne, elle est franchie et ne prouve rien. Le mot *famille* est
+abandonné : il décrivait le regroupement, jamais ce que le regroupement doit
+prouver. Les identifiants du code (`family_id`, noms de modules) ne changent pas ;
+ils nomment des données, pas le vocabulaire.
 
 ## Priorités
 
-1. **Les situations candidat** — écrire celles qu'aucune règle d'une ligne ne
-   tranche, et la règle qui échoue, avant tout autre travail. Le corpus actuel ne
-   les fournit pas : 24 topologies sur 29 ne comportent qu'un seul sous-réseau.
+1. **Les situations candidates** — écrire celles qu'aucune règle d'une ligne ne
+   tranche, et la règle qui échoue, avant tout autre travail. Le corpus actuel
+   n'en fournit presque aucune : 24 topologies sur 29 ne comportent qu'un seul
+   sous-réseau.
 2. **Le benchmark** — instrument comparatif, structuré par le
    [registre d'hypothèses](../research/2026-10-21-hypotheses-benchmark/README.md)
    (V0 et H1-H6), pas par une liste de scénarios.
