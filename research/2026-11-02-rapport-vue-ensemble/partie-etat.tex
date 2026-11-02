@@ -2,7 +2,7 @@
 \label{sec:etat}
 
 This section answers the question of the report before the evidence arrives. It
-holds in six pages: what an audit does and who decides at each step
+holds in four pages: what an audit does and who decides at each step
 (Figure~\ref{fig:audit}), which three policies are compared and what is missing for
 the comparison to be fair (Figure~\ref{fig:policies}), what blocks the conclusion
 and how the project got there (Figure~\ref{fig:blocages} and
@@ -38,24 +38,28 @@ produces, and --- the point that matters --- \emph{who} decides at each step.
 \begin{tikzpicture}[x=1mm, y=1mm,
   phase/.style={draw=line, fill=white, line width=.55pt, rounded corners=2pt,
     text=ink, align=center, font=\sffamily\footnotesize, inner sep=3pt,
-    minimum height=10mm, text width=16mm},
+    minimum height=10mm, minimum width=17mm, text width=14mm},
   model/.style={phase, draw=agentline, fill=agent},
   fixed/.style={phase, fill=determ},
-  flow/.style={-{Latex[length=1.4mm,width=.9mm]}, draw=muted, line width=.6pt}]
-\node[fixed] (p1) at (-45,0) {\textbf{1. Graph}\\[-1pt]{\tiny\normalfont map}};
-\node[model] (p2) at (-27,0) {\textbf{2. Recon}\\[-1pt]{\tiny\normalfont probe}};
-\node[model] (p3) at (-9,0)  {\textbf{3. Hyp.}\\[-1pt]{\tiny\normalfont guess}};
-\node[model] (p4) at (9,0)   {\textbf{4. Test}\\[-1pt]{\tiny\normalfont verify}};
-\node[model] (p5) at (27,0)  {\textbf{5. Intr.}\\[-1pt]{\tiny\normalfont reach}};
-\node[fixed] (p6) at (45,0)  {\textbf{6. Rep.}\\[-1pt]{\tiny\normalfont write}};
-\foreach \a/\b in {p1/p2,p2/p3,p3/p4,p4/p5,p5/p6} { \draw[flow] (\a) -- (\b); }
-\node[font=\sffamily\tiny, text=muted]    at (-45,-9) {code};
-\node[font=\sffamily\tiny, text=agentline] at (-27,-9) {model};
-\node[font=\sffamily\tiny, text=agentline] at (-9,-9)  {model};
-\node[font=\sffamily\tiny, text=agentline] at (9,-9)   {model};
-\node[font=\sffamily\tiny, text=agentline] at (27,-9)  {model};
-\node[font=\sffamily\tiny, text=muted]    at (45,-9)  {code};
-\node[font=\sffamily\tiny, text=muted, anchor=west] at (-52,-9) {who decides};
+  flow/.style={draw=muted, line width=.6pt, -{Latex[length=1.4mm,width=.9mm]}}]
+\node[fixed] (p1) at (-60,0) {\textbf{1. Graph}\\[-1pt]{\tiny\normalfont map}};
+\node[model] (p2) at (-36,0) {\textbf{2. Recon}\\[-1pt]{\tiny\normalfont probe}};
+\node[model] (p3) at (-12,0)  {\textbf{3. Guess}\\[-1pt]{\tiny\normalfont hypotheses}};
+\node[model] (p4) at (12,0)   {\textbf{4. Test}\\[-1pt]{\tiny\normalfont verify}};
+\node[model] (p5) at (36,0)  {\textbf{5. Attack}\\[-1pt]{\tiny\normalfont reach}};
+\node[fixed] (p6) at (60,0)  {\textbf{6. Report}\\[-1pt]{\tiny\normalfont write}};
+\draw[flow] (p1.east) -- (p2.west);
+\draw[flow] (p2.east) -- (p3.west);
+\draw[flow] (p3.east) -- (p4.west);
+\draw[flow] (p4.east) -- (p5.west);
+\draw[flow] (p5.east) -- (p6.west);
+\node[font=\sffamily\tiny, text=muted]    at (-60,-9) {code};
+\node[font=\sffamily\tiny, text=agentline] at (-36,-9) {model};
+\node[font=\sffamily\tiny, text=agentline] at (-12,-9)  {model};
+\node[font=\sffamily\tiny, text=agentline] at (12,-9)   {model};
+\node[font=\sffamily\tiny, text=agentline] at (36,-9)  {model};
+\node[font=\sffamily\tiny, text=muted]    at (60,-9)  {code};
+\node[font=\sffamily\tiny, text=muted, anchor=east] at (-72,-4.5) {who\ decides};
 \end{tikzpicture}
 \caption{An audit in six phases, and where the model's freedom actually sits. The
 model decides at phases 2, 3, 4 and 5: which probes to run, which weaknesses to
@@ -275,20 +279,21 @@ a criterion one can observe rather than a hope.
 
 \begin{table}[H]
 \centering
-\caption{Each blockage, the test that would cross it, and how one would know.}
+\caption{Each blockage, what would cross it, and how one would know. No term here
+needs the glossary: the table is meant to be read before it.}
 \label{tab:jusquou}
 \small
 \begin{tabularx}{\linewidth}{@{}p{3.4cm}Yp{4.0cm}@{}}
 \toprule
 Blockage & What would cross it & How one would know \\
 \midrule
-No independent family & a family whose trap is not defeated by a one-line rule &
+No situation a rule cannot decide & a case where no one-line rule settles the answer &
 the closure script runs and refuses to admit it \\
 No comparable arm & the model interpreting the very observations the rules
 receive & the same scenario scored on both, by the same evaluator \\
-Opening condition only a doctrine & a written reference automation standing in
-for D1+ & it passes a family that the model also passes \\
-Corpus built for rules & scenarios where a well-designed rule can only abstain &
+The competent reference is a doctrine & a written reference automation standing in
+for it & it passes a family that the model also passes \\
+Corpus built for rules & scenarios where a well-written rule can only abstain &
 the interpretive share rises, recomputed entry by entry \\
 \bottomrule
 \end{tabularx}
