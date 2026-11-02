@@ -35,8 +35,7 @@ produces, and --- the point that matters --- \emph{who} decides at each step.
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[
-  x=1mm, y=1mm,
+\begin{tikzpicture}[x=0.93mm, y=1mm,
   phase/.style={draw=line, fill=white, line width=.55pt, rounded corners=2pt,
     text=ink, align=center, font=\sffamily\footnotesize, inner sep=4pt,
     minimum height=15mm, text width=22mm},
@@ -73,12 +72,12 @@ produces, and --- the point that matters --- \emph{who} decides at each step.
 \node[lbl, anchor=east] at (-13,2.5)   {who decides};
 \draw[muted, line width=.4pt] (-13,5) -- (152,5);
 \draw[fill=rose, draw=accent, line width=.6pt, rounded corners=1pt]
-  (-11,12) rectangle (8,16.5);
+  (-11,12) rectangle (12,16.5);\path[use as bounding box] (-13,-23) rectangle (160,17);
 \draw[fill=agent, draw=agentline, line width=.8pt, rounded corners=1pt]
-  (14,12) rectangle (99,16.5);
+  (18,12) rectangle (99,16.5);
 \draw[fill=determ, draw=muted, line width=.6pt, rounded corners=1pt]
   (105,12) rectangle (151,16.5);
-\node[font=\sffamily\tiny, align=center, text=accent] at (-1.5,14.25)
+\node[font=\sffamily\tiny, align=center, text=accent] at (0.5,14.25)
   {the code:\\rendered from the log};
 \node[font=\sffamily\tiny, align=center, text=agentline] at (56.5,14.25)
   {\textbf{the model reasons here on evidence the tools collected}};
@@ -144,37 +143,36 @@ differs is how the answer is produced.
   badge/.style={font=\sffamily\scriptsize, rounded corners=1.5pt, inner sep=2pt,
     align=center}
 ]
-% top row: what every policy receives
-\node[col, text width=44mm] (scen) at (0,42) {\textbf{the same scenario}\\{\tiny\normalfont deployed, reset, audited once}};
-\node[col, text width=44mm] (obs) at (-52,42) {\textbf{the same observations}\\{\tiny\normalfont what the scanner collected\\ on each device}};
-\node[col, text width=44mm] (eval) at (52,42) {\textbf{the same evaluator}\\{\tiny\normalfont oracle fixed before,\\ score recomputed}};
+% the input of all three policies, in one row
+\node[col, text width=30mm, minimum height=18mm] (scen) at (-52,33) {\textbf{the scenario}\\{\tiny\normalfont deployed and\\ audited once}};
+\node[col, text width=34mm, minimum height=18mm] (obs) at (0,33) {\textbf{the observations}\\{\tiny\normalfont what the scanner\\ collected on each device}};
+\node[col, text width=30mm, minimum height=18mm] (eval) at (52,33) {\textbf{the evaluator}\\{\tiny\normalfont oracle first,\\ score recomputed}};
+\draw[draw=muted!70, line width=.5pt] (scen.east) -- (obs.west);
+\draw[draw=muted!70, line width=.5pt] (obs.east) -- (eval.west);
 
-% every input flows down to all three policies
-\coordinate (fanL) at (36,30);
-\coordinate (fanR) at (72,30);
-\node[font=\sffamily\tiny, text=accent, anchor=west] at (30,30.5) {each policy receives all three, and only these};
-\foreach \p in {scen,obs,eval} {
-  \draw[draw=muted!70, line width=.5pt] (\p.south) -- (\p.south |- fanL);
-}
-\draw[draw=muted!70, line width=.5pt] (scen.south |- fanL) -- (eval.south |- fanL);
-\draw[arrow, accent, line width=.7pt] (-46,30) -- (-46,22);
-\draw[arrow, accent, line width=.7pt] (0,30) -- (0,22);
-\draw[arrow, accent, line width=.7pt] (46,30) -- (46,22);
+\node[font=\sffamily\tiny, text=accent, align=left, anchor=west, text width=70mm] at (4,14.6)
+  {all three policies receive these, and nothing else};
+\draw[draw=muted!70, line width=.5pt] (-52,24) -- (-52,21) -- (52,21) -- (52,24);
+\draw[arrow, accent, line width=.9pt] (0,21) -- (0,12.5);
+\draw[draw=muted!70, line width=.5pt] (-46,12.5) -- (46,12.5);
+\draw[arrow] (-46,12.5) -- (-46,3);
+\draw[arrow] (0,12.5) -- (0,3);
+\draw[arrow] (46,12.5) -- (46,3);
 
 % three policies
-\node[known] (scripted) at (-46,10) {\textbf{\sffamily scripted}\\{\scriptsize\normalfont deterministic procedures:\\\normalfont discover, inventory, audit}};
-\node[known] (rules) at (0,10)      {\textbf{\sffamily rules}\\{\scriptsize\normalfont a declared baseline:\\\normalfont scanner, then interpretation rules}};
-\node[missing] (llm) at (46,10)     {\textbf{\sffamily llm\_on\_evidence}\\{\scriptsize\normalfont the model interprets the very\\\normalfont observations the rules receive}};
+\node[known] (scripted) at (-46,0) {\textbf{\sffamily scripted}\\{\scriptsize\normalfont deterministic procedures:\\\normalfont discover, inventory, audit}};
+\node[known] (rules) at (0,0)      {\textbf{\sffamily rules}\\{\scriptsize\normalfont a declared baseline:\\\normalfont scanner, then interpretation rules}};
+\node[missing] (llm) at (46,0)     {\textbf{\sffamily llm\_on\_evidence}\\{\scriptsize\normalfont the model interprets the very\\\normalfont observations the rules receive}};
 
-\node[badge, fill=determ, text=muted] at (-46,-3) {runs; no benchmark score};
-\node[badge, fill=determ, text=muted] at (0,-3)   {runs; strict-v3 score};
-\node[badge, fill=rose, text=accent] at (46,-3)   {\textbf{does not exist}};
+\node[badge, fill=determ, text=muted] at (-46,-12) {runs; no benchmark score};
+\node[badge, fill=determ, text=muted] at (0,-12)   {runs; strict-v3 score};
+\node[badge, fill=rose, text=accent] at (46,-12)   {\textbf{does not exist}};
 
-\node[sub, text width=40mm] at (-46,-14) {no model at all};
-\node[sub, text width=40mm] at (0,-14)
+\node[sub, text width=40mm] at (-46,-20) {no model at all};
+\node[sub, text width=40mm] at (0,-20)
   {\textbf{the question}: same data as \texttt{rules},\\ a model where the rules are};
-\node[sub, text width=46mm] at (46,-20)
-  {\raggedright the third policy is what the whole programme needs; without it the contrast measures verification, not interpretation};
+\node[sub, text width=46mm, align=left] at (46,-26)
+  {the third policy is what the whole programme needs; without it the contrast measures verification, not interpretation};
 \end{tikzpicture}
 \caption{The three policies and what is missing. \code{scripted} and \code{rules}
 exist and are scored; \code{rules} is the declared baseline. The third policy,
