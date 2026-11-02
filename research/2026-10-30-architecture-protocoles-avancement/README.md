@@ -35,8 +35,11 @@ fond ouvre désormais son propre dossier daté.
   [benchmark](partie-benchmark.tex), [synthèse](partie-synthese.tex), assemblés
   par [report.tex](report.tex). Compilation :
   `latexmk -pdf report.tex`.
-- [Version française](archive-fr/etat-2026-10-30-fr.pdf) : conservée comme
-  archive ; elle précède la traduction et n'est plus maintenue.
+- ~~Version française `archive-fr/`~~ : **supprimée le 2026-11-02**, avec ses
+  sources. Elle précédait la traduction en anglais, n'était plus maintenue, et
+  aucun document du dépôt ne la citait comme référence. Le texte qu'elle
+  portait reste lisible dans l'historique Git : `git show 2ff0f78:research/
+  2026-10-30-architecture-protocoles-avancement/archive-fr/etat-2026-10-30-fr.tex`.
 
 ## Synthèse
 
