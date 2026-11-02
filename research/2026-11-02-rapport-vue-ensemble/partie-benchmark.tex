@@ -95,10 +95,15 @@ Total & 288 & 243 signature, 35 mixed, 4 chaining, 6 logic \\
 \end{table}
 
 The logic stratum occupies only three scenarios, and only 55 entries are attached
-to a chaining of at least two hops. A global duel on this corpus would therefore
+to a chaining of at least two hops (\code{chainage} two or three). A global duel on this corpus would therefore
 measure above all the quality of the rules, which is exactly what H2 observed.
-Both counts are recomputed from the derived index, and the word \emph{signature}
-means 282 entries mechanically and 243 interpretively.
+The two counts come from two artefacts. The mechanical one is the binary
+\code{type} field of \code{benchmarks/labels/derived\_index.json}: 282 entries by
+signature, 6 by logic. The interpretive one sums, category by category, the
+coverage audit of 12 October 2026
+(\code{objectifs/asiaccs-2027/audit-couverture.md}): 243 decidable by a
+well-designed rule, 35 mixed, 4 chaining, 6 logic. The word \emph{signature}
+therefore means 282 entries mechanically and 243 interpretively.
 
 \subsection{H2: a prediction that holds and demonstrates nothing}
 

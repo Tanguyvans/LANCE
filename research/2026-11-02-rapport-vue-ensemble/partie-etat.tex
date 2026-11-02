@@ -60,10 +60,11 @@ produces, and --- the point that matters --- \emph{who} decides at each step.
 \caption{An audit in six phases, and where the model's freedom actually sits. The
 model decides at phases 2, 3, 4 and 5: which probes to run, which weaknesses to
 hypothesise, how to test each one, and how far to push an intrusion. What the code
-decides is what enters the record. Phase 1 projects its evidence file from the
+decides is what becomes verifiable: phase 1 projects its evidence file from the
 graph tools and refuses a submission that misses a device. When the model's
 deliverable at phase 5 is missing or invalid, the code writes the assessment from
-the tool ledger, and the objectives are never certified. Phase 6 assembles the
+the tool ledger, and a completed phase never certifies that the objectives were
+reached. Phase 6 assembles the
 report from section sheets, with an agent that declares no tool and runs a single
 turn. The score is produced elsewhere, by an offline evaluator that recounts the
 log against an oracle fixed before the run.}
@@ -81,15 +82,15 @@ policy runs, in a file the policy never receives. A finding that contradicts the
 oracle invalidates the trial instead of correcting it. This precedence is what
 prevents the answer from being adjusted after the fact.
 
-\textbf{The score is recomputed, never taken on trust.} The evaluator of a family
-receives only the briefing, the oracle, the journal and the final decision, and it
-refuses a decision that cites an observation absent from the journal. The
-benchmark score of a pipeline run does not perform that check; the confirmed
-metrics it would need are not emitted by the harnesses today.
+\textbf{The score is recomputed, never taken on trust.} The SSH, MQTT, API and V0
+evaluators receive only the briefing, the oracle, the journal and the final
+decision, and they refuse a decision that cites an observation absent from the
+journal. The benchmark score of a pipeline run does not perform that check; the
+confirmed metrics it would need are not emitted by the harnesses today.
 \paragraph{Where this lives.}
-\begin{itemize}
-\item Where this lives: phase registry \code{src/agent/phases/registry.py}; governance boundary \code{src/agent/core/executor.py}; evaluator under \code{src/benchmark/}.
-\end{itemize}
+Phase registry \code{src/agent/phases/registry.py}; governance boundary
+\code{src/agent/core/executor.py}; evaluators under \code{src/benchmark/} and
+\code{benchmarks/experiments/}.
 
 % ---------------------------------------------------------------------------
 \subsection{The three policies compared on the same scenario}
@@ -98,10 +99,10 @@ metrics it would need are not emitted by the harnesses today.
 The programme compares three ways of answering the same question on the same
 scenario. They receive the same targets and are judged by the same evaluator; what
 differs is how the answer is produced. The platform also offers four execution
-modes --- \code{lance} (the full pipeline, with a model), \code{rules} (the same
-pipeline from analysis to verification, with no model at all), \code{vanilla} (a
+modes --- \code{lance} (the full pipeline, with a model), \code{rules} (analysis and
+verification only --- scanner and aggregation, with no model at all), \code{vanilla} (a
 model exploring an address range) and \code{scripted} (versioned procedures); only
-the two pipeline modes are scored.
+\code{lance} is scored against ground truth; the others are not.
 
 \begin{figure}[H]
 \centering
@@ -116,7 +117,7 @@ the two pipeline modes are scored.
 \node[known] (rules) at (0,0)      {\textbf{rules}\\[-2pt]{\tiny a declared baseline}};
 \node[missing] (llm) at (37,0)     {\textbf{llm\_on\_evidence}\\[-2pt]{\tiny the model interprets the same observations}};
 \node[tiny, below=2mm of scripted, text=muted] {runs, not scored};
-\node[tiny, below=2mm of rules, text=muted] {runs, scored};
+\node[tiny, below=2mm of rules, text=muted] {runs, not scored};
 \node[tiny, below=2mm of llm, text=accent] {\textbf{does not exist}};
 \node[tiny, above=2mm of rules, text=accent, text width=70mm, align=center]
   {all three receive the same scenario, the same observations and the same evaluator};
@@ -143,10 +144,10 @@ question the programme asked.
 baseline from the model. The rules arm executes a deterministic probe plan for
 each finding, while the model must find its own sequence. In the \code{rules}
 mode the analysis phase runs without a model at all, so no hypothesis is lost in
-translation. The scanner's findings are merged into every aggregation for both
-arms, which buys an advantage only where the rules arm does not already carry
-them. And on the compact path the pipeline writes the scanner's findings over the
-model's per-device sheet, an asymmetry that runs the other way. Until these are
+translation. The scanner's findings feed both aggregations, but there they are
+the whole of the rules arm rather than a supplement to it. And on the compact
+path the pipeline writes the scanner's findings over the model's per-device
+sheet, an asymmetry that runs the other way. Until these are
 removed or mirrored, an equal score would say nothing.
 
 % ---------------------------------------------------------------------------
@@ -253,10 +254,11 @@ Can results be delivered reproducibly? & Yes. Push, validate, deploy to one of
 three instances; no execution on a workstation. Single points of failure declared.
 & \textbf{Part~\ref{sec:infrastructure}} \\
 Does the model beat the rules? & \textbf{Unknown, and not yet measurable.} & \textbf{Part~\ref{sec:benchmark}} \\
-How much of the corpus needs interpretation? & Two counts, never to be cited one
-for the other. Mechanical: 282 entries by signature, 6 by logic (2.1\,\%).
-Interpretive: 243 decidable by a well-designed rule, 35 mixed, 4 chaining, 6
-logic. Recomputed from the derived index. & \textbf{Part~\ref{sec:benchmark}} \\
+How much of the corpus needs interpretation? & Two counts from two artefacts,
+never to be cited one for the other. Binary index: 282 entries by signature, 6 by
+logic (2.1\,\%). Interpretive audit: 243 decidable by a well-designed rule, 35
+mixed, 4 chaining, 6 logic (84.4\,\%) --- a sum over categories, not a field
+per entry. & \textbf{Part~\ref{sec:benchmark}} \\
 Is the measurement statistically valid? & The tool is repaired and refuses an
 indefensible figure; the families that would give it data do not exist. & \textbf{Part~\ref{sec:benchmark}} \\
 \bottomrule

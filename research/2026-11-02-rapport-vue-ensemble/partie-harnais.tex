@@ -27,9 +27,10 @@ decision, the cost summary and the run metadata. The deployment uses the
 laboratory, submitting operations to the hypervisor.
 
 The same anatomy is repeated for SSH, the API and the V0 control, with one
-difference: the H2 harness needs neither deployment nor a live client in the
-sandbox, because its corpus is frozen; a live controller exists for laboratory
-runs.
+difference: the H2 arms --- the contract and its evaluator --- need neither a
+deployment nor a broker, because their corpus is frozen. Its controller
+\code{mqtt\_formats\_live.py} does require the laboratory runner and the model
+catalogue, so it is not a sandbox instrument.
 
 \subsection{The shared core}
 
