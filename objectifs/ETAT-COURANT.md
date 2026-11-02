@@ -14,12 +14,36 @@ Question mesurée : **quand un agent LLM apporte-t-il quelque chose qu'une
 automatisation à règles ne peut pas apporter, à outils, preuves et budgets
 identiques ?**
 
+## Ce qui compte comme résultat
+
+Un résultat n'existe que si une situation a été trouvée où **aucune règle d'une
+ligne ne tranche**, et où une décision fondée sur plusieurs observations
+tranche. La règle qui ferait l'affaire s'écrit d'abord ; si elle s'écrit, la
+situation est écartée, pas aménagée.
+
+Tant que de telles situations ne sont pas écrites et filtrées, **rien d'autre ne
+compte** : ni une famille, ni un scénario, ni une interface, ni un rapport. Le
+premier livrable du projet n'est pas un score, c'est la **liste des situations
+candidates et, pour chacune, la règle d'une ligne qui échoue à la trancher**.
+
+Trois conséquences, opposables :
+
+- Un travail qui construit un instrument avant d'avoir écrit une situation
+  candidate ne produit aucun résultat, quel qu'en soit la qualité.
+- Un corpus plat ne peut pas fournir de telles situations : il ne conteste rien
+  de structurel. Le mesurer est utile, s'en servir comme source ne l'est pas.
+- Une famille ne se juge pas à la finesse de son mécanisme mais au filtre : le
+  piège résiste, ou il ne résiste pas.
+
 ## Priorités
 
-1. **Le benchmark** — instrument comparatif, structuré par le
+1. **Les situations candidat** — écrire celles qu'aucune règle d'une ligne ne
+   tranche, et la règle qui échoue, avant tout autre travail. Le corpus actuel ne
+   les fournit pas : 24 topologies sur 29 ne comportent qu'un seul sous-réseau.
+2. **Le benchmark** — instrument comparatif, structuré par le
    [registre d'hypothèses](../research/2026-10-21-hypotheses-benchmark/README.md)
    (V0 et H1-H6), pas par une liste de scénarios.
-2. **La plateforme** — déployer, lancer, suivre, récupérer, isoler, nettoyer.
+3. **La plateforme** — déployer, lancer, suivre, récupérer, isoler, nettoyer.
 
 L'entraînement des modèles est hors priorité. Aucune étape n'est datée : une
 étape commence quand la précédente est vérifiée.
