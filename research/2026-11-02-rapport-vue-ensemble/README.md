@@ -1,10 +1,30 @@
 # Rapport d'état au 2 novembre 2026 : vue d'ensemble d'abord
 
-**Cycle de vie : Conclu — synthèse d'état** — rapport ouvert le **2026-11-02**.
+**Cycle de vie : Conclu — checkpoint.** Remplace le
+[checkpoint du 30 octobre](../2026-10-30-architecture-protocoles-avancement/README.md),
+conservé comme archive et comme source du détail d'implémentation.
 C'est un état daté, pas une page de référence courante : il ne fait pas autorité
 sur le comportement ultérieur du système.
 Dernière révision : **2026-11-02 17:00 (Europe/Brussels, UTC+01:00)**.
 Statut : **rapport documentaire ; aucune expérience nouvelle, aucun run nouveau.**
+
+## Ce qui a changé depuis le checkpoint précédent
+
+Aucune modification de fond : zéro commit entre le 30 octobre et le 2 novembre.
+Le travail de la période est une réorganisation de la lecture, puis **deux
+relectures indépendantes** qui ont corrigé quatorze puis quatre affirmations
+fausses ou trop fortes. Les corrections sont datées et listées plus bas ; elles
+ne changent pas l'état du projet.
+
+## Corrections datées
+
+- **2026-11-02 17:00** — seconde relecture technique : quatre affirmations
+  fausses, dont deux introduites par la correction précédente (un seul mode est
+  scoré, `lance` ; les 243/288 viennent de l'audit de couverture, non de l'index
+  dérivé binaire).
+- **2026-11-02 16:00** — première relecture technique et relecture externe :
+  quatorze affirmations fausses ou trop fortes, dont quatre introduites par la
+  réécriture (phases 1 et 5 décrites comme pilotées par le code).
 
 ## Question et périmètre
 
@@ -46,15 +66,15 @@ rebaptisée « What this report can say, and what it cannot ».
 
 ## Documents
 
-- [Rapport PDF](etat-2026-11-02.pdf) : **26 pages, en anglais**, compilé à
+- [Rapport PDF](report.pdf) : **26 pages, en anglais**, compilé à
   `2026-11-02 17:00` (Europe/Brussels), **sans erreur LaTeX, sans débordement
   ni renvoi cassé**, et vérifié page par page sur rendu image. Révision du
   2 novembre après deux relectures indépendantes : les quatorze affirmations
   fausses ou trop fortes ont été corrigées, les trois décisions et les quatre
   modes d'exécution sont revenus dans l'ouverture, et les notes de marge sont
   devenues un bloc « Where this lives » en fin de partie.
-- Source : [etat-2026-11-02.tex](etat-2026-11-02.tex), compilée par
-  `latexmk -pdf etat-2026-11-02.tex`.
+- Source : [report.tex](report.tex), compilée par
+  `latexmk -pdf report.tex`.
 
 ## Synthèse
 

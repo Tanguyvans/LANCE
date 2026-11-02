@@ -1,6 +1,12 @@
 # Architecture, protocoles et état d'avancement au 30 octobre 2026
 
-**Cycle de vie : Conclu — synthèse d'état** — rapport commencé le **2026-10-30**.
+> **Checkpoint remplacé par → [le checkpoint du 2 novembre 2026](../2026-11-02-rapport-vue-ensemble/README.md).**
+> Conservé comme archive de son état, et comme source du détail d'implémentation
+> (modules, chaînes de configuration, identifiants de commits) que le checkpoint
+> suivant a déplacé hors du fil de lecture. Ne pas le modifier : corriger une
+> erreur factuelle se fait, daté, dans le checkpoint courant.
+
+**Cycle de vie : Remplacé — checkpoint** — rapport commencé le **2026-10-30**.
 C'est un état daté, pas une page de référence courante : il ne fait pas autorité
 sur le comportement ultérieur du système.
 Dernière révision : **2026-10-30 10:15 (Europe/Brussels, UTC+01:00)**.
@@ -20,15 +26,15 @@ fond ouvre désormais son propre dossier daté.
 
 ## Documents
 
-- [Rapport PDF](etat-2026-10-30.pdf) : **25 pages, en anglais**, résumé
+- [Rapport PDF](report.pdf) : **25 pages, en anglais**, résumé
   exécutif, deux figures d'ensemble, cinq parties rédigées par des volets
   spécialisés et relues contre le code, puis une synthèse transverse.
 - Source LaTeX et fragments éditables : [résumé et vue d'ensemble](partie-intro.tex),
   [architecture](partie-architecture.tex), [protocoles](partie-protocoles.tex),
   [harnais](partie-harnais.tex), [infrastructure](partie-infrastructure.tex),
   [benchmark](partie-benchmark.tex), [synthèse](partie-synthese.tex), assemblés
-  par [etat-2026-10-30.tex](etat-2026-10-30.tex). Compilation :
-  `latexmk -pdf etat-2026-10-30.tex`.
+  par [report.tex](report.tex). Compilation :
+  `latexmk -pdf report.tex`.
 - [Version française](archive-fr/etat-2026-10-30-fr.pdf) : conservée comme
   archive ; elle précède la traduction et n'est plus maintenue.
 

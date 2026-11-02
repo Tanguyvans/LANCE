@@ -46,6 +46,14 @@ un état dépassé sont datées ; la plus récente fait foi.
   dossier publié n'est plus modifié ; il devient l'archive de son état et la
   révision suivante le référence comme travaux antérieurs. La chronologie se
   lit dans l'index, pas dans l'historique Git.
+- **Un rapport d'état est un checkpoint.** Il photographie l'état à une date,
+  ne se révise pas, se remplace, et son successeur le cite en tête ; l'ancien
+  reste et conserve le détail que le nouveau a déplacé. Il dit ce qui a changé
+  depuis le précédent, renvoie à `objectifs/ETAT-COURANT.md` pour l'état sans
+  le recopier, et ajoute le seul élément que ce tableau ne porte pas : **ce qui
+  franchirait chaque blocage**, comme critère observable. Seule une erreur
+  factuelle se corrige sur place, datée et déclarée dans l'index. Les
+  checkpoints se nomment `report.tex` et `report.pdf`.
 - **Statut fermé.** Tout dossier prend un statut parmi `proposition`, `actif`,
   `dormant`, `conclu`, `remplacé`, avec sa date de revue et une ligne de
   format fixe dans l'index `research/README.md`. Un dossier remplacé le
