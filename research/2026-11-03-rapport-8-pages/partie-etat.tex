@@ -1,0 +1,292 @@
+\section{Where the project stands}
+\label{sec:etat}
+
+This section answers the question of the report before the evidence arrives. It
+holds in four pages: what an audit does and who decides at each step
+(Figure~\ref{fig:audit}), which three policies are compared and what is missing for
+the comparison to be fair (Figure~\ref{fig:policies}), what blocks the conclusion and how the project got there
+(Figure~\ref{fig:blocages} and Table~\ref{tab:etat-chiffre}). The five parts that follow are the proof.
+
+\subsection{The project in one paragraph}
+
+A security auditor takes a network it has never seen, finds what is wrong with it,
+proves each finding rather than guessing it, and writes a report an operator can
+act on. LANCE does this with a language model in the loop. The programme asks a
+precise question: \emph{the model earns its place only where a competent script
+would fail --- does that situation exist, and can it be measured?}
+
+The answer requires three things, and the report follows that order. A system
+whose behaviour is traceable, so that a result can be attributed to a cause
+(Figure~\ref{fig:audit}). A comparison in which the only thing that changes is the
+reasoning capacity, not the information or the tools
+(Figure~\ref{fig:policies}). Scenarios where the two candidates genuinely differ
+(Figure~\ref{fig:blocages}). The first exists, the second is half built, the third
+does not yet exist. That is the whole state of the project.
+
+% ---------------------------------------------------------------------------
+\subsection{What an audit does, and where the model decides}
+\label{sec:parcours}
+
+An audit runs in six phases. Each phase produces one document that the next one
+reads, and nothing else crosses between them. Figure~\ref{fig:audit} is the map to
+keep in mind for the rest of the report: it shows the six phases, what each
+produces, and --- the point that matters --- \emph{who} decides at each step.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm,
+  phase/.style={draw=line, fill=white, line width=.55pt, rounded corners=2pt,
+    text=ink, align=center, font=\sffamily\footnotesize, inner sep=3pt,
+    minimum height=10mm, minimum width=17mm, text width=14mm},
+  model/.style={phase, draw=agentline, fill=agent},
+  fixed/.style={phase, fill=determ},
+  flow/.style={draw=muted, line width=.6pt, -{Latex[length=1.4mm,width=.9mm]}}]
+\node[fixed] (p1) at (-60,0) {\textbf{1. Graph}\\[-1pt]{\tiny\normalfont map}};
+\node[model] (p2) at (-36,0) {\textbf{2. Recon}\\[-1pt]{\tiny\normalfont probe}};
+\node[model] (p3) at (-12,0)  {\textbf{3. Guess}\\[-1pt]{\tiny\normalfont hypotheses}};
+\node[model] (p4) at (12,0)   {\textbf{4. Test}\\[-1pt]{\tiny\normalfont verify}};
+\node[model] (p5) at (36,0)  {\textbf{5. Attack}\\[-1pt]{\tiny\normalfont reach}};
+\node[fixed] (p6) at (60,0)  {\textbf{6. Report}\\[-1pt]{\tiny\normalfont write}};
+\draw[flow] (p1.east) -- (p2.west);
+\draw[flow] (p2.east) -- (p3.west);
+\draw[flow] (p3.east) -- (p4.west);
+\draw[flow] (p4.east) -- (p5.west);
+\draw[flow] (p5.east) -- (p6.west);
+\node[font=\sffamily\tiny, text=muted]    at (-60,-9) {code};
+\node[font=\sffamily\tiny, text=agentline] at (-36,-9) {model};
+\node[font=\sffamily\tiny, text=agentline] at (-12,-9)  {model};
+\node[font=\sffamily\tiny, text=agentline] at (12,-9)   {model};
+\node[font=\sffamily\tiny, text=agentline] at (36,-9)  {model};
+\node[font=\sffamily\tiny, text=muted]    at (60,-9)  {code};
+\node[font=\sffamily\tiny, text=muted, anchor=east] at (-72,-4.5) {who\ decides};
+\end{tikzpicture}
+\caption{An audit in six phases, and where the model's freedom actually sits. The
+model decides at phases 2, 3, 4 and 5: which probes to run, which weaknesses to
+hypothesise, how to test each one, and how far to push an intrusion. What the code
+decides is what becomes verifiable: phase 1 projects its evidence file from the
+graph tools and refuses a submission that misses a device. When the model's
+deliverable at phase 5 is missing or invalid, the code writes the assessment from
+the tool ledger, and a completed phase never certifies that the objectives were
+reached. Phase 6 assembles the
+report from section sheets, with an agent that declares no tool and runs a single
+turn. The score is produced elsewhere, by an offline evaluator that recounts the
+log against an oracle fixed before the run.}
+\label{fig:audit}
+\end{figure}
+
+\textbf{The log is the source, not the model's conclusion.} Every tool call is
+archived with a reference, a refusal or an exception included. A finding that
+cites a piece of evidence which does not appear in the log is rejected. This is
+what makes a result attributable: the report states what happened, not what the
+policy believed happened.
+
+\textbf{The oracle precedes the run.} The expected answer is fixed before the
+policy runs, in a file the policy never receives. A finding that contradicts the
+oracle invalidates the trial instead of correcting it. This precedence is what
+prevents the answer from being adjusted after the fact.
+
+\textbf{The score is recomputed, never taken on trust.} The SSH, MQTT, API and V0
+evaluators receive only the briefing, the oracle, the journal and the final
+decision, and they refuse a decision that cites an observation absent from the
+journal. The benchmark score of a pipeline run does not perform that check; the
+confirmed metrics it would need are not emitted by the harnesses today.
+\paragraph{Where this lives.}
+Phase registry \code{src/agent/phases/registry.py}; governance boundary
+\code{src/agent/core/executor.py}; evaluators under \code{src/benchmark/} and
+\code{benchmarks/experiments/}.
+
+% ---------------------------------------------------------------------------
+\subsection{The three policies compared on the same scenario}
+\label{sec:politiques}
+
+The programme compares three ways of answering the same question on the same
+scenario. They receive the same targets and are judged by the same evaluator; what
+differs is how the answer is produced. The platform also offers four execution
+modes --- \code{lance} (the full pipeline, with a model), \code{rules} (analysis and
+verification only --- scanner and aggregation, with no model at all), \code{vanilla} (a
+model exploring an address range) and \code{scripted} (versioned procedures); only
+\code{lance} is scored against ground truth; the others are not.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm,
+  known/.style={draw=muted, fill=determ, rounded corners=2pt, line width=.55pt,
+    text=ink, align=center, font=\sffamily\footnotesize, inner sep=4pt,
+    minimum height=13mm, text width=32mm},
+  missing/.style={known, draw=accent, fill=rose, dashed, line width=.9pt},
+  tiny/.style={font=\sffamily\tiny, text=muted},
+  arrow/.style={-{Latex[length=1.8mm,width=1.1mm]}, draw=muted, line width=.7pt}]
+\node[known] (scripted) at (-37,0) {\textbf{scripted}\\[-2pt]{\tiny deterministic procedures}};
+\node[known] (rules) at (0,0)      {\textbf{rules}\\[-2pt]{\tiny a declared baseline}};
+\node[missing] (llm) at (37,0)     {\textbf{llm\_on\_evidence}\\[-2pt]{\tiny the model interprets the same observations}};
+\node[tiny, below=2mm of scripted, text=muted] {runs, not scored};
+\node[tiny, below=2mm of rules, text=muted] {runs, not scored};
+\node[tiny, below=2mm of llm, text=accent] {\textbf{does not exist}};
+\node[tiny, above=2mm of rules, text=accent, text width=70mm, align=center]
+  {all three receive the same scenario, the same observations and the same evaluator};
+\draw[arrow] (-37,14) -- (-37,8);
+\draw[arrow] (0,14) -- (0,8);
+\draw[arrow] (37,14) -- (37,8);
+\end{tikzpicture}
+\caption{The three policies and what is missing. The third, \texttt{llm\_on\_evidence},
+would give the model the observations the rules already receive and nothing else.
+It does not exist, and without it the comparison measures verification rather
+than interpretation.}
+\label{fig:policies}
+\end{figure}
+
+\textbf{Why the third policy is the one that matters.} An exploration where the
+model roams a network freely (\code{vanilla}) changes too much at once: the
+targets chosen, the order of the probes and the interpretation all differ, so a
+better score cannot be attributed to reasoning. A policy that receives the
+scanner's observations and must produce findings backed by a citation of those
+observations isolates exactly one variable: \emph{who interprets}. That is the
+question the programme asked.
+
+\textbf{What currently favours the rules.} Four asymmetries separate the declared
+baseline from the model. The rules arm executes a deterministic probe plan for
+each finding, while the model must find its own sequence. In the \code{rules}
+mode the analysis phase runs without a model at all, so no hypothesis is lost in
+translation. The scanner's findings feed both aggregations, but there they are
+the whole of the rules arm rather than a supplement to it. And on the compact
+path the pipeline writes the scanner's findings over the model's per-device
+sheet, an asymmetry that runs the other way. Until these are
+removed or mirrored, an equal score would say nothing.
+
+% ---------------------------------------------------------------------------
+\subsection{What blocks the conclusion}
+\label{sec:blocages}
+
+The obstacle is not the measurement machinery, which is now sound, but the
+material it would need. Figure~\ref{fig:blocages} shows the chain as it stands and
+the one observation that changed everything on 30 October 2026.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm,
+  pstep/.style={draw=line, fill=white, line width=.55pt, rounded corners=2pt,
+    text=ink, align=center, font=\sffamily\footnotesize, inner sep=4pt,
+    minimum height=13mm, text width=30mm},
+  ok/.style={pstep, fill=determ},
+  blocked/.style={pstep, draw=accent, fill=rose, line width=.9pt},
+  later/.style={pstep, dashed, text=muted},
+  flow/.style={-{Latex[length=1.8mm,width=1.1mm]}, draw=muted, line width=.7pt},
+  ret/.style={-{Latex[length=1.6mm,width=1.0mm]}, draw=accent, line width=.7pt, dashed}]
+\node[ok] (f) at (-53,0) {\textbf{a scenario}\\[-2pt]{\tiny a deployment, resettable}};
+\node[ok] (h) at (-14,0) {\textbf{scenarios, a series}\\[-2pt]{\tiny one trial, one observation}};
+\node[blocked] (c) at (25,0) {\textbf{a closure test}\\[-2pt]{\tiny does a one-line rule solve it?}};
+\node[later] (m) at (60,0) {\textbf{a measure}\\[-2pt]{\tiny arm against arm, interval}};
+\draw[flow] (f) -- (h);
+\draw[flow] (h) -- (c);
+\draw[flow, accent] (c) -- (m);
+\node[font=\sffamily\tiny, text=muted, align=center, text width=58mm, above=2mm of m, anchor=south]
+  {a trial survives only if a one-line rule does not cross it};
+\node[ok, below=13mm of f, text width=26mm] (build) {\tiny built: a probe of three registers};
+\node[ok, right=3mm of build, text width=24mm] (review) {\tiny six reviews validated it};
+\node[blocked, right=3mm of review, text width=26mm] (reject) {\tiny one hour of execution rejected it};
+\draw[flow] (build) -- (review);
+\draw[flow] (review) -- (reject);
+\draw[ret] (reject.north) -- (c.south);
+\node[font=\sffamily\tiny, text=accent, align=left, anchor=west] at (-18,-8.5) {a one-line rule defeats the trap};
+\end{tikzpicture}
+\caption{The chain from a scenario to a measurement, and where it breaks. Every
+stage exists except the measure. The episode of 30 October shows why the closure
+test moved ahead of the reviews: one hour of observation rejected a design that
+six readings had validated.}
+\label{fig:blocages}
+\end{figure}
+
+\textbf{What the closure test is.} Before building a trial, one asks whether a rule
+that solves the case can be written in a single line. If it can, the trial measures
+the omission of a declaration rather than a limit of interpretation, and it is not
+built. The test is cheap; running it before writing eight fixtures is the change of
+method this month produced.
+
+\textbf{Why this is a blockage and not a delay.} The inference tool was repaired on
+30 October: it now computes a one-sided p-value against the pre-registered
+threshold, refuses to emit a figure below three trials, and requires five to
+decide. It is therefore correct, and idle: there is nothing to compute on. Building
+more trials of the same kind would not change the arithmetic.
+
+% ---------------------------------------------------------------------------
+\subsection{What must be decided}
+\label{sec:decisions}
+
+The blockage is not technical, so the way out is not more machine time. Three
+choices govern what follows, and none of them is taken yet.
+
+\textbf{1. Trials.} Build trials that a one-line rule does not cross, applying
+the filter that one hour of observation established, or publish a bounded
+methodological result and declare it as such. The filter matters more than the
+count: a trial crossed by a generic rule measures nothing, and five of them
+measure nothing either.
+
+\textbf{2. The opening condition.} Write the competent reference automation that
+D1+ names, or renounce explicitly the hypotheses that depend on it. Several
+trials remain undecidable until this is settled.
+
+\textbf{3. The comparable arm.} Give the model the observations the rules already
+receive, or state that the comparison measures verification rather than
+interpretation. The second option is legitimate and much cheaper; it is not the
+question the programme asked.
+
+These three decisions together determine whether an inference can one day exist.
+
+% ---------------------------------------------------------------------------
+\subsection{The state in one table}
+\label{sec:table-etat}
+
+\begin{table}[H]
+\centering
+\caption{The state of the project on 2 November 2026, and where the proof is.}
+\label{tab:etat-chiffre}
+\small
+\begin{tabularx}{\linewidth}{@{}p{3.9cm}Yp{2.6cm}@{}}
+\toprule
+Question & Answer & \textbf{Proof} \\
+\midrule
+Is an audit traceable? & Yes. Every tool call is archived with a reference,
+bounded, and a piece of evidence that cannot be archived stops the run instead of
+leaving a silent gap. The guards are application-level. & \textbf{Table~\ref{tab:composants}} \\
+Does the harness run outside the laboratory? & Yes, without broker and without a
+model, under a guard whose blind spots are declared. It instruments a contrast; it
+measures nothing. & \textbf{Table~\ref{tab:composants}} \\
+Are the protocols' contracts sound? & Yes. Briefing, private oracle and offline
+evaluator are separated, and the oracle is fixed before the run. & \textbf{Table~\ref{tab:composants}} \\
+Can results be delivered reproducibly? & Yes. Push, validate, deploy to one of
+three instances; no execution on a workstation. Single points of failure declared.
+& \textbf{Table~\ref{tab:composants}} \\
+Does the model beat the rules? & \textbf{Unknown, and not yet measurable.} & \textbf{Section~\ref{sec:construit}} \\
+How much of the corpus needs interpretation? & Two counts from two artefacts,
+never to be cited one for the other. Binary index: 282 entries by signature, 6 by
+logic (2.1\,\%). Interpretive audit: 243 decidable by a well-designed rule, 35
+mixed, 4 chaining, 6 logic (84.4\,\%) --- a sum over categories, not a field
+per entry. & \textbf{Section~\ref{sec:construit}} \\
+Is the measurement statistically valid? & The tool is repaired and refuses an
+indefensible figure; the trials that would give it data do not exist. & \textbf{Section~\ref{sec:construit}} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{How far the project goes}
+\label{sec:jusquou}
+
+The state of each item --- reached or not --- is in the project's current state
+page (\code{objectifs/ETAT-CURANT.md}), which this checkpoint does not repeat. What
+that table cannot carry is the other half: \emph{what would end each blockage}, as
+a criterion one can observe rather than a hope.
+
+
+
+Three of these four depend on the first. A comparable arm, a written reference
+automation and a corpus built for the question are worth building only once a
+situation exists that a one-line rule does not settle; before that, each of them
+measures the absence of that situation. \textbf{The first line is the only work that
+can start today.}
+
+This is where the report stops. Everything up to a verified measurement is built;
+the thing to be measured is not. The next result the project can legitimately
+produce is \emph{a trial that survives its closure test}, not a better score ---
+and it is the only line of the table whose proof needs no new agreement on method.
+
+\clearpage

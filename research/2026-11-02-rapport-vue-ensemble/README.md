@@ -1,5 +1,8 @@
 # Rapport d'état au 2 novembre 2026 : vue d'ensemble d'abord
 
+> **Checkpoint remplacé par → [le checkpoint du 3 novembre](../2026-11-03-rapport-8-pages/README.md)**,
+> version condensée à huit pages. Conservé tel quel comme archive.
+
 **Cycle de vie : Conclu — checkpoint.** Remplace le
 [checkpoint du 30 octobre](../2026-10-30-architecture-protocoles-avancement/README.md),
 conservé comme archive et comme source du détail d'implémentation.
