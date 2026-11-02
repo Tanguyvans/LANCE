@@ -3,14 +3,35 @@
 The report uses a small vocabulary throughout. Each term is defined here, in the
 order a newcomer meets them, so that no later section has to introduce it.
 
+\textbf{A word changed on 2 November 2026.} Earlier reports and the hypothesis
+register said \emph{family} for the group of scenarios submitted to the closure
+test. The word described the grouping and never what the grouping had to prove,
+which is how two trials came to be built and then failed against a rule that
+fits on one line. It is replaced by \emph{scenario}, \emph{series} and
+\emph{trial}, defined below; the code keeps the \texttt{family\_id} field, which names a
+data field and not the reasoning. The direction of the project states the same
+criterion: a result counts only when no one-line rule settles the case.
+
 \subsection{What is compared}
 
 \begin{description}[leftmargin=3.1cm, style=nextline]
+\item[Scenario (scénario)] The lowest unit: one deployment that gets audited ---
+its devices, its services, the flaw installed and the links allowed.
+
+\item[Series (série)] Scenarios that differ by one axis only: the same topology
+and the same flaw, with only the vulnerable machine changing type. The scenarios
+of one series are not separate observations.
+
+\item[Trial (épreuve)] What is submitted to the filter and the closure test. It
+holds one or several series and counts as \emph{one} observation: ten scenarios
+of one trial are still one trial. Earlier reports said \emph{family}; the word is
+retired because it named the grouping and never what the grouping had to prove.
+
 \item[Policy (politique)] One way of carrying out an audit. The programme
 compares three: a declared automation, a second automation that follows
 convention, and an agent driven by a language model.
 
-\item[Arm (bras)] One concrete implementation of a task inside a trial. The
+\item[Arm (bras)] One concrete implementation of the task inside a trial. The
 arms share the briefing and the journal; only the interpreter changes. A trial
 is typically run with three: the declared rules, a script reading by convention
 and the model. The witness is a value inside the fixture, not an arm.
@@ -21,25 +42,15 @@ This is the reference a model must beat for a result to mean anything. If a
 competent reader who knows the briefing can state the rule, D1+ contains it, and
 the trial measures nothing.
 
-\item[Scenario (scénario)] The lowest unit: one deployment that gets audited ---
-its devices, its services, the flaw installed and the links allowed.
-
-\item[Series (série)] Scenarios that differ by one axis only: the same topology
-and the same flaw, with only the vulnerable machine changing type.
-
-\item[Trial (épreuve)] What is submitted to the filter and the closure test. It
-holds one or several series and counts as \emph{one} observation: ten scenarios
-of one trial are still one trial.
-
 \item[Closure test (test de clôture)] The check performed before measuring a
 trial: a competent automation must fail. If it succeeds, the trial shows nothing
 about the model and is rejected. The test must be executable code, not a
-doctrine. A trial whose case one line of rule settles is not a trial; the word
-\emph{family}, used in earlier reports, is retired because it named the grouping
-and never what the grouping had to prove.
+doctrine.
 
-\item[Filter (filtre préalable)] The cheaper check that precedes construction: if
-the rule solving the case can be written in one line, a script will have it.
+\item[Filter (filtre préalable)] The cheaper check that precedes construction:
+if the rule settling the case can be written in one line, a script will have it,
+and the case is discarded rather than arranged.
+
 \end{description}
 
 \subsection{What makes a result verifiable}
