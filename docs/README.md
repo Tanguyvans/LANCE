@@ -4,7 +4,7 @@ Ce dossier regroupe les descriptions du système, les contrats retenus et les
 guides d'utilisation. Les hypothèses, revues bibliographiques et protocoles
 proposés sont regroupés dans les [dossiers de recherche](../research/README.md).
 Les [archives d'audit](#archives-historiques) décrivent des états passés.
-Le [rapport d'état du projet](../report/etat/etat.pdf)
+Le [rapport d'état du projet](../report/checkpoint-1/etat.pdf)
 développe les objectifs, l'architecture et le graphe, les réseaux, la sécurité,
 l'application, les modèles et le benchmark, avec un bilan par volet. C'est un
 **état au 2026-10-15, non contractuel** : il ne remplace pas les contrats de

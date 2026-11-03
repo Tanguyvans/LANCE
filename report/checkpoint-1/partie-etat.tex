@@ -11,12 +11,11 @@ that an audit carried out by an agent can be run, re-run and verified.
 
 
 The benchmark compares what one wants to compare under the same conditions; this
-checkpoint documents one case, an automation against a model. That use requires two
-things the platform does not yet supply. A trial in which
-the two candidates genuinely differ (Figures~\ref{fig:policies} and
-\ref{fig:units}). And an arm where only the interpretation changes, which does not
-exist. The platform exists, the instrumented comparison is half built, and the
-material to measure it has not been found yet.
+checkpoint documents one case, an automation against a model. Comparing the two is
+not possible yet: no trial separates them enough to tell them apart, and the arm
+that holds everything constant but the interpretation does not exist
+(Figure~\ref{fig:policies}). The platform is built, the comparison is half
+instrumented, and the material to measure it has not been found.
 
 % ---------------------------------------------------------------------------
 \subsection{What an audit does, and where the model decides}
@@ -97,8 +96,10 @@ LANCE deploys a scenario, hands it to an engine, archives what the engine does,
 and scores the result against a ground truth fixed in advance. Three engines are
 in question here: versioned procedures, the scanner followed by its rules, and a
 model given the scanner's observations alone. All three receive the same scenario
-and are judged by the same evaluator; what differs is what they are allowed to do
-with it. The third does not exist yet.
+and the same observations; what differs is what they are allowed to do with it. The
+third does not exist yet. The benchmark scores the full pipeline only: the other two
+run without a score, so a comparison across engines still needs an evaluator both of
+them go through.
 
 \begin{figure}[H]
 \centering
@@ -116,7 +117,7 @@ with it. The third does not exist yet.
 \node[tiny, below=2mm of rules] {runs, not scored};
 \node[tiny, below=2mm of llm, text=accent] {\textbf{does not exist}};
 \node[tiny, above=2.5mm of rules, text=accent, text width=80mm, align=center]
-  {all three receive the same scenario, the same observations and the same evaluator};
+  {all three receive the same scenario and the same observations};
 \draw[arrow] (-40,13) -- (-40,7);
 \draw[arrow] (0,13) -- (0,7);
 \draw[arrow] (40,13) -- (40,7);
@@ -141,50 +142,54 @@ third policy is the only one that answers it.
 \label{sec:unites}
 
 A comparison needs a unit of observation, or ten similar scenarios count as ten
-proofs. The smallest unit is the scenario. Scenarios that differ along one axis
-form a series. A trial is what is submitted to the closure test: it holds one or
-several series and counts as one observation.
+proofs. Two units are enough, and the distinction between them is what keeps the
+count honest.
+
+\begin{itemize}[leftmargin=1.2em,itemsep=.35em,topsep=.4em]
+\item \textbf{A scenario} is one deployment that gets audited: the devices, the
+services, the injected flaw and the links between them. Four scenarios that differ
+only by the kind of vulnerable machine are four pieces of matter, not four proofs.
+\item \textbf{A trial} is what is submitted to the closure test: one scenario, or a
+few that differ by a single axis. It counts as \emph{one} observation, whatever the
+number of runs it contains.
+\item \textbf{The number of runs does not enter the count.} The same scenario
+audited four times by the same model remains one data point, not four;
+\emph{series} stays a usage word for those runs, with no admission rule of its own.
+\end{itemize}
+
+Earlier reports said \emph{family}; the word is retired because it named the
+grouping and never what the grouping had to prove.
 
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[x=1mm,y=1mm,
   t/.style={font=\ttfamily\scriptsize, text=ink, anchor=west},
   n/.style={font=\sffamily\scriptsize, text=muted, anchor=west},
+  a/.style={font=\sffamily\scriptsize\itshape, text=muted, anchor=west},
   gl/.style={draw=line, line width=.5pt}]
-% level 0
 \node[t, font=\ttfamily\scriptsize\bfseries] (E) at (0,0) {trial/};
-\node[n] at (52,0) {what is submitted to the closure test};
-% spine + branches
-\draw[gl] (2.5,-1.2) -- (2.5,-25);
-\draw[gl] (2.5,-5) -- (6,-5);
-\draw[gl] (2.5,-20) -- (6,-20);
-\node[t, font=\ttfamily\scriptsize\bfseries] (A) at (7,-5) {series A/};
-\node[n] at (52,-5) {scenarios that differ by one axis only};
-\node[t, font=\ttfamily\scriptsize\bfseries] at (7,-20) {series B/};
-% within series A
-\draw[gl] (7.5,-6.6) -- (7.5,-14);
-\draw[gl] (7.5,-9) -- (11,-9);
-\draw[gl] (7.5,-12) -- (11,-12);
-\node[t] at (12,-9)  {scenario 1.yaml};
-\node[t] at (12,-12) {scenario 2.yaml};
-\node[n] at (52,-9)  {the vulnerable machine is a router};
-\node[n] at (52,-12) {\ldots{} is a sensor};
-% within series B
-\draw[gl] (7.5,-21.6) -- (7.5,-25);
-\draw[gl] (7.5,-22.5) -- (11,-22.5);
-\draw[gl] (7.5,-25) -- (11,-25);
-\node[t] at (12,-22.5) {scenario 3.yaml};
-\node[t] at (12,-25)   {scenario 4.yaml};
-\node[n] at (52,-22.5) {\ldots{} is a public API};
-\node[n] at (52,-25)   {\ldots{} a private one};
+\node[n] at (42,0) {what is submitted to the closure test};
+\draw[gl] (2.5,-1.2) -- (2.5,-17.5);
+\draw[gl] (2.5,-4) -- (6,-4);
+\draw[gl] (2.5,-8) -- (6,-8);
+\draw[gl] (2.5,-12) -- (6,-12);
+\draw[gl] (2.5,-17.5) -- (6,-17.5);
+\node[t] at (7,-4)  {scenario 1.yaml};
+\node[t] at (7,-8)  {scenario 2.yaml};
+\node[t] at (7,-12) {scenario 3.yaml};
+\node[t] at (7,-17.5) {scenario 4.yaml};
+\node[n] at (42,-4)  {the vulnerable machine is a router};
+\node[n] at (42,-8)  {\ldots{} is a sensor};
+\node[n] at (42,-12) {\ldots{} is a public API};
+\node[n] at (42,-17.5) {\ldots{} a private one};
+\node[a] at (7,-22) {these four form a series: same topology, one axis varies};
+\node[a] at (7,-25.5) {and they count as \textbf{one} observation, not four};
 \end{tikzpicture}
-\caption{The three units of the benchmark, lowest to highest. A \textbf{scenario}
-is one deployment that gets audited. A \textbf{series} holds the scenarios that
-differ by a single axis: here, only the kind of vulnerable machine changes. A
-\textbf{trial} is what is submitted to the closure test: it holds one or several
-series and counts as \emph{one} observation, so the four scenarios above are a
-single data point, not four. Earlier reports said \emph{family}; the word is
-retired because it named the grouping and never what the grouping had to prove.}
+\caption{What a trial contains. A \textbf{scenario} is one deployment that gets
+audited. Scenarios that differ by a single axis form a \emph{series}: here, only the
+kind of vulnerable machine changes. A \textbf{trial} is what is submitted to the
+closure test, and it counts as one observation whatever the number of scenarios and
+runs it holds.}
 \label{fig:units}
 \end{figure}
 
@@ -228,10 +233,10 @@ Is the measurement statistically valid? & The tool is repaired and refuses an
 indefensible figure; the trials that would give it data do not exist. & Section~\ref{sec:construit} \\
 \bottomrule
 \end{tabularx}
-\smallskip
-{\footnotesize\color{muted}Proof for the first four rows: Section~\ref{sec:construit},
-table~\ref{tab:composants}. The last three: same section.}
 \end{table}
+
+{\footnotesize\color{muted}Proof for the first four rows: Section~\ref{sec:construit},
+table~\ref{tab:composants}. The last three: the same section.}
 
 \subsection{How far the project goes}
 \label{sec:jusquou}
