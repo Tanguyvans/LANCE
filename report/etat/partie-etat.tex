@@ -5,7 +5,7 @@ This section answers the question of the report before the evidence arrives. It
 holds in four pages: what an audit does and who decides at each step
 (Figure~\ref{fig:audit}), which three policies are compared and what is missing for
 the comparison to be fair (Figure~\ref{fig:policies}), what blocks the conclusion and how the project got there
-(Figure~\ref{fig:blocages} and Table~\ref{tab:etat-chiffre}). The five parts that follow are the proof.
+(Table~\ref{tab:etat-chiffre}). The two sections that follow are the proof.
 
 \subsection{The project in one paragraph}
 
@@ -19,9 +19,9 @@ The answer requires three things, and the report follows that order. A system
 whose behaviour is traceable, so that a result can be attributed to a cause
 (Figure~\ref{fig:audit}). A comparison in which the only thing that changes is the
 reasoning capacity, not the information or the tools
-(Figure~\ref{fig:policies}). Scenarios where the two candidates genuinely differ
-(Figure~\ref{fig:blocages}). The first exists, the second is half built, the third
-does not yet exist. That is the whole state of the project.
+(Figure~\ref{fig:policies}). Trials where the two candidates genuinely differ,
+in the sense of Figure~\ref{fig:units}. The first exists, the second is half
+built, the third does not yet exist. That is the whole state of the project.
 
 % ---------------------------------------------------------------------------
 \subsection{What an audit does, and where the model decides}
@@ -158,42 +158,51 @@ removed or mirrored, an equal score would say nothing.
 \label{sec:blocages}
 
 The obstacle is not the measurement machinery, which is now sound, but the
-material it would need. Figure~\ref{fig:blocages} shows the chain as it stands and
-the one observation that changed everything on 30 October 2026.
+material it would need. The material it would need is a trial that a one-line rule does not cross; the
+episode of 30 October 2026 is the only one attempted, and it was rejected in an
+hour.
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[x=1mm, y=1mm,
-  pstep/.style={draw=line, fill=white, line width=.55pt, rounded corners=2pt,
-    text=ink, align=center, font=\sffamily\footnotesize, inner sep=4pt,
-    minimum height=13mm, text width=30mm},
-  ok/.style={pstep, fill=determ},
-  blocked/.style={pstep, draw=accent, fill=rose, line width=.9pt},
-  later/.style={pstep, dashed, text=muted},
-  flow/.style={-{Latex[length=1.8mm,width=1.1mm]}, draw=muted, line width=.7pt},
-  ret/.style={-{Latex[length=1.6mm,width=1.0mm]}, draw=accent, line width=.7pt, dashed}]
-\node[ok] (f) at (-53,0) {\textbf{a scenario}\\[-2pt]{\tiny a deployment, resettable}};
-\node[ok] (h) at (-14,0) {\textbf{scenarios, a series}\\[-2pt]{\tiny one trial, one observation}};
-\node[blocked] (c) at (25,0) {\textbf{a closure test}\\[-2pt]{\tiny does a one-line rule solve it?}};
-\node[later] (m) at (60,0) {\textbf{a measure}\\[-2pt]{\tiny arm against arm, interval}};
-\draw[flow] (f) -- (h);
-\draw[flow] (h) -- (c);
-\draw[flow, accent] (c) -- (m);
-\node[font=\sffamily\tiny, text=muted, align=center, text width=58mm, above=2mm of m, anchor=south]
-  {a trial survives only if a one-line rule does not cross it};
-\node[ok, below=13mm of f, text width=26mm] (build) {\tiny built: a probe of three registers};
-\node[ok, right=3mm of build, text width=24mm] (review) {\tiny six reviews validated it};
-\node[blocked, right=3mm of review, text width=26mm] (reject) {\tiny one hour of execution rejected it};
-\draw[flow] (build) -- (review);
-\draw[flow] (review) -- (reject);
-\draw[ret] (reject.north) -- (c.south);
-\node[font=\sffamily\tiny, text=accent, align=left, anchor=west] at (-18,-8.5) {a one-line rule defeats the trap};
+\begin{tikzpicture}[x=1mm,y=1mm,
+  t/.style={font=\ttfamily\scriptsize, text=ink, anchor=west},
+  n/.style={font=\sffamily\scriptsize, text=muted, anchor=west},
+  gl/.style={draw=line, line width=.5pt}]
+% level 0
+\node[t, font=\ttfamily\scriptsize\bfseries] (E) at (0,0) {\'epreuve/};
+\node[n] at (52,0) {what is submitted to the closure test};
+% spine + branches
+\draw[gl] (2.5,-1.2) -- (2.5,-25);
+\draw[gl] (2.5,-5) -- (6,-5);
+\draw[gl] (2.5,-20) -- (6,-20);
+\node[t, font=\ttfamily\scriptsize\bfseries] (A) at (7,-5) {s\'erie A/};
+\node[n] at (52,-5) {scenarios that differ by one axis only};
+\node[t, font=\ttfamily\scriptsize\bfseries] at (7,-20) {s\'erie B/};
+% within series A
+\draw[gl] (7.5,-6.6) -- (7.5,-14);
+\draw[gl] (7.5,-9) -- (11,-9);
+\draw[gl] (7.5,-12) -- (11,-12);
+\node[t] at (12,-9)  {sc\'enario 1.yaml};
+\node[t] at (12,-12) {sc\'enario 2.yaml};
+\node[n] at (52,-9)  {the vulnerable machine is a router};
+\node[n] at (52,-12) {\ldots{} is a sensor};
+% within series B
+\draw[gl] (7.5,-21.6) -- (7.5,-25);
+\draw[gl] (7.5,-22.5) -- (11,-22.5);
+\draw[gl] (7.5,-25) -- (11,-25);
+\node[t] at (12,-22.5) {sc\'enario 3.yaml};
+\node[t] at (12,-25)   {sc\'enario 4.yaml};
+\node[n] at (52,-22.5) {\ldots{} is a public API};
+\node[n] at (52,-25)   {\ldots{} a private one};
 \end{tikzpicture}
-\caption{The chain from a scenario to a measurement, and where it breaks. Every
-stage exists except the measure. The episode of 30 October shows why the closure
-test moved ahead of the reviews: one hour of observation rejected a design that
-six readings had validated.}
-\label{fig:blocages}
+\caption{The three units of the benchmark, lowest to highest. A \textbf{scenario}
+is one deployment that gets audited. A \textbf{series} holds the scenarios that
+differ by a single axis --- here, only the kind of vulnerable machine changes. A
+\textbf{trial} is what is submitted to the closure test: it holds one or several
+series and counts as \emph{one} observation, so the four scenarios above are a
+single data point, not four. Earlier reports said \emph{family}; the word is
+retired because it named the grouping and never what the grouping had to prove.}
+\label{fig:units}
 \end{figure}
 
 \textbf{What the closure test is.} Before building a trial, one asks whether a rule
