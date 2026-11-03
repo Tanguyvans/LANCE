@@ -68,7 +68,7 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 | Corpus | 29 scénarios, 288 entrées de vérité terrain. **243/288 (84,4 %)** à signature selon la lecture interprétative de l'audit ; l'index dérivé, binaire, donne **282/288** et 6 entrées logiques (S15, S22, S28) | `benchmarks/ground_truth/`, `benchmarks/labels/derived_index.json`, [audit de couverture](asiaccs-2027/audit-couverture.md) |
 | Noyau de harnais | quatre harnais délèguent à `build_run` ; un run incomplet est refusé à la construction | `benchmarks/experiments/harness/run.py`, `tests/test_harness_core.py` |
 | Bac à sable | bras déterministes hors laboratoire sous garde-fou d'audit ; `guard_clean`, angles morts déclarés, `claims_isolation = false` | `benchmarks/experiments/sandbox.py`, `tests/test_sandbox.py`, CI `benchmark-integrity.yml` |
-| Circuit de livraison | trois instances, déploiement automatique validé sur `main` et `dev/1` ; identité Tailscale déduite de l'interface | `scripts/deployment/deploy-instance.sh`, [rapport du 30 octobre](../research/2026-10-30-architecture-protocoles-avancement/README.md) |
+| Circuit de livraison | trois instances, déploiement automatique validé sur `main` et `dev/1` ; identité Tailscale déduite de l'interface | `scripts/deployment/deploy-instance.sh` |
 | **Bras LLM comparable** | **absent** : `vanilla` prend un CIDR et ne produit pas de score ; `rules` produit un score sans modèle | `src/agent/run_modes.py`, `docs/architecture/run-modes.md` |
 | Branche `dev/2` | 16 commits derrière `main` | `git log origin/dev/2..main` |
 
