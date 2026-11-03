@@ -28,6 +28,8 @@ un état dépassé sont datées ; la plus récente fait foi.
 - `model_training/` : entraînement des modèles.
 - `tests/` : tests de l'application ; l'entraînement possède ses propres tests.
 - `research/` : recherches par sujet, sources, hypothèses, protocoles proposés et analyses.
+- `report/` : les rapports d'état du projet, révisés sur place et datés en couverture ;
+  ce ne sont pas des recherches et ils ne vivent pas dans `research/`.
 - `docs/` : documentation de référence, organisée par architecture, guides, benchmark et entraînement.
 - `objectifs/` : ligne directrice du projet ; ne recopie ni étude ni résultat.
 - `presentations/` : supports de communication datés, sans autorité sur les pages de référence.
@@ -53,7 +55,7 @@ un état dépassé sont datées ; la plus récente fait foi.
   le recopier, et ajoute le seul élément que ce tableau ne porte pas : **ce qui
   franchirait chaque blocage**, comme critère observable. Seule une erreur
   factuelle se corrige sur place, datée et déclarée dans l'index. Les
-  checkpoints se nomment `report.tex` et `report.pdf`.
+  rapports d'état vivent dans `report/`, sous `etat.tex` et `etat.pdf`.
 - **Statut fermé.** Tout dossier prend un statut parmi `proposition`, `actif`,
   `dormant`, `conclu`, `remplacé`, avec sa date de revue et une ligne de
   format fixe dans l'index `research/README.md`. Un dossier remplacé le

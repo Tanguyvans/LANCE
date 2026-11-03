@@ -22,7 +22,6 @@ CLAUDE.md
 .DS_Store
 gha-creds-*.json
 texput.log
-report/
 # The report phase is source code, not generated report output.
 !/src/agent/phases/report/
 *.lance-sync-tmp
