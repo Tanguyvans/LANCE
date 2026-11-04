@@ -537,7 +537,11 @@ def test_stop_during_recovery_reports_stopped(mock_provider, output_dir):
     assert _validated_promotions(pipeline.run_dir) == []
 
 
-def test_exhausted_budget_before_recovery_propagates(mock_provider, output_dir):
+def test_zero_cost_ceiling_does_not_stop_the_run(mock_provider, output_dir):
+    # Project decision: cost is measured, never enforced. A zero cost ceiling
+    # must not raise BudgetExceeded — the run proceeds and fails on its own
+    # terms (truncation), not on a cost stop. Tool-call and time budgets still
+    # stop a run; cost does not.
     pipeline = Pipeline(
         provider=mock_provider, max_cost_usd=0,
     )
@@ -548,9 +552,8 @@ def test_exhausted_budget_before_recovery_propagates(mock_provider, output_dir):
         return "(truncated)"
 
     mock_provider.chat_with_tools.side_effect = provider_call
-    with pytest.raises(BudgetExceeded):
-        pipeline._run_agent(AGENTS["graph_analysis"], None)
-    assert mock_provider.chat_with_tools.call_count == 1
+    status = pipeline._run_agent(AGENTS["graph_analysis"], None)
+    assert not status.startswith("completed")
     assert not (pipeline.run_dir / "01_graph_analysis.md").exists()
 
 
@@ -631,7 +634,9 @@ def test_missing_one_device_blocks_recovery(mock_provider, output_dir):
     assert mock_provider.chat_with_tools.call_count == 1
 
 
-def test_budget_hit_by_recovery_response_checked_after_call(mock_provider, output_dir):
+def test_cost_ceiling_hit_during_recovery_does_not_stop(mock_provider, output_dir):
+    # Cost reaching the ceiling mid-run is observed, not enforced: no
+    # BudgetExceeded is raised even when the ceiling is hit after a response.
     pipeline = Pipeline(provider=mock_provider)
     _write_graph_ledger(pipeline.run_dir)
 
@@ -639,13 +644,13 @@ def test_budget_hit_by_recovery_response_checked_after_call(mock_provider, outpu
         call = mock_provider.chat_with_tools.call_count
         _propose(kwargs, "length" if call == 1 else "stop")
         if call == 2:
-            # Simulate observed usage reaching the ceiling on the last response,
-            # without relying on the provider itself to raise an exception.
+            # Observed usage reaches the ceiling on the last response; this must
+            # not stop the run (cost is observed, never enforced).
             pipeline.tracker.max_cost_usd = 0
         return "response"
 
     mock_provider.chat_with_tools.side_effect = provider_call
-    with pytest.raises(BudgetExceeded):
-        pipeline._run_agent(AGENTS["graph_analysis"])
-    assert mock_provider.chat_with_tools.call_count == 2
-    assert not (pipeline.run_dir / "01_graph_analysis.md").exists()
+    # Must not raise BudgetExceeded despite the zero ceiling; the run proceeds
+    # past the point the old cost stop would have halted it (call 2).
+    pipeline._run_agent(AGENTS["graph_analysis"])
+    assert mock_provider.chat_with_tools.call_count >= 2

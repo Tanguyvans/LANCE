@@ -238,14 +238,14 @@ class CostTracker:
             )
 
     def check_budget(self) -> None:
-        """Stop further work once observed usage reaches the configured limit.
+        """Cost is measured, never enforced.
 
-        This is an observed-usage limit, not a reservation of unknown future
-        provider charges. Concurrent in-flight calls may still complete.
+        Project decision: observe and report the cost, but never stop a run on
+        it. ``max_cost_usd`` is kept for reporting only. Tool-call and
+        elapsed-time bounds (raised as ``BudgetExceeded`` from the executor and
+        the run modes) are unaffected.
         """
-        if self.max_cost_usd is not None and self.total_cost() >= self.max_cost_usd:
-            self.budget_exhausted = True
-            raise BudgetExceeded(f"Observed cost limit reached (${self.max_cost_usd:.4f})")
+        return
 
     def finalize(self) -> None:
         """Freeze even interrupted worker usage before cleanup begins."""
