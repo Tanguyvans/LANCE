@@ -37,7 +37,8 @@ Une épreuve ne vaut que si elle **résiste**. Si la règle qui tranche le cas
 s'écrit en une ligne, elle est franchie et ne prouve rien. Le mot *famille* est
 abandonné : il décrivait le regroupement, jamais ce que le regroupement doit
 prouver. Les identifiants du code (`family_id`, noms de modules) ne changent pas ;
-ils nomment des données, pas le vocabulaire.
+ils nomment des données, pas le vocabulaire. En anglais, l'épreuve se dit
+*challenge* (pas *trial*, réservé à une répétition, comme le code `trial_id`).
 
 ## Priorités
 
@@ -61,10 +62,10 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 | V0, SSH | non couverte : dictionnaire d'identifiants fixe | `v0-protocole.md` |
 | H2, `s_mqtt_formats` | mesurée le 2026-10-22, 3 répétitions, 72 bras ; prédiction tenue mais **gain absorbé par un bras par convention** (0,5 contre 0,0 pour les parseurs déclarés, 1,0 pour le bras convention ; 1 dossier sur 2) | `research/2026-10-21-hypotheses-benchmark/h2-protocole.md` |
 | Pilotes SSH et MQTT | 6/6 pour les deux bras, 3 répétitions, `qwen3.8:27b` et `gemma4:26b-a4b-it` ; MoE ≈ 2× le coût et 1,3–1,7× la durée | runs `39465619725`, `39467657683`, `39480713050`, `39482737529` |
-| `s_api_organisations` | étude de cas de couverture, **non admise** (une famille, une répétition). Ses deux fixtures ne constituent pas un contrôle positif de D1+ : la politesse filtrante ne renvoie aucun canari, si bien que `run_rules` et un bras qui énumère les collections renvoient tous deux `private_disclosed=False`. Le contrôle de D1+ est **en cours de revue** ; le fait source est la note du dossier de la famille pilote | `benchmarks/experiments/api-reference/`, `tests/test_api_reference.py::test_adaptation_crosses_the_collection_boundary_only_when_the_flaw_exists` |
+| `s_api_organisations` | étude de cas de couverture, **non admise** (une épreuve, une répétition). Ses deux fixtures ne constituent pas un contrôle positif de D1+ : la politesse filtrante ne renvoie aucun canari, si bien que `run_rules` et un bras qui énumère les collections renvoient tous deux `private_disclosed=False`. Le contrôle de D1+ est **en cours de revue** ; le fait source est la note du dossier de l'épreuve pilote | `benchmarks/experiments/api-reference/`, `tests/test_api_reference.py::test_adaptation_crosses_the_collection_boundary_only_when_the_flaw_exists` |
 | Admission de campagne | `mt_admissible = false` ; `strict_v3_metrics_adopted` n'est jamais satisfait | `src/benchmark/v2_campaign.py` |
-| Inférence | unilatérale, corrigée le 2026-10-30 ; exige 5 familles pour décider, 3 pour produire un chiffre | `src/benchmark/inference.py`, `tests/test_inference.py` |
-| Familles H1, H3, H4, H5 | non ouvertes ; `s_chaines_identites` n'existe pas ; `s_registres_constructeur` construite puis **rejetée le 2026-10-30** : mécanisme franchi par une règle générique | [compte rendu de rejet](../research/2026-10-30-famille-pilote-registres-constructeur/compte-rendu-rejet.md) |
+| Inférence | unilatérale, corrigée le 2026-10-30 ; exige 5 épreuves pour décider, 3 pour produire un chiffre | `src/benchmark/inference.py`, `tests/test_inference.py` |
+| Épreuves H1, H3, H4, H5 | non ouvertes ; `s_chaines_identites` n'existe pas ; `s_registres_constructeur` construite puis **rejetée le 2026-10-30** : mécanisme franchi par une règle générique | [compte rendu de rejet](../research/2026-10-30-famille-pilote-registres-constructeur/compte-rendu-rejet.md) |
 | Corpus | 29 scénarios, 288 entrées de vérité terrain. **243/288 (84,4 %)** à signature selon la lecture interprétative de l'audit ; l'index dérivé, binaire, donne **282/288** et 6 entrées logiques (S15, S22, S28) | `benchmarks/ground_truth/`, `benchmarks/labels/derived_index.json`, [audit de couverture](asiaccs-2027/audit-couverture.md) |
 | Noyau de harnais | quatre harnais délèguent à `build_run` ; un run incomplet est refusé à la construction | `benchmarks/experiments/harness/run.py`, `tests/test_harness_core.py` |
 | Bac à sable | bras déterministes hors laboratoire sous garde-fou d'audit ; `guard_clean`, angles morts déclarés, `claims_isolation = false` | `benchmarks/experiments/sandbox.py`, `tests/test_sandbox.py`, CI `benchmark-integrity.yml` |
@@ -74,18 +75,18 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 
 ## Blocages
 
-0. **Les familles sont fabriquées.** `policy_pair_runner.py:225` écrit
+0. **Les épreuves sont fabriquées.** `policy_pair_runner.py:225` écrit
    `family_id: "ui-public-scenario"` en dur, et chaque scénario du catalogue
-   porte son propre identifiant comme famille. Le corpus ne contient au mieux
-   que trois familles défendables, alors que l'inférence en exige cinq pour
+   porte son propre identifiant comme épreuve. Le corpus ne contient au mieux
+   que trois épreuves défendables, alors que l'inférence en exige cinq pour
    décider. Tant que ce point n'est pas résolu, aucun test statistique ne peut
-   être présenté comme une conclusion. C'est l'objet de la famille pilote.
+   être présenté comme une conclusion. C'est l'objet de l'épreuve pilote.
 1. **La mesure — corrigée le 2026-10-30.** Le module calcule désormais une
-   p-value unilatérale : test du signe exact jusqu'à sept familles, bootstrap
-   au-delà, refus explicite sous trois familles. Une décision exige cinq
-   familles au moins, faute de quoi même cinq familles concordantes ne peuvent
+   p-value unilatérale : test du signe exact jusqu'à sept épreuves, bootstrap
+   au-delà, refus explicite sous trois épreuves. Une décision exige cinq
+   épreuves au moins, faute de quoi même cinq épreuves concordantes ne peuvent
    atteindre le seuil. Le blocage restant n'est plus le calcul mais **l'absence
-   de familles indépendantes** : aucune donnée existante ne permet de conclure.
+   d'épreuves indépendantes** : aucune donnée existante ne permet de conclure.
 2. **La condition d'ouverture.** D1+ (« D1 + toutes les règles dérivables des
    entrées publiques ») n'existe qu'en doctrine. H1, H3, H4 et H5 en dépendent :
    sans lui, aucune ne peut être ouverte de façon défendable.
@@ -94,7 +95,7 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
    catalogue. Un écart nul y est attendu par construction.
 4. **Les critères de décision.** La branche « soumettre » exige un critère
    inatteignable, « repositionné » exige une puissance non définie, et
-   « ne pas soumettre » rejette tout effet mono-famille — ce que sont tous les
+   « ne pas soumettre » rejette tout effet mono-épreuve — ce que sont tous les
    designs actuels. Ils ne peuvent pas dire non.
 5. **Le livrable.** L'artefact anonymisé exigé par l'appendice Open Science
    n'existe pas, et les harnais vivants ne tournent que sur nato.
@@ -103,11 +104,11 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 
 Dans l'ordre des dépendances, sans dates.
 
-1. **Construire une famille réellement indépendante.** Une seule, menée de bout
+1. **Construire une épreuve réellement indépendante.** Une seule, menée de bout
    en bout : D1+ exécutable, test de clôture hashé, simulateur propre, huit
    fixtures, trois bras. C'est le gabarit des suivantes et la condition de toute
    conclusion défendable. Cahier des charges :
-   [famille pilote `s_registres_constructeur`](../research/2026-10-30-famille-pilote-registres-constructeur/README.md).
+   [épreuve pilote `s_registres_constructeur`](../research/2026-10-30-famille-pilote-registres-constructeur/README.md).
 2. **Comparer les trois politiques sur un même scénario.** C'est l'objectif de
    fond : sur un scénario donné, savoir ce que trouvent les automatisations
    (`scripted`), les règles déclarées (`rules`) et le modèle seul
@@ -119,7 +120,7 @@ Dans l'ordre des dépendances, sans dates.
    identique sur quatre séries de comportements différents.
 4. **Décider D1+** : l'implémenter, ou abandonner H1/H3/H4/H5 pour cette
    campagne et l'écrire comme limite.
-5. **Étendre aux autres familles** et H2 (autres schémas, second
+5. **Étendre aux autres épreuves** et H2 (autres schémas, second
    modèle).
 6. **Produire l'artefact anonymisé** : fixtures H2, oracle, évaluateur et
    contrôle V0, exécutables hors laboratoire.
@@ -149,10 +150,10 @@ référence d'observation. Il ne reçoit ni les constats des règles, ni la vér
 terrain, ni le nombre attendu de failles. L'écart entre `rules` et
 `llm_on_evidence` mesure alors la seule qualité d'interprétation.
 
-**Ce que ce bras exclut (tranché le 2026-10-30, à l'ouverture de la famille
+**Ce que ce bras exclut (tranché le 2026-10-30, à l'ouverture de l'épreuve
 pilote).** Le modèle reçoit un **journal d'observations figé** et **aucun
 outil** : il ne peut pas sonder pour confirmer. La comparaison porte donc sur
-l'interprétation seule, et **la famille pilote ne mesure pas la vérification par
+l'interprétation seule, et **l'épreuve pilote ne mesure pas la vérification par
 sondes**. Ce n'est pas une limite qu'on espère régler plus tard : dès que le
 bras émet des sondes, il mesure « qui peut vérifier » et retombe dans le
 premier des quatre mécanismes ci-dessous. Mesurer les deux à la fois exige un
@@ -166,7 +167,7 @@ code avantagent `rules`, et chacun rendrait l'écart ininterprétable :
    candidat ; l'étage `confirmed` du funnel exige cette provenance. Un bras qui
    ne peut pas sonder n'atteindrait jamais cet étage.
 2. `supplemental.py` **réécrit** les fichiers `03_scans` en y ajoutant des
-   sondes dérivées (familles S16 à S18). L'observation n'est donc pas figée au
+   sondes dérivées (épreuves S16 à S18). L'observation n'est donc pas figée au
    sortir du scanner.
 3. L'agrégation **ajoute les constats des règles** aux constats du modèle
    (`add_scanner_candidates`), ce qui gonflerait mécaniquement le score du bras

@@ -179,9 +179,9 @@ Pour commencer : [README](README.md), [recherches](research/README.md), [documen
 ## Ne pas réinventer ce qui a échoué
 
 La section « Ce qui a déjà été essayé, et pourquoi ça n'a pas abouti » du cahier
-des charges de la famille pilote
+des charges de l'épreuve pilote
 ([`research/2026-10-30-famille-pilote-registres-constructeur`](research/2026-10-30-famille-pilote-registres-constructeur/README.md#ce-qui-a-déjà-été-essayé-et-pourquoi-ça-a-échoué))
-énumère des impasses déjà payées : regrouper les scénarios existants en familles,
+énumère des impasses déjà payées : regrouper les scénarios existants en épreuves,
 supposer un `family_id` significatif, écrire un scénario sans test de clôture
 exécutable, comparer deux bras qui n'ont pas le même pouvoir de vérification.
 Lire cette section avant tout nouveau scénario ou toute nouvelle comparaison.
