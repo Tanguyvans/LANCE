@@ -39,3 +39,11 @@ paper/page*.png
 paper/pg_*.png
 paper/pv_*.png
 test_regex.py
+
+# LaTeX build artefacts of the state report
+report/*/etat.aux
+report/*/etat.log
+report/*/etat.toc
+report/*/etat.out
+report/*/etat.fls
+report/*/etat.fdb_latexmk
