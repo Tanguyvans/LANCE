@@ -28,9 +28,9 @@ interpretation is needed (Figure~\ref{fig:audit}) & two scenarios on one
 laboratory are not mutually excluded \\
 Evidence contracts & briefing, private oracle and offline evaluator separated;
 the oracle is fixed before the run & four protocols only \\
-Harnesses & one contract, one deterministic arm, one model arm, one evaluator per
-protocol & the H2 arms are offline; other controllers need the laboratory \\
-Sandbox & the deterministic arms run without broker, model or laboratory, under a
+Harnesses & one contract, one deterministic engine, one model engine, one evaluator per
+protocol & the H2 engines are offline; other controllers need the laboratory \\
+Sandbox & the deterministic engines run without broker, model or laboratory, under a
 guard whose blind spots are declared & it instruments a contrast, it measures
 nothing \\
 Corpus & 288 ground-truth entries over the catalogue & built around what signature
@@ -44,15 +44,16 @@ figure below three trials & it has nothing to compute on \\
 \subsection{What is measured, and what the measures say}
 
 \textbf{The fidelity gate passes, partially.} The V0 control, a task solvable
-without inference, succeeds on both arms three times out of three, with a
+without inference, succeeds on both engines three times out of three, with a
 saturating control: it is readable for a repeated defect, not for a rare one. The
 threshold frozen at 0.9 is computed separately by the gate and conditions nothing.
 
 \textbf{One trial was measured, and its gain was absorbed.} H2, on 22 October
-2026: eight fixtures, 25 messages, two readable runs. The first ran the two arms
-of the time; the reference run that replaced it rotates three arms over three
-repetitions, 72 arms. On the raw variants the model arm scores 0.5, the declared
-parser 0.0, and an arm reading by convention covers 8 of 8: it absorbs the gain
+2026: eight fixtures, 25 messages, two readable runs. The first ran the two
+engines of the time; the reference run that replaced it rotates three engines over
+three repetitions, which gives 72 runs. On the raw variants the model scores 0.5,
+the declared parser 0.0, and a third engine reading by convention covers 8 of 8:
+it absorbs the gain
 without declaring anything.
 
 \textbf{One trial was built and rejected in an hour.} The vendor-register probe

@@ -12,7 +12,7 @@ that an audit carried out by an agent can be run, re-run and verified.
 
 The benchmark compares what one wants to compare under the same conditions; this
 checkpoint documents one case, an automation against a model. Comparing the two is
-not possible yet: no trial separates them enough to tell them apart, and the arm
+not possible yet: no trial separates them enough to tell them apart, and the engine
 that holds everything constant but the interpretation does not exist
 (Figure~\ref{fig:policies}). The platform is built, the comparison is half
 instrumented, and the material to measure it has not been found.
@@ -79,10 +79,10 @@ policy runs, in a file the policy never receives. A finding that contradicts the
 oracle invalidates the trial instead of correcting it. This precedence is what
 prevents the answer from being adjusted after the fact.
 
-\textbf{The score is recomputed, never taken on trust.} The SSH, MQTT, API and V0
+\textbf{The score is recomputed, never taken on trust.} A finding counts as found
+only if the evidence it cites appears in the journal. The SSH, MQTT, API and V0
 evaluators receive only the briefing, the oracle, the journal and the final
-decision, and they refuse a decision that cites an observation absent from the
-journal. The benchmark score of a pipeline run does not perform that check; the
+decision, and they return an unknown outcome when a cited observation is missing. The benchmark score of a pipeline run does not perform that check; the
 confirmed metrics it would need are not emitted by the harnesses today.
 \paragraph{Where this lives.}
 Phase registry \code{src/agent/phases/registry.py}; governance boundary
@@ -125,7 +125,7 @@ them go through.
 \caption{The three policies and what is missing. The third would give the model the
 observations the rules already receive and nothing else: no rule findings, no
 ground truth, no expected count of flaws. It does not exist, and without it a
-comparison has two arms and measures verification rather than interpretation.}
+comparison has two engines and measures verification rather than interpretation.}
 \label{fig:policies}
 \end{figure}
 
