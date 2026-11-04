@@ -1,0 +1,94 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\frenchsetup{SmallCapsFigTabCaptions=false}
+% The English language files of this Babel installation are broken, so the
+% French language is loaded for hyphenation only and every caption is renamed.
+\addto{\captionsfrench}{%
+  \renewcommand{\contentsname}{Contents}%
+  \renewcommand{\abstractname}{Abstract}%
+  \renewcommand{\figurename}{Figure}%
+  \renewcommand{\tablename}{Table}%
+  \renewcommand{\refname}{References}%
+}
+\usepackage{lmodern,microtype,amsmath}
+\usepackage[margin=23mm]{geometry}
+\usepackage{booktabs,array,tabularx,longtable}
+\usepackage{xcolor,tikz,enumitem,float}
+\usepackage{hyperref}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,shapes.geometric}
+\definecolor{ink}{HTML}{1F242C}
+\definecolor{muted}{HTML}{5C626C}
+\definecolor{line}{HTML}{D9DEE5}
+\definecolor{accent}{HTML}{AF0032}
+\definecolor{rose}{HTML}{FDF0F4}
+\definecolor{agent}{HTML}{EDF1F8}
+\definecolor{agentline}{HTML}{5A6B8C}
+\definecolor{determ}{HTML}{F2F2F0}
+\definecolor{warn}{HTML}{8A5A00}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=ink,
+ pdftitle={LANCE: where the project stands},
+ pdfauthor={LANCE project},pdflang={en-GB}}
+\urlstyle{same}
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\DeclareRobustCommand{\code}[1]{{\small\path{#1}}}
+\newcommand{\source}[2]{\href{../../#1}{\nolinkurl{#1}}. #2}
+% Engineering detail lives in the margin, so the argument stays readable.
+\DeclareRobustCommand{\marginref}[1]{\marginpar{\raggedright\scriptsize\textcolor{muted}{#1}}}
+\newcommand{\revision}{2026-11-03 11:30 (Europe/Brussels, UTC+01:00)}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=5mm,topsep=3pt}
+\clubpenalty=10000 \widowpenalty=10000
+\setcounter{tocdepth}{1}
+% A clear boundary between the state (which is the point) and the evidence.
+\usepackage{titlesec}
+\titleformat{\section}[block]
+  {\normalfont\sffamily\bfseries\Large\color{ink}}
+  {\colorbox{ink}{\makebox[1.1em][c]{\color{white}\thesection}}}
+  {0.8em}{}[{\vspace{3pt}{\color{line}\titlerule[0.6pt]}}]
+\titlespacing*{\section}{0pt}{18pt}{12pt}
+
+\title{LANCE\\[4pt]
+\large Where the project stands\\[2pt]
+\normalsize Checkpoint 3: state report as of 3 November 2026}
+\author{LANCE project\\\small Written by specialist strands, independently reviewed and synthesised}
+\date{Last revision: \revision\\[3pt]
+\small Code at \code{546b911} (30 October 2026); no source change since.\\
+No new experiment is reported: the measurements cited are those already recorded.}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+LANCE is a platform for auditing authorised connected-object networks with
+language-model agents, inside a sandbox. A scenario is deployed, an agent audits
+it, its evidence is archived, and what it found is scored against a ground truth.
+Developed in the context of the UMONS work of the NATO SPS G6259 programme.
+
+Its benchmark compares what one wants to compare, under the same conditions. This
+checkpoint documents one case, an automation against a model.
+
+Nothing counts as a result until the project can point to a case where a rule
+written on one line gets the answer wrong and reasoning over several observations
+gets it right. Without such cases, nothing else the project does counts.
+
+The position is unchanged since the previous checkpoint: the platform is built,
+instrumented and documented, and its chain of evidence is sound.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+% === WHERE THE PROJECT STANDS: the whole answer, before the evidence ===
+\input{partie-etat}
+
+% === WHAT IS BUILT, AND WHAT IS MEASURED ===
+\input{partie-construit}
+
+% === WHAT REMAINS ===
+\input{partie-reste}
+
+\end{document}
