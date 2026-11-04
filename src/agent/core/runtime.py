@@ -22,13 +22,7 @@ from src.benchmark.tool_registry import (
 )
 from src.agent.registry import AGENTS, AgentConfig
 from src.agent.exploit_evidence import (
-    extract_endpoint_paths as _extract_endpoint_paths,
-    has_positive_exploit_evidence as _has_positive_exploit_evidence,
     synthesize_exploit_result as _synthesize_exploit_result,
-)
-from src.agent.finding_policy import (
-    finding_semantic_issue as _finding_semantic_issue,
-    normalise_full_finding_semantics as _normalise_full_finding_semantics,
 )
 from src.agent.report_evidence import phase4_evidence_level as _phase4_evidence_level, is_verified_report_finding as _is_verified_report_finding
 from src.agent.execution_profiles import (
