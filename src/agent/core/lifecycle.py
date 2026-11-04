@@ -32,7 +32,18 @@ class ScenarioLifecycle:
             return
         if stream_callback:
             stream_callback({"type": "pipeline_start", "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": None, "execution_profile": self.execution_profile.name})
-        success = self._run_scenario_deploy(stream_callback)
+        try:
+            success = self._run_scenario_deploy(stream_callback)
+        except Exception:
+            # Handled playbook failures already teardown; an unexpected error
+            # (e.g. writing run meta) must not leave partially created VMs
+            # behind either. Mirror the cleanup of the failure paths below.
+            if getattr(self, "_scenario_owned", False):
+                try:
+                    self._run_teardown(stream_callback)
+                except Exception:
+                    log.exception("Teardown after deploy_only failure also failed")
+            raise
         if stream_callback:
             stream_callback({
                 "type": "pipeline_done",
@@ -215,7 +226,9 @@ class ScenarioLifecycle:
                 **_v2_data.get("scenario_vmid_ranges_v2", {}),
             }
             scenario_ids = [int(k) for k in scenario_ranges]
-        except Exception:
+        except (OSError, yaml.YAMLError, ValueError, AttributeError, TypeError) as exc:
+            log.warning("Could not read scenario VMID ranges from inventory (%s); "
+                        "pre-teardown will scan nothing", exc)
             scenario_ranges = {}
             scenario_ids = list(range(1, 11))
 
@@ -225,8 +238,9 @@ class ScenarioLifecycle:
             inv_yml = repo_root / "benchmarks/ansible/inventory.yml"
             inv = yaml.safe_load(inv_yml.read_text(encoding="utf-8"))
             proxmox_host = inv["all"]["hosts"]["proxmox"]["ansible_host"]
-        except Exception:
-            pass
+        except (OSError, yaml.YAMLError, KeyError, TypeError) as exc:
+            log.warning("Could not read the Proxmox host from inventory (%s); "
+                        "falling back to %s", exc, proxmox_host)
 
         if stream_callback:
             stream_callback({"type": "info", "message": (
