@@ -3,10 +3,11 @@
 
 \subsection{The project in one paragraph}
 
-LANCE lets language-model agents audit IoT networks. From a description it builds
-the network to audit, hands the scenario to an agent, archives everything the agent
-does, and scores the result against a ground truth fixed in advance. The point is
-not that a model should win, but that an audit carried out by an agent can be run,
+LANCE lets different audit approaches --- language-model agents and simpler
+scripted ones --- run against IoT networks. From a description it builds the
+network to audit, hands the scenario to an approach, archives everything it does,
+and scores the result against a ground truth fixed in advance. The point is not
+that a model should win, but that an audit, by whatever approach, can be run,
 re-run and verified.
 
 The benchmark compares what one wants to compare under the same conditions; this
@@ -132,7 +133,7 @@ comparison has two policies and measures verification rather than interpretation
 a network freely changes too much at once: the targets chosen, the order of the
 probes and the interpretation all differ, so a better score cannot be attributed
 to reasoning. Giving the model the scanner's observations isolates one
-variable: \emph{who interprets}. That is the question the programme asked, and the
+variable: \emph{who interprets}. That is the question this comparison asks, and the
 third policy is the only one that answers it.
 
 % ---------------------------------------------------------------------------

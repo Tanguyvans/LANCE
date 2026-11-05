@@ -1,22 +1,30 @@
 # État courant
 
-**Dernière mise à jour : 2026-11-02 20:40 (Europe/Brussels, UTC+01:00).**
+**Dernière mise à jour : 2026-11-05 (Europe/Brussels, UTC+01:00).**
 
 Point de reprise : ce qui est vrai, ce qui bloque, ce qui vient ensuite. Le
 détail des études reste dans `research/` ; l'historique des runs reste dans git.
 
 ## But
 
-Un auditeur de réseaux IoT/IIoT autonome et prouvable : il explore, trouve,
-vérifie et rapporte, avec des preuves recalculables.
+LANCE est un **outil d'audit de réseaux IoT/IIoT** où l'on lance différentes
+approches d'audit — des agents pilotés par un LLM comme des approches plus simples,
+scriptées — de façon sûre, tracée, avec des preuves recalculables. Une approche
+explore, trouve, vérifie et rapporte. L'intérêt est de pouvoir **brancher et lancer
+des éléments variés** et observer ce qu'ils font, pas de trancher un duel entre deux
+d'entre eux.
 
-Question mesurée : **quand un agent LLM apporte-t-il quelque chose qu'une
-automatisation à règles ne peut pas apporter, à outils, preuves et budgets
-identiques ?**
+Les **benchmarks** (scénarios + vérité terrain) sont une couche d'évaluation
+**distincte**, posée par-dessus, et **pas le chantier courant** (quelques scénarios
+existent déjà). Une des questions qu'ils permettront de mesurer — **quand un agent
+LLM apporte-t-il quelque chose qu'une automatisation à règles ne peut pas, à
+outils, preuves et budgets identiques ?** — reste ouverte ; c'est un usage parmi
+d'autres, pas le cœur du projet.
 
 ## Ce qui compte comme résultat
 
-Une situation où **aucune règle d'une ligne ne tranche**, et où une décision
+*(Ce critère concerne le volet benchmark/comparaison ci-dessus, pas l'outil
+lui-même.)* Une situation où **aucune règle d'une ligne ne tranche**, et où une décision
 fondée sur plusieurs observations tranche. La règle s'écrit d'abord ; si elle
 s'écrit, la situation est écartée, pas aménagée.
 
@@ -42,14 +50,17 @@ ils nomment des données, pas le vocabulaire. En anglais, l'épreuve se dit
 
 ## Priorités
 
-1. **Les situations candidates** — écrire celles qu'aucune règle d'une ligne ne
-   tranche, et la règle qui échoue, avant tout autre travail. Le corpus actuel
-   n'en fournit presque aucune : 24 topologies sur 29 ne comportent qu'un seul
-   sous-réseau.
-2. **Le benchmark** — instrument comparatif, structuré par le
+1. **L'outil / la plateforme** — déployer un scénario, y lancer différentes
+   approches d'audit, suivre, récupérer, isoler, nettoyer. C'est le cœur : pouvoir
+   brancher et exécuter des éléments variés.
+2. **Le benchmark** — couche d'évaluation distincte, instrument comparatif
+   structuré par le
    [registre d'hypothèses](../research/2026-10-21-hypotheses-benchmark/README.md)
-   (V0 et H1-H6), pas par une liste de scénarios.
-3. **La plateforme** — déployer, lancer, suivre, récupérer, isoler, nettoyer.
+   (V0 et H1-H6), pas par une liste de scénarios. Pas le chantier courant.
+3. **Les situations candidates** — ce que le benchmark doit d'abord trouver pour
+   mesurer quelque chose : celles qu'aucune règle d'une ligne ne tranche, et la
+   règle qui échoue. Le corpus actuel n'en fournit presque aucune : 24 topologies
+   sur 29 ne comportent qu'un seul sous-réseau.
 
 L'entraînement des modèles est hors priorité. Aucune étape n'est datée : une
 étape commence quand la précédente est vérifiée.
@@ -68,7 +79,7 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 | Épreuves H1, H3, H4, H5 | non ouvertes ; `s_chaines_identites` n'existe pas ; `s_registres_constructeur` construite puis **rejetée le 2026-10-30** : mécanisme franchi par une règle générique | [compte rendu de rejet](../research/2026-10-30-famille-pilote-registres-constructeur/compte-rendu-rejet.md) |
 | Corpus | 29 scénarios, 288 entrées de vérité terrain. **243/288 (84,4 %)** à signature selon la lecture interprétative de l'audit ; l'index dérivé, binaire, donne **282/288** et 6 entrées logiques (S15, S22, S28) | `benchmarks/ground_truth/`, `benchmarks/labels/derived_index.json`, [audit de couverture](asiaccs-2027/audit-couverture.md) |
 | Noyau de harnais | quatre harnais délèguent à `build_run` ; un run incomplet est refusé à la construction | `benchmarks/experiments/harness/run.py`, `tests/test_harness_core.py` |
-| Bac à sable | bras déterministes hors laboratoire sous garde-fou d'audit ; `guard_clean`, angles morts déclarés, `claims_isolation = false` | `benchmarks/experiments/sandbox.py`, `tests/test_sandbox.py`, CI `benchmark-integrity.yml` |
+| Sandbox (harnais hermétique) | bras déterministes hors laboratoire sous garde-fou d'audit ; `guard_clean`, angles morts déclarés, `claims_isolation = false` | `benchmarks/experiments/sandbox.py`, `tests/test_sandbox.py`, CI `benchmark-integrity.yml` |
 | Circuit de livraison | trois instances, déploiement automatique validé sur `main` et `dev/1` ; identité Tailscale déduite de l'interface | `scripts/deployment/deploy-instance.sh` |
 | **Bras LLM comparable** | **absent** : `vanilla` prend un CIDR et ne produit pas de score ; `rules` produit un score sans modèle | `src/agent/run_modes.py`, `docs/architecture/run-modes.md` |
 | Branche `dev/2` | 16 commits derrière `main` | `git log origin/dev/2..main` |
@@ -109,8 +120,8 @@ Dans l'ordre des dépendances, sans dates.
    fixtures, trois bras. C'est le gabarit des suivantes et la condition de toute
    conclusion défendable. Cahier des charges :
    [épreuve pilote `s_registres_constructeur`](../research/2026-10-30-famille-pilote-registres-constructeur/README.md).
-2. **Comparer les trois politiques sur un même scénario.** C'est l'objectif de
-   fond : sur un scénario donné, savoir ce que trouvent les automatisations
+2. **Comparer les trois politiques sur un même scénario.** C'est l'objectif de ce
+   volet : sur un scénario donné, savoir ce que trouvent les automatisations
    (`scripted`), les règles déclarées (`rules`) et le modèle seul
    (`llm_on_evidence`), avec les mêmes observations et le même cadre
    d'évaluation. Voir la section « Comparer les trois politiques » ci-dessous,

@@ -2,12 +2,15 @@
 
 ## Vue d'ensemble
 
-LANCE est un outil d'audit de sécurité de réseaux IoT autorisés, piloté par des
-modèles de langage. Son pipeline explore le réseau, analyse les failles potentielles,
-vérifie les preuves, évalue les accès obtenus et produit un rapport.
+LANCE est un outil d'audit de sécurité de réseaux IoT autorisés où l'on lance
+différentes approches d'audit — des agents pilotés par des modèles de langage comme
+des approches plus simples, scriptées. Une approche explore le réseau, analyse les
+failles potentielles, vérifie les preuves, évalue les accès obtenus et produit un
+rapport.
 Une API et une interface web permettent de lancer et de suivre les exécutions.
-Le benchmark fournit des scénarios reproductibles pour comparer les résultats ;
-l'entraînement des modèles constitue un volet distinct du projet.
+Le benchmark — scénarios reproductibles et vérité terrain — est une couche
+d'évaluation distincte, posée par-dessus ; l'entraînement des modèles constitue un
+volet distinct du projet.
 
 ## Par où commencer
 

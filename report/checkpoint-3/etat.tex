@@ -34,7 +34,7 @@
 \def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \DeclareRobustCommand{\code}[1]{{\small\path{#1}}}
-\newcommand{\revision}{2026-11-03 11:30 (Europe/Brussels, UTC+01:00)}
+\newcommand{\revision}{2026-11-05 (Europe/Brussels, UTC+01:00)}
 \setlength{\parskip}{3pt}
 \setlength{\emergencystretch}{2em}
 \setlist{nosep,leftmargin=5mm,topsep=3pt}
@@ -61,18 +61,21 @@ No new experiment is reported: the measurements cited are those already recorded
 \maketitle
 
 \begin{abstract}
-LANCE is a platform for auditing authorised connected-object networks with
-language-model agents, inside a laboratory. A scenario is deployed, an agent audits
-it, its evidence is archived, and what it found is scored against a ground truth.
-Developed in the context of the UMONS work of the NATO SPS G6259 programme.
+LANCE is a tool for auditing authorised connected-object networks: it runs
+different audit approaches against a network --- language-model agents among them,
+alongside simpler scripted ones --- and records what each one does. A scenario is
+deployed, an approach audits it, its evidence is archived, and what it found is
+scored against a ground truth. Developed in the context of the UMONS work of the
+NATO SPS G6259 programme.
 
 Its benchmark is built to compare what one wants to compare, under the same
 conditions. This checkpoint documents one case, an automation against a model; the
 comparison that would separate them is not yet possible.
 
-Nothing counts as a result until the project can point to a case where a rule
-written on one line gets the answer wrong and reasoning over several readings
-gets it right. Without such cases, nothing else the project does counts.
+Within its benchmark layer, nothing counts as a result until one can point to a
+case where a rule written on one line gets the answer wrong and reasoning over
+several readings gets it right. This bears on that comparison, not on the tool
+itself.
 
 The scientific position is unchanged since the previous checkpoint --- the platform
 is built, instrumented and documented, its chain of evidence sound --- but the
