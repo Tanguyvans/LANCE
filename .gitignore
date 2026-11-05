@@ -14,7 +14,9 @@ build/
 output/
 data/
 lib/
+tmp/
 benchmarks/ansible/group_vars/vault.yml
+benchmarks/ansible/inventory.local.yml
 PLAN.md
 CLAUDE.md
 .claude/
