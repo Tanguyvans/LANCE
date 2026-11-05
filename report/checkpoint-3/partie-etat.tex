@@ -3,17 +3,16 @@
 
 \subsection{The project in one paragraph}
 
-LANCE lets language-model agents audit IoT networks. It builds the network it
-wants to audit from a description, hands the scenario to an agent, archives everything the agent does, and scores what it found against a
-ground truth fixed in advance. The point is not that a model should win: it is
-that an audit carried out by an agent can be run, re-run and verified.
-
-
+LANCE lets language-model agents audit IoT networks. From a description it builds
+the network to audit, hands the scenario to an agent, archives everything the agent
+does, and scores the result against a ground truth fixed in advance. The point is
+not that a model should win, but that an audit carried out by an agent can be run,
+re-run and verified.
 
 The benchmark compares what one wants to compare under the same conditions; this
 checkpoint documents one case, an automation against a model. Comparing the two is
-not possible yet: no challenge separates them enough to tell them apart, and the engine
-that holds everything constant but the interpretation does not exist
+not possible yet: no challenge has yet separated them enough to tell them apart, and
+the policy that holds everything constant but the interpretation does not exist
 (Figure~\ref{fig:policies}). The platform is built, the comparison is half
 instrumented, and the material to measure it has not been found.
 
@@ -90,16 +89,16 @@ Phase registry \code{src/agent/phases/registry.py}; governance boundary
 \code{benchmarks/experiments/}.
 
 % ---------------------------------------------------------------------------
-\subsection{What runs in the sandbox}
+\subsection{What runs in the laboratory}
 
-LANCE deploys a scenario, hands it to an engine, archives what the engine does,
-and scores the result against a ground truth fixed in advance. Three engines are
+Inside the laboratory, a deployed scenario is handed to a policy and its result
+scored against the ground truth fixed in advance. Three policies are
 in question here: versioned procedures, the scanner followed by its rules, and a
 model given the scanner's observations alone. All three receive the same scenario
 and the same observations; what differs is what they are allowed to do with it. The
-third does not exist yet. The benchmark scores the full pipeline only: the other two
-run without a score, so a comparison across engines still needs an evaluator both of
-them go through.
+third does not exist yet. Only the full pipeline earns a benchmark score; the rules
+policy still carries a strict-v3 score and the scripted one carries none, so a
+comparison across policies needs an evaluator all of them go through.
 
 \begin{figure}[H]
 \centering
@@ -113,8 +112,8 @@ them go through.
 \node[known] (scripted) at (-40,0) {\textbf{scripted}\\[-2pt]{\tiny versioned procedures}};
 \node[known] (rules) at (0,0)      {\textbf{rules}\\[-2pt]{\tiny scanner, then rules}};
 \node[missing] (llm) at (40,0)     {\textbf{llm\_on\_evidence}\\[-2pt]{\tiny the model on the same observations}};
-\node[tiny, below=2mm of scripted] {runs, not scored};
-\node[tiny, below=2mm of rules] {runs, not scored};
+\node[tiny, below=2mm of scripted] {runs, no score};
+\node[tiny, below=2mm of rules] {strict-v3 score};
 \node[tiny, below=2mm of llm, text=accent] {\textbf{does not exist}};
 \node[tiny, above=2.5mm of rules, text=accent, text width=80mm, align=center]
   {all three receive the same scenario and the same observations};
@@ -125,7 +124,7 @@ them go through.
 \caption{The three policies and what is missing. The third would give the model the
 observations the rules already receive and nothing else: no rule findings, no
 ground truth, no expected count of flaws. It does not exist, and without it a
-comparison has two engines and measures verification rather than interpretation.}
+comparison has two policies and measures verification rather than interpretation.}
 \label{fig:policies}
 \end{figure}
 
@@ -136,7 +135,6 @@ to reasoning. Giving the model the scanner's observations isolates one
 variable: \emph{who interprets}. That is the question the programme asked, and the
 third policy is the only one that answers it.
 
-% ---------------------------------------------------------------------------
 % ---------------------------------------------------------------------------
 \subsection{What the benchmark measures}
 \label{sec:unites}
@@ -239,13 +237,11 @@ Can results be delivered reproducibly? & Yes. Push, validate, deploy to one of
 three instances; no execution on a workstation. Single points of failure declared.
 & table~\ref{tab:composants} \\
 Does the model beat the rules? & \textbf{Unknown, and not yet measurable.} & Section~\ref{sec:construit} \\
-How much of the corpus needs interpretation? & Two counts from two artefacts,
-never to be cited one for the other. & Section~\ref{sec:construit} \\
-Is the measurement statistically valid? & The tool is repaired and refuses an
-indefensible figure; the challenges that would give it data do not exist. & Section~\ref{sec:construit} \\
+How much of the corpus needs interpretation? & 84.4\,\% is rule-decidable
+(interpretive reading); 282 of 288 by signature (binary reading); two counts from
+two artefacts, never cited one for the other. & Section~\ref{sec:construit} \\
+Is the measurement statistically valid? & \textbf{No:} the tool is repaired but
+needs five independent challenges, and none exist. & Section~\ref{sec:construit} \\
 \bottomrule
 \end{tabularx}
 \end{table}
-
-{\footnotesize\color{muted}Proof for the first four rows: Section~\ref{sec:construit},
-table~\ref{tab:composants}. The last three: the same section.}

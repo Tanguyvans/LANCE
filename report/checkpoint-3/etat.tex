@@ -2,7 +2,7 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[french]{babel}
-\frenchsetup{SmallCapsFigTabCaptions=false}
+\frenchsetup{SmallCapsFigTabCaptions=false,AutoSpacePunctuation=false}
 % The English language files of this Babel installation are broken, so the
 % French language is loaded for hyphenation only and every caption is renamed.
 \addto{\captionsfrench}{%
@@ -34,9 +34,6 @@
 \def\UrlBreaks{\do\/\do\-\do\_\do\.\do\:}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \DeclareRobustCommand{\code}[1]{{\small\path{#1}}}
-\newcommand{\source}[2]{\href{../../#1}{\nolinkurl{#1}}. #2}
-% Engineering detail lives in the margin, so the argument stays readable.
-\DeclareRobustCommand{\marginref}[1]{\marginpar{\raggedright\scriptsize\textcolor{muted}{#1}}}
 \newcommand{\revision}{2026-11-03 11:30 (Europe/Brussels, UTC+01:00)}
 \setlength{\parskip}{3pt}
 \setlength{\emergencystretch}{2em}
@@ -56,7 +53,8 @@
 \normalsize Checkpoint 3: state report as of 3 November 2026}
 \author{LANCE project\\\small Written by specialist strands, independently reviewed and synthesised}
 \date{Last revision: \revision\\[3pt]
-\small Code at \code{546b911} (30 October 2026); no source change since.\\
+\small Code at \code{546b911} (30 October 2026); later fixes (cost budget made
+observation-only, sandbox cleanup, dead-code removal) post-date it.\\
 No new experiment is reported: the measurements cited are those already recorded.}
 
 \begin{document}
@@ -64,19 +62,22 @@ No new experiment is reported: the measurements cited are those already recorded
 
 \begin{abstract}
 LANCE is a platform for auditing authorised connected-object networks with
-language-model agents, inside a sandbox. A scenario is deployed, an agent audits
+language-model agents, inside a laboratory. A scenario is deployed, an agent audits
 it, its evidence is archived, and what it found is scored against a ground truth.
 Developed in the context of the UMONS work of the NATO SPS G6259 programme.
 
-Its benchmark compares what one wants to compare, under the same conditions. This
-checkpoint documents one case, an automation against a model.
+Its benchmark is built to compare what one wants to compare, under the same
+conditions. This checkpoint documents one case, an automation against a model; the
+comparison that would separate them is not yet possible.
 
 Nothing counts as a result until the project can point to a case where a rule
-written on one line gets the answer wrong and reasoning over several observations
+written on one line gets the answer wrong and reasoning over several readings
 gets it right. Without such cases, nothing else the project does counts.
 
-The position is unchanged since the previous checkpoint: the platform is built,
-instrumented and documented, and its chain of evidence is sound.
+The scientific position is unchanged since the previous checkpoint --- the platform
+is built, instrumented and documented, its chain of evidence sound --- but the
+method advanced: a closure test now precedes each challenge, the inference is
+repaired, a reference H2 round was run, and a pilot challenge was built and rejected.
 \end{abstract}
 
 \tableofcontents
