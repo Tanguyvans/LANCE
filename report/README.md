@@ -11,18 +11,13 @@ Les supports de présentation datés vont dans `presentations/`, pas ici.
 
 | # | Période / date de l'état | Commit du code décrit | Statut | Rapport |
 | --- | --- | --- | --- | --- |
-| checkpoint-1 | Q4 2025 | — (non enregistré) | remplacé par checkpoint-2 | [etat.tex](checkpoint-1/etat.tex) |
-| checkpoint-2 | Q1 2026 | — (non enregistré) | remplacé par checkpoint-3 | [etat.tex](checkpoint-2/etat.tex) |
 | checkpoint-3 | état au 3 novembre 2026 | `546b911` (30 oct. 2026) | **courant** | [etat.tex](checkpoint-3/etat.tex) |
 
 ## Notes
 
-- **checkpoint-1** et **checkpoint-2** sont d'anciens rapports trimestriels
-  (modèle LaTeX différent, un seul fichier). Ils décrivent une architecture
-  antérieure — checkpoint-1 (Q4 2025) parle encore de Neo4j / MongoDB / Ollama,
-  abandonnés depuis. Conservés tels quels comme traces historiques ; seule la
-  date dynamique `\today` a été figée sur leur trimestre.
-- **PDF à (re)compiler** pour checkpoint-1 et checkpoint-2 : la convention veut
-  `etat.pdf` versionné à côté de la source (checkpoint-3 l'a déjà).
-- La renumérotation (Q4 2025 → 1, Q1 2026 → 2, état de novembre → 3) a été faite
-  le 2026-11-04 pour mettre les trois états dans une seule série ordonnée.
+- **checkpoint-1 (Q4 2025)** et **checkpoint-2 (Q1 2026)** étaient d'anciens
+  rapports trimestriels (modèle LaTeX différent, architecture antérieure :
+  Neo4j / MongoDB / Ollama, abandonnés depuis). Ils ne compilaient plus et ont
+  été supprimés le 2026-11-05 ; l'historique git en garde la trace. Les numéros
+  1 et 2 ne sont pas réattribués (convention : numéro séquentiel jamais réutilisé),
+  donc la série commence à checkpoint-3.
