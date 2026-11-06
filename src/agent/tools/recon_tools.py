@@ -138,6 +138,29 @@ def _parse_arp_line(line: str) -> dict | None:
     }
 
 
+def _parse_neigh_line(line: str) -> dict | None:
+    """Parse one `ip neigh` line into the same structure as `arp -a`.
+
+    Format: 192.168.100.11 dev eth0 lladdr aa:bb:cc:dd:ee:ff REACHABLE
+    Entries with no lladdr (FAILED/INCOMPLETE) have no MAC and are skipped.
+    """
+    m = re.match(
+        r"(\d+\.\d+\.\d+\.\d+)\s+dev\s+(\S+)(?:.*\blladdr\s+([0-9a-fA-F:]+))?",
+        line.strip(),
+    )
+    if not m or not m.group(3):
+        return None
+    ip, interface, mac = m.groups()
+    mac_norm = ":".join(p.zfill(2) for p in mac.split(":"))
+    return {
+        "ip": ip,
+        "mac": mac_norm,
+        "hostname": "",
+        "vendor": _identify_vendor(mac_norm),
+        "interface": interface,
+    }
+
+
 def arp_scan(**kwargs) -> str:
     """Double ping-sweep then dump ARP table for full Layer 2 discovery."""
     import concurrent.futures
@@ -171,17 +194,31 @@ def arp_scan(**kwargs) -> str:
         if pass_num == 0:
             time.sleep(1)  # Wait for ARP cache to settle before pass 2
 
-    # Dump ARP table directly via subprocess (not _run, to avoid interference)
-    arp_output = ""
+    # Dump the neighbour table. Prefer `arp -a` (net-tools); fall back to
+    # `ip neigh` (iproute2, always present) when arp is unavailable — e.g. a
+    # minimal host reinstall without net-tools — so local discovery still works.
+    neigh_output = ""
+    parse_line = _parse_arp_line
     try:
         result = subprocess.run(
             ["arp", "-a"], capture_output=True, text=True, timeout=5,
         )
-        arp_output = result.stdout
+        neigh_output = result.stdout
     except subprocess.TimeoutExpired as e:
         log.warning("arp -a timed out, using partial output")
         raw = e.stdout or b""
-        arp_output = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else (raw or "")
+        neigh_output = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else (raw or "")
+    except FileNotFoundError:
+        log.warning("arp not found; falling back to `ip neigh` for local discovery")
+        parse_line = _parse_neigh_line
+        try:
+            result = subprocess.run(
+                ["ip", "neigh", "show"], capture_output=True, text=True, timeout=5,
+            )
+            neigh_output = result.stdout
+        except Exception as e:
+            log.error("ip neigh fallback failed: %s", e)
+            return json.dumps({"hosts": [], "count": 0, "error": str(e)})
     except Exception as e:
         log.error("arp -a failed: %s", e)
         return json.dumps({"hosts": [], "count": 0, "error": str(e)})
@@ -189,10 +226,10 @@ def arp_scan(**kwargs) -> str:
     # Parse and deduplicate by IP (keep first interface seen)
     seen_ips: set[str] = set()
     hosts = []
-    for line in arp_output.splitlines():
-        if subnet not in line or "incomplete" in line:
+    for line in neigh_output.splitlines():
+        if subnet not in line or "incomplete" in line.lower():
             continue
-        parsed = _parse_arp_line(line)
+        parsed = parse_line(line)
         if parsed and parsed["ip"] not in seen_ips:
             # Skip broadcast addresses
             last_octet = parsed["ip"].split(".")[-1]
