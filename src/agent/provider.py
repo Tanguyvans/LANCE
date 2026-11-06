@@ -54,7 +54,7 @@ def _record_completion_metadata(metadata, choice, usage) -> None:
         visible_chars=len(message.content) if isinstance(message.content, str) else 0,
     )
 
-_LOCAL_MOE_API_TIMEOUT = float(os.environ.get("LANCE_LOCAL_MOE_API_TIMEOUT", "240"))
+_LOCAL_MOE_API_TIMEOUT = float(os.environ.get("LANCE_LOCAL_MOE_API_TIMEOUT", "90"))
 _LOCAL_MOE_MAX_RETRIES = int(os.environ.get("LANCE_LOCAL_MOE_MAX_RETRIES", "2"))
 
 
