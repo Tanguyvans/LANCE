@@ -71,17 +71,17 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 | --- | --- | --- |
 | V0, contrôle MQTT | `valid_control`, `X = 0,9`, contrôle **saturant**, 24 étapes × 3 répétitions | `benchmarks/experiments/v0-control-manifest.json` |
 | V0, SSH | non couverte : dictionnaire d'identifiants fixe | `v0-protocole.md` |
-| H2, `s_mqtt_formats` | mesurée le 2026-10-22, 3 répétitions, 72 bras ; prédiction tenue mais **gain absorbé par un bras par convention** (0,5 contre 0,0 pour les parseurs déclarés, 1,0 pour le bras convention ; 1 dossier sur 2) | `research/2026-10-21-hypotheses-benchmark/h2-protocole.md` |
-| Pilotes SSH et MQTT | 6/6 pour les deux bras, 3 répétitions, `qwen3.8:27b` et `gemma4:26b-a4b-it` ; MoE ≈ 2× le coût et 1,3–1,7× la durée | runs `39465619725`, `39467657683`, `39480713050`, `39482737529` |
-| `s_api_organisations` | étude de cas de couverture, **non admise** (une épreuve, une répétition). Ses deux fixtures ne constituent pas un contrôle positif de D1+ : la politesse filtrante ne renvoie aucun canari, si bien que `run_rules` et un bras qui énumère les collections renvoient tous deux `private_disclosed=False`. Le contrôle de D1+ est **en cours de revue** ; le fait source est la note du dossier de l'épreuve pilote | `benchmarks/experiments/api-reference/`, `tests/test_api_reference.py::test_adaptation_crosses_the_collection_boundary_only_when_the_flaw_exists` |
+| H2, `s_mqtt_formats` | mesurée le 2026-10-22, 3 répétitions, 72 runs ; prédiction tenue mais **gain absorbé par une approche par convention** (0,5 contre 0,0 pour les parseurs déclarés, 1,0 pour l'approche convention ; 1 dossier sur 2) | `research/2026-10-21-hypotheses-benchmark/h2-protocole.md` |
+| Pilotes SSH et MQTT | 6/6 pour les deux approches, 3 répétitions, `qwen3.8:27b` et `gemma4:26b-a4b-it` ; MoE ≈ 2× le coût et 1,3–1,7× la durée | runs `39465619725`, `39467657683`, `39480713050`, `39482737529` |
+| `s_api_organisations` | étude de cas de couverture, **non admise** (une épreuve, une répétition). Ses deux fixtures ne constituent pas un contrôle positif de D1+ : la politesse filtrante ne renvoie aucun canari, si bien que `run_rules` et une approche qui énumère les collections renvoient tous deux `private_disclosed=False`. Le contrôle de D1+ est **en cours de revue** ; le fait source est la note du dossier de l'épreuve pilote | `benchmarks/experiments/api-reference/`, `tests/test_api_reference.py::test_adaptation_crosses_the_collection_boundary_only_when_the_flaw_exists` |
 | Admission de campagne | `mt_admissible = false` ; `strict_v3_metrics_adopted` n'est jamais satisfait | `benchmarks/experiments/v2_campaign.py` |
 | Inférence | unilatérale, corrigée le 2026-10-30 ; exige 5 épreuves pour décider, 3 pour produire un chiffre | `src/benchmark/inference.py`, `tests/test_inference.py` |
 | Épreuves H1, H3, H4, H5 | non ouvertes ; `s_chaines_identites` n'existe pas ; `s_registres_constructeur` construite puis **rejetée le 2026-10-30** : mécanisme franchi par une règle générique | [compte rendu de rejet](../research/2026-10-30-famille-pilote-registres-constructeur/compte-rendu-rejet.md) |
 | Corpus | 29 scénarios, 288 entrées de vérité terrain. **243/288 (84,4 %)** à signature selon la lecture interprétative de l'audit ; l'index dérivé, binaire, donne **282/288** et 6 entrées logiques (S15, S22, S28) | `benchmarks/ground_truth/`, `benchmarks/labels/derived_index.json`, [audit de couverture](asiaccs-2027/audit-couverture.md) |
 | Noyau de harnais | quatre harnais délèguent à `build_run` ; un run incomplet est refusé à la construction | `benchmarks/experiments/harness/run.py`, `tests/test_harness_core.py` |
-| Sandbox (harnais hermétique) | bras déterministes hors laboratoire sous garde-fou d'audit ; `guard_clean`, angles morts déclarés, `claims_isolation = false` | `benchmarks/experiments/sandbox.py`, `tests/test_sandbox.py`, CI `benchmark-integrity.yml` |
+| Sandbox (harnais hermétique) | approches déterministes hors laboratoire sous garde-fou d'audit ; `guard_clean`, angles morts déclarés, `claims_isolation = false` | `benchmarks/experiments/sandbox.py`, `tests/test_sandbox.py`, CI `benchmark-integrity.yml` |
 | Circuit de livraison | trois instances, déploiement automatique validé sur `main` et `dev/1` ; identité Tailscale déduite de l'interface | `scripts/deployment/deploy-instance.sh` |
-| **Bras LLM comparable** | **absent** : `vanilla` prend un CIDR et ne produit pas de score ; `rules` produit un score sans modèle | `src/agent/run_modes.py`, `docs/architecture/run-modes.md` |
+| **Approche LLM comparable** | **absente** : `vanilla` prend un CIDR et ne produit pas de score ; `rules` produit un score sans modèle | `src/agent/run_modes.py`, `docs/architecture/run-modes.md` |
 | Branche `dev/2` | 16 commits derrière `main` | `git log origin/dev/2..main` |
 
 ## Blocages
@@ -117,14 +117,14 @@ Dans l'ordre des dépendances, sans dates.
 
 1. **Construire une épreuve réellement indépendante.** Une seule, menée de bout
    en bout : D1+ exécutable, test de clôture hashé, simulateur propre, huit
-   fixtures, trois bras. C'est le gabarit des suivantes et la condition de toute
+   fixtures, trois approches. C'est le gabarit des suivantes et la condition de toute
    conclusion défendable. Cahier des charges :
    [épreuve pilote `s_registres_constructeur`](../research/2026-10-30-famille-pilote-registres-constructeur/README.md).
-2. **Comparer les trois politiques sur un même scénario.** C'est l'objectif de ce
+2. **Comparer les trois approches sur un même scénario.** C'est l'objectif de ce
    volet : sur un scénario donné, savoir ce que trouvent les automatisations
    (`scripted`), les règles déclarées (`rules`) et le modèle seul
    (`llm_on_evidence`), avec les mêmes observations et le même cadre
-   d'évaluation. Voir la section « Comparer les trois politiques » ci-dessous,
+   d'évaluation. Voir la section « Comparer les trois approches » ci-dessous,
    qui expose ce que cela exige et ce qui manque aujourd'hui.
 3. **Trancher la métrique** : crédit gradué de strict-v3 écrasé en TP binaire
    par le funnel ; réparer ou retirer `inference.py`, qui produit une p-value
@@ -137,36 +137,36 @@ Dans l'ordre des dépendances, sans dates.
    contrôle V0, exécutables hors laboratoire.
 7. **La plateforme** : déploiement et lancement reproductibles.
 
-## Comparer les trois politiques sur un scénario
+## Comparer les trois approches sur un scénario
 
-**But.** Sur un même scénario déployé, lancer trois politiques et comparer ce
+**But.** Sur un même scénario déployé, lancer trois approches et comparer ce
 qu'elles trouvent, à observations et cadre d'évaluation identiques :
 
-| Politique | Ce qu'elle apporte | Existe aujourd'hui |
+| Approche | Ce qu'elle apporte | Existe aujourd'hui |
 | --- | --- | --- |
 | `scripted` | Procédures déterministes : découvrir, inventorier, auditer | Oui, sans score de benchmark |
 | `rules` | Baseline déclarée : scanner puis règles d'interprétation | Oui, avec score strict-v3 |
 | `llm_on_evidence` | **Le modèle interprète les observations produites par le scanner** | **Non** |
 
-**Pourquoi ce troisième bras.** Les deux premiers ne répondent pas à la
+**Pourquoi cette troisième approche.** Les deux premières ne répondent pas à la
 question du programme : savoir si un modèle fait mieux qu'une automatisation
 lorsqu'il reçoit la même information. Le mode `vanilla` réalise une exploration
 libre sur une plage d'adresses et ne produit pas de score comparable ; le mode
 `lance` conduit le pipeline complet sur six phases et ne se prête pas au même
-contraste. Il manque donc le bras où seule **l'interprétation** change.
+contraste. Il manque donc l'approche où seule **l'interprétation** change.
 
-**Ce que ce bras mesurerait.** Le modèle reçoit, par appareil, les observations
+**Ce que cette approche mesurerait.** Le modèle reçoit, par appareil, les observations
 brutes collectées par le scanner et doit produire des constats étayés par une
 référence d'observation. Il ne reçoit ni les constats des règles, ni la vérité
 terrain, ni le nombre attendu de failles. L'écart entre `rules` et
 `llm_on_evidence` mesure alors la seule qualité d'interprétation.
 
-**Ce que ce bras exclut (tranché le 2026-10-30, à l'ouverture de l'épreuve
+**Ce que cette approche exclut (tranché le 2026-10-30, à l'ouverture de l'épreuve
 pilote).** Le modèle reçoit un **journal d'observations figé** et **aucun
 outil** : il ne peut pas sonder pour confirmer. La comparaison porte donc sur
 l'interprétation seule, et **l'épreuve pilote ne mesure pas la vérification par
-sondes**. Ce n'est pas une limite qu'on espère régler plus tard : dès que le
-bras émet des sondes, il mesure « qui peut vérifier » et retombe dans le
+sondes**. Ce n'est pas une limite qu'on espère régler plus tard : dès que l'approche
+émet des sondes, elle mesure « qui peut vérifier » et retombe dans le
 premier des quatre mécanismes ci-dessous. Mesurer les deux à la fois exige un
 design distinct — mêmes outils d'exécution des deux côtés, même budget de
 sondes, et une attestation d'égalité de budget.
@@ -175,13 +175,13 @@ sondes, et une attestation d'égalité de budget.
 code avantagent `rules`, et chacun rendrait l'écart ininterprétable :
 
 1. La phase 4 de `rules` émet de **nouvelles sondes** pour confirmer chaque
-   candidat ; l'étage `confirmed` du funnel exige cette provenance. Un bras qui
+   candidat ; l'étage `confirmed` du funnel exige cette provenance. Une approche qui
    ne peut pas sonder n'atteindrait jamais cet étage.
 2. `supplemental.py` **réécrit** les fichiers `03_scans` en y ajoutant des
    sondes dérivées (épreuves S16 à S18). L'observation n'est donc pas figée au
    sortir du scanner.
 3. L'agrégation **ajoute les constats des règles** aux constats du modèle
-   (`add_scanner_candidates`), ce qui gonflerait mécaniquement le score du bras
+   (`add_scanner_candidates`), ce qui gonflerait mécaniquement le score de l'approche
    modèle.
 4. Le score de benchmark n'est calculé que pour les runs du mode `lance` ;
    l'attestation de pré-vol n'est écrite que par un déploiement de scénario.
@@ -191,11 +191,11 @@ prétendra avoir mesuré, pas sur la faisabilité :
 
 - **L'étage de comparaison** : constats candidats (interprétation seule) ou
   constats confirmés (interprétation et vérification confondues). Le second
-  n'est comparable que si les deux bras peuvent sonder avec le même budget.
+  n'est comparable que si les deux approches peuvent sonder avec le même budget.
 - **L'ouverture du calcul de score** aux modes autres que `lance`, et
   l'attestation de pré-vol associée.
 - **Le rendu identique des observations** aux deux interpréteurs, vérifié plutôt
-  qu'affirmé : une empreinte des fichiers lus avant et après chaque bras.
+  qu'affirmé : une empreinte des fichiers lus avant et après chaque approche.
 - **Le traitement des désaccords** entre les constats des règles et ceux du
   modèle : les constats des règles ne sont pas la référence, seule la vérité
   terrain l'est.
@@ -226,7 +226,7 @@ Le homelab personnel est hors périmètre.
 - Trois répétitions donnent une variabilité descriptive, pas un intervalle
   confirmatoire.
 - Un run vert ne vaut pas une mesure exploitable : le premier passage SSH était
-  vert alors que les six bras LLM avaient échoué.
+  vert alors que les six runs LLM avaient échoué.
 - Les coûts sont des estimations tarifaires, pas des factures ; le coût
   matériel n'est pas mesuré.
 - Le corpus couvre deux protocoles et des services en partie simulés : ni

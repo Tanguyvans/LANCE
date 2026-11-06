@@ -186,7 +186,7 @@ des charges de l'épreuve pilote
 ([`research/2026-10-30-famille-pilote-registres-constructeur`](research/2026-10-30-famille-pilote-registres-constructeur/README.md#ce-qui-a-déjà-été-essayé-et-pourquoi-ça-a-échoué))
 énumère des impasses déjà payées : regrouper les scénarios existants en épreuves,
 supposer un `family_id` significatif, écrire un scénario sans test de clôture
-exécutable, comparer deux bras qui n'ont pas le même pouvoir de vérification.
+exécutable, comparer deux approches qui n'ont pas le même pouvoir de vérification.
 Lire cette section avant tout nouveau scénario ou toute nouvelle comparaison.
 
 ## Provenance des chiffres du code
