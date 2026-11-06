@@ -1503,13 +1503,13 @@ function lockRunnerChoice(locked) {
 }
 
 async function startSimpleRun(kind) {
-  const script = kind === 'scripted' ? document.getElementById('sel-script').value : null;
-  if (kind === 'scripted' && !script) {
+  const script = document.getElementById('sel-script').value;
+  if (!script) {
     addLog({type: 'error', message: 'Choisissez une procédure avant de lancer le script.'});
     document.getElementById('sel-script').focus();
     return;
   }
-  const offline = kind === 'scripted' && script === 'smoke-v1';
+  const offline = script === 'smoke-v1';
   const target = document.getElementById('inp-target-network').value.trim();
   if (!offline && (!target || !target.includes('/'))) {
     addLog({type: 'error', message: 'Indiquez un réseau autorisé au format CIDR, par exemple 192.0.2.0/24.'});
