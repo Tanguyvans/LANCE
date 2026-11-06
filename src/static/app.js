@@ -2776,12 +2776,10 @@ let _bmOffset = 0;
 let _bmTotal = 0;
 let _bmRequestId = 0;
 const VIEW_STORAGE_KEY = 'lance.activeView';
-const VALID_VIEWS = new Set(['main', 'benchmark', 'scenario-lab', 'procedures']);
+const VALID_VIEWS = new Set(['main', 'benchmark', 'scenario-lab']);
 
 function getStoredView() {
   try {
-    if (/^#automation\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(window.location?.hash || '')) return 'procedures';
-    if (/^#comparison\/[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}_[a-f0-9]{12}$/.test(window.location?.hash || '')) return 'procedures';
     const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
     return VALID_VIEWS.has(stored) ? stored : 'main';
   } catch (_) {
@@ -2803,10 +2801,6 @@ function switchView(view) {
   mainEl.style.display = isMain ? 'flex' : 'none';
   document.getElementById('benchmark-view').hidden = !isBenchmark;
   document.getElementById('scenario-lab-view').hidden = !isScenarioLab;
-  const proceduresEl = document.getElementById('procedures-view');
-  if (proceduresEl) proceduresEl.hidden = view !== 'procedures';
-  document.body.classList.toggle('procedures-active', view === 'procedures');
-  if (view === 'procedures' && typeof ProcedureUI !== 'undefined') ProcedureUI.open();
   // Log panel belongs to the dashboard only
   document.getElementById('resize-log').style.display = isMain ? '' : 'none';
   document.getElementById('log-wrap').style.display = isMain ? '' : 'none';
