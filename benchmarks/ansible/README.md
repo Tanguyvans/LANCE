@@ -30,6 +30,18 @@ Proxmox (<PROXMOX_IP>)
 4. Templates Proxmox présents : LXC Debian 13 (VMID 9000), KVM OpenWrt (VMID 9010)
 5. Token de registration GitHub Actions généré (voir section CI/CD ci-dessous)
 
+### Prérequis côté hôte maître (runtime du service)
+
+Distincts des prérequis ci-dessus (machine locale qui lance `deploy_master.yml`),
+l'**hôte maître** qui exécute le service en a deux propres, pour piloter les
+scénarios :
+
+- `nmap` et `ansible` installés comme **paquets système** (`apt install nmap ansible`), pas dans `requirements.txt` ; le service les trouve via `shutil.which` sur son `PATH`. (Le worker conteneurisé les embarque, cf. `docker/worker.Dockerfile`, mais pas le master bare-metal.)
+- Le locale **`en_US.UTF-8` généré** (`localedef -i en_US -f UTF-8 en_US.UTF-8`) : le code force `LANG`/`LC_ALL=en_US.UTF-8` pour Ansible (`src/agent/core/lifecycle.py`) même si l'unité systemd tourne sous `C.UTF-8`.
+
+Après une réinstallation de l'hôte, suivre la checklist complète :
+[`docs/guides/host-recovery-nato-master.md`](../../docs/guides/host-recovery-nato-master.md).
+
 ## Déployer la VM maître
 
 ```bash

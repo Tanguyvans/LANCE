@@ -10,14 +10,16 @@
 | Réglage | Valeur |
 | --- | --- |
 | Fournisseur / type | `ollama-umons` / `local` |
-| URL de base | `http://100.76.206.65:11435/v1` |
+| URL de base | `http://100.66.221.22:11435/v1` |
 | Qwen | `qwen3.8:27b` |
 | Gemma | `gemma4:26b-a4b-it-q4_K_M` |
 
 Valeurs vérifiées le **1er octobre 2026**. Le catalogue ci-dessous fait foi si les modèles changent.
 
-Le relais SSH en aval de pve-nato a été identifié et rétabli le 4 octobre 2026 ;
-sa commande est conservée dans le dépannage ci-dessous. Aucun service de démarrage
+Le relais SSH vers le serveur UMONS tourne désormais sur la **tour `corsair`**
+(`100.66.221.22`) : `pve-nato` et `nato-master` ne joignent plus le cluster UMONS
+(leur IP de sortie a changé à la réinstallation — à faire whitelister par l'UMONS).
+La commande du tunnel est conservée dans le dépannage ci-dessous. Aucun service de démarrage
 automatique n'a été identifié ni installé. L'administration de la machine GPU
 en aval reste à confirmer avec l'administrateur UMONS.
 
@@ -31,7 +33,7 @@ Dans un terminal avec `curl` et accès Tailscale. Pour tester le trajet réellem
 
 ```bash
 curl --fail-with-body --show-error --connect-timeout 5 --max-time 15 \
-  http://100.76.206.65:11435/v1/models
+  http://100.66.221.22:11435/v1/models
 ```
 
 Résultat attendu : un JSON contenant `data` et les identifiants des modèles.
@@ -41,7 +43,7 @@ Résultat attendu : un JSON contenant `data` et les identifiants des modèles.
 ```bash
 curl --fail-with-body --show-error --no-buffer \
   --connect-timeout 5 --max-time 180 \
-  http://100.76.206.65:11435/v1/chat/completions \
+  http://100.66.221.22:11435/v1/chat/completions \
   -H 'Content-Type: application/json' \
   --data-binary '{
     "model": "qwen3.8:27b",
@@ -59,14 +61,14 @@ curl --fail-with-body --show-error --no-buffer \
 
 | Problème | Que faire ? |
 | --- | --- |
-| Connexion refusée ou expirée | Vérifier Tailscale, puis le relais sur **pve-nato** |
+| Connexion refusée ou expirée | Vérifier Tailscale, puis le relais SSH sur la **tour `corsair`** |
 | Modèle introuvable | Copier son identifiant exact depuis `/v1/models` |
 | Catalogue accessible, réponse bloquée | Faire vérifier la charge GPU, la file d’attente et les journaux du serveur |
 | Appel direct réussi, LANCE en erreur | Vérifier fournisseur, URL et modèles par phase ; consulter les événements du run |
 
 ```bash
 tailscale status
-tailscale ping 100.76.206.65
+tailscale ping 100.66.221.22
 ```
 
 **Relais en panne :** passer de Qwen à Gemma sur ce même relais ne suffit pas. Choisir un autre fournisseur opérationnel et vérifier les choix par phase. Cela ne reprend pas automatiquement un run en échec.
@@ -95,20 +97,21 @@ Voir les [fournisseurs](provider-auth.md) et les [instances de développement](d
 <details>
 <summary><strong>Dépannage avancé — relais et serveur Ollama</strong></summary>
 
-**Trajet :** navigateur → LANCE sur `nato-master` (nom Tailscale du nœud) → point d’accès sur `pve-nato` (`100.76.206.65:11435`) → serveur UMONS à confirmer.
+**Trajet :** navigateur → LANCE sur `nato-master` (nom Tailscale du nœud) → point d’accès sur la tour `corsair` (`100.66.221.22:11435`) → cluster UMONS → serveur Ollama (`192.168.10.12:11434`).
 
 Le tunnel SSH a été identifié et rétabli le 4 octobre 2026 (procédure ci-dessous). Son serveur de destination est en aval du cluster UMONS ; aucun accès d'administration au serveur GPU n'a été établi. Le homelab personnel est hors périmètre.
 
 ### Tunnel SSH identifié le 4 octobre 2026
 
-Le relais observé est un transfert local SSH lancé sur **pve-nato** :
-`100.76.206.65:11435` → `cluster.ig.umons.ac.be:22000` →
+Le relais est un transfert local SSH lancé **sur la tour `corsair`** (il tournait
+sur `pve-nato` jusqu'à ce que son IP de sortie cesse d'être acceptée par l'UMONS) :
+`100.66.221.22:11435` → `cluster.ig.umons.ac.be:22000` →
 `192.168.10.12:11434`. L'historique de l'administrateur et la trace de connexion
 ont identifié ce trajet. Après son rétablissement, le catalogue a exposé
 `qwen3.8:27b` et une génération minimale a renvoyé `OK` le 4 octobre 2026.
 Cela confirme l'accès au modèle, pas la réussite d'un audit complet.
 
-Si le port n'écoute plus, se connecter à **pve-nato** avec le compte administrateur
+Si le port n'écoute plus, lancer le tunnel **depuis la tour `corsair`** avec le compte UMONS
 prévu, confirmer son identité et vérifier `ss -ltnp 'sport = :11435'` avant de
 relancer le tunnel. Utiliser son compte UMONS autorisé :
 
@@ -119,8 +122,22 @@ ssh -fN -p 22000 \
   -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=30 \
   -o ServerAliveCountMax=3 \
-  -L 100.76.206.65:11435:192.168.10.12:11434 \
+  -L 100.66.221.22:11435:192.168.10.12:11434 \
   "$UMONS_USER@cluster.ig.umons.ac.be"
+```
+
+Puis **repointer le fournisseur `ollama-umons`** vers la tour dans **chacune des
+trois instances** (registres séparés — main / dev-1 / dev-2, chacun sa base
+`/opt/<instance>/data/lance.db`) et redémarrer le service concerné :
+
+```bash
+python3 - <<'PY'
+import sqlite3
+c = sqlite3.connect('/opt/lance-dev-1/data/lance.db')
+c.execute("UPDATE providers SET base_url=? WHERE name='ollama-umons'", ('http://100.66.221.22:11435/v1',))
+c.commit()
+PY
+systemctl restart lance-dev-1
 ```
 
 L'authentification observée est interactive (`keyboard-interactive`). `-f`
@@ -136,7 +153,7 @@ recherche de noms effectuée. Une exploitation sans intervention demande une
 méthode d'authentification autorisée adaptée et un service supervisé ; ne pas
 placer un mot de passe dans une commande ou un fichier de service.
 
-### Sur pve-nato, avec un compte administrateur autorisé
+### Sur la tour `corsair`, pour inspecter le relais
 
 Identifier la machine et le processus qui écoute :
 
@@ -147,7 +164,7 @@ sudo ss -ltnp 'sport = :11435'
 systemctl list-units --all --type=service --no-pager | grep -Ei 'ollama|umons|tunnel|relay'
 ```
 
-Confirmer l’adresse `100.76.206.65`. La recherche par nom peut manquer un service : utiliser aussi le PID indiqué par `ss`.
+Confirmer l’adresse `100.66.221.22`. La recherche par nom peut manquer un service : utiliser aussi le PID indiqué par `ss`.
 
 Remplacer le nom ci-dessous par **le service réellement identifié** :
 
