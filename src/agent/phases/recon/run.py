@@ -510,16 +510,25 @@ class ReconPhase:
             value for value in str(self.context.get("target_subnet", "")).split()
             if value
         ]
+        # The master VM's own interface IPs sit inside the benchmark subnet but
+        # are never audit targets. Exclude them from scope so the model is not
+        # steered into wasting scans on the harness itself — mirrors the blind
+        # discovery scanner's own-IP skip (local_interface_ips) above.
+        own_interface_ips = set(runtime.local_interface_ips())
 
         def _in_scope(target: str) -> bool:
             try:
                 candidate = ipaddress.ip_network(target, strict=False)
-                return any(
-                    candidate.subnet_of(ipaddress.ip_network(cidr, strict=False))
-                    for cidr in target_subnets
-                )
             except ValueError:
                 return False
+            if not any(
+                candidate.subnet_of(ipaddress.ip_network(cidr, strict=False))
+                for cidr in target_subnets
+            ):
+                return False
+            if candidate.num_addresses == 1 and str(candidate.network_address) in own_interface_ips:
+                return False
+            return True
 
         def _out_of_scope_argument(kwargs: dict) -> str | None:
             """Return the first explicit IPv4/CIDR outside the declared scope."""
