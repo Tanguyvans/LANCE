@@ -189,12 +189,12 @@ def test_view_run_does_not_request_observations_for_sealed_run():
 
 def test_viewing_script_history_does_not_change_next_launch_mode_or_target():
     result = render("""
-      activeExecutionKind='vanilla';
+      activeExecutionKind='scripted';
       document.getElementById('inp-target-network').value='198.51.100.0/24';
       await viewRun('script-run');
     """, run={"files": [], "status": "done", "runner_kind": "scripted",
               "target_network": "192.0.2.0/24"})
-    assert result["launchKind"] == "vanilla"
+    assert result["launchKind"] == "scripted"
     assert result["targetInput"] == "198.51.100.0/24"
 
 
@@ -230,14 +230,14 @@ def test_simple_runner_terminal_event_replaces_previous_cost():
     result = render("""
       loadRuns=()=>{};
       setCost(1.5);
-      handleEvent({type:'runner_done',runner_kind:'vanilla',status:'completed',total_cost_usd:0.125});
+      handleEvent({type:'runner_done',runner_kind:'scripted',status:'completed',total_cost_usd:0.125});
     """)
     assert result["cost"] == "$0.1250"
 
 
 def test_simple_nmap_result_does_not_add_hosts_to_lance_graph():
     result = render("""
-      activeExecutionKind='vanilla';
+      activeExecutionKind='scripted';
       handleEvent({type:'tool_result',name:'nmap_scan',
         result:'Nmap scan report for 192.0.2.3\\n80/tcp open http'});
     """)

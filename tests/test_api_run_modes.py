@@ -45,7 +45,6 @@ def test_finish_sends_done_to_the_finished_runs_queue_after_new_start_interleave
     {"runner_kind": "scripted"},
     {"runner_kind": "scripted", "target_network": "127.0.0.0/24"},
     {"runner_kind": "scripted", "target_network": "127.0.0.0/24", "script_id": "unknown"},
-    {"runner_kind": "vanilla", "provider": "local", "model": "test"},
     {"runner_kind": "scripted", "target_network": "127.0.0.1", "script_id": "discovery-v1"},
     {"runner_kind": "scripted", "target_network": "not-a-cidr/24", "script_id": "discovery-v1"},
     {"runner_kind": "scripted", "target_network": "127.0.0.0/24", "script_id": "discovery-v1"},
@@ -60,7 +59,6 @@ def test_finish_sends_done_to_the_finished_runs_queue_after_new_start_interleave
     {"runner_kind": "scripted", "script_id": "smoke-v1", "target_network": "192.0.2.0/24"},
     {"runner_kind": "scripted", "script_id": "smoke-v1", "max_tool_calls": 1},
     {"runner_kind": "scripted", "script_id": "smoke-v1", "max_cost_usd": 1.0},
-    {"runner_kind": "vanilla", "target_network": "127.0.0.0/24"},
     {"runner_kind": "lance", "provider": "local", "model": "test", "max_tool_calls": 1},
 ])
 def test_start_rejects_incomplete_or_mixed_runner_contracts(payload):

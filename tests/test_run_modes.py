@@ -11,7 +11,6 @@ import pytest
 
 from src.agent.core import runtime
 from src.agent import cost_tracker
-from src.agent.cost_tracker import BudgetExceeded
 from src.agent.run_modes import SCRIPT_IDS, _baseline_nmap, main, make_runner, validate_target_network
 
 
@@ -23,17 +22,6 @@ def _offline_pricing(monkeypatch):
 def _tool(name, fn):
     return {"name": name, "description": name, "input_schema": {"type": "object"},
             "function": fn}
-
-
-class _Provider:
-    provider = "mock"
-    model = "mock-model"
-
-    def __init__(self, call):
-        self.call = call
-
-    def chat_with_tools(self, **kwargs):
-        return self.call(kwargs)
 
 
 @pytest.mark.parametrize("bad", [None, "", "192.168.1.5", "192.168.1.5/24",
@@ -146,57 +134,6 @@ def test_cli_smoke_without_cidr_creates_offline_run(tmp_path, monkeypatch, capsy
     with pytest.raises(SystemExit) as exc:
         main(["scripted", "--script-id", "smoke-v1", "--target-network", "192.0.2.0/24"])
     assert exc.value.code == 2
-
-
-def test_vanilla_uses_one_provider_loop_and_rejects_outside_targets(tmp_path, monkeypatch):
-    touched = []
-    monkeypatch.setattr(runtime, "RECON_TOOLS", [
-        _tool("nmap_discovery", lambda **kwargs: touched.append(kwargs) or "{}")
-    ])
-    monkeypatch.setattr("src.agent.run_modes._baseline_nmap",
-                        lambda *args: touched.append(args) or "{}")
-
-    def model(kwargs):
-        assert kwargs["max_turns"] <= 30
-        tool = kwargs["tools"][0]["function"]
-        refusal = json.loads(tool(target="192.168.88.0/24"))
-        assert refusal["error_kind"] == "intrusion_target_out_of_scope"
-        assert touched == []
-        return "No in-scope observations."
-
-    runner = make_runner("vanilla", provider=_Provider(model),
-                         target_network="192.168.100.0/24", output_dir=tmp_path)
-    with pytest.raises(RuntimeError, match="No usable"):
-        runner.run()
-    metadata = json.loads((runner.run_dir / "run_meta.json").read_text())
-    assert metadata["model"] == "mock-model" and metadata["provider"] == "mock"
-    assert metadata["status"] == "failed"
-    assert touched == []
-    assert "intrusion_target_out_of_scope" in (runner.run_dir / "tool_calls.jsonl").read_text()
-
-
-def test_tool_budget_stops_vanilla_before_second_execution(tmp_path, monkeypatch):
-    calls = []
-    monkeypatch.setattr(runtime, "RECON_TOOLS", [
-        _tool("nmap_discovery", lambda **kwargs: None)
-    ])
-    monkeypatch.setattr("src.agent.run_modes._baseline_nmap", lambda *args: calls.append(args) or json.dumps({
-        "stdout": "Nmap done: 256 IP addresses (0 hosts up)", "stderr": "", "return_code": 0,
-    }))
-
-    def model(kwargs):
-        tool = kwargs["tools"][0]["function"]
-        tool(target="192.168.100.0/24")
-        with pytest.raises(BudgetExceeded):
-            tool(target="192.168.100.0/24")
-        return "Stopped by budget."
-
-    runner = make_runner("vanilla", provider=_Provider(model),
-                         target_network="192.168.100.0/24", max_tool_calls=1,
-                         output_dir=tmp_path)
-    assert runner.run() == {"vanilla": "budget_exceeded"}
-    assert len(calls) == 1
-    assert json.loads((runner.run_dir / "run_meta.json").read_text())["status"] == "budget_exceeded"
 
 
 def test_script_failure_persists_failed_terminal(tmp_path, monkeypatch):
@@ -321,49 +258,6 @@ def test_nmap_timeout_at_run_deadline_is_budget_exceeded(tmp_path, monkeypatch):
     assert json.loads((runner.run_dir / "run_meta.json").read_text())["status"] == "budget_exceeded"
 
 
-def test_vanilla_nmap_deadline_marker_survives_provider_tool_handling(tmp_path, monkeypatch):
-    monkeypatch.setattr(runtime, "RECON_TOOLS", [_tool("nmap_discovery", lambda **kwargs: None)])
-    monkeypatch.setattr("src.agent.run_modes.run_cooperatively",
-                        lambda command, *, timeout: ("", "timed out", -1, True, False))
-
-    def model(kwargs):
-        tool = kwargs["tools"][0]["function"]
-        try:
-            tool(target="192.168.100.0/24")
-        except BudgetExceeded:
-            pass  # Model loop may catch a tool error before returning.
-        return "No observation."
-
-    runner = make_runner("vanilla", provider=_Provider(model),
-                         target_network="192.168.100.0/24", max_duration_s=1,
-                         output_dir=tmp_path)
-    assert runner.run() == {"vanilla": "budget_exceeded"}
-    evidence = json.loads((runner.run_dir / "tool_calls.jsonl").read_text().splitlines()[0])
-    assert json.loads(evidence["result"])["deadline_exceeded"] is True
-    assert json.loads((runner.run_dir / "run_meta.json").read_text())["status"] == "budget_exceeded"
-
-
-@pytest.mark.parametrize("at_deadline,expected", [(True, "budget_exceeded"), (False, "failed")])
-def test_provider_timeout_only_counts_as_budget_at_run_deadline(tmp_path, monkeypatch,
-                                                                 at_deadline, expected):
-    monkeypatch.setattr(runtime, "RECON_TOOLS", [_tool("nmap_discovery", lambda **kwargs: None)])
-    runner = None
-
-    def model(kwargs):
-        if at_deadline:
-            runner._deadline = time.monotonic() - 1
-        raise TimeoutError("simulated provider timeout")
-
-    runner = make_runner("vanilla", provider=_Provider(model),
-                         target_network="192.168.100.0/24", output_dir=tmp_path)
-    if at_deadline:
-        assert runner.run() == {"vanilla": "budget_exceeded"}
-    else:
-        with pytest.raises(TimeoutError, match="simulated"):
-            runner.run()
-    assert json.loads((runner.run_dir / "run_meta.json").read_text())["status"] == expected
-
-
 @pytest.mark.parametrize("payload", [
     {"stdout": "", "stderr": "nmap failed", "return_code": -1},
     {"stdout": "", "stderr": "", "return_code": 0},
@@ -374,17 +268,6 @@ def test_scripted_nmap_errors_or_empty_output_never_complete(tmp_path, monkeypat
     runner = make_runner("scripted", target_network="192.168.100.0/24",
                          script_id="discovery-v1", output_dir=tmp_path)
     with pytest.raises(RuntimeError):
-        runner.run()
-    assert json.loads((runner.run_dir / "run_meta.json").read_text())["status"] == "failed"
-
-
-def test_unavailable_nmap_never_completes_vanilla(tmp_path, monkeypatch):
-    monkeypatch.setattr(runtime, "RECON_TOOLS", [_tool("nmap_discovery", lambda **kwargs: None)])
-    monkeypatch.setattr(runtime, "filter_unavailable_tools",
-                        lambda tools: ([], {"nmap_discovery": "missing_command:nmap"}))
-    runner = make_runner("vanilla", provider=_Provider(lambda kwargs: "unsupported"),
-                         target_network="192.168.100.0/24", output_dir=tmp_path)
-    with pytest.raises(RuntimeError, match="No baseline"):
         runner.run()
     assert json.loads((runner.run_dir / "run_meta.json").read_text())["status"] == "failed"
 

@@ -99,7 +99,7 @@ function setRunnerView(kind) {
   document.querySelector('.multi-model-toggle').hidden = kind !== 'lance';
   document.getElementById('multi-model-config').hidden = kind !== 'lance' || !document.getElementById('cb-multi-model').checked;
   setRunnerCanvas(kind);
-  document.getElementById('btn-start').textContent = kind === 'rules' ? "Lancer l'audit par règles" : kind === 'lance' ? 'Lancer le pentest' : kind === 'vanilla' ? "Lancer l'agent" : 'Lancer le script';
+  document.getElementById('btn-start').textContent = kind === 'rules' ? "Lancer l'audit par règles" : kind === 'lance' ? 'Lancer le pentest' : 'Lancer le script';
   const batch = !simple && document.querySelector('input[name="run-mode"]:checked')?.value === 'batch';
   document.getElementById('btn-start').hidden = batch;
   document.getElementById('btn-batch-start').hidden = !batch;
@@ -1519,19 +1519,7 @@ async function startSimpleRun(kind) {
 
   const body = {runner_kind: kind};
   if (!offline) body.target_network = target;
-  if (kind === 'scripted') {
-    body.script_id = script;
-  } else {
-    const modelSel = document.getElementById('sel-model');
-    const selectedOpt = modelSel.options[modelSel.selectedIndex];
-    if (!modelSel.value || !selectedOpt || selectedOpt.disabled || !selectedOpt.dataset.provider) {
-      addLog({type: 'error', message: "Sélectionnez un modèle disponible avant de lancer l'agent."});
-      modelSel.focus();
-      return;
-    }
-    body.model = modelSel.value;
-    body.provider = selectedOpt.dataset.provider;
-  }
+  body.script_id = script;
 
   for (const [id, key] of [['inp-max-tool-calls', 'max_tool_calls'], ['inp-max-duration', 'max_duration_s']]) {
     if (offline && key === 'max_tool_calls') continue;

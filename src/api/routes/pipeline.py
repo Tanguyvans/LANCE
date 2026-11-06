@@ -122,7 +122,7 @@ class StartRequest(BaseModel):
             raise ValueError("Paramètres de comparaison inconnus.")
         return value
 
-    runner_kind: Literal["lance", "rules", "vanilla", "scripted", "comparison"] = "lance"
+    runner_kind: Literal["lance", "rules", "scripted", "comparison"] = "lance"
     comparison_order: Literal["rules-first", "llm-first"] | None = None
     model: str | None = None
     provider: str | None = None
@@ -192,8 +192,6 @@ class StartRequest(BaseModel):
                 raise ValueError("Rules audit duration is at most 3600 seconds")
             self.execution_profile = "full"
             return self
-        if self.runner_kind == "vanilla" and not (self.model and self.provider):
-            raise ValueError("This runner requires an explicit provider and model")
         if self.runner_kind == "lance":
             if not self.deploy_only and not (self.model and self.provider):
                 raise ValueError("This runner requires an explicit provider and model")
@@ -202,7 +200,7 @@ class StartRequest(BaseModel):
             if self.script_id is not None:
                 raise ValueError("script_id is only valid for the scripted runner")
             if self.max_tool_calls is not None or self.max_duration_s is not None:
-                raise ValueError("Action/time budgets are only available for vanilla and scripted runners")
+                raise ValueError("Action/time budgets are only available for scripted runners")
             return self
 
         offline_smoke = self.runner_kind == "scripted" and self.script_id == "smoke-v1"
@@ -231,9 +229,7 @@ class StartRequest(BaseModel):
             self.phase_models is not None,
             self.auto_teardown is False,
         )):
-            raise ValueError("Vanilla and scripted runners do not accept scenario or deployment settings")
-        if self.runner_kind == "vanilla" and self.script_id is not None:
-            raise ValueError("script_id is only valid for the scripted runner")
+            raise ValueError("Scripted runners do not accept scenario or deployment settings")
         if self.runner_kind == "scripted" and (self.provider is not None or self.model is not None):
             raise ValueError("The scripted runner does not use a provider or model")
         if self.execution_profile != "auto":
@@ -519,13 +515,11 @@ def _simple_runner_thread(req: StartRequest):
     try:
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env")
-        from src.agent.provider import LLMProvider
         from src.agent.run_modes import make_runner
 
-        provider = LLMProvider(provider=req.provider, model=req.model) if req.runner_kind == "vanilla" else None
         runner = make_runner(
             req.runner_kind,
-            provider=provider,
+            provider=None,
             target_network=req.target_network,
             max_cost_usd=req.max_cost_usd,
             max_tool_calls=req.max_tool_calls,

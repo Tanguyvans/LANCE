@@ -1,6 +1,6 @@
 # État courant
 
-**Dernière mise à jour : 2026-11-05 (Europe/Brussels, UTC+01:00).**
+**Dernière mise à jour : 2026-11-06 (Europe/Brussels, UTC+01:00).**
 
 Point de reprise : ce qui est vrai, ce qui bloque, ce qui vient ensuite. Le
 détail des études reste dans `research/` ; l'historique des runs reste dans git.
@@ -65,6 +65,52 @@ ils nomment des données, pas le vocabulaire. En anglais, l'épreuve se dit
 L'entraînement des modèles est hors priorité. Aucune étape n'est datée : une
 étape commence quand la précédente est vérifiée.
 
+## Ce que l'outil propose : deux façons de lancer
+
+Concrétisation de la priorité 1. Au quotidien, sur une cible, l'outil offre
+**deux types de run** :
+
+1. **LANCE** — l'agent complet (pipeline six phases, piloté par un modèle).
+2. **Scripts** — une bibliothèque de procédures **déterministes et en lecture
+   seule** (recon / observation). Elle démarre avec le **scan réseau** qui existe
+   déjà (`discovery-v1`, `service-inventory-v1`) et grandira par petits scripts
+   réutilisant les outils read-only existants (`arp_scan`, `ping_host`,
+   `traceroute`, puis `mqtt_ws_listen`…).
+
+Le reste n'est **pas** un troisième choix du quotidien :
+
+- **`rules`** est un **audit de scénario de laboratoire**, pas un script : il
+  exige un scénario déployé et **modifie l'état** des services simulés, donc il
+  ne peut pas vivre sous « Scripts » (lecture seule). C'est une *approche
+  d'audit* à part entière, rangée dans l'espace évaluation/labo pour des raisons
+  opérationnelles — **ce n'est pas du benchmark**.
+- **`comparison`** (règles contre agent LLM sur un même scénario) appartient à la
+  **couche benchmark** (priorité 2).
+- **`vanilla`** (modèle libre + nmap) est **retiré de l'interface** : redondant
+  avec LANCE. Le `runner_kind` et les étiquettes d'historique restent, pour que
+  les anciens runs continuent de s'afficher correctement.
+
+### Un mot par concept (interface)
+
+Pour éviter le quiproquo qu'on a déjà réglé dans les docs, l'interface fixe un
+seul mot par chose :
+
+| Concept | Mot retenu | À ne plus mélanger |
+| --- | --- | --- |
+| Ce qu'on lance au quotidien | **approche** (LANCE ou Script) | « automatisation », « procédure », « pentest » employés l'un pour l'autre |
+| Une exécution | **run** | « pentest », « exécution », « audit » selon l'endroit |
+| Une procédure déterministe | **script** | « automatisation », « procédure » |
+
+Trois fonctions distinctes disent aujourd'hui « comparer » et doivent être
+nommées séparément : comparer **deux runs d'historique**, comparer **règles
+contre agent LLM** (benchmark), et le **classement des modèles** (onglet
+Benchmark).
+
+**Sûreté.** La lecture seule des scripts est garantie **côté backend**
+(`_SIMPLE_TOOL_NAMES` et `_checked_args` dans `src/agent/run_modes.py`), pas par
+l'interface : simplifier l'UI ne peut donc pas l'élargir. Ajouter plus tard un
+script qui sort de ce contrat exigera une revue de sécurité dédiée.
+
 ## État vérifié
 
 | Élément | État | Preuve |
@@ -81,7 +127,7 @@ L'entraînement des modèles est hors priorité. Aucune étape n'est datée : un
 | Noyau de harnais | quatre harnais délèguent à `build_run` ; un run incomplet est refusé à la construction | `benchmarks/experiments/harness/run.py`, `tests/test_harness_core.py` |
 | Sandbox (harnais hermétique) | approches déterministes hors laboratoire sous garde-fou d'audit ; `guard_clean`, angles morts déclarés, `claims_isolation = false` | `benchmarks/experiments/sandbox.py`, `tests/test_sandbox.py`, CI `benchmark-integrity.yml` |
 | Circuit de livraison | trois instances, déploiement automatique validé sur `main` et `dev/1` ; identité Tailscale déduite de l'interface | `scripts/deployment/deploy-instance.sh` |
-| **Approche LLM comparable** | **absente** : `vanilla` prend un CIDR et ne produit pas de score ; `rules` produit un score sans modèle | `src/agent/run_modes.py`, `docs/architecture/run-modes.md` |
+| **Approche LLM comparable** | **absente** : `rules` produit un score sans modèle ; il manque l'approche où le modèle interprète les seules observations du scanner | `src/agent/run_modes.py`, `docs/architecture/run-modes.md` |
 | Branche `dev/2` | 16 commits derrière `main` | `git log origin/dev/2..main` |
 
 ## Blocages
@@ -150,10 +196,9 @@ qu'elles trouvent, à observations et cadre d'évaluation identiques :
 
 **Pourquoi cette troisième approche.** Les deux premières ne répondent pas à la
 question du programme : savoir si un modèle fait mieux qu'une automatisation
-lorsqu'il reçoit la même information. Le mode `vanilla` réalise une exploration
-libre sur une plage d'adresses et ne produit pas de score comparable ; le mode
-`lance` conduit le pipeline complet sur six phases et ne se prête pas au même
-contraste. Il manque donc l'approche où seule **l'interprétation** change.
+lorsqu'il reçoit la même information. Le mode `lance` conduit le pipeline complet
+sur six phases et ne se prête pas à ce contraste. Il manque donc l'approche où
+seule **l'interprétation** change.
 
 **Ce que cette approche mesurerait.** Le modèle reçoit, par appareil, les observations
 brutes collectées par le scanner et doit produire des constats étayés par une

@@ -11,7 +11,6 @@ import ipaddress
 import json
 import logging
 import math
-import os
 import re
 import signal
 import sys
@@ -352,29 +351,6 @@ class SimpleRunner:
                     detail = self._run_procedure(by_name, stream_callback, stop_event)
                 finally:
                     self.tracker.end_phase()
-            else:
-                if not tools:
-                    raise RuntimeError("No baseline reconnaissance tools are available")
-                self.tracker.start_phase(self.runner_kind)
-                try:
-                    detail = self.provider.chat_with_tools(
-                        system_prompt=(
-                            "You are a single security audit agent on an explicitly authorized IPv4 network. "
-                            "Use only the provided read-only reconnaissance tools and stay inside the CIDR. "
-                            "Report observations and uncertainty; do not claim exploitation or verified access."
-                        ),
-                        user_message=f"Inspect the authorized network {self.target_network} and summarize observed hosts and services.",
-                        tools=tools,
-                        max_turns=min(30, self.max_tool_calls + 2),
-                        cost_tracker=self.tracker,
-                        stop_event=stop_event,
-                        deadline=self._deadline,
-                        stream_callback=stream_callback,
-                    )
-                    if not isinstance(detail, str) or not detail.strip():
-                        raise RuntimeError("Model returned no audit summary")
-                finally:
-                    self.tracker.end_phase()
             if stop_event is not None and stop_event.is_set():
                 raise RunStopped("Run stopped")
             if self._execution_limit_reason:
@@ -574,13 +550,15 @@ def make_runner(
             **pipeline_kwargs,
         )
         return LanceRunner(pipeline, kind)
-    if kind not in {"vanilla", "scripted"}:
+    if kind != "scripted":
         raise ValueError(f"Unknown runner kind: {kind!r}")
     if scenario_id is not None or pipeline_kwargs:
-        raise ValueError("Simple runners do not deploy scenarios or accept harness settings")
+        raise ValueError("Scripted runs do not deploy scenarios or accept harness settings")
     if execution_profile != "auto":
         raise ValueError("Execution profiles apply only to the LANCE harness")
-    if kind == "scripted" and script_id == "smoke-v1":
+    if provider is not None:
+        raise ValueError("Scripted runs do not use a model provider")
+    if script_id == "smoke-v1":
         if target_network is not None:
             raise ValueError("smoke-v1 is offline and does not accept target_network")
         if max_tool_calls is not None or max_cost_usd is not None:
@@ -588,19 +566,10 @@ def make_runner(
         network = None
     else:
         network = validate_target_network(target_network)
-    if kind == "scripted":
-        if script_id not in SCRIPT_IDS:
-            raise ValueError(f"script_id must be one of: {', '.join(sorted(SCRIPT_IDS))}")
-        if provider is not None:
-            raise ValueError("Scripted runs do not use a model provider")
-        default_calls, default_duration = ((17, 600.0) if script_id == "service-inventory-v1"
-                                           else ((0 if script_id == "smoke-v1" else 1), 120.0))
-    else:
-        if provider is None or not callable(getattr(provider, "chat_with_tools", None)):
-            raise ValueError("Vanilla runs require a model provider")
-        if script_id is not None:
-            raise ValueError("script_id applies only to scripted runs")
-        default_calls, default_duration = 30, 600.0
+    if script_id not in SCRIPT_IDS:
+        raise ValueError(f"script_id must be one of: {', '.join(sorted(SCRIPT_IDS))}")
+    default_calls, default_duration = ((17, 600.0) if script_id == "service-inventory-v1"
+                                       else ((0 if script_id == "smoke-v1" else 1), 120.0))
     calls = default_calls if max_tool_calls is None else max_tool_calls
     duration = default_duration if max_duration_s is None else max_duration_s
     if script_id != "smoke-v1" and (type(calls) is not int or not 1 <= calls <= 100):
@@ -621,21 +590,17 @@ def make_runner(
 def main(argv=None) -> int:
     """Standalone CLI for baseline runs; it never provisions a scenario."""
     parser = argparse.ArgumentParser(description="Run a bounded LANCE baseline")
-    parser.add_argument("kind", choices=["vanilla", "scripted"])
+    parser.add_argument("kind", choices=["scripted"])
     parser.add_argument("--target-network", help="Explicit authorized IPv4 CIDR (not used by smoke-v1)")
     parser.add_argument("--script-id", choices=sorted(SCRIPT_IDS))
-    parser.add_argument("--provider", default=os.environ.get("AGENT_PROVIDER"))
-    parser.add_argument("--model", default=os.environ.get("AGENT_MODEL"))
     parser.add_argument("--max-cost-usd", type=float)
     parser.add_argument("--max-tool-calls", type=int)
     parser.add_argument("--max-duration-s", type=float)
     args = parser.parse_args(argv)
     try:
-        if args.kind == "scripted" and args.script_id not in SCRIPT_IDS:
+        if args.script_id not in SCRIPT_IDS:
             raise ValueError(f"script_id must be one of: {', '.join(sorted(SCRIPT_IDS))}")
-        if args.kind == "vanilla" and args.script_id is not None:
-            raise ValueError("script_id applies only to scripted runs")
-        if args.kind == "scripted" and args.script_id == "smoke-v1":
+        if args.script_id == "smoke-v1":
             if args.target_network is not None:
                 raise ValueError("smoke-v1 is offline and does not accept target_network")
         else:
@@ -643,12 +608,6 @@ def main(argv=None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
     provider = None
-    if args.kind == "vanilla":
-        if not args.provider:
-            parser.error("vanilla requires --provider or AGENT_PROVIDER")
-        from src.agent.provider import LLMProvider, validate_provider_choice
-        validate_provider_choice(args.provider)
-        provider = LLMProvider(provider=args.provider, model=args.model)
     try:
         runner = make_runner(
             args.kind, provider=provider, target_network=args.target_network,
