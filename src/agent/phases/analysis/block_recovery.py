@@ -21,7 +21,7 @@ Design limits (all caps are exact configured values, not remote caps):
   general block.
 - ``max_attempts`` (default 2): retries per block only. A failed block never
   retries its siblings and never restarts the full device analysis.
-- ``max_tokens`` (default 4096) / ``max_turns`` (default 4): per block
+- ``max_tokens`` (default 16384) / ``max_turns`` (default 4): per block
   attempt. The output allowance matches the full device response budget;
   the service scope and turn count remain smaller.
 - Sidecars live under ``03_blocks/`` so the ``03_device_*.json`` aggregation
@@ -46,7 +46,7 @@ BLOCK_DIR = "03_blocks"
 DEFAULT_MAX_BLOCKS = 4
 DEFAULT_SERVICES_PER_BLOCK = 2
 DEFAULT_MAX_ATTEMPTS = 2
-DEFAULT_MAX_TOKENS = 4096
+DEFAULT_MAX_TOKENS = 16384
 DEFAULT_MAX_TURNS = 4
 
 MAX_OBSERVATION_ENTRIES = 16

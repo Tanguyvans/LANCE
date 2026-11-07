@@ -86,14 +86,17 @@ class _Driver:
         tools = [tool["name"] for tool in kwargs.get("tools", [])]
         if len(self.calls) == 1:
             # Full device attempt truncates after exploration, saving nothing.
-            assert kwargs["max_tokens"] == 4096
+            assert kwargs["max_tokens"] == self.pipeline.execution_profile.phase3_max_tokens
             assert kwargs["max_turns"] == 10
             if metadata is not None:
-                metadata.update(finish_reason="length", output_tokens=4096)
+                metadata.update(
+                    finish_reason="length",
+                    output_tokens=self.pipeline.execution_profile.phase3_max_tokens,
+                )
             return "truncated exploration without save"
         # Block finalization keeps fewer turns and a scoped, save-only task.
         assert tools == ["save_deliverable"], tools
-        assert kwargs["max_tokens"] == 4096
+        assert kwargs["max_tokens"] == block_recovery.block_config()["max_tokens"]
         assert kwargs["max_turns"] == 4
         assert kwargs["cost_tracker"] is self.pipeline.tracker
         assert kwargs["stop_event"] is self.pipeline._stop_event
@@ -121,7 +124,10 @@ class _Driver:
             return "block saved"
         if self.mode == "truncate_blocks":
             if metadata is not None:
-                metadata.update(finish_reason="length", output_tokens=4096)
+                metadata.update(
+                    finish_reason="length",
+                    output_tokens=block_recovery.block_config()["max_tokens"],
+                )
             return "block truncated"
         if self.mode == "wrong_device":
             if metadata is not None:
@@ -540,12 +546,12 @@ def test_observation_log_is_bounded():
 def test_block_config_defaults_and_env_override(monkeypatch):
     defaults = block_recovery.block_config()
     assert defaults == {"max_blocks": 4, "services_per_block": 2,
-                        "max_attempts": 2, "max_tokens": 4096, "max_turns": 4}
+                        "max_attempts": 2, "max_tokens": 16384, "max_turns": 4}
     monkeypatch.setenv("LANCE_PHASE3_BLOCK_MAX_BLOCKS", "2")
     monkeypatch.setenv("LANCE_PHASE3_BLOCK_MAX_TOKENS", "0")
     overridden = block_recovery.block_config()
     assert overridden["max_blocks"] == 2
-    assert overridden["max_tokens"] == 4096
+    assert overridden["max_tokens"] == 16384
     monkeypatch.setenv("LANCE_PHASE3_BLOCK_MAX_TOKENS", "8192")
     assert block_recovery.block_config()["max_tokens"] == 8192
 
