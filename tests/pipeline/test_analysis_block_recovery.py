@@ -243,6 +243,19 @@ def test_truncated_full_attempt_recovers_into_valid_device(mock_provider, output
     assert len(driver.calls) == 3
 
 
+def test_block_recovery_disables_reasoning_on_ollama_providers(mock_provider, output_dir):
+    # The save-only block finalization must disable the reasoning channel while
+    # the full device attempt keeps it: a heavy-reasoning model otherwise spends
+    # the whole output budget reasoning and emits nothing (visible_chars=0).
+    _, status, _, driver = _run_phase3(mock_provider, output_dir)
+    assert status["devices_failed"] == []
+    assert len(driver.calls) == 3
+    # Full attempt keeps reasoning; the two block finalizations disable it.
+    assert driver.calls[0].get("reasoning_effort") is None
+    assert driver.calls[1].get("reasoning_effort") == "none"
+    assert driver.calls[2].get("reasoning_effort") == "none"
+
+
 def test_repeated_truncation_leaves_explicit_incomplete_state(mock_provider, output_dir):
     pipeline, status, events, driver = _run_phase3(
         mock_provider, output_dir, mode="truncate_blocks")

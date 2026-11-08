@@ -495,6 +495,18 @@ class AnalysisPhase:
             wrapped.append({**tool, "function": capture_block_save})
         block_tools = wrapped
 
+        # Save-only block recovery: a heavy-reasoning model (e.g. Flint) spends
+        # the whole output budget on the reasoning channel and emits nothing
+        # (finish_reason=length, visible_chars=0), so raising the budget cannot
+        # help. This finalization is a deterministic save of the scoped block, so
+        # disable reasoning on Ollama-family providers, as Phase 1 recovery and
+        # the report phase do.
+        provider_name = self.provider.provider
+        reasoning_options = (
+            {"reasoning_effort": "none"}
+            if provider_name == "ollama" or provider_name.startswith("ollama-")
+            else {}
+        )
         last_error = "no attempt made"
         for attempt in range(1, caps["max_attempts"] + 1):
             self._phase3_recovery_guard(
@@ -523,6 +535,7 @@ class AnalysisPhase:
                 stop_event=self._stop_event,
                 deadline=deadline,
                 completion_metadata=block_completion,
+                **reasoning_options,
             )
             self._phase3_recovery_guard(
                 device_id, total, spec["index"], deadline=deadline
