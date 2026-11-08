@@ -504,7 +504,15 @@ class TestScannerEvidenceExtraction:
         assert "no_auth" in CANONICAL_TYPES
         assert "no_auth" not in NOISE_TYPES
 
-    def test_phase2_recon_versions_restore_filtered_ssh_banner(self, tmp_path):
+    def test_ssh_version_banner_is_not_reported_as_info_disclosure(self, tmp_path):
+        """A plain SSH version banner is informational, not a vulnerability.
+
+        The scanner used to emit an info_disclosure LOW from the banner on
+        every SSH host. It never matched ground truth, dominated the Phase 3
+        false positives, and contradicted the analyzer prompt's own
+        negative-evidence rule. The banner extractor was removed — a version
+        banner must not produce an info_disclosure finding.
+        """
         from src.agent import scanner as scanner_mod
 
         (tmp_path / "02_recon_evidence.json").write_text(json.dumps({
@@ -523,11 +531,58 @@ class TestScannerEvidenceExtraction:
         findings = scanner_mod.extract_findings({"recon": entries}, device)
 
         assert entries[0]["source"] == "02_recon_evidence.json"
-        assert any(
+        assert not any(
             finding["type"] == "info_disclosure"
             and "banner" in finding["details"].lower()
             for finding in findings
         )
+
+    def test_ssh_weak_cipher_reported_only_on_policy_violation(self):
+        """A disallowed algorithm (group14-sha1, ssh-rsa) raises weak_cipher LOW."""
+        from src.agent import scanner as scanner_mod
+
+        stdout = (
+            "(kex) diffie-hellman-group14-sha1    -- [fail] using broken SHA-1 hash\n"
+            "(key) ssh-rsa (2048-bit)             -- [fail] using broken SHA-1 hash\n"
+            "(mac) hmac-sha1                      -- [warn] using weak hashing\n"
+        )
+        entries = [{
+            "tool": "ssh_audit",
+            "kwargs": {"target": "192.0.2.14"},
+            "result": json.dumps({"stdout": stdout, "return_code": 0}),
+        }]
+        device = {"id": "gw", "ip": "192.0.2.14", "role": "ssh_server"}
+        findings = scanner_mod._extract_ssh_weak_ciphers(entries, device, "ssh")
+
+        assert len(findings) == 1
+        assert findings[0]["type"] == "weak_cipher"
+        assert findings[0]["severity"] == "LOW"
+        assert "group14-sha1" in findings[0]["evidence"]
+
+    def test_ssh_ubiquitous_fail_rows_do_not_report_weak_cipher(self):
+        """NIST ecdh curves and a lone hmac-sha1 MAC are not policy violations.
+
+        These ssh-audit ``[fail]`` rows appear on virtually every modern
+        OpenSSH server; emitting a finding per host from them was the dominant
+        Phase 3 over-reporting source. ``assess_ssh_crypto`` does not disallow
+        them, so no weak_cipher finding is produced.
+        """
+        from src.agent import scanner as scanner_mod
+
+        stdout = (
+            "(kex) ecdh-sha2-nistp256             -- [fail] using weak elliptic curves\n"
+            "(kex) ecdh-sha2-nistp521             -- [fail] using weak elliptic curves\n"
+            "(mac) hmac-sha1-etm@openssh.com      -- [fail] using broken SHA-1 hash\n"
+        )
+        entries = [{
+            "tool": "ssh_audit",
+            "kwargs": {"target": "192.0.2.15"},
+            "result": json.dumps({"stdout": stdout, "return_code": 0}),
+        }]
+        device = {"id": "host", "ip": "192.0.2.15", "role": "ssh_server"}
+        findings = scanner_mod._extract_ssh_weak_ciphers(entries, device, "ssh")
+
+        assert findings == []
 
 
 def test_gateway_ota_and_redis_extractors_require_direct_evidence():

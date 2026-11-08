@@ -20,6 +20,7 @@ from urllib.parse import urljoin, urlsplit
 from src.benchmark.tool_registry import service_matrix_key
 from src.agent.cost_tracker import BudgetExceeded
 from src.agent.core.executor import EvidenceWriteError
+from src.agent.evidence.ssh import assess_ssh_crypto
 from src.agent.tools.outcomes import tool_execution_failed
 
 log = logging.getLogger(__name__)
@@ -1217,44 +1218,37 @@ def _extract_telnet_open(entries: list[dict], device: dict, svc_name: str) -> li
 
 
 def _extract_ssh_weak_ciphers(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """[fail] lines in ssh_audit → weak_cipher LOW confirmed (no exploit, detection only)."""
+    """ssh_audit rows violating the versioned SSH crypto policy -> weak_cipher LOW.
+
+    Only algorithms the project's finite policy disallows (see
+    :func:`src.agent.evidence.ssh.assess_ssh_crypto`: broken KEX such as
+    group14-sha1, ssh-rsa/ssh-dss host keys, CBC/arcfour/3des ciphers, MD5 MACs)
+    raise a finding. Ubiquitous ssh-audit ``[fail]`` rows the policy does not
+    disallow (NIST ``ecdh`` curves, a lone ``hmac-sha1`` MAC) are present on
+    virtually every modern OpenSSH server and are not a reportable weakness;
+    firing on any ``[fail]`` emitted one finding per SSH host and was the
+    dominant source of Phase 3 over-reporting. Detection only; no exploit is
+    claimed. Reusing the same policy as the Phase 4 evidence gate keeps the
+    scanner and the proof contract in agreement instead of applying a looser
+    rule here.
+    """
     for entry in entries:
         if entry["tool"] != "ssh_audit":
             continue
         result = _parse_result(entry)
         stdout = result.get("stdout", "")
-        fail_lines = [l.strip() for l in stdout.splitlines() if "[fail]" in l]
-        if fail_lines:
-            return [_make_finding(
-                device, "weak_cipher", "LOW", "ssh", 22,
-                "SSH uses weak cryptographic algorithms",
-                "\n".join(fail_lines[:5]),
-            )]
-    return []
-
-
-def _extract_ssh_banner(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """SSH banner with OS/version or custom message → info_disclosure LOW confirmed."""
-    for entry in entries:
-        result = _parse_result(entry)
-        stdout = result.get("stdout", "")
-
-        # ssh_audit banner line: "(gen) banner: SSH-2.0-OpenSSH_9.2p1 Debian-2"
-        match = re.search(r"(?:banner:|\(gen\)\s*banner:)\s*(SSH-\S+.*)", stdout)
-        if not match:
-            # nmap SSH version in PORT output: "22/tcp open ssh OpenSSH 9.2p1 Debian-2"
-            match = re.search(r"22/tcp\s+open\s+ssh\s+(\S+\s+[\d.p]+\S*)", stdout)
-        if not match:
-            # Access-denied/ACL text is a control-flow response, not a software
-            # version or service banner. Do not turn it into info_disclosure.
+        assessment = assess_ssh_crypto(stdout)
+        if assessment["status"] != "policy_violation":
             continue
-        if match:
-            banner = match.group(0)
-            return [_make_finding(
-                device, "info_disclosure", "LOW", "ssh", 22,
-                "SSH banner discloses software version",
-                banner[:150],
-            )]
+        evidence = "; ".join(
+            f"({algo['category']}) {algo['name']}: {algo['reason']}"
+            for algo in assessment["disallowed_algorithms"]
+        )
+        return [_make_finding(
+            device, "weak_cipher", "LOW", "ssh", 22,
+            "SSH offers algorithms disallowed by the crypto policy",
+            evidence[:200],
+        )]
     return []
 
 
@@ -2294,7 +2288,6 @@ FINDING_EXTRACTORS = [
     _extract_mqtt_websocket,
     _extract_telnet_open,
     _extract_ssh_weak_ciphers,
-    _extract_ssh_banner,
     _extract_ssh_default_creds,
     _extract_ot_no_auth,
     _extract_http_no_auth_admin,
