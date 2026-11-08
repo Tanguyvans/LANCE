@@ -336,6 +336,7 @@ def test_truncation_recovers_with_short_save_only_call(mock_provider, output_dir
             kwargs.get("completion_metadata"), dict
         )
         seen["max_turns"] = kwargs.get("max_turns")
+        seen["reasoning_effort"] = kwargs.get("reasoning_effort")
         _propose(kwargs, "tool_calls")
         receipt = json.loads(_save_tool(kwargs)(
             filename="01_graph_analysis.md", content=VALID_MD,
@@ -354,6 +355,8 @@ def test_truncation_recovers_with_short_save_only_call(mock_provider, output_dir
     assert seen["cost_tracker"] is pipeline.tracker
     assert seen["has_completion_metadata"] is True
     assert seen["max_turns"] < AGENTS["graph_analysis"].max_turns
+    # Non-Ollama providers receive no reasoning_effort override.
+    assert seen["reasoning_effort"] is None
     # Evidence provenance retained, no scan replay.
     assert (pipeline.run_dir / "01_graph_evidence.json").is_file()
     assert (
@@ -366,6 +369,29 @@ def test_truncation_recovers_with_short_save_only_call(mock_provider, output_dir
         if event.get("type") == "phase_done" and event.get("phase") == 1
     ]
     assert phase_done and phase_done[-1]["status"] == "completed:recovered"
+
+
+def test_recovery_disables_reasoning_on_ollama_providers(mock_provider, output_dir):
+    # A heavy-reasoning model otherwise burns the whole save-only budget on the
+    # reasoning channel and emits nothing, so the recovery call must disable it.
+    mock_provider.provider = "ollama-umons"
+    pipeline = Pipeline(provider=mock_provider)
+    _write_graph_ledger(pipeline.run_dir)
+    seen = {}
+
+    def provider_call(**kwargs):
+        if mock_provider.chat_with_tools.call_count == 1:
+            _propose(kwargs, "length")
+            return "(truncated before save)"
+        seen["reasoning_effort"] = kwargs.get("reasoning_effort")
+        _propose(kwargs, "tool_calls")
+        _save_tool(kwargs)(filename="01_graph_analysis.md", content=VALID_MD)
+        return "saved"
+
+    mock_provider.chat_with_tools.side_effect = provider_call
+    status = pipeline._run_agent(AGENTS["graph_analysis"], [].append)
+    assert status == "completed:recovered"
+    assert seen["reasoning_effort"] == "none"
 
 
 def test_recovery_rejects_incomplete_sections_then_succeeds(

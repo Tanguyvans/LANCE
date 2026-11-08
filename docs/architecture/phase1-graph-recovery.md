@@ -63,7 +63,7 @@ for run status while remaining distinguishable in `phase_done`.
 | --- | --- | --- |
 | `LANCE_PHASE1_RECOVERY_MAX_ATTEMPTS` | 2 | Total save-only chats |
 | `LANCE_PHASE1_RECOVERY_MAX_TURNS` | 4 | Turn cap per attempt (below the full 20) |
-| `LANCE_PHASE1_RECOVERY_MAX_TOKENS` | 2048 | Base output cap per attempt (below the full 4096); an explicit value wins untouched |
+| `LANCE_PHASE1_RECOVERY_MAX_TOKENS` | 2048 | Base output cap per attempt, scaled up with topology size (full Phase 1 is 16384); an explicit value wins untouched |
 
 Unless the operator sets `LANCE_PHASE1_RECOVERY_MAX_TOKENS`, the base
 grows by 64 tokens per declared device, capped at 8192
@@ -71,6 +71,14 @@ grows by 64 tokens per declared device, capped at 8192
 S12 (34 declared services) truncated twice at the flat 2048 cap; small
 topologies stay near the historical value while large ones get bounded
 headroom instead of a guaranteed second truncation.
+
+The output budget is a cap, not the only failure mode. A heavy-reasoning
+model (e.g. Flint) can spend the entire budget on its reasoning channel and
+emit nothing (`finish_reason=length`, `visible_chars=0`) however large the
+cap is. Because this recovery is a deterministic restatement of the
+pre-injected ledger, Ollama-family providers run it with
+`reasoning_effort="none"`, matching the report phase, so the budget is spent
+on the deliverable rather than an unbounded reasoning channel.
 
 These bound this harness's requests. The remote provider's actual output
 cap is unknown from here and is never asserted; repeated truncation

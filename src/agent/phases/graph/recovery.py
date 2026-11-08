@@ -17,9 +17,12 @@ Design limits (all caps are exact configured values, not remote caps):
 
 - ``max_attempts`` (default 2): total save-only chats. A failed attempt
   never restarts the full phase and never replays exploration calls.
-- ``max_tokens`` (default 2048) / ``max_turns`` (default 4): per attempt,
-  deliberately below the full Phase 1 budget
-  (``phase1_max_tokens=4096``, ``phase1_max_turns=20``).
+- ``max_tokens`` (default 2048, scaled up with topology size) / ``max_turns``
+  (default 4): per attempt. On reasoning-model providers (Ollama family) the
+  save-only synthesis runs with ``reasoning_effort="none"`` so the output
+  budget is spent on the deliverable rather than an unbounded reasoning
+  channel, which is what truncated the full Phase 1 attempt
+  (``phase1_max_tokens=16384``, ``phase1_max_turns=20``).
 - Recovery tools are save-only: the graph/recon tools are not exposed, so
   no scan or state-changing action is repeated. Tool-generated graph facts
   stay authoritative; the prompt forbids inventing paths, risks, or
@@ -532,6 +535,17 @@ class GraphRecoveryPhase:
         receipts: list[dict] = []
         caps = recovery_config()
         max_tokens = scaled_recovery_tokens(len(nodes), caps["max_tokens"])
+        # Heavy-reasoning models (e.g. Flint) otherwise spend the entire
+        # save-only output budget on the reasoning channel and never emit the
+        # deliverable (finish_reason=length, visible_chars=0). This recovery is
+        # a deterministic restatement of the pre-injected ledger, so disable the
+        # reasoning channel on Ollama-family providers, as the report phase does.
+        provider_name = self.provider.provider
+        reasoning_options = (
+            {"reasoning_effort": "none"}
+            if provider_name == "ollama" or provider_name.startswith("ollama-")
+            else {}
+        )
         last_error = "no attempt made"
         for attempt in range(1, caps["max_attempts"] + 1):
             try:
@@ -626,6 +640,7 @@ class GraphRecoveryPhase:
                     terminate_after_tool="save_deliverable",
                     stop_event=self._stop_event,
                     completion_metadata=recovery_completion,
+                    **reasoning_options,
                 )
             except BudgetExceeded:
                 log.warning(
