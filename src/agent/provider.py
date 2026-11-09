@@ -56,6 +56,11 @@ def _record_completion_metadata(metadata, choice, usage) -> None:
 
 _LOCAL_MOE_API_TIMEOUT = float(os.environ.get("LANCE_LOCAL_MOE_API_TIMEOUT", "90"))
 _LOCAL_MOE_MAX_RETRIES = int(os.environ.get("LANCE_LOCAL_MOE_MAX_RETRIES", "2"))
+# Heavy local reasoning MoE behind the UMONS relay: a single graph-building turn
+# on a large scenario can generate for well over the generic API_TIMEOUT, so give
+# it a wider default than 120s (the heavy turn measured ~120s; 300s leaves margin
+# without masking a true hang). Env-overridable; LANCE_API_TIMEOUT_S still wins.
+_OLLAMA_UMONS_API_TIMEOUT = float(os.environ.get("LANCE_OLLAMA_UMONS_API_TIMEOUT", "300"))
 
 
 def _safe_provider_callback(callback: Callable[[dict], None] | None, event: dict) -> None:
@@ -256,6 +261,20 @@ def _resolve_provider_cfg(provider: str) -> dict | None:
     return OPENAI_PROVIDERS.get(provider)
 
 
+def _request_timeout_for(provider: str) -> float:
+    """Per-provider request timeout, before the LANCE_API_TIMEOUT_S override.
+
+    Heavy local reasoning models emit long single turns; a generic 120s read
+    timeout cuts a legitimate long generation mid-turn. Those providers get a
+    wider default here, keyed by name the same way retries already are.
+    """
+    if provider == "local-moe":
+        return _LOCAL_MOE_API_TIMEOUT
+    if provider == "ollama-umons":
+        return _OLLAMA_UMONS_API_TIMEOUT
+    return API_TIMEOUT
+
+
 class LLMProvider:
     """Unified LLM interface with synchronous tool-calling loop."""
 
@@ -269,12 +288,9 @@ class LLMProvider:
         import openai
         self.request_mode = cfg.get("request_mode", "sequential")
         api_key_env = cfg.get("api_key_env") or ""
-        request_timeout = (
-            _LOCAL_MOE_API_TIMEOUT
-            if provider == "local-moe"
-            else API_TIMEOUT
+        request_timeout = float(
+            os.environ.get("LANCE_API_TIMEOUT_S", _request_timeout_for(provider))
         )
-        request_timeout = float(os.environ.get("LANCE_API_TIMEOUT_S", request_timeout))
         if not 0 < request_timeout < float("inf"):
             raise ValueError("LANCE_API_TIMEOUT_S must be a finite positive number")
         self._request_timeout = request_timeout
