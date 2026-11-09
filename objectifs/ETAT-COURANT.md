@@ -127,6 +127,8 @@ script qui sort de ce contrat exigera une revue de sécurité dédiée.
 | Noyau de harnais | quatre harnais délèguent à `build_run` ; un run incomplet est refusé à la construction | `benchmarks/experiments/harness/run.py`, `tests/test_harness_core.py` |
 | Sandbox (harnais hermétique) | approches déterministes hors laboratoire sous garde-fou d'audit ; `guard_clean`, angles morts déclarés, `claims_isolation = false` | `benchmarks/experiments/sandbox.py`, `tests/test_sandbox.py`, CI `benchmark-integrity.yml` |
 | Circuit de livraison | trois instances, déploiement automatique validé sur `main` et `dev/1` ; identité Tailscale déduite de l'interface | `scripts/deployment/deploy-instance.sh` |
+| Agent LANCE, sur-signalement SSH | réduit : run S12 flint 32,4 → 45,7 (une observation, variance non bornée) | commit `fda5ffc`, run `2026-11-09_090752` |
+| Harnais flint sur gros scénario | S12 complet (6 phases) de bout en bout ; timeout graphe phase 1 corrigé (`ollama-umons` 300 s) | commit `7cdc5f5` |
 | **Approche LLM comparable** | **absente** : `rules` produit un score sans modèle ; il manque l'approche où le modèle interprète les seules observations du scanner | `src/agent/run_modes.py`, `docs/architecture/run-modes.md` |
 | Branche `dev/2` | 16 commits derrière `main` | `git log origin/dev/2..main` |
 
