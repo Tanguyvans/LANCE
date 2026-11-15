@@ -56,6 +56,11 @@ jobs:
       - name: Execute every approach under the shared laboratory lock
         shell: bash
         run: |
+          # The rebuilt runner is unprivileged; /var/lib/lance and the instance
+          # belong to root. Re-exec through passwordless sudo, as the deployment does.
+          if [ "$(id -u)" != 0 ]; then
+            exec sudo -n --preserve-env=RUNNER_NAME,GITHUB_EVENT_NAME,GITHUB_REF,TRIAL_NAME,EXPECTED_SHA,PYTHONUNBUFFERED,LANCE_LAB_LOCK,LANCE_MQTT_LOCK_HELD,REV_PROVIDER,REV_MODEL,REV_REPETITIONS bash "$0"
+          fi
           set -euo pipefail
           umask 077
           require() {
@@ -106,6 +111,11 @@ jobs:
         if: always()
         shell: bash
         run: |
+          # The rebuilt runner is unprivileged; /var/lib/lance and the instance
+          # belong to root. Re-exec through passwordless sudo, as the deployment does.
+          if [ "$(id -u)" != 0 ]; then
+            exec sudo -n --preserve-env=RUNNER_NAME,TRIAL_NAME,PYTHONUNBUFFERED bash "$0"
+          fi
           set -euo pipefail
           umask 077
           test "$RUNNER_NAME" = nato-master

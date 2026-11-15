@@ -226,3 +226,34 @@ def test_the_workflow_is_manual_on_dev2_under_the_laboratory_lock():
 def sonde_module():
     from benchmarks.experiments.revocation_commandes_attente import sonde
     return sonde
+
+
+@pytest.mark.parametrize("step_index", [0, 1])
+def test_each_step_reexecs_through_sudo_with_the_variables_it_reads(tmp_path, step_index):
+    """The rebuilt runner is unprivileged: each step must become root first."""
+    import os
+    import re
+    import shutil
+    import subprocess
+
+    if os.geteuid() == 0 or shutil.which("bash") is None:
+        pytest.skip("Needs an unprivileged shell")
+    workflow = yaml.safe_load((Path(__file__).resolve().parents[1]
+                               / ".github/workflows/revocation-commandes.yml").read_text())
+    job = workflow["jobs"]["revocation"]
+    script = tmp_path / "step.sh"
+    script.write_text(job["steps"][step_index]["run"], encoding="utf-8")
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    record = tmp_path / "sudo-args"
+    (fake / "sudo").write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {record}\n', encoding="utf-8")
+    (fake / "sudo").chmod(0o755)
+    env = {**os.environ, "PATH": f"{fake}:{os.environ['PATH']}"}
+    subprocess.run(["bash", str(script)], env=env, check=True, timeout=10)
+    args = record.read_text().splitlines()
+    assert args[0] == "-n" and args[-2:] == ["bash", str(script)]
+    preserved = set(args[1].removeprefix("--preserve-env=").split(","))
+    # Every job variable and runner variable the step reads must survive sudo.
+    read = set(re.findall(r"\$\{?([A-Z][A-Z0-9_]+)", job["steps"][step_index]["run"]))
+    needed = read & (set(job["env"]) | {"RUNNER_NAME", "GITHUB_EVENT_NAME", "GITHUB_REF"})
+    assert needed <= preserved
