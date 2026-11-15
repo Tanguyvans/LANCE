@@ -1,0 +1,11 @@
+{
+  "01-veyralink-g200.md": {"behaviour": 1},
+  "02-orbinet-pulse.md": {"behaviour": 1},
+  "03-kestrelnode-s8.md": {"behaviour": 1},
+  "04-axionmesh-t400.md": {"behaviour": 2},
+  "05-novacore-relay.md": {"behaviour": 2},
+  "06-teralink-drift.md": {"behaviour": 2},
+  "07-solvanta-edge-m5.md": {"behaviour": 3, "period_s": 21600},
+  "08-bluepeak-nucleus.md": {"behaviour": 3, "period_s": 172800},
+  "09-ironleaf-gateway-x1.md": {"behaviour": 3, "period_s": 259200}
+}
