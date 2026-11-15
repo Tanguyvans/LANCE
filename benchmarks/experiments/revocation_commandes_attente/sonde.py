@@ -12,7 +12,7 @@ flaw depends on the product's documentation:
 Every documentation is read against the same journal. The answer key
 (``corrige.json``) is read only to score; no script receives it.
 
-    .venv/bin/python benchmarks/experiments/revocation-commandes-attente/sonde.py
+    .venv/bin/python benchmarks/experiments/revocation_commandes_attente/sonde.py
 """
 from __future__ import annotations
 

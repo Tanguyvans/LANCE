@@ -74,7 +74,7 @@ opérations (maintenance, configuration).
 
 ## Premier passage de la sonde (2026-11-15)
 
-La sonde (`benchmarks/experiments/revocation-commandes-attente/sonde.py`)
+La sonde (`benchmarks/experiments/revocation_commandes_attente/sonde.py`)
 applique trois scripts écrits et figés **avant** de voir les documentations
 (empreinte `faaf189e…`) à 9 documentations rédigées par un autre LLM, trois par
 comportement, avec un corrigé séparé (`corrige.json`).
@@ -92,6 +92,19 @@ l'attente (5 min 38 s) est inférieure à tous les délais du comportement 3, qu
 n'est donc pas réellement testé ; un comportement 1 que la règle par défaut
 réussit sans lecture ; des scripts non encore améliorés sur ces documentations.
 L'agent LLM n'a pas encore été essayé.
+
+## Harnais sur le mini-PC
+
+Le même dossier contient l'approche LLM (`llm.py`) et le lanceur (`live.py`),
+construits sur le modèle du harnais H2. Le modèle reçoit le journal et la
+documentation, sans le corrigé, et clôt par un verdict accompagné des phrases de
+la documentation qu'il cite ; une citation absente de la documentation est
+refusée. Le lanceur fait passer chaque documentation aux trois scripts et au
+modèle, sur plusieurs répétitions, et publie seulement les verdicts, les comptes
+et les coûts. Le workflow manuel `.github/workflows/revocation-commandes.yml`
+le lance depuis `dev/2` sur le runner `nato-master`, sous le verrou du
+laboratoire, avec `qwen3.8:27b` par défaut. Tests hors ligne :
+`tests/test_revocation_sonde.py`.
 
 ## Suite
 

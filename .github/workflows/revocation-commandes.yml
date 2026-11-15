@@ -1,0 +1,119 @@
+name: Revocation and queued commands (manual dev2)
+
+# Manual challenge probe. The documentations and the journal are frozen; the
+# three scripts and the model read the same inputs and feed no admission;
+# evidence stays on nato. No fixture is created: the only remote call is the
+# provider. Run it from dev/2, like every other laboratory controller.
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Fixed provider (only ollama-umons is accepted)
+        required: true
+        default: ollama-umons
+        type: choice
+        options:
+          - ollama-umons
+      model:
+        description: Model from the declared V2 panel
+        required: true
+        default: qwen3.8:27b
+        type: choice
+        options:
+          - qwen3.8:27b
+          - gemma4:26b-a4b-it-q4_K_M
+      repetitions:
+        description: Independent repetitions per documentation
+        required: true
+        default: '3'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lance-lab-dev2
+  cancel-in-progress: false
+
+jobs:
+  revocation:
+    runs-on: [self-hosted, nato-master]
+    timeout-minutes: 120
+    env:
+      LANCE_LAB_LOCK: /var/lib/lance/lab.lock
+      LANCE_MQTT_LOCK_HELD: "1"
+      TRIAL_NAME: ${{ github.run_id }}-${{ github.run_attempt }}
+      EXPECTED_SHA: ${{ github.sha }}
+      PYTHONUNBUFFERED: "1"
+      REV_PROVIDER: ${{ inputs.provider }}
+      REV_MODEL: ${{ inputs.model }}
+      REV_REPETITIONS: ${{ inputs.repetitions }}
+    steps:
+      - name: Execute every approach under the shared laboratory lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          require() {
+            if [ "$1" != "$2" ]; then
+              echo "$3: expected '$2', observed '$1'" >&2
+              exit 1
+            fi
+          }
+          require "${RUNNER_NAME:-}" nato-master "runner name"
+          require "${GITHUB_EVENT_NAME:-}" workflow_dispatch "event name"
+          require "${GITHUB_REF:-}" refs/heads/dev/2 "trigger ref"
+          require "${REV_PROVIDER:-}" ollama-umons "provider"
+          case "$REV_MODEL" in
+            qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M) ;;
+            *) echo "Model outside the declared V2 panel" >&2; exit 1 ;;
+          esac
+          case "$REV_REPETITIONS" in 1|2|3) ;; *)
+            echo "Repetitions must be 1, 2 or 3" >&2; exit 1 ;;
+          esac
+          exec 9>>/var/lib/lance/lab.lock
+          flock -x 9
+          echo "Shared laboratory lock acquired"
+          cd /opt/lance-dev-2
+          require "$(git rev-parse HEAD)" "$EXPECTED_SHA" "dev-2 checkout HEAD"
+          echo "dev-2 checkout matches $EXPECTED_SHA; checking the running API"
+          venv/bin/python - <<'PY'
+          import json, os, urllib.request
+          opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+          with opener.open('http://127.0.0.1:8503/api/environment', timeout=10) as response:
+              state = json.load(response)
+          assert state['instance'] == 'dev-2' and state['lab_lock_enabled'] is True
+          assert state['commit'] == os.environ['EXPECTED_SHA']
+          PY
+          mkdir -p output/revocation-commandes
+          status=0
+          timeout --signal=TERM --kill-after=45s "$((600 + 1200 * REV_REPETITIONS))" \
+            venv/bin/python -m benchmarks.experiments.revocation_commandes_attente.live run \
+            --output "output/revocation-commandes/$TRIAL_NAME" \
+            --provider "$REV_PROVIDER" --model "$REV_MODEL" \
+            --repetitions "$REV_REPETITIONS" \
+            > "output/revocation-commandes/$TRIAL_NAME.console.log" 2>&1 || status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "Controller exited with status $status" >&2
+            exit "$status"
+          fi
+
+      - name: Publish counts, verdicts and spend only
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = nato-master
+          exec 9>>/var/lib/lance/lab.lock
+          flock -x 9
+          cd /opt/lance-dev-2
+          OUT="output/revocation-commandes/$TRIAL_NAME"
+          if [ -d "$OUT" ]; then
+            if [ -f "$OUT.console.log" ]; then cp "$OUT.console.log" "$OUT/controller-console.log"; fi
+            venv/bin/python -m benchmarks.experiments.revocation_commandes_attente.live summary --output "$OUT" || true
+          fi
