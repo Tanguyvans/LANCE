@@ -97,8 +97,11 @@ ssh -L 8000:localhost:8000 <user>@<host>
   touch hosts you did not authorize.
 - Before any run, we agree in writing on the **perimeter** (which subnet/hosts and
   ports) and the **time window** — a short Rules of Engagement that both sides sign.
-- Keep the dashboard off the LAN (§6); scan launch is intentionally unauthenticated
-  for operator convenience, so network isolation is the control.
+- Keep the dashboard off the LAN (§6). Scan launch is unauthenticated by default,
+  so the localhost bind is the primary control. For extra app-layer hardening set
+  `LANCE_REQUIRE_LAUNCH_AUTH=1` — launches then require a Bearer admin token.
+  (Launching from the dashboard button with this on needs a pending client update;
+  until then launch via the API with the token.)
 
 ## 8. What we deliver to you
 

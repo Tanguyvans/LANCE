@@ -61,3 +61,33 @@ def test_launch_without_key_reaches_handler(monkeypatch, token, path, payload):
         response = TestClient(app).post(path, json=payload)
     assert response.status_code == 409, response.text
     assert response.json()["detail"] == "Pipeline already running or stopping"
+
+
+LAUNCH_PATHS = [
+    ("/api/pipeline/start", {"provider": "local", "model": "test", "scenario_id": "1"}),
+    ("/api/pipeline/batch", {"provider": "local", "model": "test", "batch_ids": ["1"]}),
+]
+
+
+@pytest.mark.parametrize("path,payload", LAUNCH_PATHS)
+def test_launch_auth_required_fails_closed(monkeypatch, path, payload):
+    monkeypatch.setenv("LANCE_REQUIRE_LAUNCH_AUTH", "1")
+    # No server token configured -> 503 before the handler.
+    monkeypatch.delenv("LANCE_ADMIN_TOKEN", raising=False)
+    assert TestClient(app).post(path, json=payload).status_code == 503
+    # Token configured but none supplied -> 401.
+    monkeypatch.setenv("LANCE_ADMIN_TOKEN", "test-admin-key")
+    assert TestClient(app).post(path, json=payload).status_code == 401
+    # Correct Bearer reaches the handler (409: already running).
+    with patch.dict(pipeline._state, {"running": True}):
+        ok = TestClient(app).post(path, json=payload, headers={"Authorization": "Bearer test-admin-key"})
+    assert ok.status_code == 409, ok.text
+
+
+@pytest.mark.parametrize("path,payload", LAUNCH_PATHS)
+def test_launch_public_when_flag_unset(monkeypatch, path, payload):
+    monkeypatch.delenv("LANCE_REQUIRE_LAUNCH_AUTH", raising=False)
+    monkeypatch.delenv("LANCE_ADMIN_TOKEN", raising=False)
+    with patch.dict(pipeline._state, {"running": True}):
+        resp = TestClient(app).post(path, json=payload)
+    assert resp.status_code == 409, resp.text

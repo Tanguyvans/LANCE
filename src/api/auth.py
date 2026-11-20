@@ -118,11 +118,25 @@ def require_admin_auth(request: Request) -> None:
         _unauthorized()
 
 
+def _launch_auth_required() -> bool:
+    """Whether scenario launches must be authenticated (default: no)."""
+    return (os.environ.get("LANCE_REQUIRE_LAUNCH_AUTH", "") or "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 def require_mutation_auth(request: Request) -> None:
-    """Scenario launches are public; other mutations require admin access."""
-    if request.method == "POST" and request.url.path in {
-        "/api/pipeline/start", "/api/pipeline/batch",
-    }:
+    """Scenario launches are public by default.
+
+    Set ``LANCE_REQUIRE_LAUNCH_AUTH`` to require admin auth on launches too — the
+    right posture when the dashboard is reachable beyond a trusted operator (e.g.
+    a partner-operated host). Default off keeps existing behaviour.
+    """
+    if (
+        request.method == "POST"
+        and request.url.path in {"/api/pipeline/start", "/api/pipeline/batch"}
+        and not _launch_auth_required()
+    ):
         return
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         require_admin_auth(request)
