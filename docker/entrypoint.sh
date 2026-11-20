@@ -3,6 +3,11 @@ set -e
 
 INIT_FLAG="/app/data/.initialized"
 
+# Reconcile the LLM provider from the environment on every boot so the .env is
+# the single source of truth (no manual inject step, no stale registry row).
+python3 -m src.db.reconcile_provider \
+    || echo "[init] WARNING: provider reconcile failed; keeping the existing registry" >&2
+
 if [ ! -f "$INIT_FLAG" ]; then
     echo "[init] First run: ingesting skills into knowledge store..."
     python3 -c "
