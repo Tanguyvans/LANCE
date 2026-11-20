@@ -73,7 +73,7 @@ tailscale ping 100.66.221.22
 
 **Relais en panne :** passer de Qwen à Gemma sur ce même relais ne suffit pas. Choisir un autre fournisseur opérationnel et vérifier les choix par phase. Cela ne reprend pas automatiquement un run en échec.
 
-**Pour la remise en route du pont identifié, suivre le tunnel SSH dans le dépannage avancé ci-dessous. Le démarrage automatique reste à configurer.**
+**Pour la remise en route du pont identifié, suivre le tunnel SSH dans le dépannage avancé ci-dessous. Pour un démarrage automatique et une reconnexion après coupure, voir [Fiabiliser le relais UMONS (autossh + systemd)](umons-tunnel-service.md).**
 
 <details>
 <summary><strong>Administration — ajouter ou modifier un modèle</strong></summary>
