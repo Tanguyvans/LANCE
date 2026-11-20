@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="680" viewBox="0 0 680 420" role="img" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
-  <title>Partner (Polish) access via Tailscale</title>
-  <desc>The nato-master-1 mini PC runs the harness and scans the Polish target network through an encrypted Tailscale bridge. The flint LLM stays internal (Corsair relay to the Dell L40) and is never exposed. An ACL only allows the scanner-to-targets direction.</desc>
+  <title>LANCE harness access via Tailscale</title>
+  <desc>The LANCE harness scans a target network through an encrypted Tailscale bridge. The flint LLM stays internal (Corsair relay to the Dell L40) and is never exposed. An ACL only allows the scanner-to-targets direction.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
       <path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -13,11 +13,11 @@
   <text x="44" y="88" font-size="14" font-weight="500" fill="#444441">UMONS / NATO side</text>
 
   <rect x="464" y="64" width="180" height="230" rx="16" fill="none" stroke="#888780" stroke-width="1" stroke-dasharray="5 5"/>
-  <text x="484" y="88" font-size="14" font-weight="500" fill="#444441">Polish side</text>
+  <text x="484" y="88" font-size="14" font-weight="500" fill="#444441">Network</text>
 
   <rect x="48" y="108" width="252" height="58" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
-  <text x="174" y="130" font-size="14" font-weight="500" fill="#04342C" text-anchor="middle" dominant-baseline="central">Mini PC — nato-master-1</text>
-  <text x="174" y="150" font-size="12" fill="#0F6E56" text-anchor="middle" dominant-baseline="central">Harness (scan) · tag:scanner</text>
+  <text x="174" y="130" font-size="14" font-weight="500" fill="#04342C" text-anchor="middle" dominant-baseline="central">LANCE harness</text>
+  <text x="174" y="150" font-size="12" fill="#0F6E56" text-anchor="middle" dominant-baseline="central">scanner · tag:scanner</text>
 
   <rect x="48" y="226" width="252" height="52" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
   <text x="174" y="245" font-size="14" font-weight="500" fill="#04342C" text-anchor="middle" dominant-baseline="central">Corsair relay (SSH)</text>
