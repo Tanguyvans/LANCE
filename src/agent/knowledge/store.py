@@ -37,8 +37,8 @@ def _get_client() -> chromadb.ClientAPI:
     return _chroma_client
 
 
-class _VoyageEmbeddingFunction(chromadb.EmbeddingFunction):
-    """ChromaDB embedding function backed by Voyage AI."""
+class _EmbeddingFunction(chromadb.EmbeddingFunction):
+    """ChromaDB embedding function backed by the configured embedding backend."""
 
     def __init__(self) -> None:
         """Keep an explicit constructor for ChromaDB's embedding protocol."""
@@ -47,11 +47,11 @@ class _VoyageEmbeddingFunction(chromadb.EmbeddingFunction):
         return embed(input)
 
 
-_embedding_fn = _VoyageEmbeddingFunction()
+_embedding_fn = _EmbeddingFunction()
 
 
 def get_collection(name: str) -> chromadb.Collection:
-    """Get or create a named collection with Voyage embeddings."""
+    """Get or create a named collection with the configured embeddings."""
     client = _get_client()
     return client.get_or_create_collection(
         name=name,
