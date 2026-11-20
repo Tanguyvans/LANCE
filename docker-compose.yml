@@ -1,14 +1,30 @@
 services:
   nato-iot:
     image: ghcr.io/tanguyvans/lance:latest
-    ports:
-      - "8000:8000"
+
+    # Host networking (Linux) is the single-host partner default: the agent can
+    # emit raw SYN scans on the target segment and reach a local Ollama at
+    # localhost:11434. Host mode is Linux-only and ignores any `ports:` mapping.
+    network_mode: host
+
     volumes:
       - ./data:/app/data
       - ./output:/app/output
     env_file: .env
     restart: unless-stopped
 
-    # For Linux / Raspberry Pi: uncomment the line below and remove 'ports'
-    # to give the container full local network access (required for nmap SYN scans).
-    # network_mode: host
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s   # first boot ingests the knowledge store before serving
+
+    # Not on Linux, or you don't need SYN scans? Use bridge networking instead:
+    # comment out `network_mode: host` above and uncomment the block below. In
+    # bridge mode the container reaches a host Ollama via `host.docker.internal`,
+    # not `localhost` — set LANCE_MOE_BASE_URL accordingly.
+    # ports:
+    #   - "8000:8000"
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
