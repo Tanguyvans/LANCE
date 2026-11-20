@@ -14,4 +14,8 @@ print(f'[init] Ingested {count} skill chunks into ChromaDB')
     echo "[init] Knowledge store ready."
 fi
 
-exec uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+# Bind host. Defaults to 127.0.0.1 (fail-closed): the dashboard — whose scan
+# launch is unauthenticated — stays off the LAN in the host-mode default and is
+# reached over an SSH tunnel. Bridge networking MUST set LANCE_BIND_HOST=0.0.0.0,
+# otherwise the published port maps to a loopback-only app (see docker-compose.yml).
+exec uvicorn src.api.main:app --host "${LANCE_BIND_HOST:-127.0.0.1}" --port 8000
