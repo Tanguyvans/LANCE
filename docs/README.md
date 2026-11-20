@@ -18,6 +18,9 @@ LLM/règles ; les propositions restent distinctes de la référence implémenté
 Pour lancer une découverte ou un audit sans modèle depuis l’interface, voir le
 [catalogue des procédures et le lancement guidé](architecture/run-modes.md#catalogue-et-lancement-guidé).
 
+Pour donner à un partenaire (site polonais) l'accès au harness sans exposer notre
+infrastructure, voir l'[accès partenaire via Tailscale](architecture/partner-access.md).
+
 | Dossier | Contenu |
 | --- | --- |
 | `architecture/` | Fonctionnement du pipeline, livrables et mécanismes de reprise |
