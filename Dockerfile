@@ -21,6 +21,8 @@ WORKDIR /app
 # are NOT in Debian main and are installed below via pip/git.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
+    iproute2 \
+    traceroute \
     mosquitto-clients \
     openssh-client \
     iputils-ping \
@@ -89,6 +91,8 @@ RUN chmod +x /entrypoint.sh
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+# Keep ChromaDB strictly offline (no outbound PostHog telemetry in partner/air-gapped deploys)
+ENV ANONYMIZED_TELEMETRY=FALSE
 
 EXPOSE 8000
 

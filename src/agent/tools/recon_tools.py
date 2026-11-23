@@ -10,6 +10,7 @@ All subprocess tools return {stdout, stderr, return_code} as JSON.
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import os
 import re
@@ -161,6 +162,42 @@ def _parse_neigh_line(line: str) -> dict | None:
     }
 
 
+_ARP_SCAN_MAX_HOSTS = 1024
+
+
+def _parse_authorized_network(raw: str | None) -> ipaddress.IPv4Network | None:
+    """Parse an authorized IPv4 CIDR or legacy subnet string for local discovery."""
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    if "/" not in value:
+        value = f"{value}/24" if value.endswith(".0") else f"{value}/32"
+    try:
+        net = ipaddress.ip_network(value, strict=False)
+    except ValueError:
+        return None
+    return net if isinstance(net, ipaddress.IPv4Network) else None
+
+
+def _resolve_arp_network() -> ipaddress.IPv4Network | None:
+    """Return the authorized IPv4 network from discovery mode or scenario topology."""
+    try:
+        from src.agent.core.graph_context import current_graph_context
+
+        ctx = current_graph_context()
+    except Exception:
+        return None
+    discovery = getattr(ctx, "discovery_mode", None)
+    if isinstance(discovery, dict) and discovery.get("target_network"):
+        net = _parse_authorized_network(discovery.get("target_network"))
+        if net is not None:
+            return net
+    topology = getattr(ctx, "scenario_topology", None)
+    if isinstance(topology, dict) and topology.get("subnet"):
+        return _parse_authorized_network(topology.get("subnet"))
+    return None
+
+
 def arp_scan(**kwargs) -> str:
     """Double ping-sweep then dump ARP table for full Layer 2 discovery."""
     import concurrent.futures
@@ -168,13 +205,19 @@ def arp_scan(**kwargs) -> str:
     import logging
 
     log = logging.getLogger(__name__)
-    try:
-        from src.agent.core.graph_context import current_graph_context
-        topology = current_graph_context().scenario_topology
-        # Ensure we have a string here
-        subnet = str(topology.get("subnet", "192.168.88.0")).rsplit(".", 1)[0] if topology else "192.168.88"
-    except Exception:
-        subnet = "192.168.88"
+    target_net = _resolve_arp_network()
+    if target_net is None:
+        log.warning("arp_scan refused: no authorized target_network or scenario subnet configured")
+        return json.dumps({
+            "hosts": [],
+            "count": 0,
+            "error": "No authorized target_network or scenario subnet configured for arp_scan",
+        })
+
+    if target_net.prefixlen >= 31:
+        candidate_ips = [str(ip) for ip in target_net]
+    else:
+        candidate_ips = [str(ip) for ip in target_net.hosts()]
 
     def ping_host(ip: str) -> None:
         try:
@@ -186,13 +229,18 @@ def arp_scan(**kwargs) -> str:
         except Exception:
             pass  # Ignore all errors — we just want to populate ARP cache
 
-    # Two passes to catch slow/intermittent devices
-    for pass_num in range(2):
-        ips = [f"{subnet}.{i}" for i in range(1, 255)]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=64) as pool:
-            list(pool.map(ping_host, ips))  # list() forces completion
-        if pass_num == 0:
-            time.sleep(1)  # Wait for ARP cache to settle before pass 2
+    # Two passes to catch slow/intermittent devices (skip active sweep on very large CIDRs).
+    if len(candidate_ips) <= _ARP_SCAN_MAX_HOSTS:
+        for pass_num in range(2):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(64, max(1, len(candidate_ips)))) as pool:
+                list(pool.map(ping_host, candidate_ips))  # list() forces completion
+            if pass_num == 0:
+                time.sleep(1)  # Wait for ARP cache to settle before pass 2
+    else:
+        log.warning(
+            "arp_scan: %s has %d hosts (> %d); reading existing neighbour table without active ping sweep",
+            target_net, len(candidate_ips), _ARP_SCAN_MAX_HOSTS,
+        )
 
     # Dump the neighbour table. Prefer `arp -a` (net-tools); fall back to
     # `ip neigh` (iproute2, always present) when arp is unavailable — e.g. a
@@ -223,20 +271,26 @@ def arp_scan(**kwargs) -> str:
         log.error("arp -a failed: %s", e)
         return json.dumps({"hosts": [], "count": 0, "error": str(e)})
 
-    # Parse and deduplicate by IP (keep first interface seen)
+    # Parse and deduplicate by IP strictly within the authorized CIDR.
     seen_ips: set[str] = set()
     hosts = []
     for line in neigh_output.splitlines():
-        if subnet not in line or "incomplete" in line.lower():
+        if "incomplete" in line.lower():
             continue
         parsed = parse_line(line)
-        if parsed and parsed["ip"] not in seen_ips:
-            # Skip broadcast addresses
-            last_octet = parsed["ip"].split(".")[-1]
-            if last_octet in ("0", "255"):
-                continue
-            seen_ips.add(parsed["ip"])
-            hosts.append(parsed)
+        if not parsed or parsed["ip"] in seen_ips:
+            continue
+        try:
+            addr = ipaddress.ip_address(parsed["ip"])
+        except ValueError:
+            continue
+        if addr not in target_net:
+            continue
+        # Skip network/broadcast addresses on subnets wider than /31
+        if target_net.prefixlen <= 30 and addr in (target_net.network_address, target_net.broadcast_address):
+            continue
+        seen_ips.add(parsed["ip"])
+        hosts.append(parsed)
 
     # Sort by IP
     hosts.sort(key=lambda h: tuple(int(x) for x in h["ip"].split(".")))

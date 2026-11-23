@@ -1061,11 +1061,28 @@ class ReconPhase:
             return
 
         recon_text = recon_path.read_text(encoding="utf-8")
-        # Parse IPs that look like 192.168.x.x from the recon report
-        subnet_prefix = self.target_network.rsplit(".", 1)[0] if self.target_network else ""
+        # Extract discovered host IPs strictly within the authorized target_network CIDR.
+        try:
+            target_net = ipaddress.ip_network(self.target_network, strict=False) if self.target_network else None
+        except ValueError:
+            target_net = None
+
+        def _in_target_net(candidate: str) -> bool:
+            if target_net is None:
+                return False
+            try:
+                addr = ipaddress.ip_address(candidate)
+            except ValueError:
+                return False
+            if addr not in target_net:
+                return False
+            if target_net.prefixlen <= 30 and addr in (target_net.network_address, target_net.broadcast_address):
+                return False
+            return True
+
         host_ips = list(dict.fromkeys(  # deduplicate, preserve order
             m for m in _re.findall(r"\b(\d+\.\d+\.\d+\.\d+)\b", recon_text)
-            if subnet_prefix and m.startswith(subnet_prefix) and not m.endswith(".0") and not m.endswith(".255")
+            if _in_target_net(m)
         ))
 
         if not host_ips:

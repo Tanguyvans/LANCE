@@ -39,9 +39,11 @@ for a self-contained test with no UMONS dependency.)
 In a working directory with the repo's `docker-compose.yml`:
 
 ```bash
-docker pull ghcr.io/tanguyvans/lance:latest     # or docker load the offline bundle
+docker pull ghcr.io/tanguyvans/lance:dev-1      # or :latest once merged to main, or docker load the offline bundle
 cp .env.example .env
 ```
+
+*(If pulling `:dev-1`, set `image: ghcr.io/tanguyvans/lance:dev-1` in `docker-compose.yml` or retag it to `:latest`.)*
 
 Edit `.env` — point the LLM + embeddings at corsair, keep the dashboard local:
 
@@ -113,4 +115,9 @@ docker compose down            # stop the harness
   shape (Ollama + harness on one GPU box on the segment) needs a GPU box placed on
   the target segment — a later fidelity check if wanted.
 - The authorized CIDR (`192.168.100.0/24`) is the Rules-of-Engagement perimeter for
-  this test; the harness enforces it at tool-execution time.
+  this test; the harness enforces it at tool-execution time (including `arp_scan` and
+  discovery-mode `traceroute`).
+- **Physical-device progression:** when moving from Ansible VMs to a physical lab
+  device, narrow `target_network` to the dedicated lab VLAN or a single host `/32`,
+  run the read-only **Scripts** (`discovery-v1`, `service-inventory-v1`) first to
+  confirm routing and non-intrusive discovery, then run the full **LANCE** agent.

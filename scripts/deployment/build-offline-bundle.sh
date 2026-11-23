@@ -40,10 +40,13 @@ echo "[bundle] saving ${IMAGE}:${TAG} -> ${TARBALL}"
 docker save "${IMAGE}:${TAG}" | gzip > "$TARBALL"
 
 # sha256sum on Linux, shasum on macOS build hosts.
+# Hash from inside OUT_DIR so the checksum file records the basename and
+# `sha256sum -c <file>.sha256` works in any target directory on the partner host.
+TARBALL_NAME="$(basename "$TARBALL")"
 if command -v sha256sum >/dev/null 2>&1; then
-  sha256sum "$TARBALL" | tee "${TARBALL}.sha256"
+  (cd "$OUT_DIR" && sha256sum "$TARBALL_NAME") | tee "${TARBALL}.sha256"
 else
-  shasum -a 256 "$TARBALL" | tee "${TARBALL}.sha256"
+  (cd "$OUT_DIR" && shasum -a 256 "$TARBALL_NAME") | tee "${TARBALL}.sha256"
 fi
 
 cat <<EOF

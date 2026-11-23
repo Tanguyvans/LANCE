@@ -19,16 +19,38 @@ The harness and the LLM can share the one GPU host (simplest), as long as it sit
 on the target segment. Host networking is used so the scanner can reach the
 targets directly.
 
-## 2. Pull the models on Ollama
+## 2. Install Ollama and pull the models
 
-A chat model for the agent, and the embedding model for the knowledge store:
+Install Ollama on the Linux GPU host (`curl -fsSL https://ollama.com/install.sh | sh`
+when online, or via the official Linux tarball for air-gapped hosts) and verify
+the GPU is detected (`nvidia-smi` and `ollama --version`).
+
+LANCE needs two models on Ollama — a tool-capable chat model for the agent, and
+the embedding model for the local knowledge store:
 
 ```bash
-ollama pull qwen2.5:14b          # or your preferred served chat model
-ollama pull nomic-embed-text     # embeddings — required, runs locally
+ollama pull qwen2.5:14b          # ~10 GB VRAM (or qwen3.5:27b on >=24 GB VRAM)
+ollama pull nomic-embed-text     # embeddings — required, runs locally (~274 MB)
 ```
 
-Use any model Ollama serves; note the exact tag — you set it in `.env` below.
+Use any tool-capable model Ollama serves; note the exact tag — you set it in
+`.env` below.
+
+**Air-gapped host (no internet at setup time):** pull both models once on a
+staging Linux machine with Ollama, then copy Ollama's model store to the target
+host and restart Ollama:
+
+```bash
+# On the staging machine (after `ollama pull`):
+tar czf ollama-models.tar.gz -C /usr/share/ollama/.ollama models
+
+# On the air-gapped host:
+sudo systemctl stop ollama
+sudo tar xzf ollama-models.tar.gz -C /usr/share/ollama/.ollama
+sudo chown -R ollama:ollama /usr/share/ollama/.ollama/models
+sudo systemctl start ollama
+ollama list                      # verify both tags appear
+```
 
 ## 3. Load the image (offline)
 
@@ -80,9 +102,24 @@ docker compose logs -f        # first boot ingests the knowledge store locally
 The compose file defaults to `network_mode: host` (Linux) so the scanner can emit
 SYN scans and reach Ollama at `localhost:11434`.
 
-## 6. Reach the dashboard
+## 6. Network topology, ports, and reaching the dashboard
 
-It is bound to `127.0.0.1:8000` on the host. From your workstation, tunnel in:
+### Ports to open (or keep closed)
+
+| Topology | LANCE host | Ollama (GPU) host | Inbound ports to open on LAN |
+| --- | --- | --- | --- |
+| **Single-host (recommended)** | Linux + GPU on target segment (`network_mode: host`) | Same host (`127.0.0.1:11434`) | **None.** Both Ollama (`11434`) and LANCE (`8000`) stay on `127.0.0.1`. Only outbound audit probes go to the authorized CIDR. |
+| **Two-host** (separate GPU box) | Linux probe on target segment (`network_mode: host`) | Separate GPU server (`OLLAMA_HOST=0.0.0.0:11434`) | **TCP `11434` on the GPU server only**, firewalled to allow **only the LANCE probe's IP**. Set `LANCE_MOE_BASE_URL` and `LANCE_EMBED_BASE_URL` to `http://<gpu-ip>:11434/v1`. |
+| **Bridge fallback** (non-Linux / no SYN scan) | Docker bridge (`ports: 127.0.0.1:8000:8000`) | Host (`host.docker.internal:11434`) | **None on LAN** if published on `127.0.0.1:8000`. Requires `LANCE_BIND_HOST=0.0.0.0` in `.env` and `LANCE_MOE_BASE_URL=http://host.docker.internal:11434/v1`. |
+
+In two-host mode, enable remote listening on the GPU host via a systemd drop-in
+(`sudo systemctl edit ollama`), add `[Service]` / `Environment="OLLAMA_HOST=0.0.0.0:11434"`,
+restart Ollama, and restrict port `11434` with `ufw`/`nftables` to the LANCE host IP.
+
+### Reach the dashboard
+
+The dashboard is bound to `127.0.0.1:8000` on the LANCE host. From your workstation,
+tunnel in over SSH (port `22` only):
 
 ```bash
 ssh -L 8000:localhost:8000 <user>@<host>

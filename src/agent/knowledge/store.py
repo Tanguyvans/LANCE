@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import chromadb
+from chromadb.config import Settings
 
 from src.agent.knowledge.embedder import embed
 
@@ -22,6 +23,7 @@ log = logging.getLogger(__name__)
 DATA_DIR = Path("data/knowledge.db")
 
 _chroma_client: chromadb.ClientAPI | None = None
+_CHROMA_SETTINGS = Settings(anonymized_telemetry=False)
 
 
 def _get_client() -> chromadb.ClientAPI:
@@ -30,10 +32,13 @@ def _get_client() -> chromadb.ClientAPI:
     if _chroma_client is None:
         try:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
-            _chroma_client = chromadb.PersistentClient(path=str(DATA_DIR))
+            _chroma_client = chromadb.PersistentClient(
+                path=str(DATA_DIR),
+                settings=_CHROMA_SETTINGS,
+            )
         except Exception as e:
             log.warning("PersistentClient failed (%s), falling back to EphemeralClient", e)
-            _chroma_client = chromadb.EphemeralClient()
+            _chroma_client = chromadb.EphemeralClient(settings=_CHROMA_SETTINGS)
     return _chroma_client
 
 
