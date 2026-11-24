@@ -79,6 +79,10 @@ La [recherche sur le contexte](../research/2026-09-29-context-scalability/README
 
 ## Utilisation et infrastructure
 
+- [Déploiement partenaire (Docker, Ollama local, offline et ports)](guides/partner-deployment.md).
+- [Smoke test d'installation conteneur — Niveau 1](guides/install-smoke-test.md).
+- [Répétition réseau réel et appareil physique — Niveau 2](guides/level2-network-test.md).
+- [Reprise hôte `nato-master`](guides/host-recovery-nato-master.md).
 - [Authentification et fournisseurs d'exécution](guides/provider-auth.md).
 - [LLM UMONS : connexion, choix des modèles et dépannage](guides/umons-llm.md).
 - [Accès labo nato-master via Tailscale depuis la machine dev](guides/lab-access-tailscale.md).
