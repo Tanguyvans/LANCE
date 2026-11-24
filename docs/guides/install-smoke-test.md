@@ -44,15 +44,15 @@ cp .env.example .env
 Edit `.env`:
 
 ```ini
-LANCE_ADMIN_TOKEN=$(head -c24 /dev/urandom | base64)   # any strong value
+LANCE_ADMIN_TOKEN=change-me-local-admin-password
 LANCE_BIND_HOST=127.0.0.1
-AGENT_PROVIDER=ollama-umons
-LANCE_MOE_BASE_URL=http://localhost:11434/v1     # or the Ollama host IP
-LANCE_MOE_MODEL=qwen2.5:3b                       # must match step 0
+AGENT_PROVIDER=ollama
+LANCE_LLM_BASE_URL=http://localhost:11434/v1
+LANCE_LLM_MODEL=qwen2.5:3b
 LANCE_EMBEDDINGS=ollama
 LANCE_EMBED_MODEL=nomic-embed-text
-# leave VOYAGE_API_KEY unset — this is the point of the test
 ```
+*(Leave `VOYAGE_API_KEY` unset — this is the point of the test. If Ollama is on another host, use its IP in `LANCE_LLM_BASE_URL`.)*
 
 ## 3. Start
 
@@ -66,7 +66,7 @@ docker compose logs -f        # Ctrl-C once it is serving
 | Check | Command | Expected |
 | --- | --- | --- |
 | Boots with **no Voyage key** | `docker compose logs` | `[init] Ingested N skill chunks`, **no** `VOYAGE_API_KEY not set` error |
-| Provider reconciled from `.env` | `docker compose logs \| grep reconcile` | `[reconcile] provider 'ollama-umons' -> http://…` |
+| Provider reconciled from `.env` | `docker compose logs \| grep reconcile` | `[reconcile] provider 'ollama' -> http://…` |
 | Container **healthy** | `docker compose ps` | status `healthy` (after ~1–3 min) |
 | Dashboard up | `curl -fsS http://127.0.0.1:8000/ -o /dev/null -w '%{http_code}\n'` | `200` |
 | Model registered | `curl -s http://127.0.0.1:8000/api/models` | lists `qwen2.5:3b`, marked recommended |

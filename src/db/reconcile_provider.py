@@ -7,9 +7,11 @@ stale ``providers`` row silently overriding a changed ``.env``. It is idempotent
 and a no-op when the variables are unset, so existing deployments are untouched.
 
 Environment:
-  AGENT_PROVIDER      provider name to upsert (e.g. ``ollama-umons``)
-  LANCE_MOE_BASE_URL  OpenAI-compatible endpoint (e.g. ``http://localhost:11434/v1``)
-  LANCE_MOE_MODEL     served model slug to register and set as default (optional)
+  AGENT_PROVIDER      provider name to upsert (e.g. ``ollama`` or ``ollama-umons``)
+  LANCE_LLM_BASE_URL  OpenAI-compatible endpoint (e.g. ``http://localhost:11434/v1``)
+                      (legacy alias: ``LANCE_MOE_BASE_URL``)
+  LANCE_LLM_MODEL     served model tag to register and set as default (optional)
+                      (legacy alias: ``LANCE_MOE_MODEL``)
 """
 from __future__ import annotations
 
@@ -25,14 +27,30 @@ if str(ROOT) not in sys.path:
 from src.db.database import get_conn, get_provider, init_db, upsert_model, upsert_provider
 
 
+def _env_llm_base_url() -> str:
+    return (
+        os.environ.get("LANCE_LLM_BASE_URL")
+        or os.environ.get("LANCE_MOE_BASE_URL")
+        or ""
+    ).strip().rstrip("/")
+
+
+def _env_llm_model() -> str:
+    return (
+        os.environ.get("LANCE_LLM_MODEL")
+        or os.environ.get("LANCE_MOE_MODEL")
+        or ""
+    ).strip()
+
+
 def reconcile_from_env() -> str | None:
     """Upsert the provider (and its model) from the environment.
 
     Returns the provider name when something was reconciled, else ``None``.
     """
     provider = (os.environ.get("AGENT_PROVIDER") or "").strip()
-    base_url = (os.environ.get("LANCE_MOE_BASE_URL") or "").strip().rstrip("/")
-    model = (os.environ.get("LANCE_MOE_MODEL") or "").strip()
+    base_url = _env_llm_base_url()
+    model = _env_llm_model()
 
     # Nothing to do unless both the provider name and its endpoint are given.
     if not provider or not base_url:
@@ -40,7 +58,7 @@ def reconcile_from_env() -> str | None:
 
     if not base_url.startswith(("http://", "https://")):
         print(
-            f"[reconcile] WARNING: LANCE_MOE_BASE_URL has no http(s) scheme: {base_url!r}",
+            f"[reconcile] WARNING: LANCE_LLM_BASE_URL has no http(s) scheme: {base_url!r}",
             file=sys.stderr,
         )
 
@@ -87,12 +105,12 @@ def main() -> None:
     provider = reconcile_from_env()
     if provider is None:
         print(
-            "[reconcile] AGENT_PROVIDER / LANCE_MOE_BASE_URL unset — "
+            "[reconcile] AGENT_PROVIDER / LANCE_LLM_BASE_URL unset — "
             "leaving the provider registry unchanged."
         )
         return
-    model = (os.environ.get("LANCE_MOE_MODEL") or "").strip()
-    base_url = (os.environ.get("LANCE_MOE_BASE_URL") or "").strip().rstrip("/")
+    model = _env_llm_model()
+    base_url = _env_llm_base_url()
     print(
         f"[reconcile] provider '{provider}' -> {base_url}"
         + (f" (model '{model}')" if model else "")

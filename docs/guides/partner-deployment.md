@@ -72,7 +72,7 @@ cp .env.example .env
 ```
 
 ```ini
-# Dashboard admin token — set a strong random value (required for admin actions)
+# Local admin password you invent yourself (e.g. `openssl rand -hex 24`)
 LANCE_ADMIN_TOKEN=<random-32+-chars>
 
 # Dashboard stays on localhost; reach it over an SSH tunnel (see §6). Do not put
@@ -80,9 +80,9 @@ LANCE_ADMIN_TOKEN=<random-32+-chars>
 LANCE_BIND_HOST=127.0.0.1
 
 # Your Ollama endpoint + served chat model (reconciled into LANCE at every boot)
-AGENT_PROVIDER=ollama-umons
-LANCE_MOE_BASE_URL=http://localhost:11434/v1
-LANCE_MOE_MODEL=qwen2.5:14b
+AGENT_PROVIDER=ollama
+LANCE_LLM_BASE_URL=http://localhost:11434/v1
+LANCE_LLM_MODEL=qwen2.5:14b
 # LANCE_API_TIMEOUT_S=300          # widen for heavy local models
 
 # Embeddings run locally on your Ollama — no cloud
@@ -90,7 +90,8 @@ LANCE_EMBEDDINGS=ollama
 LANCE_EMBED_MODEL=nomic-embed-text
 ```
 
-`LANCE_MOE_MODEL` must match a tag you pulled in §2, or the agent gets a 404.
+`LANCE_LLM_MODEL` must match a tag you pulled in §2, or the agent gets a 404.
+*(Legacy `LANCE_MOE_BASE_URL` / `LANCE_MOE_MODEL` and `AGENT_PROVIDER=ollama-umons` remain supported.)*
 
 ## 5. Start
 
@@ -109,8 +110,8 @@ SYN scans and reach Ollama at `localhost:11434`.
 | Topology | LANCE host | Ollama (GPU) host | Inbound ports to open on LAN |
 | --- | --- | --- | --- |
 | **Single-host (recommended)** | Linux + GPU on target segment (`network_mode: host`) | Same host (`127.0.0.1:11434`) | **None.** Both Ollama (`11434`) and LANCE (`8000`) stay on `127.0.0.1`. Only outbound audit probes go to the authorized CIDR. |
-| **Two-host** (separate GPU box) | Linux probe on target segment (`network_mode: host`) | Separate GPU server (`OLLAMA_HOST=0.0.0.0:11434`) | **TCP `11434` on the GPU server only**, firewalled to allow **only the LANCE probe's IP**. Set `LANCE_MOE_BASE_URL` and `LANCE_EMBED_BASE_URL` to `http://<gpu-ip>:11434/v1`. |
-| **Bridge fallback** (non-Linux / no SYN scan) | Docker bridge (`ports: 127.0.0.1:8000:8000`) | Host (`host.docker.internal:11434`) | **None on LAN** if published on `127.0.0.1:8000`. Requires `LANCE_BIND_HOST=0.0.0.0` in `.env` and `LANCE_MOE_BASE_URL=http://host.docker.internal:11434/v1`. |
+| **Two-host** (separate GPU box) | Linux probe on target segment (`network_mode: host`) | Separate GPU server (`OLLAMA_HOST=0.0.0.0:11434`) | **TCP `11434` on the GPU server only**, firewalled to allow **only the LANCE probe's IP**. Set `LANCE_LLM_BASE_URL` (and `LANCE_EMBED_BASE_URL` if different) to `http://<gpu-ip>:11434/v1`. |
+| **Bridge fallback** (non-Linux / no SYN scan) | Docker bridge (`ports: 127.0.0.1:8000:8000`) | Host (`host.docker.internal:11434`) | **None on LAN** if published on `127.0.0.1:8000`. Requires `LANCE_BIND_HOST=0.0.0.0` in `.env` and `LANCE_LLM_BASE_URL=http://host.docker.internal:11434/v1`. |
 
 In two-host mode, enable remote listening on the GPU host via a systemd drop-in
 (`sudo systemctl edit ollama`), add `[Service]` / `Environment="OLLAMA_HOST=0.0.0.0:11434"`,

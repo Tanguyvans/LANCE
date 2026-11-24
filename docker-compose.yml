@@ -23,7 +23,7 @@ services:
     # Not on Linux, or you don't need SYN scans? Use bridge networking instead:
     # comment out `network_mode: host` above and uncomment the block below. In
     # bridge mode the container reaches a host Ollama via `host.docker.internal`,
-    # not `localhost` — set LANCE_MOE_BASE_URL accordingly. Bridge mode also needs
+    # not `localhost` — set LANCE_LLM_BASE_URL accordingly. Bridge mode also needs
     # LANCE_BIND_HOST=0.0.0.0 in .env, otherwise the published port maps to a
     # loopback-only app and is unreachable.
     # ports:

@@ -50,7 +50,7 @@ def _recovery_deadline(device_deadline: float | None, context: AnalysisContext) 
 def analysis_worker_count(context: AnalysisContext, device_count: int) -> int:
     if context.experiment_scope == "analysis-verification":
         return 1
-    if context.local_moe or getattr(context.provider, "provider", "") == "ollama-umons":
+    if context.local_moe or getattr(context.provider, "provider", "") in ("ollama", "ollama-umons"):
         return 1
     configured = os.environ.get("LANCE_PHASE3_WORKERS", "").strip()
     if configured.isdigit() and int(configured) > 0:

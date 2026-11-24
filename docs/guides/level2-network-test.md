@@ -50,12 +50,11 @@ Edit `.env` — point the LLM + embeddings at corsair, keep the dashboard local:
 ```ini
 LANCE_ADMIN_TOKEN=<strong-random>
 LANCE_BIND_HOST=127.0.0.1
-AGENT_PROVIDER=ollama-umons
-LANCE_MOE_BASE_URL=http://100.66.221.22:11434/v1
-LANCE_MOE_MODEL=qwen3.5:27b
+AGENT_PROVIDER=ollama
+LANCE_LLM_BASE_URL=http://100.66.221.22:11434/v1
+LANCE_LLM_MODEL=qwen3.5:27b
 LANCE_API_TIMEOUT_S=300
 LANCE_EMBEDDINGS=ollama
-LANCE_EMBED_BASE_URL=http://100.66.221.22:11434/v1
 LANCE_EMBED_MODEL=nomic-embed-text
 ```
 
@@ -89,7 +88,7 @@ Dashboard: SSH-tunnel in (`ssh -L 8000:localhost:8000 <user>@nato-master-1`), op
 ```bash
 curl -X POST http://127.0.0.1:8000/api/pipeline/start \
   -H 'Content-Type: application/json' \
-  -d '{"runner_kind":"lance","provider":"ollama-umons","model":"qwen3.5:27b","target_network":"192.168.100.0/24"}'
+  -d '{"runner_kind":"lance","provider":"ollama","model":"qwen3.5:27b","target_network":"192.168.100.0/24"}'
 ```
 
 ## 6. What to check

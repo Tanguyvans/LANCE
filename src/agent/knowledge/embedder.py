@@ -10,7 +10,8 @@ Select the backend via environment variables:
   LANCE_EMBEDDINGS      ``ollama`` (default, local) | ``voyage`` (cloud, opt-in)
   LANCE_EMBED_MODEL     Ollama embedding model (default: ``nomic-embed-text``)
   LANCE_EMBED_BASE_URL  OpenAI-compatible endpoint; defaults to
-                        ``LANCE_MOE_BASE_URL`` then ``http://localhost:11434/v1``
+                        ``LANCE_LLM_BASE_URL``, legacy ``LANCE_MOE_BASE_URL``,
+                        then ``http://localhost:11434/v1``
   LANCE_EMBED_API_KEY   Placeholder key for the local endpoint (default: ``ollama``)
   VOYAGE_API_KEY        Required only when ``LANCE_EMBEDDINGS=voyage``
 
@@ -63,6 +64,7 @@ def _embed_base_url() -> str:
     """Resolve the local embedding endpoint, reusing the LLM endpoint by default."""
     url = (
         os.environ.get("LANCE_EMBED_BASE_URL")
+        or os.environ.get("LANCE_LLM_BASE_URL")
         or os.environ.get("LANCE_MOE_BASE_URL")
         or DEFAULT_OLLAMA_BASE_URL
     )

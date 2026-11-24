@@ -206,7 +206,7 @@ REMOVED_PROVIDERS = frozenset({"anthropic", "openrouter", "codex"})
 # Observed endpoint compatibility, not a requirement of all Ollama models.
 # Keep the standard assistant/tool history and add a continuation only after
 # the entire tool-result group. Never convert tool results to user messages.
-_TOOL_CONTINUATION_PROVIDERS = frozenset({"ollama-umons"})
+_TOOL_CONTINUATION_PROVIDERS = frozenset({"ollama", "ollama-umons"})
 _TOOL_CONTINUATION = (
     "Continue the original user request using the tool results already present "
     "above. Do not repeat completed actions merely because this continuation "
@@ -270,7 +270,7 @@ def _request_timeout_for(provider: str) -> float:
     """
     if provider == "local-moe":
         return _LOCAL_MOE_API_TIMEOUT
-    if provider == "ollama-umons":
+    if provider in ("ollama", "ollama-umons"):
         return _OLLAMA_UMONS_API_TIMEOUT
     return API_TIMEOUT
 

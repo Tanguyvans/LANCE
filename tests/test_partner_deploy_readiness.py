@@ -145,3 +145,63 @@ class TestOfflinePackagingContracts:
         script = (REPO_ROOT / "scripts/deployment/build-offline-bundle.sh").read_text(encoding="utf-8")
         assert '(cd "$OUT_DIR" && sha256sum "$TARBALL_NAME")' in script
         assert '(cd "$OUT_DIR" && shasum -a 256 "$TARBALL_NAME")' in script
+
+    def test_env_example_uses_clear_llm_names_and_no_inline_comments_on_active_lines(self):
+        env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+        assert "AGENT_PROVIDER=ollama" in env_example
+        assert "LANCE_LLM_BASE_URL=" in env_example
+        assert "LANCE_LLM_MODEL=" in env_example
+        for line in env_example.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            # Docker Compose env_file treats trailing `# ...` on KEY=val lines as part of the value.
+            assert "#" not in stripped, f"Inline comment found on active .env.example line: {line!r}"
+
+
+class TestCleanEnvAliasesAndOllamaProvider:
+    """Verify LANCE_LLM_* primary env vars, LANCE_MOE_* legacy fallback, and `ollama` provider parity."""
+
+    def test_embed_base_url_prefers_embed_then_llm_then_legacy_moe(self, monkeypatch):
+        from src.agent.knowledge import embedder
+
+        monkeypatch.delenv("LANCE_EMBED_BASE_URL", raising=False)
+        monkeypatch.delenv("LANCE_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("LANCE_MOE_BASE_URL", raising=False)
+        assert embedder._embed_base_url() == embedder.DEFAULT_OLLAMA_BASE_URL
+
+        monkeypatch.setenv("LANCE_MOE_BASE_URL", "http://10.0.0.1:11434/v1/")
+        assert embedder._embed_base_url() == "http://10.0.0.1:11434/v1"
+
+        monkeypatch.setenv("LANCE_LLM_BASE_URL", "http://10.0.0.2:11434/v1/")
+        assert embedder._embed_base_url() == "http://10.0.0.2:11434/v1"
+
+        monkeypatch.setenv("LANCE_EMBED_BASE_URL", "http://10.0.0.3:11434/v1/")
+        assert embedder._embed_base_url() == "http://10.0.0.3:11434/v1"
+
+    def test_reconcile_provider_reads_lance_llm_vars_with_legacy_fallback(self, monkeypatch):
+        from src.db import reconcile_provider
+
+        monkeypatch.delenv("LANCE_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("LANCE_LLM_MODEL", raising=False)
+        monkeypatch.setenv("LANCE_MOE_BASE_URL", "http://legacy:11434/v1/")
+        monkeypatch.setenv("LANCE_MOE_MODEL", "legacy-model")
+        assert reconcile_provider._env_llm_base_url() == "http://legacy:11434/v1"
+        assert reconcile_provider._env_llm_model() == "legacy-model"
+
+        monkeypatch.setenv("LANCE_LLM_BASE_URL", "http://clean:11434/v1/")
+        monkeypatch.setenv("LANCE_LLM_MODEL", "qwen2.5:14b")
+        assert reconcile_provider._env_llm_base_url() == "http://clean:11434/v1"
+        assert reconcile_provider._env_llm_model() == "qwen2.5:14b"
+
+    def test_ollama_provider_matches_ollama_umons_timeout_and_continuation(self):
+        from src.agent.provider import (
+            _OLLAMA_UMONS_API_TIMEOUT,
+            _TOOL_CONTINUATION_PROVIDERS,
+            _request_timeout_for,
+        )
+
+        assert "ollama" in _TOOL_CONTINUATION_PROVIDERS
+        assert "ollama-umons" in _TOOL_CONTINUATION_PROVIDERS
+        assert _request_timeout_for("ollama") == _OLLAMA_UMONS_API_TIMEOUT
+        assert _request_timeout_for("ollama-umons") == _OLLAMA_UMONS_API_TIMEOUT
