@@ -62,6 +62,11 @@
   }
 
   async function refresh() {
+    if (document.body?.dataset.appMode === 'audit') {
+      const section = document.getElementById('shared-activity');
+      if (section) section.hidden = true;
+      return;
+    }
     if (pending || document.hidden) return;
     pending = true;
     try {

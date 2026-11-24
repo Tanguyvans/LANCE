@@ -2,7 +2,7 @@ name: Build and push Docker image
 
 on:
   push:
-    branches: [main, dev/1]
+    branches: [main, dev/1, feat/audit-mode]
     tags: ["v*"]
   pull_request:
     branches: [main]

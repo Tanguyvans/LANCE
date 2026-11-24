@@ -70,13 +70,13 @@
         </label>
       </fieldset>
 
-      <div id="simple-run-config" hidden>
-        <div id="target-network-config">
-          <label for="inp-target-network">Réseau autorisé</label>
-          <input id="inp-target-network" type="text" placeholder="ex : 192.0.2.0/24" autocomplete="off" spellcheck="false" required>
-          <p class="field-hint">Cible du run. Aucun scénario de laboratoire n'est déployé.</p>
-        </div>
+      <div id="target-network-config" hidden>
+        <label for="inp-target-network">Réseau ou IP autorisée</label>
+        <input id="inp-target-network" type="text" placeholder="ex : 192.168.50.0/24 ou 10.107.10.42" autocomplete="off" spellcheck="false">
+        <p class="field-hint">Cible du run (sous-réseau CIDR ou IP unique normalisée en /32). Aucun scénario n'est déployé.</p>
+      </div>
 
+      <div id="simple-run-config" hidden>
         <div id="script-config" hidden>
           <label for="sel-script">Procédure</label>
           <select id="sel-script">
@@ -150,6 +150,16 @@
       </div>
       </div>
 
+      <div id="audit-scope-config" hidden>
+        <label>Niveau d'audit</label>
+        <div class="mode-toggle" id="audit-scope-toggle">
+          <label><input type="radio" name="audit-scope" value="passive"> Analyse seule (1–3)</label>
+          <label><input type="radio" name="audit-scope" value="full" checked> Complet (1–6)</label>
+        </div>
+        <p class="field-hint">Analyse seule : découverte + vulnérabilités sans exploitation. Complet : inclut vérification, intrusion et rapport.</p>
+      </div>
+
+      <div id="lab-deployment-controls">
       <label>Mode</label>
       <div class="mode-toggle">
         <label><input type="radio" name="run-mode" value="preset" checked> Scénario</label>
@@ -205,6 +215,7 @@
       </div>
 
       <button id="btn-teardown" disabled>Teardown</button>
+      </div><!-- /lab-deployment-controls -->
 
       <div id="phase-selection-config">
       <label>Phases</label>
@@ -218,7 +229,7 @@
       </div>
       </div>
 
-      <label>
+      <label id="auto-teardown-config">
         <input type="checkbox" id="cb-teardown" checked>
         &nbsp;Auto-teardown scénario
       </label>

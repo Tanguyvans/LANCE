@@ -11,6 +11,10 @@ services:
       - ./data:/app/data
       - ./output:/app/output
     env_file: .env
+    environment:
+      # Partner/Docker default: pure physical-network audit harness (hides UMONS lab/benchmark/Ansible UI).
+      # Set LANCE_MODE=lab in .env only when running against the UMONS Ansible scenario lab.
+      - LANCE_MODE=${LANCE_MODE:-audit}
     restart: unless-stopped
 
     healthcheck:

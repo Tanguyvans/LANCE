@@ -22,6 +22,28 @@ function runnerKind(value) {
   return Object.hasOwn(RUNNER_LABELS, value) ? value : 'lance';
 }
 
+let appMode = 'lab';
+
+function isAuditMode() {
+  return appMode === 'audit';
+}
+
+function applyAppMode(mode) {
+  appMode = mode === 'audit' ? 'audit' : 'lab';
+  document.body.dataset.appMode = appMode;
+  const audit = isAuditMode();
+  const viewNav = document.getElementById('view-nav');
+  if (viewNav) viewNav.hidden = audit;
+  const sharedActivity = document.getElementById('shared-activity');
+  if (sharedActivity && audit) sharedActivity.hidden = true;
+  if (audit) {
+    const title = document.querySelector('#header h1');
+    if (title) title.textContent = 'LANCE · Network Audit';
+    document.title = 'LANCE · Network Audit';
+  }
+  setRunnerView(activeExecutionKind);
+}
+
 function isOfflineScript() {
   return activeExecutionKind === 'scripted' && document.getElementById('sel-script').value === 'smoke-v1';
 }
@@ -29,8 +51,9 @@ function isOfflineScript() {
 function updateScriptSelection() {
   const script = document.getElementById('sel-script').value;
   const offline = activeExecutionKind === 'scripted' && script === 'smoke-v1';
-  document.getElementById('target-network-config').hidden = offline;
-  document.getElementById('inp-target-network').required = !offline;
+  const showTarget = isAuditMode() ? !offline : (activeExecutionKind === 'scripted' && !offline);
+  document.getElementById('target-network-config').hidden = !showTarget;
+  document.getElementById('inp-target-network').required = showTarget;
   document.getElementById('tool-call-limit').hidden = offline;
   document.getElementById('simple-stage-hint').textContent = offline
     ? 'Les étapes de la démo apparaissent dans le journal. Son résumé est disponible dans l’historique après le run.'
@@ -75,6 +98,7 @@ function setRunnerView(kind) {
   ++rulesGraphRequest;
   kind = runnerKind(kind);
   activeExecutionKind = kind;
+  const audit = isAuditMode();
   const simple = !isGraphRunner(kind);
   const rules = kind === 'rules';
   const choice = document.querySelector(`input[name="runner-kind"][value="${kind}"]`);
@@ -85,22 +109,31 @@ function setRunnerView(kind) {
   updateScriptSelection();
   document.getElementById('model-config').hidden = kind === 'scripted' || rules;
   document.getElementById('rules-config').hidden = !rules;
-  document.getElementById('execution-profile-config').hidden = rules;
-  document.getElementById('phase-selection-config').hidden = rules;
-  document.getElementById('model-budget-config').hidden = rules;
-  document.getElementById('batch-mode-choice').hidden = rules;
-  document.getElementById('blind-mode-label').hidden = rules || !document.getElementById('sel-scenario').value;
-  if (rules && document.querySelector('input[name="run-mode"]:checked')?.value === 'batch') {
+  document.getElementById('audit-scope-config').hidden = !audit || kind !== 'lance';
+  const labControls = document.getElementById('lab-deployment-controls');
+  if (labControls) labControls.hidden = audit;
+  const autoTeardown = document.getElementById('auto-teardown-config');
+  if (autoTeardown) autoTeardown.hidden = audit;
+  document.getElementById('execution-profile-config').hidden = rules || audit;
+  document.getElementById('phase-selection-config').hidden = rules || audit;
+  document.getElementById('model-budget-config').hidden = rules || audit;
+  document.getElementById('batch-mode-choice').hidden = rules || audit;
+  document.getElementById('blind-mode-label').hidden = rules || audit || !document.getElementById('sel-scenario').value;
+  if ((rules || audit) && document.querySelector('input[name="run-mode"]:checked')?.value === 'batch') {
     document.querySelector('input[name="run-mode"][value="preset"]').checked = true;
     document.getElementById('preset-mode').hidden = false;
     document.getElementById('batch-mode').hidden = true;
     document.getElementById('custom-mode').hidden = true;
   }
-  document.querySelector('.multi-model-toggle').hidden = kind !== 'lance';
-  document.getElementById('multi-model-config').hidden = kind !== 'lance' || !document.getElementById('cb-multi-model').checked;
+  document.querySelector('.multi-model-toggle').hidden = kind !== 'lance' || audit;
+  document.getElementById('multi-model-config').hidden = kind !== 'lance' || audit || !document.getElementById('cb-multi-model').checked;
   setRunnerCanvas(kind);
-  document.getElementById('btn-start').textContent = kind === 'rules' ? "Lancer l'audit par règles" : kind === 'lance' ? 'Lancer le pentest' : 'Lancer le script';
-  const batch = !simple && document.querySelector('input[name="run-mode"]:checked')?.value === 'batch';
+  document.getElementById('btn-start').textContent = kind === 'rules'
+    ? "Lancer l'audit par règles"
+    : kind === 'lance'
+      ? (audit ? "Lancer l'audit" : 'Lancer le pentest')
+      : 'Lancer le script';
+  const batch = !simple && !audit && document.querySelector('input[name="run-mode"]:checked')?.value === 'batch';
   document.getElementById('btn-start').hidden = batch;
   document.getElementById('btn-batch-start').hidden = !batch;
   if (simple) {
@@ -882,6 +915,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   initResizeHandles();
   initCollapsibleSidebar();
 
+  // Load active application mode (audit vs lab) before loading lab-only views
+  try {
+    const env = await fetchJSON('/api/environment');
+    if (env && env.mode) applyAppMode(env.mode);
+  } catch (e) {
+    console.warn("Environment load failed", e);
+  }
+
   // Load components independently to avoid one crash blocking everything
   try {
     await loadModels();
@@ -889,10 +930,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn("Models load failed", e);
   }
 
-  try {
-    await loadScenariosConfig();
-  } catch (e) {
-    console.warn("Scenarios config load failed", e);
+  if (!isAuditMode()) {
+    try {
+      await loadScenariosConfig();
+    } catch (e) {
+      console.warn("Scenarios config load failed", e);
+    }
   }
 
   try {
@@ -1565,39 +1608,57 @@ async function startRun() {
     return;
   }
   const provider = selectedOpt.dataset.provider;
-  const teardown = document.getElementById('cb-teardown').checked;
-  const phases   = expandSelectedPhases([...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value)));
-  const mode     = document.querySelector('input[name="run-mode"]:checked').value;
-
-  // Determine scenario_id based on mode
+  const audit = isAuditMode();
+  let targetNetwork = null;
+  let teardown = false;
+  let phases = [];
   let scenario = null;
-  if (mode === 'preset') {
-    scenario = document.getElementById('sel-scenario').value || null;
-    if (isSealedScenarioId(scenario)) {
-      addLog({type:'error', message:'Les scénarios scellés nécessitent le controller d’évaluation'});
+  let mode = 'preset';
+  let phaseModels = null;
+
+  if (audit) {
+    const rawTarget = document.getElementById('inp-target-network').value.trim();
+    if (!rawTarget) {
+      addLog({type: 'error', message: 'Indiquez une adresse IP ou un sous-réseau CIDR autorisé (ex. 192.168.50.0/24 ou 10.107.10.42).'});
+      document.getElementById('inp-target-network').focus();
       return;
     }
+    targetNetwork = rawTarget;
+    const scope = document.querySelector('input[name="audit-scope"]:checked')?.value || 'full';
+    phases = scope === 'passive' ? [1, 2, 3] : [1, 2, 3, 4, 5, 6];
   } else {
-    // Custom mode — build scenario_id from architecture + posture
-    const config = getCustomConfig();
-    // For now, find a matching pre-configured scenario or use architecture as scenario
-    const match = _scenariosData.scenarios.find(s =>
-      s.topology === config.architecture && s.posture === config.posture
-    );
-    scenario = match ? match.id : null;
-  }
+    teardown = document.getElementById('cb-teardown').checked;
+    phases   = expandSelectedPhases([...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value)));
+    mode     = document.querySelector('input[name="run-mode"]:checked').value;
 
-  // Multi-model config
-  let phaseModels = null;
-  if (document.getElementById('cb-multi-model').checked) {
-    phaseModels = {};
-    document.querySelectorAll('.sel-phase-model').forEach(sel => {
-      if (sel.value) {
-        sel.dataset.phases.split(',').forEach(p => {
-          phaseModels[parseInt(p)] = sel.value;
-        });
+    // Determine scenario_id based on mode
+    if (mode === 'preset') {
+      scenario = document.getElementById('sel-scenario').value || null;
+      if (isSealedScenarioId(scenario)) {
+        addLog({type:'error', message:'Les scénarios scellés nécessitent le controller d’évaluation'});
+        return;
       }
-    });
+    } else {
+      // Custom mode — build scenario_id from architecture + posture
+      const config = getCustomConfig();
+      // For now, find a matching pre-configured scenario or use architecture as scenario
+      const match = _scenariosData.scenarios.find(s =>
+        s.topology === config.architecture && s.posture === config.posture
+      );
+      scenario = match ? match.id : null;
+    }
+
+    // Multi-model config
+    if (document.getElementById('cb-multi-model').checked) {
+      phaseModels = {};
+      document.querySelectorAll('.sel-phase-model').forEach(sel => {
+        if (sel.value) {
+          sel.dataset.phases.split(',').forEach(p => {
+            phaseModels[parseInt(p)] = sel.value;
+          });
+        }
+      });
+    }
   }
 
   // Reset graph colors and state
@@ -1611,19 +1672,20 @@ async function startRun() {
   clearPhasePills();
 
   // Load correct topology
-  await loadTopology(scenario || null);
+  await loadTopology(audit ? null : (scenario || null));
 
-  const budgetRaw = document.getElementById('inp-budget').value;
+  const budgetRaw = audit ? '' : document.getElementById('inp-budget').value;
   const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
 
-  const blindMode = !!(document.getElementById("cb-blind-mode")?.checked && mode === "preset" && scenario);
-  const executionProfile = document.querySelector("input[name=execution-profile]:checked")?.value || "auto";
+  const blindMode = !audit && !!(document.getElementById("cb-blind-mode")?.checked && mode === "preset" && scenario);
+  const executionProfile = audit ? 'auto' : (document.querySelector("input[name=execution-profile]:checked")?.value || "auto");
 
   const body = {
     runner_kind: 'lance',
     model,
     provider,
     scenario_id: scenario,
+    target_network: targetNetwork,
     blind: blindMode,
     phases: phases.length < 6 ? phases : null,
     auto_teardown: teardown,
@@ -1633,7 +1695,7 @@ async function startRun() {
   };
 
   // Add custom mode fields
-  if (mode === 'custom') {
+  if (!audit && mode === 'custom') {
     const config = getCustomConfig();
     body.architecture = config.architecture;
     body.posture = config.posture;

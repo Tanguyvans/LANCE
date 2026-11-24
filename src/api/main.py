@@ -91,12 +91,20 @@ def redirect_legacy_dashboard():
     return RedirectResponse(url="/", status_code=308)
 
 
+def get_app_mode() -> str:
+    """Return the active application mode: ``audit`` (network-only) or ``lab`` (default)."""
+    raw = (os.environ.get("LANCE_MODE") or "lab").strip().lower()
+    return "audit" if raw == "audit" else "lab"
+
+
 @app.get("/api/environment")
 def environment():
-    """Deployment identity and cooperative laboratory locking capability."""
+    """Deployment identity, active UI/API mode, and laboratory locking capability."""
+    mode = get_app_mode()
     return {
         "instance": os.environ.get("LANCE_INSTANCE", "standalone"),
         "branch": os.environ.get("LANCE_BRANCH"),
         "commit": os.environ.get("LANCE_COMMIT"),
         "lab_lock_enabled": bool(os.environ.get("LANCE_LAB_LOCK")),
+        "mode": mode,
     }

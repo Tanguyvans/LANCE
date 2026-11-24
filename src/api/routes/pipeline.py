@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import math
+import os
 import subprocess
 import sys
 import threading
@@ -112,6 +114,34 @@ class ModelSelection(BaseModel):
         return validate_provider_choice(value)
 
 
+def _is_audit_mode() -> bool:
+    return (os.environ.get("LANCE_MODE") or "lab").strip().lower() == "audit"
+
+
+def _normalize_target_network(raw: str | None) -> str:
+    """Normalize a bare IPv4 host address to /32 and validate canonical auditable IPv4 CIDR."""
+    if not isinstance(raw, str) or not raw.strip() or raw != raw.strip():
+        raise ValueError("An explicit authorized IPv4 address or CIDR is required")
+    value = raw
+    if "/" not in value:
+        try:
+            addr = ipaddress.ip_address(value)
+        except ValueError as exc:
+            raise ValueError("target_network must be one canonical IPv4 CIDR or IPv4 address") from exc
+        if not isinstance(addr, ipaddress.IPv4Address):
+            raise ValueError("Only IPv4 addresses and CIDRs are supported")
+        value = f"{addr}/32"
+    try:
+        network = ipaddress.ip_network(value, strict=True)
+    except ValueError as exc:
+        raise ValueError("target_network must be one canonical IPv4 CIDR") from exc
+    if not isinstance(network, ipaddress.IPv4Network) or network.prefixlen < 16:
+        raise ValueError("target_network must be an IPv4 CIDR of /16 or narrower")
+    if network.is_multicast or network.is_unspecified or network.is_loopback:
+        raise ValueError("target_network is not an auditable network")
+    return str(network)
+
+
 class StartRequest(BaseModel):
     @model_validator(mode="before")
     @classmethod
@@ -201,6 +231,8 @@ class StartRequest(BaseModel):
                 raise ValueError("script_id is only valid for the scripted runner")
             if self.max_tool_calls is not None or self.max_duration_s is not None:
                 raise ValueError("Action/time budgets are only available for scripted runners")
+            if self.target_network is not None:
+                self.target_network = _normalize_target_network(self.target_network)
             return self
 
         offline_smoke = self.runner_kind == "scripted" and self.script_id == "smoke-v1"
@@ -210,11 +242,10 @@ class StartRequest(BaseModel):
             if self.max_tool_calls is not None or self.max_cost_usd is not None:
                 raise ValueError("smoke-v1 does not use tools or a model budget")
         else:
-            if not self.target_network or "/" not in self.target_network:
+            if not self.target_network:
                 raise ValueError("Network procedures require an explicit target_network CIDR")
             try:
-                from src.agent.run_modes import validate_target_network
-                validate_target_network(self.target_network)
+                self.target_network = _normalize_target_network(self.target_network)
             except ValueError as exc:
                 raise ValueError(str(exc)) from exc
         if any((
@@ -373,16 +404,20 @@ def _pipeline_thread(req: StartRequest):
                 "excluded_vulns": req.excluded_vulns or [],
             }
 
+        manage_scenario = (
+            not _is_audit_mode()
+            and not (req.target_network is not None and req.scenario_id is None and custom_config is None)
+        )
         pipeline = make_runner(
             req.runner_kind,
             provider=provider,
             phases=req.phases or None,
             scenario_id=req.scenario_id,
-            auto_teardown=req.auto_teardown,
+            auto_teardown=req.auto_teardown if manage_scenario else False,
             max_cost_usd=req.max_cost_usd,
             phase_models=req.phase_models,
             custom_config=custom_config,
-            manage_scenario=True,
+            manage_scenario=manage_scenario,
             target_network=req.target_network,
             blind=req.blind,
             execution_profile=req.execution_profile,
@@ -557,6 +592,32 @@ def _simple_runner_thread(req: StartRequest):
 @router.post("/start")
 async def start_pipeline(req: StartRequest):
     """Start the pipeline. Returns 409 if already running."""
+    if _is_audit_mode():
+        if req.runner_kind not in {"lance", "scripted"}:
+            raise HTTPException(
+                status_code=403,
+                detail="Mode audit uniquement : les modes laboratoire et benchmark sont désactivés.",
+            )
+        if any((
+            req.scenario_id is not None,
+            req.deploy_only,
+            req.blind,
+            req.architecture is not None,
+            req.posture is not None,
+            req.selected_packs is not None,
+            req.excluded_vulns is not None,
+        )):
+            raise HTTPException(
+                status_code=403,
+                detail="Mode audit uniquement : le déploiement de scénarios de laboratoire est désactivé.",
+            )
+        if req.runner_kind == "lance":
+            if not req.target_network:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Indiquez un réseau ou une IP autorisée (ex. 192.168.50.0/24 ou 10.0.0.5/32).",
+                )
+            req.auto_teardown = False
     if req.scenario_id is not None:
         from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
         try:
@@ -850,6 +911,11 @@ def _batch_thread(req: BatchRequest):
 @router.post("/batch")
 async def start_batch(req: BatchRequest):
     """Start a batch run of multiple scenarios sequentially. Returns 409 if already running."""
+    if _is_audit_mode():
+        raise HTTPException(
+            status_code=403,
+            detail="Mode audit uniquement : l'exécution batch de scénarios est désactivée.",
+        )
     from src.agent.batch import SealedScenarioError, _parse_scenario_ids
     try:
         selector = "all" if req.batch_ids == ["all"] else ",".join(req.batch_ids)
@@ -893,6 +959,11 @@ class TeardownRequest(BaseModel):
 @router.post("/teardown")
 async def teardown_scenario(req: TeardownRequest):
     """Run 99_teardown.yml for the given scenario in a background thread."""
+    if _is_audit_mode():
+        raise HTTPException(
+            status_code=403,
+            detail="Mode audit uniquement : le teardown de scénarios de laboratoire est désactivé.",
+        )
     from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
     try:
         req.scenario_id = _parse_single_scenario_id(req.scenario_id)

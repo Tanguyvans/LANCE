@@ -213,3 +213,66 @@ class TestCleanEnvAliasesAndOllamaProvider:
         assert "ollama-umons" in _TOOL_CONTINUATION_PROVIDERS
         assert _request_timeout_for("ollama") == _OLLAMA_UMONS_API_TIMEOUT
         assert _request_timeout_for("ollama-umons") == _OLLAMA_UMONS_API_TIMEOUT
+
+
+class TestAuditMode:
+    """Verify LANCE_MODE=audit isolates physical-network auditing from lab/Ansible deployment."""
+
+    def test_environment_and_topology_reflect_audit_mode(self, monkeypatch):
+        from src.api import main as api_main
+        from src.api.routes import topology as topo_route
+
+        monkeypatch.delenv("LANCE_MODE", raising=False)
+        assert api_main.environment()["mode"] == "lab"
+
+        monkeypatch.setenv("LANCE_MODE", "audit")
+        assert api_main.environment()["mode"] == "audit"
+        assert topo_route.get_topology() == {"nodes": [], "edges": [], "subnet": ""}
+
+    def test_start_request_normalizes_bare_ipv4_to_slash32(self):
+        from src.api.routes import pipeline as route
+
+        req = route.StartRequest(
+            runner_kind="lance",
+            provider="ollama",
+            model="qwen3.5-9b-32k:latest",
+            target_network="10.107.10.42",
+        )
+        assert req.target_network == "10.107.10.42/32"
+
+    def test_audit_mode_rejects_lab_deployment_batch_teardown_and_missing_target(self, monkeypatch):
+        import asyncio
+        import pytest
+        from fastapi import HTTPException
+        from src.api.routes import pipeline as route
+
+        monkeypatch.setenv("LANCE_MODE", "audit")
+
+        with pytest.raises(HTTPException) as exc_missing:
+            asyncio.run(route.start_pipeline(route.StartRequest(
+                runner_kind="lance", provider="ollama", model="qwen2.5:7b",
+            )))
+        assert exc_missing.value.status_code == 422
+
+        with pytest.raises(HTTPException) as exc_scenario:
+            asyncio.run(route.start_pipeline(route.StartRequest(
+                runner_kind="lance", provider="ollama", model="qwen2.5:7b",
+                scenario_id="1", target_network="10.107.10.42/32",
+            )))
+        assert exc_scenario.value.status_code == 403
+
+        with pytest.raises(HTTPException) as exc_rules:
+            asyncio.run(route.start_pipeline(route.StartRequest(
+                runner_kind="rules", scenario_id="1",
+            )))
+        assert exc_rules.value.status_code == 403
+
+        with pytest.raises(HTTPException) as exc_batch:
+            asyncio.run(route.start_batch(route.BatchRequest(
+                batch_ids=["1"], provider="ollama", model="qwen2.5:7b",
+            )))
+        assert exc_batch.value.status_code == 403
+
+        with pytest.raises(HTTPException) as exc_teardown:
+            asyncio.run(route.teardown_scenario(route.TeardownRequest(scenario_id="1")))
+        assert exc_teardown.value.status_code == 403

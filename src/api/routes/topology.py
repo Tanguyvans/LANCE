@@ -1,6 +1,7 @@
 """Topology route — expose lab graph nodes/edges for Cytoscape.js."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import yaml
@@ -188,8 +189,9 @@ def get_topology(scenario: str | None = None, empty: bool = False):
     """Return Cytoscape-ready nodes and edges for the lab or a benchmark scenario.
 
     Pass ?empty=true to get an empty graph (used by Docker discovery mode).
+    In audit mode (LANCE_MODE=audit), always start with an empty discovery canvas.
     """
-    if empty:
+    if empty or (os.environ.get("LANCE_MODE") or "lab").strip().lower() == "audit":
         return {"nodes": [], "edges": [], "subnet": ""}
     if scenario is not None:
         return _load_scenario(scenario)
