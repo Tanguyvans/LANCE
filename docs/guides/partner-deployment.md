@@ -98,6 +98,7 @@ LANCE_EMBED_MODEL=nomic-embed-text
 ```bash
 docker compose up -d
 docker compose logs -f        # first boot ingests the knowledge store locally
+scripts/deployment/verify-install.sh   # optional automated health + offline check
 ```
 
 The compose file defaults to `network_mode: host` (Linux) so the scanner can emit
@@ -144,7 +145,7 @@ ssh -L 8000:localhost:8000 <user>@<host>
 ## 8. What we deliver to you
 
 - The image bundle (`lance-<tag>-amd64.tar.gz` + `.sha256`).
-- `docker-compose.yml` and `.env.example` (in the repository).
-- This guide.
+- `docker-compose.yml`, `.env.example`, and `scripts/deployment/verify-install.sh` (in the repository).
+- This guide and the step-by-step [installation & test guidelines](install-smoke-test.md).
 
 You provide the host, the GPU/Ollama with the models, and the signed RoE.

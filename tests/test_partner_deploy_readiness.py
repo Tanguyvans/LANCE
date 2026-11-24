@@ -146,6 +146,14 @@ class TestOfflinePackagingContracts:
         assert '(cd "$OUT_DIR" && sha256sum "$TARBALL_NAME")' in script
         assert '(cd "$OUT_DIR" && shasum -a 256 "$TARBALL_NAME")' in script
 
+    def test_verify_install_script_passes_bash_syntax_check(self):
+        import subprocess
+
+        script = REPO_ROOT / "scripts/deployment/verify-install.sh"
+        assert script.is_file()
+        result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+
     def test_env_example_uses_clear_llm_names_and_no_inline_comments_on_active_lines(self):
         env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
         assert "AGENT_PROVIDER=ollama" in env_example
