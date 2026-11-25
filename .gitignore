@@ -24,8 +24,6 @@ CLAUDE.md
 .DS_Store
 gha-creds-*.json
 texput.log
-# The report phase is source code, not generated report output.
-!/src/agent/phases/report/
 *.lance-sync-tmp
 scripts/be.tanguy.*
 scripts/vulhub_monitor.py
@@ -40,7 +38,6 @@ paper/fig_inpaper-*.png
 paper/page*.png
 paper/pg_*.png
 paper/pv_*.png
-test_regex.py
 
 # LaTeX build artefacts of the state report
 report/*/etat.aux
