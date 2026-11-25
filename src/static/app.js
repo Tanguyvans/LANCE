@@ -5,6 +5,8 @@
 let cy = null;           // Cytoscape instance
 let eventSource = null;  // SSE connection
 let activeRunId = null;  // run being viewed in detail panel
+let liveRunId = null;    // currently executing run id (if any)
+let _liveCostUsd = 0;    // cumulative cost tracked for active live run
 let activeRunFiles = []; // deliverables available for the selected historical run
 let activeRunIsSealed = false;
 let activeExecutionKind = 'lance';
@@ -13,8 +15,16 @@ let nodeAuditResults = {}; // Evidence-derived rules audit outcomes by device id
 let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
 let colorMode = 'type';  // 'type' | 'security' — current graph coloring mode
 
+function isViewingHistoricalRun() {
+  return Boolean(activeRunId && liveRunId && activeRunId !== liveRunId);
+}
+
 const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Intrusion',6:'Report'};
 const RUNNER_LABELS = {lance: 'Pipeline LANCE', rules: 'Audit par règles', vanilla: 'Agent simple', scripted: 'Script'};
+const RUNNER_LABELS_EN = {lance: 'LANCE Agent', rules: 'Rules Audit', vanilla: 'Simple Agent', scripted: 'Script'};
+function runnerDisplayLabel(kind) {
+  return (isAuditMode() ? RUNNER_LABELS_EN : RUNNER_LABELS)[kind] || RUNNER_LABELS.lance;
+}
 
 function isGraphRunner(kind) { return kind === 'lance' || kind === 'rules'; }
 
@@ -2325,6 +2335,11 @@ function handleEvent(ev) {
     }
   }
   const t = ev.type;
+  if (ev.run_dir && t !== 'pipeline_done' && t !== 'runner_done') {
+    const rid = String(ev.run_dir).split('/').pop();
+    if (rid) liveRunId = rid;
+  }
+  const viewingOther = isViewingHistoricalRun();
   addLog(ev);
   if (!isGraphRunner(activeExecutionKind) && (t === 'tool_call' || t === 'tool_result')) {
     setRunnerActivity('Exécution en cours', `${t === 'tool_call' ? 'Outil en cours' : 'Outil terminé'} : ${ev.name || 'outil'}`);
@@ -2361,8 +2376,15 @@ function handleEvent(ev) {
 
   else if (t === 'phase_done') {
     setPhasePill(ev.phase, ev.status === 'completed' ? 'done' : 'failed');
-    setCost(ev.cumulative_cost_usd || 0);
+    if (ev.cumulative_cost_usd != null) {
+      setCost(ev.cumulative_cost_usd);
+    } else if (ev.cost_usd != null) {
+      setCost(_liveCostUsd + Number(ev.cost_usd || 0));
+    }
     if (ev.phase === 3) document.getElementById('sub-agent-bar').hidden = true;
+    if (ev.phase === 3 && ev.runner_kind !== 'rules' && !viewingOther) {
+      fetchVulnResults(ev.run_dir);
+    }
   }
 
   else if (t === 'device_start') {
@@ -2373,8 +2395,8 @@ function handleEvent(ev) {
   else if (t === 'device_done') {
     _deviceProgress[ev.device_id] = 'done';
     updateDeviceProgress();
-    // Color node immediately when phase 3 sub-agent finishes
-    if (ev.phase === 3 && ev.run_dir) {
+    // Color node immediately when phase 3 sub-agent finishes (unless inspecting a past run)
+    if (ev.phase === 3 && ev.run_dir && !viewingOther) {
       fetchDeviceVulns(ev.run_dir, ev.device_id, ev.device_ip);
     }
   }
@@ -2392,6 +2414,7 @@ function handleEvent(ev) {
   else if (t === 'pipeline_done' || t === 'comparison_done') {
     // Ignore pipeline_done events that are part of a batch run (they come from sub-pipelines)
     if (ev.batch_scenario_id !== undefined) return;
+    liveRunId = null;
     // Exceptions can end a phase without phase_done; no activity remains
     // running once the pipeline has reported its terminal outcome.
     document.querySelectorAll('.phase-pill.running').forEach(pill => {
@@ -2445,7 +2468,7 @@ function handleEvent(ev) {
   }
 
   else if (t === 'topology_graph' && ev.topology) {
-    loadTopology(null, ev.topology, true);
+    if (!viewingOther) loadTopology(null, ev.topology, true);
     const nCount = (ev.topology.nodes || []).length;
     const eCount = (ev.topology.edges || []).length;
     addLog({
@@ -2457,8 +2480,10 @@ function handleEvent(ev) {
   }
 
   else if (t === 'topology_edge') {
-    _addDiscoveredEdge(ev.source, ev.target, ev.link_type || 'ethernet');
-    if (cy) _runLayout(CY_LAYOUTS.cose, true);
+    if (!viewingOther) {
+      _addDiscoveredEdge(ev.source, ev.target, ev.link_type || 'ethernet');
+      if (cy) _runLayout(CY_LAYOUTS.cose, true);
+    }
     addLog({
       type: 'info',
       message: isAuditMode()
@@ -2512,7 +2537,7 @@ function handleEvent(ev) {
     }
   }
 
-  else if (isGraphRunner(activeExecutionKind) && t === 'tool_result' && ev.name === 'nmap_scan') {
+  else if (!viewingOther && isGraphRunner(activeExecutionKind) && t === 'tool_result' && ev.name === 'nmap_scan') {
     const parsed = parseNmapResult(ev.result || '');
     let newNodesAdded = false;
     Object.entries(parsed).forEach(([ip, info]) => {
@@ -2541,12 +2566,6 @@ function handleEvent(ev) {
       }
     });
     if (newNodesAdded && cy) _runLayout(CY_LAYOUTS.cose, true);
-  }
-
-  // Vuln sub-agent done — extract vulns from deliverable name pattern
-  else if (t === 'phase_done' && ev.phase === 3 && ev.runner_kind !== 'rules') {
-    // Fetch vuln analysis deliverable to color nodes
-    fetchVulnResults(ev.run_dir);
   }
 }
 
@@ -2756,10 +2775,14 @@ function _renderRunItem(r) {
   const sealed = isSealedRun(r);
   const kind = runnerKind(r.runner_kind);
   const simple = !isGraphRunner(kind);
-  const scnLabel = simple ? (r.script_id === 'smoke-v1' ? 'Démo hors ligne' : r.target_network || 'Réseau direct')
-    : sealed ? `${r.scenario || 'Évaluation'} · scellé` : (r.scenario || 'Lab physique');
-  const scn = `<span class="run-badge ${r.scenario ? 'done' : ''}">${escapeHtml(scnLabel)}</span>`;
-  const kindBadge = kind !== 'lance' ? `<span class="run-badge runner-kind-badge">${escapeHtml(RUNNER_LABELS[kind])}</span>` : '';
+  const auditMode = isAuditMode();
+  const scnLabel = simple
+    ? (r.script_id === 'smoke-v1' ? (auditMode ? 'Offline demo' : 'Démo hors ligne') : r.target_network || (auditMode ? 'Direct network' : 'Réseau direct'))
+    : sealed
+      ? `${r.scenario || (auditMode ? 'Evaluation' : 'Évaluation')} · ${auditMode ? 'sealed' : 'scellé'}`
+      : (r.scenario || r.target_network || (auditMode ? 'Network audit' : 'Lab physique'));
+  const scn = `<span class="run-badge ${r.scenario || r.target_network ? 'done' : ''}">${escapeHtml(scnLabel)}</span>`;
+  const kindBadge = kind !== 'lance' ? `<span class="run-badge runner-kind-badge">${escapeHtml(runnerDisplayLabel(kind))}</span>` : '';
   const cost = !sealed && r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
   const eid = escapeHtml(r.id);
   const inCmp = !simple && _compareSet.has(r.id);
@@ -2968,15 +2991,25 @@ async function viewRun(runId) {
   }
 
   const displayedCost = sealed ? score?.metrics?.cost_usd : run.cost;
+  const auditMode = isAuditMode();
+  const liveBanner = isViewingHistoricalRun()
+    ? `<div style="margin-bottom:10px;padding:7px 9px;border-radius:6px;background:rgba(56,139,253,.14);border:1px solid rgba(56,139,253,.4);font-size:11px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span>${auditMode ? 'Viewing saved run while live audit runs' : 'Vue historique (audit en cours)'}</span>
+        <button class="btn-secondary" style="padding:3px 7px;font-size:10px" onclick="returnToLiveRun()">${auditMode ? 'Live view' : 'Retour live'}</button>
+      </div>`
+    : '';
+  const showTargetRow = simple || (!run.scenario && (run.target_network || auditMode));
 
   document.getElementById('detail-panel-info').innerHTML = `
-    <div class="detail-row"><span class="detail-key">Exécution</span><span class="detail-val">${escapeHtml(RUNNER_LABELS[kind])}</span></div>
-    ${simple ? `<div class="detail-row"><span class="detail-key">Réseau</span><span class="detail-val">${escapeHtml(run.target_network || '—')}</span></div>`
-             : `<div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>`}
-    ${kind === 'scripted' && run.script_id ? `<div class="detail-row"><span class="detail-key">Procédure</span><span class="detail-val">${escapeHtml(run.script_id)}</span></div>` : ''}
-    <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${displayedCost != null ? '$'+Number(displayedCost).toFixed(4) : '—'}</span></div>
-    <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val"><span class="run-badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></span></div>
-    ${sealed ? '' : `<div class="detail-row"><span class="detail-key">Fichiers</span><span class="detail-val">${run.files.length}</span></div>`}
+    ${liveBanner}
+    <div class="detail-row"><span class="detail-key">${auditMode ? 'Runner' : 'Exécution'}</span><span class="detail-val">${escapeHtml(runnerDisplayLabel(kind))}</span></div>
+    ${showTargetRow
+      ? `<div class="detail-row"><span class="detail-key">${auditMode ? 'Target Network' : 'Réseau'}</span><span class="detail-val">${escapeHtml(run.target_network || '—')}</span></div>`
+      : `<div class="detail-row"><span class="detail-key">${auditMode ? 'Scenario' : 'Scénario'}</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>`}
+    ${kind === 'scripted' && run.script_id ? `<div class="detail-row"><span class="detail-key">${auditMode ? 'Procedure' : 'Procédure'}</span><span class="detail-val">${escapeHtml(run.script_id)}</span></div>` : ''}
+    <div class="detail-row"><span class="detail-key">${auditMode ? 'Cost' : 'Coût'}</span><span class="detail-val">${displayedCost != null ? '$'+Number(displayedCost).toFixed(4) : '—'}</span></div>
+    <div class="detail-row"><span class="detail-key">${auditMode ? 'Status' : 'Statut'}</span><span class="detail-val"><span class="run-badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></span></div>
+    ${sealed ? '' : `<div class="detail-row"><span class="detail-key">${auditMode ? 'Files' : 'Fichiers'}</span><span class="detail-val">${run.files.length}</span></div>`}
     ${run.commit ? `<div class="detail-row"><span class="detail-key">Commit</span><span class="detail-val"><code style="font-size:11px">${escapeHtml(run.commit)}</code></span></div>` : ''}
     ${scoreHtml}
   `;
@@ -3758,8 +3791,29 @@ function clearPhasePills() {
 
 // ── Cost ───────────────────────────────────────────────────────────────────
 function setCost(val) {
-  document.getElementById('cost-val').textContent =
-    typeof val === 'number' && Number.isFinite(val) ? '$' + val.toFixed(4) : 'Indisponible';
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    _liveCostUsd = val;
+    document.getElementById('cost-val').textContent = '$' + val.toFixed(4);
+  } else {
+    document.getElementById('cost-val').textContent = isAuditMode() ? 'Unavailable' : 'Indisponible';
+  }
+}
+
+async function returnToLiveRun() {
+  if (!liveRunId) return;
+  activeRunId = liveRunId;
+  document.querySelectorAll('.run-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === activeRunId);
+  });
+  const topo = await _loadDiscoveredRunTopology(liveRunId, null);
+  if (topo) {
+    await loadTopology(null, topo);
+  }
+  await fetchVulnResults(liveRunId);
+  if (document.getElementById('detail-run-view')) {
+    document.getElementById('detail-run-view').hidden = true;
+    document.getElementById('detail-placeholder').hidden = false;
+  }
 }
 
 // ── Event log ──────────────────────────────────────────────────────────────
@@ -4076,7 +4130,11 @@ async function pollStatus() {
     startSSE();
     return;
   }
-  if (!status.running) return;
+  if (!status.running) {
+    liveRunId = null;
+    return;
+  }
+  liveRunId = status.run_dir ? String(status.run_dir).split('/').pop() : null;
   const kind = runnerKind(status.runner_kind);
   setRunnerView(kind);
   lockRunnerChoice(true);

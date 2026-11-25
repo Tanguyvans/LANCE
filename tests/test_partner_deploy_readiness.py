@@ -613,3 +613,31 @@ class TestDiscoveredTopologyGraph:
         )
         tr_edges = [e for e in routed["edges"] if e["origin"] == "traceroute"]
         assert len(tr_edges) == 2
+
+    def test_runs_api_exposes_target_network_for_lance_and_phase_done_tracks_cumulative_cost(self, tmp_path):
+        from src.api.routes import pipeline as pipe_route
+        from src.api.routes import runs as runs_route
+
+        run_dir = tmp_path / "2026-11-25_150109"
+        run_dir.mkdir()
+        (run_dir / "run_meta.json").write_text(
+            json.dumps({"runner_kind": "lance", "target_network": "192.168.88.0/24"}),
+            encoding="utf-8",
+        )
+        details = runs_route._extract_runner_details(run_dir)
+        assert details == {"target_network": "192.168.88.0/24"}
+
+        orig_cost = pipe_route._state["cost"]
+        orig_phases = list(pipe_route._state["phases_done"])
+        try:
+            pipe_route._state["cost"] = 0.0
+            pipe_route._state["phases_done"] = []
+            ev1 = {"type": "phase_done", "phase": 1, "name": "graph_analysis", "cost_usd": 0.12}
+            ev2 = {"type": "phase_done", "phase": 2, "name": "recon", "cost_usd": 0.25}
+            pipe_route._update_pipeline_progress(ev1)
+            pipe_route._update_pipeline_progress(ev2)
+            assert ev1["cumulative_cost_usd"] == 0.12
+            assert ev2["cumulative_cost_usd"] == 0.37
+        finally:
+            pipe_route._state["cost"] = orig_cost
+            pipe_route._state["phases_done"] = orig_phases

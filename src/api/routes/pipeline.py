@@ -76,8 +76,9 @@ def _update_pipeline_progress(event: dict, *, previous_cost: float = 0.0) -> Non
         _state["current_devices"] = []
         _state["devices_done"] = []
     elif t == "phase_done":
-        cost = event.get("cost_usd", 0.0)
+        cost = float(event.get("cost_usd", 0.0) or 0.0)
         _state["cost"] += cost
+        event["cumulative_cost_usd"] = round(_state["cost"], 6)
         _state["phases_done"].append({
             "phase": event.get("phase"),
             "name": event.get("name") or event.get("agent", ""),

@@ -380,22 +380,23 @@ def _extract_runner_kind(run_dir: Path) -> str:
 
 
 def _extract_runner_details(run_dir: Path) -> dict[str, str]:
-    """Return bounded public labels for simple runs, never arbitrary metadata."""
+    """Return bounded public labels for runs (target_network / script_id), never arbitrary metadata."""
     try:
         metadata = _read_run_meta(run_dir) or {}
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         return {}
-    if metadata.get("runner_kind") not in {"vanilla", "scripted"}:
+    kind = metadata.get("runner_kind")
+    if kind not in {"lance", "vanilla", "scripted"}:
         return {}
     details: dict[str, str] = {}
     target = metadata.get("target_network")
     if isinstance(target, str) and len(target) <= 64:
         try:
-            details["target_network"] = str(ipaddress.ip_network(target, strict=True))
+            details["target_network"] = str(ipaddress.ip_network(target, strict=False))
         except ValueError:
             pass
     script_id = metadata.get("script_id")
-    if metadata.get("runner_kind") == "scripted" and isinstance(script_id, str):
+    if kind == "scripted" and isinstance(script_id, str):
         if re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", script_id):
             details["script_id"] = script_id
     return details
