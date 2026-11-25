@@ -172,6 +172,8 @@ class StartRequest(BaseModel):
     phase_models: dict[int, str] | None = None
     # Discovery mode (Docker end-user): scan a live network instead of a pre-defined topology
     target_network: str | None = None  # CIDR e.g. "192.168.1.0/24"
+    excluded_ips: list[str] | None = None  # IPv4 addresses/CIDRs never probed within target_network
+    audit_topology_raw: str | None = None  # Optional operator-declared grey-box topology (YAML/JSON)
     # Deploy-only mode: run Ansible deploy+inject but skip all pentest phases
     deploy_only: bool = False
     # Blind mode: deploy scenario VMs but hide topology from agent (forces discovery)
@@ -233,12 +235,17 @@ class StartRequest(BaseModel):
                 raise ValueError("Action/time budgets are only available for scripted runners")
             if self.target_network is not None:
                 self.target_network = _normalize_target_network(self.target_network)
+            if self.excluded_ips is not None:
+                from src.agent.network_scope import parse_excluded_ips
+                self.excluded_ips = parse_excluded_ips(self.excluded_ips)
             return self
 
         offline_smoke = self.runner_kind == "scripted" and self.script_id == "smoke-v1"
         if offline_smoke:
             if self.target_network is not None:
                 raise ValueError("smoke-v1 is offline and does not accept target_network")
+            if self.excluded_ips:
+                raise ValueError("smoke-v1 is offline and does not accept excluded_ips")
             if self.max_tool_calls is not None or self.max_cost_usd is not None:
                 raise ValueError("smoke-v1 does not use tools or a model budget")
         else:
@@ -246,6 +253,9 @@ class StartRequest(BaseModel):
                 raise ValueError("Network procedures require an explicit target_network CIDR")
             try:
                 self.target_network = _normalize_target_network(self.target_network)
+                if self.excluded_ips is not None:
+                    from src.agent.network_scope import parse_excluded_ips
+                    self.excluded_ips = parse_excluded_ips(self.excluded_ips)
             except ValueError as exc:
                 raise ValueError(str(exc)) from exc
         if any((
@@ -404,6 +414,15 @@ def _pipeline_thread(req: StartRequest):
                 "excluded_vulns": req.excluded_vulns or [],
             }
 
+        parsed_audit_topology = None
+        if req.audit_topology_raw:
+            from src.agent.audit_topology import validate_audit_topology
+            parsed_audit_topology = validate_audit_topology(
+                req.audit_topology_raw,
+                target_network=req.target_network,
+                excluded_ips=req.excluded_ips,
+            )
+
         manage_scenario = (
             not _is_audit_mode()
             and not (req.target_network is not None and req.scenario_id is None and custom_config is None)
@@ -419,6 +438,8 @@ def _pipeline_thread(req: StartRequest):
             custom_config=custom_config,
             manage_scenario=manage_scenario,
             target_network=req.target_network,
+            excluded_ips=req.excluded_ips,
+            audit_topology=parsed_audit_topology,
             blind=req.blind,
             execution_profile=req.execution_profile,
             max_tool_calls=req.max_tool_calls if req.runner_kind == "rules" else None,
@@ -556,6 +577,7 @@ def _simple_runner_thread(req: StartRequest):
             req.runner_kind,
             provider=None,
             target_network=req.target_network,
+            excluded_ips=req.excluded_ips,
             max_cost_usd=req.max_cost_usd,
             max_tool_calls=req.max_tool_calls,
             max_duration_s=req.max_duration_s,
@@ -612,12 +634,35 @@ async def start_pipeline(req: StartRequest):
                 detail="Audit mode only: lab scenario deployment is disabled.",
             )
         if req.runner_kind == "lance":
+            if req.audit_topology_raw:
+                from src.agent.audit_topology import validate_audit_topology
+                try:
+                    parsed_topo = validate_audit_topology(
+                        req.audit_topology_raw,
+                        target_network=req.target_network,
+                        excluded_ips=req.excluded_ips,
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+                if not req.target_network:
+                    req.target_network = parsed_topo["subnet"]
+                req.excluded_ips = parsed_topo["excluded_ips"]
             if not req.target_network:
                 raise HTTPException(
                     status_code=422,
                     detail="An authorized IPv4 address or CIDR subnet is required (e.g. 192.168.50.0/24 or 10.0.0.5/32).",
                 )
             req.auto_teardown = False
+    if req.target_network:
+        from src.agent.network_scope import merge_and_validate_scope
+        try:
+            req.target_network, req.excluded_ips = merge_and_validate_scope(
+                req.target_network, req.excluded_ips,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     if req.scenario_id is not None:
         from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
         try:

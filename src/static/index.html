@@ -70,11 +70,32 @@
         </label>
       </fieldset>
 
+      <div id="audit-scope-banner" class="field-hint" hidden style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;font-size:11px"></div>
+
       <div id="target-network-config" hidden>
         <label for="inp-target-network">Réseau ou IP autorisée</label>
         <input id="inp-target-network" type="text" placeholder="ex : 192.168.50.0/24 ou 10.107.10.42" autocomplete="off" spellcheck="false">
         <p class="field-hint">Cible du run (sous-réseau CIDR ou IP unique normalisée en /32). Aucun scénario n'est déployé.</p>
       </div>
+
+      <details id="audit-advanced-scope" hidden style="margin:6px 0 10px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--muted);user-select:none">Scope exclusions &amp; network structure (optional)</summary>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <label for="inp-excluded-ips">Excluded IPs (never probed)</label>
+          <input id="inp-excluded-ips" type="text" placeholder="e.g. 192.168.88.1, 192.168.88.168" autocomplete="off" spellcheck="false">
+          <div id="audit-topology-box">
+            <label for="inp-audit-topology">Network structure (YAML or JSON, optional)</label>
+            <textarea id="inp-audit-topology" rows="6" placeholder="subnet: 192.168.88.0/24&#10;excluded_ips: [192.168.88.1]&#10;devices:&#10;  - id: iot_hub&#10;    ip: 192.168.88.231&#10;    type: gateway" style="width:100%;font-family:monospace;font-size:11px;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--fg);resize:vertical"></textarea>
+            <div style="display:flex;gap:6px;margin-top:4px">
+              <input id="inp-topology-file" type="file" accept=".yaml,.yml,.json" hidden>
+              <button id="btn-import-topology" type="button" style="flex:1;font-size:11px;padding:4px">Import file</button>
+              <button id="btn-template-topology" type="button" style="flex:1;font-size:11px;padding:4px">Template</button>
+              <button id="btn-preview-topology" type="button" style="flex:1;font-size:11px;padding:4px">Preview</button>
+            </div>
+            <p id="audit-topology-status" class="field-hint" aria-live="polite"></p>
+          </div>
+        </div>
+      </details>
 
       <div id="simple-run-config" hidden>
         <div id="script-config" hidden>

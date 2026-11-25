@@ -350,9 +350,13 @@ class ReconPhase:
 
         # Own IPs — the master VM must never appear as a target.
         local_ips = runtime.local_interface_ips()
+        from src.agent.network_scope import is_ip_excluded, nmap_exclude_args
 
-        tcp_cmd = ["nmap", "-Pn", "-sT", "-p", tcp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]
-        udp_cmd = ["nmap", "-Pn", "-sU", "-p", udp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]
+        excluded_ips = getattr(self, "excluded_ips", None) or []
+        exclude_args = nmap_exclude_args(excluded_ips)
+
+        tcp_cmd = ["nmap", "-Pn", "-sT", *exclude_args, "-p", tcp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]
+        udp_cmd = ["nmap", "-Pn", "-sU", *exclude_args, "-p", udp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]
         try:
             tcp_proc = subprocess.run(tcp_cmd, capture_output=True, text=True, timeout=600)
             raw_sections = [("tcp", tcp_proc.stdout)]
@@ -386,7 +390,7 @@ class ReconPhase:
                 if not line.startswith("Host:") or "Ports:" not in line:
                     continue
                 ip = line.split()[1]
-                if ip in local_ips:
+                if ip in local_ips or is_ip_excluded(ip, excluded_ips):
                     continue
                 host = discovered.setdefault(ip, {"id": ip, "ip": ip, "type": "host", "services": []})
                 existing = {(item["port"], item.get("protocol", "tcp")) for item in host["services"]}
@@ -515,8 +519,12 @@ class ReconPhase:
         # steered into wasting scans on the harness itself — mirrors the blind
         # discovery scanner's own-IP skip (local_interface_ips) above.
         own_interface_ips = set(runtime.local_interface_ips())
+        from src.agent.network_scope import is_ip_excluded, to_excluded_networks
 
-        def _in_scope(target: str) -> bool:
+        excluded_ips = getattr(self, "excluded_ips", None) or []
+        excluded_nets = to_excluded_networks(excluded_ips)
+
+        def _in_scope(target: str, *, allow_nmap_cidr: bool = False) -> bool:
             try:
                 candidate = ipaddress.ip_network(target, strict=False)
             except ValueError:
@@ -528,16 +536,21 @@ class ReconPhase:
                 return False
             if candidate.num_addresses == 1 and str(candidate.network_address) in own_interface_ips:
                 return False
+            for excl in excluded_nets:
+                if candidate.version == excl.version and candidate.overlaps(excl):
+                    if candidate.subnet_of(excl) or not allow_nmap_cidr:
+                        return False
             return True
 
-        def _out_of_scope_argument(kwargs: dict) -> str | None:
+        def _out_of_scope_argument(kwargs: dict, tool_name: str = "") -> str | None:
             """Return the first explicit IPv4/CIDR outside the declared scope."""
             target_fields = {"target", "host", "ip", "broker", "url"}
+            allow_nmap_cidr = tool_name in {"nmap_discovery", "nmap_scan", "modbus_scan"}
             for field, value in kwargs.items():
                 if field not in target_fields or value is None:
                     continue
                 for match in re.findall(r"(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?", str(value)):
-                    if not _in_scope(match):
+                    if not _in_scope(match, allow_nmap_cidr=(allow_nmap_cidr and field == "target")):
                         return match
             return None
 
@@ -698,7 +711,7 @@ class ReconPhase:
 
         def _guard(name: str, original_fn):
             def guarded(**kwargs):
-                outside = _out_of_scope_argument(kwargs)
+                outside = _out_of_scope_argument(kwargs, tool_name=name)
                 if outside is not None:
                     return _error(
                         "invalid_recon_target",
@@ -1067,6 +1080,10 @@ class ReconPhase:
         except ValueError:
             target_net = None
 
+        from src.agent.network_scope import is_ip_excluded
+
+        excluded_ips = getattr(self, "excluded_ips", None) or []
+
         def _in_target_net(candidate: str) -> bool:
             if target_net is None:
                 return False
@@ -1077,6 +1094,8 @@ class ReconPhase:
             if addr not in target_net:
                 return False
             if target_net.prefixlen <= 30 and addr in (target_net.network_address, target_net.broadcast_address):
+                return False
+            if is_ip_excluded(candidate, excluded_ips):
                 return False
             return True
 

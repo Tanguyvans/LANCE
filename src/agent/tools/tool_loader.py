@@ -138,6 +138,9 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
                 kwargs = {**kwargs, "port": port}
 
         cmd = [command] + list(fixed_args)
+        if command == "nmap":
+            from src.agent.network_scope import nmap_exclude_args
+            cmd.extend(nmap_exclude_args())
         positional_values = []
         mqtt_flag_positions: dict[str, int] = {}
 

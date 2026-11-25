@@ -99,12 +99,25 @@ def get_app_mode() -> str:
 
 @app.get("/api/environment")
 def environment():
-    """Deployment identity, active UI/API mode, and laboratory locking capability."""
+    """Deployment identity, active UI/API mode, optional admin scope ceilings, and lab lock."""
+    from src.agent.network_scope import env_allowed_cidr, env_excluded_ips
+
     mode = get_app_mode()
+    try:
+        allowed_net = env_allowed_cidr()
+        allowed_cidr = str(allowed_net) if allowed_net is not None else None
+    except ValueError:
+        allowed_cidr = None
+    try:
+        excluded_ips = env_excluded_ips()
+    except ValueError:
+        excluded_ips = []
     return {
         "instance": os.environ.get("LANCE_INSTANCE", "standalone"),
         "branch": os.environ.get("LANCE_BRANCH"),
         "commit": os.environ.get("LANCE_COMMIT"),
         "lab_lock_enabled": bool(os.environ.get("LANCE_LAB_LOCK")),
         "mode": mode,
+        "allowed_cidr": allowed_cidr,
+        "excluded_ips": excluded_ips,
     }

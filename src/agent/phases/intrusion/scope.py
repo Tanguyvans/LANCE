@@ -149,17 +149,25 @@ def _static_local_inspection(command: str) -> bool:
     return True
 
 
+_NMAP_EXCLUDE_CAPABLE_TOOLS = frozenset({"nmap_discovery", "nmap_scan", "modbus_scan"})
+
+
 def _intrusion_scope_violation(
     tool_name: str,
     kwargs: dict,
     raw_subnets: object,
+    excluded_subnets: object = None,
 ) -> dict | None:
     """Return a structured refusal for an unverifiable Phase 5 destination.
 
     This is a capability boundary, not a model/profile limit: every model can
     still choose any tool, target, order, and command within the scenario
-    networks.
+    networks. When ``excluded_subnets`` (or active context exclusions) are
+    present, exact hits are always refused, and overlapping CIDRs are only
+    permitted for nmap tools where the harness injects ``--exclude``.
     """
+    from src.agent.network_scope import current_excluded_networks, to_excluded_networks
+
     allowed = _intrusion_scope_networks(raw_subnets)
     if not allowed:
         return {
@@ -167,10 +175,25 @@ def _intrusion_scope_violation(
             "error_kind": "intrusion_scope_unavailable",
             "error": "Phase 5 has no declared scenario CIDR; network action refused.",
         }
+    excluded = (
+        to_excluded_networks(excluded_subnets)
+        if excluded_subnets not in (None, "", [])
+        else current_excluded_networks()
+    )
 
     def in_scope(candidate: ipaddress._BaseNetwork) -> bool:
         return any(candidate.version == network.version and candidate.subnet_of(network)
                    for network in allowed)
+
+    def excluded_hit(candidate: ipaddress._BaseNetwork, *, allow_nmap_cidr: bool = False) -> str | None:
+        for excl in excluded:
+            if candidate.version != excl.version or not candidate.overlaps(excl):
+                continue
+            if candidate.subnet_of(excl):
+                return str(excl.network_address) if excl.prefixlen == 32 else str(excl)
+            if not (allow_nmap_cidr and tool_name in _NMAP_EXCLUDE_CAPABLE_TOOLS):
+                return str(excl.network_address) if excl.prefixlen == 32 else str(excl)
+        return None
 
     def refusal(kind: str, target: str, message: str) -> dict:
         return {
@@ -225,6 +248,13 @@ def _intrusion_scope_violation(
                     token,
                     f"Phase 5 target {token} is outside the scenario authorization boundary.",
                 )
+            hit = excluded_hit(candidate, allow_nmap_cidr=(field == "target"))
+            if hit is not None:
+                return refusal(
+                    "intrusion_target_excluded",
+                    token,
+                    f"Target {token} overlaps excluded host/subnet {hit}.",
+                )
 
     # Commands passed to a compromised host are checked as well. Checking
     # only the SSH endpoint would still permit a router shell to scan its WAN
@@ -243,6 +273,13 @@ def _intrusion_scope_violation(
                     "intrusion_command_out_of_scope",
                     token,
                     f"Phase 5 command {field} contains a destination outside the scenario CIDRs.",
+                )
+            hit = excluded_hit(candidate, allow_nmap_cidr=False)
+            if hit is not None:
+                return refusal(
+                    "intrusion_command_excluded",
+                    token,
+                    f"Command {field} references excluded host/subnet {hit}.",
                 )
 
         # Network-capable commands without an explicit in-scope literal can

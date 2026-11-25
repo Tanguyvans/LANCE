@@ -38,18 +38,29 @@ def _reset_graph_context() -> None:
     current_graph_context().reset()
 
 
-def load_discovery_context(target_network: str) -> dict:
-    """Set up discovery mode: no pre-defined topology, LLM discovers the network via nmap.
+def load_discovery_context(
+    target_network: str,
+    *,
+    excluded_ips: list[str] | None = None,
+    audit_topology: dict | None = None,
+) -> dict:
+    """Set up live discovery mode, optionally seeded with an operator-supplied grey-box topology.
 
-    The agent starts with an empty graph and builds it from active recon results.
-    Returns a minimal context dict so the pipeline can start without a YAML topology.
+    Always keeps ``discovery_mode`` active (open hypothesis) so active recon still
+    discovers undocumented shadow devices and never touches benchmark invariants.
     """
     state = current_graph_context()
     _reset_graph_context()
-    state.discovery_mode = {"target_network": target_network}
+    state.discovery_mode = {
+        "target_network": target_network,
+        "excluded_ips": list(excluded_ips or []),
+    }
+    state.audit_topology = audit_topology
+    nodes = (audit_topology or {}).get("nodes") or []
+    edges = (audit_topology or {}).get("edges") or []
     return {
-        "device_count": 0,
-        "link_count": 0,
+        "device_count": len(nodes),
+        "link_count": len(edges),
         "cve_count": 0,
         "top_risk": None,
     }
@@ -252,6 +263,19 @@ def get_network_neighbors(device_id: str) -> dict:
         except Exception:
             pass
 
+    elif state.audit_topology is not None:
+        node_index = state.audit_topology.get("node_index", {})
+        for e in state.audit_topology.get("edges", []):
+            if e.get("target") == device_id and e.get("source") in node_index:
+                upstream.append(node_index[e["source"]])
+            if e.get("source") == device_id and e.get("target") in node_index:
+                downstream.append(node_index[e["target"]])
+        if state.discovery_mode is not None and "discovered_hosts" in state.discovery_mode:
+            seen_ids = {h.get("id") for h in upstream + downstream}
+            for h in state.discovery_mode["discovered_hosts"]:
+                if h.get("id") != device_id and h.get("id") not in seen_ids:
+                    downstream.append(h)
+
     elif state.discovery_mode is not None and "discovered_hosts" in state.discovery_mode:
         # Flat discovery topology: every other discovered host is a potential downstream
         hosts = state.discovery_mode["discovered_hosts"]
@@ -339,9 +363,27 @@ def get_network_topology() -> str:
     state = current_graph_context()
     _ensure_loaded()
     if state.discovery_mode is not None:
+        if state.audit_topology is not None:
+            declared = [
+                {"id": n.get("id"), "ip": n.get("ip"), "type": n.get("type"), "role": n.get("role")}
+                for n in state.audit_topology.get("nodes", [])
+            ]
+            return json.dumps({
+                "mode": "greybox_audit",
+                "name": state.audit_topology.get("name"),
+                "target_network": state.discovery_mode["target_network"],
+                "excluded_ips": state.discovery_mode.get("excluded_ips", []),
+                "nodes": declared,
+                "edges": state.audit_topology.get("edges", []),
+                "note": (
+                    "Operator-declared baseline topology (open hypothesis). Active recon must "
+                    "still verify live hosts and discover any undocumented devices in the CIDR."
+                ),
+            }, ensure_ascii=False)
         return json.dumps({
             "mode": "discovery",
             "target_network": state.discovery_mode["target_network"],
+            "excluded_ips": state.discovery_mode.get("excluded_ips", []),
             "note": "No pre-defined topology. Use nmap_scan to discover hosts on the target network.",
         }, ensure_ascii=False)
         
@@ -375,6 +417,13 @@ def get_device_info(device_id: str) -> str:
         for host in state.discovery_mode.get("discovered_hosts", []):
             if host.get("id") == device_id or host.get("ip") == device_id:
                 return json.dumps(host, ensure_ascii=False)
+        if state.audit_topology is not None:
+            declared = (
+                state.audit_topology.get("node_index", {}).get(device_id)
+                or state.audit_topology.get("ip_index", {}).get(device_id)
+            )
+            if declared:
+                return json.dumps(declared, ensure_ascii=False)
         return json.dumps({
             "error": f"Device '{device_id}' not found",
             "mode": "discovery",
@@ -396,9 +445,16 @@ def get_attack_surface() -> str:
     state = current_graph_context()
     _ensure_loaded()
     if state.discovery_mode is not None:
-        hosts = state.discovery_mode.get("discovered_hosts")
+        hosts = list(state.discovery_mode.get("discovered_hosts") or [])
         if hosts:
             return json.dumps(hosts, ensure_ascii=False)
+        if state.audit_topology is not None:
+            declared_exposed = [
+                n for n in state.audit_topology.get("nodes", [])
+                if n.get("ip")
+            ]
+            if declared_exposed:
+                return json.dumps(declared_exposed, ensure_ascii=False)
         return json.dumps({
             "note": "Discovery mode — run nmap_scan first to identify the attack surface.",
             "target_network": state.discovery_mode["target_network"],
@@ -421,6 +477,9 @@ def get_attack_paths() -> str:
     state = current_graph_context()
     _ensure_loaded()
     if state.discovery_mode is not None:
+        if state.audit_topology is not None:
+            from src.agent.audit_topology import compute_topological_summary
+            return json.dumps(compute_topological_summary(state.audit_topology), ensure_ascii=False)
         return json.dumps({
             "note": "Discovery mode — attack paths will be inferred from nmap and vulnerability findings.",
             "target_network": state.discovery_mode["target_network"],
@@ -444,6 +503,9 @@ def get_risk_scores() -> str:
     state = current_graph_context()
     _ensure_loaded()
     if state.discovery_mode is not None:
+        if state.audit_topology is not None:
+            from src.agent.audit_topology import compute_topological_summary
+            return json.dumps(compute_topological_summary(state.audit_topology), ensure_ascii=False)
         return json.dumps({
             "note": "Discovery mode — risk scores will be computed after nmap and CVE analysis.",
             "target_network": state.discovery_mode["target_network"],

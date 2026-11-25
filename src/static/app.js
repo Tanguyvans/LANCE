@@ -128,7 +128,102 @@ function applyAuditEnglishUI() {
   setText('#compare-title', 'Run Comparison');
 }
 
-function applyAppMode(mode) {
+function parseExcludedIpsInput() {
+  const raw = (document.getElementById('inp-excluded-ips')?.value || '').trim();
+  if (!raw) return [];
+  return raw.split(/[\s,;]+/).map(item => item.trim()).filter(Boolean);
+}
+
+const AUDIT_TOPOLOGY_TEMPLATE = `subnet: 192.168.88.0/24
+excluded_ips:
+  - 192.168.88.1
+  - 192.168.88.168
+devices:
+  - id: iot_hub
+    ip: 192.168.88.231
+    type: gateway
+    role: "Raspberry Pi MQTT Hub"
+  - id: wisgate
+    ip: 192.168.88.238
+    type: gateway
+    role: "LoRaWAN Gateway"
+links:
+  - source: wisgate
+    target: iot_hub
+    type: mqtt
+`;
+
+async function previewAuditTopology(showSuccessMessage = true) {
+  const raw = (document.getElementById('inp-audit-topology')?.value || '').trim();
+  const statusEl = document.getElementById('audit-topology-status');
+  if (!raw) {
+    if (statusEl) statusEl.textContent = '';
+    return null;
+  }
+  const target = (document.getElementById('inp-target-network')?.value || '').trim() || null;
+  const excluded = parseExcludedIpsInput();
+  const res = await fetch('/api/topology/preview', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      raw_topology: raw,
+      target_network: target,
+      excluded_ips: excluded.length ? excluded : null,
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = _formatErrDetail(payload.detail) || `HTTP ${res.status}`;
+    if (statusEl) statusEl.textContent = `Invalid topology: ${msg}`;
+    addLog({type: 'error', message: `Topology validation failed: ${msg}`});
+    return null;
+  }
+  const targetInp = document.getElementById('inp-target-network');
+  if (targetInp && !targetInp.value.trim() && payload.subnet) {
+    targetInp.value = payload.subnet;
+  }
+  const exclInp = document.getElementById('inp-excluded-ips');
+  if (exclInp && Array.isArray(payload.excluded_ips) && payload.excluded_ips.length) {
+    exclInp.value = payload.excluded_ips.join(', ');
+  }
+  if (payload.topology) {
+    await loadTopology(null, payload.topology);
+  }
+  if (statusEl && showSuccessMessage) {
+    statusEl.textContent = `Loaded: ${payload.device_count} device(s), ${payload.link_count} link(s) on ${payload.subnet}.`;
+  }
+  return payload;
+}
+
+function initAuditTopologyControls() {
+  const importBtn = document.getElementById('btn-import-topology');
+  const fileInp = document.getElementById('inp-topology-file');
+  const templateBtn = document.getElementById('btn-template-topology');
+  const previewBtn = document.getElementById('btn-preview-topology');
+  const textArea = document.getElementById('inp-audit-topology');
+
+  if (importBtn && fileInp && textArea) {
+    importBtn.addEventListener('click', () => fileInp.click());
+    fileInp.addEventListener('change', async () => {
+      const file = fileInp.files?.[0];
+      if (!file) return;
+      textArea.value = await file.text();
+      fileInp.value = '';
+      await previewAuditTopology(true);
+    });
+  }
+  if (templateBtn && textArea) {
+    templateBtn.addEventListener('click', async () => {
+      textArea.value = AUDIT_TOPOLOGY_TEMPLATE;
+      await previewAuditTopology(true);
+    });
+  }
+  if (previewBtn) {
+    previewBtn.addEventListener('click', () => previewAuditTopology(true));
+  }
+}
+
+function applyAppMode(mode, env = null) {
   appMode = mode === 'audit' ? 'audit' : 'lab';
   document.body.dataset.appMode = appMode;
   const audit = isAuditMode();
@@ -136,7 +231,25 @@ function applyAppMode(mode) {
   if (viewNav) viewNav.hidden = audit;
   const sharedActivity = document.getElementById('shared-activity');
   if (sharedActivity && audit) sharedActivity.hidden = true;
-  if (audit) applyAuditEnglishUI();
+  if (audit) {
+    applyAuditEnglishUI();
+    const banner = document.getElementById('audit-scope-banner');
+    const parts = [];
+    if (env?.allowed_cidr) {
+      parts.push(`Authorized scope: ${env.allowed_cidr}`);
+      const targetInp = document.getElementById('inp-target-network');
+      if (targetInp && !targetInp.value.trim()) targetInp.value = env.allowed_cidr;
+    }
+    if (Array.isArray(env?.excluded_ips) && env.excluded_ips.length) {
+      parts.push(`Locked exclusions: ${env.excluded_ips.join(', ')}`);
+      const exclInp = document.getElementById('inp-excluded-ips');
+      if (exclInp && !exclInp.value.trim()) exclInp.value = env.excluded_ips.join(', ');
+    }
+    if (banner) {
+      banner.hidden = parts.length === 0;
+      banner.textContent = parts.join(' · ');
+    }
+  }
   setRunnerView(activeExecutionKind);
 }
 
@@ -150,6 +263,10 @@ function updateScriptSelection() {
   const showTarget = isAuditMode() ? !offline : (activeExecutionKind === 'scripted' && !offline);
   document.getElementById('target-network-config').hidden = !showTarget;
   document.getElementById('inp-target-network').required = showTarget;
+  const advScope = document.getElementById('audit-advanced-scope');
+  if (advScope) advScope.hidden = !isAuditMode() || offline;
+  const topoBox = document.getElementById('audit-topology-box');
+  if (topoBox) topoBox.hidden = activeExecutionKind !== 'lance';
   document.getElementById('tool-call-limit').hidden = offline;
   const audit = isAuditMode();
   document.getElementById('simple-stage-hint').textContent = offline
@@ -1032,11 +1149,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   initResizeHandles();
   initCollapsibleSidebar();
+  initAuditTopologyControls();
 
   // Load active application mode (audit vs lab) before loading lab-only views
   try {
     const env = await fetchJSON('/api/environment');
-    if (env && env.mode) applyAppMode(env.mode);
+    if (env && env.mode) applyAppMode(env.mode, env);
   } catch (e) {
     console.warn("Environment load failed", e);
   }
@@ -1672,14 +1790,24 @@ async function startSimpleRun(kind) {
   }
   const offline = script === 'smoke-v1';
   const target = document.getElementById('inp-target-network').value.trim();
-  if (!offline && (!target || !target.includes('/'))) {
-    addLog({type: 'error', message: 'Indiquez un réseau autorisé au format CIDR, par exemple 192.0.2.0/24.'});
+  const audit = isAuditMode();
+  if (!offline && (!target || (!audit && !target.includes('/')))) {
+    addLog({
+      type: 'error',
+      message: audit
+        ? 'Enter an authorized IP address or CIDR subnet (e.g. 192.168.50.0/24 or 10.0.0.42).'
+        : 'Indiquez un réseau autorisé au format CIDR, par exemple 192.0.2.0/24.',
+    });
     document.getElementById('inp-target-network').focus();
     return;
   }
 
   const body = {runner_kind: kind};
-  if (!offline) body.target_network = target;
+  if (!offline) {
+    body.target_network = target;
+    const excluded = parseExcludedIpsInput();
+    if (excluded.length) body.excluded_ips = excluded;
+  }
   body.script_id = script;
 
   for (const [id, key] of [['inp-max-tool-calls', 'max_tool_calls'], ['inp-max-duration', 'max_duration_s']]) {
@@ -1728,6 +1856,9 @@ async function startRun() {
   const provider = selectedOpt.dataset.provider;
   const audit = isAuditMode();
   let targetNetwork = null;
+  let excludedIps = null;
+  let auditTopologyRaw = null;
+  let previewedTopology = null;
   let teardown = false;
   let phases = [];
   let scenario = null;
@@ -1735,6 +1866,11 @@ async function startRun() {
   let phaseModels = null;
 
   if (audit) {
+    auditTopologyRaw = (document.getElementById('inp-audit-topology')?.value || '').trim() || null;
+    if (auditTopologyRaw) {
+      previewedTopology = await previewAuditTopology(false);
+      if (!previewedTopology) return;
+    }
     const rawTarget = document.getElementById('inp-target-network').value.trim();
     if (!rawTarget) {
       addLog({type: 'error', message: 'Enter an authorized IP address or CIDR subnet (e.g. 192.168.50.0/24 or 10.0.0.42).'});
@@ -1742,6 +1878,8 @@ async function startRun() {
       return;
     }
     targetNetwork = rawTarget;
+    const parsedExcluded = parseExcludedIpsInput();
+    excludedIps = parsedExcluded.length ? parsedExcluded : null;
     const scope = document.querySelector('input[name="audit-scope"]:checked')?.value || 'full';
     phases = scope === 'passive' ? [1, 2, 3] : [1, 2, 3, 4, 5, 6];
   } else {
@@ -1790,7 +1928,7 @@ async function startRun() {
   clearPhasePills();
 
   // Load correct topology
-  await loadTopology(audit ? null : (scenario || null));
+  await loadTopology(audit ? null : (scenario || null), previewedTopology?.topology || null);
 
   const budgetRaw = audit ? '' : document.getElementById('inp-budget').value;
   const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
@@ -1804,6 +1942,8 @@ async function startRun() {
     provider,
     scenario_id: scenario,
     target_network: targetNetwork,
+    excluded_ips: excludedIps,
+    audit_topology_raw: auditTopologyRaw,
     blind: blindMode,
     phases: phases.length < 6 ? phases : null,
     auto_teardown: teardown,

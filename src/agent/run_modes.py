@@ -98,11 +98,14 @@ def _baseline_nmap(run: "SimpleRunner", name: str, args: dict) -> str:
     remaining = run._deadline - time.monotonic()
     if remaining <= 0:
         raise BudgetExceeded("Elapsed-time budget exhausted")
+    from src.agent.network_scope import nmap_exclude_args
+
+    exclude_args = nmap_exclude_args(getattr(run, "excluded_ips", None))
     if name == "nmap_discovery":
-        command = ["nmap", "-n", "-sn", args["target"]]
+        command = ["nmap", "-n", "-sn", *exclude_args, args["target"]]
         tool_timeout = 30.0
     elif name == "nmap_scan":
-        command = ["nmap", "-n", "-sV", "-T4", "--max-retries=1"]
+        command = ["nmap", "-n", "-sV", "-T4", "--max-retries=1", *exclude_args]
         if "ports" in args:
             command.extend(["-p", args["ports"]])
         command.append(args["target"])
@@ -222,11 +225,12 @@ class SimpleRunner:
     def __init__(self, *, kind: str, provider, network: ipaddress.IPv4Network | None,
                  script_id: str | None, max_cost_usd: float | None,
                  max_tool_calls: int, max_duration_s: float,
-                 output_dir: Path | None):
+                 output_dir: Path | None, excluded_ips: list[str] | None = None):
         self.runner_kind = kind
         self.provider = provider
         self.network = network
         self.target_network = str(network) if network is not None else None
+        self.excluded_ips = list(excluded_ips or [])
         self.script_id = script_id
         self.benchmark_split = "unassigned"
         self.experiment_scope = "baseline"
@@ -433,7 +437,10 @@ class SimpleRunner:
         scan("nmap_discovery", target=self.target_network)
         progress.step("discovery", "completed")
         if self.script_id == "service-inventory-v1":
-            hosts = sorted((host["ip"] for host in progress.data["hosts"] if host["status"] == "up"),
+            from src.agent.network_scope import is_ip_excluded
+
+            hosts = sorted((host["ip"] for host in progress.data["hosts"]
+                            if host["status"] == "up" and not is_ip_excluded(host["ip"], self.excluded_ips)),
                            key=ipaddress.IPv4Address)
             if len(hosts) != len(progress.data["hosts"]):
                 progress.incomplete("unconfirmed_host_state")
@@ -524,7 +531,7 @@ def _cli_stop_signals(stop_event: threading.Event):
 
 def make_runner(
     kind: str, *, provider=None, scenario_id=None, target_network=None,
-    max_cost_usd=None, max_tool_calls=None, max_duration_s=None,
+    excluded_ips=None, max_cost_usd=None, max_tool_calls=None, max_duration_s=None,
     execution_profile="auto", script_id=None, output_dir=None, **pipeline_kwargs,
 ):
     """Build one execution strategy; simple baselines require explicit scope."""
@@ -544,7 +551,8 @@ def make_runner(
         from src.agent.pipeline import Pipeline
         pipeline = Pipeline(
             provider=provider, scenario_id=scenario_id,
-            target_network=target_network, max_cost_usd=max_cost_usd,
+            target_network=target_network, excluded_ips=excluded_ips,
+            max_cost_usd=max_cost_usd,
             max_tool_calls=max_tool_calls, max_duration_s=max_duration_s,
             execution_profile=execution_profile, output_dir=output_dir,
             **pipeline_kwargs,
@@ -584,7 +592,7 @@ def make_runner(
     return SimpleRunner(kind=kind, provider=provider, network=network,
                         script_id=script_id, max_cost_usd=max_cost_usd,
                         max_tool_calls=calls, max_duration_s=float(duration),
-                        output_dir=output_dir)
+                        output_dir=output_dir, excluded_ips=excluded_ips)
 
 
 def main(argv=None) -> int:

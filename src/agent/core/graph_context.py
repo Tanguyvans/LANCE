@@ -17,6 +17,7 @@ class GraphContext:
     attack_report: Any = None
     scenario_topology: dict | None = None
     discovery_mode: dict | None = None
+    audit_topology: dict | None = None
     weighted_graph: Any = None
     last_disbalance_report: dict | None = None
 

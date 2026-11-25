@@ -93,6 +93,8 @@ class Pipeline(
         phase_models: dict[int | str, str] | None = None,
         custom_config: dict | None = None,  # {architecture, posture, selected_packs, excluded_vulns}
         target_network: str | None = None,  # CIDR for Docker discovery mode e.g. "192.168.1.0/24"
+        excluded_ips: list[str] | None = None,  # IPv4/CIDRs never probed within target_network
+        audit_topology: dict | None = None,  # Optional operator-declared grey-box topology
         blind: bool = False,  # Deploy scenario VMs but hide topology from agent (force discovery)
         execution_context=None,  # Sealed benchmark contract (src.benchmark.contracts.ExecutionContext)
         benchmark_split: str | None = None,
@@ -182,6 +184,8 @@ class Pipeline(
         self.scenario_lab_config: dict = {}
         self.blind = blind
         self.target_network = target_network
+        self.excluded_ips = list(excluded_ips or [])
+        self.audit_topology = audit_topology
         self.max_tool_calls = max_tool_calls
         self._tool_call_count = 0
         self._artifact_log_lock = threading.Lock()
@@ -503,7 +507,11 @@ class Pipeline(
         # Load lab context — discovery mode, scenario topology, or physical lab
         if self.target_network is not None:
             from src.agent.tools.graph_tools import load_discovery_context
-            lab = load_discovery_context(self.target_network)
+            lab = load_discovery_context(
+                self.target_network,
+                excluded_ips=self.excluded_ips,
+                audit_topology=self.audit_topology,
+            )
             if self.audit_inventory is not None:
                 from src.agent.tools.graph_tools import update_discovery_hosts
                 update_discovery_hosts(self.audit_inventory["devices"])
@@ -588,6 +596,9 @@ class Pipeline(
             # substitute for these settings on a dirty checkout.
             "provider": getattr(self.provider, "provider", None),
             "model": getattr(self.provider, "model", None),
+            "target_network": self.target_network,
+            "excluded_ips": self.excluded_ips,
+            "audit_topology_declared": bool(self.audit_topology),
             "blind": bool(self.blind),
             "max_cost_usd": self.max_cost_usd,
             "max_tool_calls": self.max_tool_calls,

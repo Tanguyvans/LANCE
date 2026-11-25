@@ -118,14 +118,23 @@ def wrap_tool(run, tool: dict, *, phase=None, agent=None, decision_source=None, 
             for key in ("target_ip", "device_ip"):
                 if kwargs.get(key):
                     scope_args["target"] = kwargs[key]
-            refusal = _intrusion_scope_violation(name, scope_args, run.context.get("target_subnet", ""))
+            refusal = _intrusion_scope_violation(
+                name,
+                scope_args,
+                run.context.get("target_subnet", ""),
+                excluded_subnets=getattr(run, "excluded_ips", None),
+            )
 
         if refusal is not None:
             result = json.dumps(refusal, ensure_ascii=False)
             archive(result)
             return result
         try:
-            with skill_tool_context(cache_only=cache_only, tags=skill_tags):
+            from src.agent.network_scope import excluded_ips_context
+
+            with skill_tool_context(cache_only=cache_only, tags=skill_tags), excluded_ips_context(
+                getattr(run, "excluded_ips", None)
+            ):
                 result = original(**kwargs)
         except Exception as exc:
             archive({"error": str(exc), "exception_type": type(exc).__name__})

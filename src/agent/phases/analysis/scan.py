@@ -24,11 +24,35 @@ def scan_phase(context: AnalysisContext) -> ScanResult:
     if isinstance(devices, dict):
         devices = devices.get("nodes", [])
 
-    if context.target_network and not devices and not context.dry_run:
-        devices = context.services.discover_surface(context.target_network, context.emit)
+    if context.target_network and not context.dry_run:
+        from src.agent.core.graph_context import current_graph_context
         from src.agent.tools.graph_tools import update_discovery_hosts
-        update_discovery_hosts(devices)
-        runtime.init_weighted_graph()
+
+        ctx_graph = current_graph_context()
+        already_discovered = bool((ctx_graph.discovery_mode or {}).get("discovered_hosts"))
+        if not devices or (ctx_graph.audit_topology is not None and not already_discovered):
+            discovered = context.services.discover_surface(context.target_network, context.emit)
+            if ctx_graph.audit_topology is not None:
+                ip_index = ctx_graph.audit_topology.get("ip_index", {})
+                merged: list[dict] = []
+                for host in discovered:
+                    declared = ip_index.get(host.get("ip"))
+                    if declared:
+                        merged.append({
+                            **host,
+                            "id": declared["id"],
+                            "name": declared.get("name", declared["id"]),
+                            "type": declared.get("type", host.get("type", "host")),
+                            "role": declared.get("role", ""),
+                            "declared": True,
+                        })
+                    else:
+                        merged.append({**host, "declared": False})
+                devices = merged
+            else:
+                devices = discovered
+            update_discovery_hosts(devices)
+            runtime.init_weighted_graph()
 
     if context.dry_run:
         log.info("Dry run: skipping Phase 3a scanner")

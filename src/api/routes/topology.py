@@ -184,6 +184,38 @@ def _load_scenario(scenario_id: str) -> dict:
     return {"nodes": nodes, "edges": edges, "subnet": subnets[0] if subnets else "", "subnets": subnets}
 
 
+from pydantic import BaseModel
+
+
+class TopologyPreviewRequest(BaseModel):
+    raw_topology: str
+    target_network: str | None = None
+    excluded_ips: list[str] | None = None
+
+
+@router.post("/preview")
+def preview_audit_topology(req: TopologyPreviewRequest):
+    """Validate and convert an operator-supplied YAML/JSON audit topology for Cytoscape preview."""
+    from src.agent.audit_topology import validate_audit_topology
+
+    try:
+        parsed = validate_audit_topology(
+            req.raw_topology,
+            target_network=req.target_network,
+            excluded_ips=req.excluded_ips,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "name": parsed["name"],
+        "subnet": parsed["subnet"],
+        "excluded_ips": parsed["excluded_ips"],
+        "device_count": len(parsed["nodes"]),
+        "link_count": len(parsed["edges"]),
+        "topology": parsed["cytoscape"],
+    }
+
+
 @router.get("")
 def get_topology(scenario: str | None = None, empty: bool = False):
     """Return Cytoscape-ready nodes and edges for the lab or a benchmark scenario.

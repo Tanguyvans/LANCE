@@ -170,6 +170,7 @@ class AgentRunner:
                     declared_ids = {
                         str(node.get("id")) for node in projection.get("nodes", [])
                         if isinstance(node, dict) and node.get("id")
+                        and (getattr(self, "audit_topology", None) is None or node.get("ip"))
                     }
                     covered_ids = set(projection.get("device_coverage", {}))
                     missing_coverage = sorted(declared_ids - covered_ids)

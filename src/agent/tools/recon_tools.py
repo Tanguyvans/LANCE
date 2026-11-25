@@ -219,6 +219,22 @@ def arp_scan(**kwargs) -> str:
     else:
         candidate_ips = [str(ip) for ip in target_net.hosts()]
 
+    # Filter out excluded IPs/CIDRs BEFORE sending a single ping packet.
+    from src.agent.network_scope import current_excluded_networks, is_ip_excluded, to_excluded_networks
+
+    ctx_excluded = None
+    try:
+        from src.agent.core.graph_context import current_graph_context
+
+        discovery = getattr(current_graph_context(), "discovery_mode", None)
+        if isinstance(discovery, dict) and discovery.get("excluded_ips"):
+            ctx_excluded = to_excluded_networks(discovery["excluded_ips"])
+    except Exception:
+        ctx_excluded = None
+    active_excluded = tuple({*current_excluded_networks(), *(ctx_excluded or ())})
+    if active_excluded:
+        candidate_ips = [ip for ip in candidate_ips if not is_ip_excluded(ip, active_excluded)]
+
     def ping_host(ip: str) -> None:
         try:
             # Force text=True to avoid byte errors
@@ -285,6 +301,8 @@ def arp_scan(**kwargs) -> str:
         except ValueError:
             continue
         if addr not in target_net:
+            continue
+        if active_excluded and is_ip_excluded(parsed["ip"], active_excluded):
             continue
         # Skip network/broadcast addresses on subnets wider than /31
         if target_net.prefixlen <= 30 and addr in (target_net.network_address, target_net.broadcast_address):

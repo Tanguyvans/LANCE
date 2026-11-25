@@ -302,3 +302,206 @@ class TestAuditMode:
         with bind_graph_context(ctx):
             ok_live, msg_live = validate_recon_markdown("02_recon.md", output_dir=tmp_path)
         assert ok_live, msg_live
+
+
+class TestExcludedIpsAndAdminScopeCeiling:
+    """Verify excluded_ips and LANCE_ALLOWED_CIDR across scope, nmap, arp_scan, and API."""
+
+    def test_scope_violation_blocks_excluded_ip_non_nmap_cidr_and_ssh_commands(self):
+        from src.agent.phases.intrusion.scope import _intrusion_scope_violation
+
+        excluded = ["192.168.88.1", "192.168.88.168"]
+        # Direct IP hit refused
+        refusal = _intrusion_scope_violation(
+            "http_request", {"url": "http://192.168.88.1/"}, "192.168.88.0/24", excluded,
+        )
+        assert refusal and refusal["error_kind"] == "intrusion_target_excluded"
+
+        # Non-nmap CIDR overlapping excluded IP refused
+        refusal_cidr = _intrusion_scope_violation(
+            "nuclei_scan", {"target": "192.168.88.0/24"}, "192.168.88.0/24", excluded,
+        )
+        assert refusal_cidr and refusal_cidr["error_kind"] == "intrusion_target_excluded"
+
+        # nmap_discovery on CIDR allowed (tool_loader injects --exclude)
+        assert _intrusion_scope_violation(
+            "nmap_discovery", {"target": "192.168.88.0/24"}, "192.168.88.0/24", excluded,
+        ) is None
+
+        # Direct excluded IP still refused even for nmap_scan
+        refusal_nmap_direct = _intrusion_scope_violation(
+            "nmap_scan", {"target": "192.168.88.168"}, "192.168.88.0/24", excluded,
+        )
+        assert refusal_nmap_direct and refusal_nmap_direct["error_kind"] == "intrusion_target_excluded"
+
+        # SSH command pivoting to excluded IP refused
+        refusal_cmd = _intrusion_scope_violation(
+            "ssh_exec",
+            {"ip": "192.168.88.231", "command": "curl http://192.168.88.1/admin"},
+            "192.168.88.0/24",
+            excluded,
+        )
+        assert refusal_cmd and refusal_cmd["error_kind"] == "intrusion_command_excluded"
+
+    def test_tool_loader_injects_nmap_exclude_flag_from_context(self):
+        from src.agent.network_scope import excluded_ips_context
+        from src.agent.tools.tool_loader import build_subprocess_function
+
+        tool_fn = build_subprocess_function({
+            "name": "nmap_discovery",
+            "description": "Discover live hosts",
+            "command": "nmap",
+            "args": ["-sn"],
+            "timeout": 30,
+            "parameters": [{"name": "target", "format": "positional"}],
+        })
+        captured_cmds: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            captured_cmds.append(cmd)
+            return {"stdout": "Nmap done", "stderr": "", "return_code": 0}
+
+        with (
+            patch("src.agent.tools.recon_tools._run", side_effect=fake_run),
+            excluded_ips_context(["192.168.88.1", "192.168.88.168"]),
+        ):
+            tool_fn(target="192.168.88.0/24")
+
+        assert len(captured_cmds) == 1
+        assert "--exclude" in captured_cmds[0]
+        excl_idx = captured_cmds[0].index("--exclude")
+        assert captured_cmds[0][excl_idx + 1] == "192.168.88.1,192.168.88.168"
+
+    def test_arp_scan_never_pings_or_returns_excluded_ips(self):
+        ctx = GraphContext(discovery_mode={
+            "target_network": "192.168.88.0/29",
+            "excluded_ips": ["192.168.88.1"],
+        })
+        pinged: set[str] = set()
+
+        def fake_run(cmd, **_kwargs):
+            if cmd[0] == "ping":
+                pinged.add(cmd[-1])
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            if cmd[0] == "arp":
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=(
+                        "? (192.168.88.1) at aa:bb:cc:dd:ee:01 [ether] on eno1\n"
+                        "? (192.168.88.2) at aa:bb:cc:dd:ee:02 [ether] on eno1\n"
+                    ),
+                    stderr="",
+                )
+            raise AssertionError(f"Unexpected command: {cmd}")
+
+        with (
+            bind_graph_context(ctx),
+            patch("src.agent.tools.recon_tools.subprocess.run", side_effect=fake_run),
+            patch("time.sleep"),
+        ):
+            result = json.loads(recon_tools.arp_scan())
+
+        assert "192.168.88.1" not in pinged
+        assert "192.168.88.2" in pinged
+        assert [h["ip"] for h in result["hosts"]] == ["192.168.88.2"]
+
+    def test_env_allowed_cidr_and_excluded_ips_enforce_403(self, monkeypatch):
+        import asyncio
+        import pytest
+        from fastapi import HTTPException
+        from src.api.routes import pipeline as route
+
+        monkeypatch.setenv("LANCE_MODE", "audit")
+        monkeypatch.setenv("LANCE_ALLOWED_CIDR", "192.168.88.0/24")
+        monkeypatch.setenv("LANCE_EXCLUDED_IPS", "192.168.88.1,192.168.88.168")
+
+        with pytest.raises(HTTPException) as exc_outside:
+            asyncio.run(route.start_pipeline(route.StartRequest(
+                runner_kind="lance", provider="ollama", model="flint:latest",
+                target_network="10.107.10.0/24",
+            )))
+        assert exc_outside.value.status_code == 403
+
+        with pytest.raises(HTTPException) as exc_excluded:
+            asyncio.run(route.start_pipeline(route.StartRequest(
+                runner_kind="lance", provider="ollama", model="flint:latest",
+                target_network="192.168.88.1/32",
+            )))
+        assert exc_excluded.value.status_code == 403
+
+
+class TestGreyboxAuditTopology:
+    """Verify strict parsing, security guards, and open-hypothesis graph_tools integration."""
+
+    SAMPLE_YAML = (
+        "subnet: 192.168.88.0/24\n"
+        "excluded_ips:\n"
+        "  - 192.168.88.1\n"
+        "  - 192.168.88.168\n"
+        "devices:\n"
+        "  - id: iot_hub\n"
+        "    ip: 192.168.88.231\n"
+        "    type: gateway\n"
+        "    role: Raspberry Pi MQTT Hub\n"
+        "  - id: wisgate\n"
+        "    ip: 192.168.88.238\n"
+        "    type: gateway\n"
+        "    role: LoRaWAN Gateway\n"
+        "links:\n"
+        "  - source: wisgate\n"
+        "    target: iot_hub\n"
+        "    type: mqtt\n"
+    )
+
+    def test_valid_yaml_parses_and_powers_graph_tools_in_discovery_mode(self):
+        from src.agent.audit_topology import validate_audit_topology
+        from src.agent.tools import graph_tools
+
+        topo = validate_audit_topology(self.SAMPLE_YAML)
+        assert topo["subnet"] == "192.168.88.0/24"
+        assert topo["excluded_ips"] == ["192.168.88.1", "192.168.88.168"]
+        assert len(topo["nodes"]) == 2
+        assert len(topo["edges"]) == 1
+
+        ctx = GraphContext()
+        with bind_graph_context(ctx):
+            summary = graph_tools.load_discovery_context(
+                topo["subnet"], excluded_ips=topo["excluded_ips"], audit_topology=topo,
+            )
+            assert summary["device_count"] == 2
+            topo_resp = json.loads(graph_tools.get_network_topology())
+            assert topo_resp["mode"] == "greybox_audit"
+            assert len(topo_resp["nodes"]) == 2
+            dev_resp = json.loads(graph_tools.get_device_info("iot_hub"))
+            assert dev_resp["ip"] == "192.168.88.231"
+            paths_resp = json.loads(graph_tools.get_attack_paths())
+            assert paths_resp["cves_pending_active_scan"] is True
+            assert "iot_hub" in paths_resp["pivot_candidates"]
+            neighbors = graph_tools.get_network_neighbors("iot_hub")
+            assert any(n["id"] == "wisgate" for n in neighbors["upstream"])
+
+    def test_rejects_yaml_aliases_unsafe_ids_and_excluded_device_ip(self):
+        import pytest
+        from src.agent.audit_topology import validate_audit_topology
+
+        with pytest.raises(ValueError, match="anchors/aliases"):
+            validate_audit_topology("subnet: 192.168.88.0/24\na: &a [1, 2]\nb: *a\n")
+
+        with pytest.raises(ValueError, match="must match"):
+            validate_audit_topology(
+                "subnet: 192.168.88.0/24\ndevices:\n  - id: ../evil\n    ip: 192.168.88.231\n"
+            )
+
+        with pytest.raises(ValueError, match="excluded_ips"):
+            validate_audit_topology(
+                "subnet: 192.168.88.0/24\nexcluded_ips: [192.168.88.1]\ndevices:\n  - id: router\n    ip: 192.168.88.1\n"
+            )
+
+    def test_topology_preview_endpoint_returns_cytoscape_data(self):
+        from src.api.routes.topology import TopologyPreviewRequest, preview_audit_topology
+
+        resp = preview_audit_topology(TopologyPreviewRequest(raw_topology=self.SAMPLE_YAML))
+        assert resp["subnet"] == "192.168.88.0/24"
+        assert resp["device_count"] == 2
+        assert resp["link_count"] == 1
+        assert len(resp["topology"]["nodes"]) == 2
