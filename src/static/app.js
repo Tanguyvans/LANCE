@@ -548,12 +548,15 @@ function buildModelOption(model) {
   opt.dataset.provider = model.provider || '';
   const unavailable = model.available === false || !model.provider;
   let label = model.label || model.id;
-  if (model.subscription) {
-    label += ' — inclus dans le plan';
-  } else if (model.input_per_mtok != null && model.output_per_mtok != null) {
-    label += ` ($${Number(model.input_per_mtok).toFixed(2)}/$${Number(model.output_per_mtok).toFixed(2)} par M)`;
+  if (isAuditMode()) {
+    label = label.replace('(recommandé)', '(recommended)');
   }
-  if (unavailable) label += ' — indisponible';
+  if (model.subscription) {
+    label += isAuditMode() ? ' — included in plan' : ' — inclus dans le plan';
+  } else if (model.input_per_mtok != null && model.output_per_mtok != null) {
+    label += ` ($${Number(model.input_per_mtok).toFixed(2)}/$${Number(model.output_per_mtok).toFixed(2)} ${isAuditMode() ? 'per M' : 'par M'})`;
+  }
+  if (unavailable) label += isAuditMode() ? ' — unavailable' : ' — indisponible';
   if (model.context_length) label += ` · ${Math.round(model.context_length / 1000)}k ctx`;
   opt.textContent = label;
   opt.disabled = unavailable;
@@ -610,7 +613,9 @@ function renderModelProviderStatus() {
   const target = document.getElementById('model-provider-status');
   if (!target) return;
   const available = _modelCatalog.filter(model => model.available !== false).length;
-  target.textContent = `${available} modèle${available > 1 ? 's' : ''} disponible${available > 1 ? 's' : ''} sur ${_modelCatalog.length}`;
+  target.textContent = isAuditMode()
+    ? `${available} of ${_modelCatalog.length} model${_modelCatalog.length > 1 ? 's' : ''} available`
+    : `${available} modèle${available > 1 ? 's' : ''} disponible${available > 1 ? 's' : ''} sur ${_modelCatalog.length}`;
 }
 
 function renderMainModelFilter() {
@@ -2205,7 +2210,9 @@ function handleEvent(ev) {
     } else if (_evaluationNotApplicable(ev, ev.status)) {
       addLog({type:'info', message:'Audit par règles — sans scoring benchmark.'});
     } else if (ev.status === 'skipped') {
-      addLog({type:'warn', message:`Évaluation non calculée — ${ev.reason || 'ground truth indisponible'}`});
+      if (!isAuditMode()) {
+        addLog({type:'warn', message:`Évaluation non calculée — ${ev.reason || 'ground truth indisponible'}`});
+      }
     } else {
       addLog({type:'error', message:`Évaluation impossible — ${ev.reason || 'erreur inconnue'}`});
     }

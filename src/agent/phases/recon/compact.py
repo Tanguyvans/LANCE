@@ -131,7 +131,8 @@ class CompactReconPhase:
         if config.name != "recon" or not self._uses_compact_local_moe():
             return False
         projection = self._build_recon_evidence_projection()
-        if len(projection.get("devices", [])) < 2:
+        min_devices = 1 if getattr(self, "target_network", None) else 2
+        if len(projection.get("devices", [])) < min_devices:
             return False
         save_tool = next(
             (tool for tool in tools if tool.get("name") == "save_deliverable"),

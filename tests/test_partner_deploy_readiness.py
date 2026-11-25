@@ -276,3 +276,29 @@ class TestAuditMode:
         with pytest.raises(HTTPException) as exc_teardown:
             asyncio.run(route.teardown_scenario(route.TeardownRequest(scenario_id="1")))
         assert exc_teardown.value.status_code == 403
+
+    def test_validate_recon_markdown_allows_single_host_in_discovery_mode(self, tmp_path):
+        from src.agent.validators import validate_recon_markdown
+
+        content = (
+            "# Phase 2: Reconnaissance\n\n"
+            "## 1. Summary\n\n"
+            "| Metric | Value |\n|---|---|\n| Target | 192.168.88.231/32 |\n| Live hosts | 1 |\n\n"
+            "## 2. Discovered Services per Device\n\n"
+            "| Device | IP | Open Ports | Key Services |\n|---|---|---|---|\n"
+            "| iot-hub | 192.168.88.231 | 22, 1883 | OpenSSH 10.0, Mosquitto 2.0.21 |\n\n"
+            "## 3. Key Findings\n\n"
+            "- Single physical Raspberry Pi discovered on eno1 with SSH and MQTT exposed.\n"
+        )
+        (tmp_path / "02_recon.md").write_text(content, encoding="utf-8")
+
+        # Without discovery mode, multi-host scenario validation still expects >= 2 devices.
+        ok_scenario, msg_scenario = validate_recon_markdown("02_recon.md", output_dir=tmp_path)
+        assert not ok_scenario
+        assert "at least 2" in msg_scenario
+
+        # In live discovery mode (/32 physical device), 1 discovered host is valid.
+        ctx = GraphContext(discovery_mode={"target_network": "192.168.88.231/32"})
+        with bind_graph_context(ctx):
+            ok_live, msg_live = validate_recon_markdown("02_recon.md", output_dir=tmp_path)
+        assert ok_live, msg_live

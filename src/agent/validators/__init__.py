@@ -83,8 +83,33 @@ def _phase4_summary_is_all_errors(filename: str = "04_exploitation.json", *, out
     return False, ""
 
 
+def _is_live_discovery_run(output_dir: Path) -> bool:
+    """Return True when the run targets a live network (discovery mode, e.g. /32 physical host)."""
+    try:
+        from src.agent.core.graph_context import current_graph_context
+
+        discovery = getattr(current_graph_context(), "discovery_mode", None)
+        if isinstance(discovery, dict) and discovery.get("target_network"):
+            return True
+    except Exception:
+        pass
+    meta_path = output_dir / "run_meta.json"
+    if meta_path.is_file():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if isinstance(meta, dict) and meta.get("target_network") and not meta.get("scenario_id"):
+                return True
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+    return False
+
+
 def validate_recon_markdown(filename: str, *, output_dir: Path) -> tuple[bool, str]:
-    """Require the complete Recon structure and at least two discovered devices."""
+    """Require the complete Recon structure and discovered devices.
+
+    Live discovery runs (e.g. a single physical /32 device) require at least 1
+    discovered device; multi-host benchmark scenarios continue to require 2.
+    """
     ok, msg = validate_default(filename, output_dir=output_dir)
     if not ok:
         return ok, msg
@@ -95,9 +120,12 @@ def validate_recon_markdown(filename: str, *, output_dir: Path) -> tuple[bool, s
         return False, f"Missing Recon sections: {missing}"
     service_section = _section(content, required[1], required[2])
     rows = _table_data_rows(service_section)
-    if len(rows) < 2:
-        return False, f"Expected at least 2 discovered-device rows, found {len(rows)}"
-    if len(content.strip()) < 600:
+    live_discovery = _is_live_discovery_run(output_dir)
+    min_rows = 1 if live_discovery else 2
+    min_chars = 250 if live_discovery else 600
+    if len(rows) < min_rows:
+        return False, f"Expected at least {min_rows} discovered-device rows, found {len(rows)}"
+    if len(content.strip()) < min_chars:
         return False, f"Recon deliverable is implausibly short ({len(content.strip())} chars)"
     return True, "OK"
 
