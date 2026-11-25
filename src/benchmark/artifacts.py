@@ -29,6 +29,7 @@ _ALLOWED_ROOT_FILES = frozenset(
         "02_recon.md",
         "02_recon_evidence.json",
         "02_topology_edges.json",
+        "02_topology_graph.json",
         "03_vuln_analysis.json",
         "03_vuln_analysis_raw.json",
         "04_exploitation.json",

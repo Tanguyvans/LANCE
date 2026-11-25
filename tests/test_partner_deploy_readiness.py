@@ -505,3 +505,111 @@ class TestGreyboxAuditTopology:
         assert resp["device_count"] == 2
         assert resp["link_count"] == 1
         assert len(resp["topology"]["nodes"]) == 2
+
+
+class TestDiscoveredTopologyGraph:
+    """Verify honest L2/L3 discovered topology reconstruction without fabricated links."""
+
+    def test_classify_discovered_device_uses_vendor_and_services(self):
+        from src.agent.audit_topology import classify_discovered_device
+
+        assert classify_discovered_device("192.168.88.238", vendor="RAK Wireless (WisGate)", open_ports=[22, 80, 1883])[0] == "gateway"
+        assert classify_discovered_device("192.168.88.251", vendor="TP-Link", open_ports=[80, 443])[0] == "ap"
+        assert classify_discovered_device("192.168.88.253", vendor="Ubiquiti", open_ports=[22, 80, 443])[0] == "camera"
+        assert classify_discovered_device("192.168.88.248", vendor="NVIDIA (Jetson)", open_ports=[22, 1883])[0] == "compute"
+        assert classify_discovered_device("192.168.88.231", vendor="Raspberry Pi", open_ports=[22, 1883])[0] == "gateway"
+        assert classify_discovered_device("192.168.88.212", vendor="Raspberry Pi", open_ports=[22, 8080])[0] == "compute"
+        assert classify_discovered_device("192.168.88.236", vendor="Maxglo / Unknown", open_ports=[22])[:2] == ("compute", "192.168.88.236")
+
+    def test_flat_l2_subnet_builds_segment_gateway_and_shared_mac_without_fake_mqtt(self):
+        from src.agent.audit_topology import build_discovered_topology_graph
+
+        devices = [
+            {"ip": "192.168.88.231", "mac": "88:a2:9e:6f:08:13", "vendor": "Raspberry Pi", "open_ports": [22, 1883],
+             "services": [{"port": 22, "service": "ssh"}, {"port": 1883, "service": "mosquitto"}]},
+            {"ip": "192.168.88.232", "mac": "88:a2:9e:6f:08:13", "vendor": "Raspberry Pi", "open_ports": [22, 1883],
+             "services": [{"port": 22, "service": "ssh"}, {"port": 1883, "service": "mosquitto"}]},
+            {"ip": "192.168.88.251", "mac": "e4:fa:c4:c7:49:60", "vendor": "TP-Link", "open_ports": [80, 443],
+             "services": [{"port": 80, "service": "http"}]},
+            {"ip": "192.168.88.131", "mac": "aa:bb:cc:dd:ee:ff", "vendor": "Excluded Tower", "open_ports": [22]},
+        ]
+        graph = build_discovered_topology_graph(
+            target_network="192.168.88.0/24",
+            devices=devices,
+            host_hops={"192.168.88.231": [], "192.168.88.232": [], "192.168.88.251": []},
+            default_gateway="192.168.88.1",
+            excluded_ips=["192.168.88.1", "192.168.88.131", "192.168.88.168"],
+        )
+
+        node_ids = {n["id"] for n in graph["nodes"]}
+        assert "192.168.88.131" not in node_ids
+        assert "segment_192.168.88.0/24" in node_ids
+        assert "gw_192.168.88.1" in node_ids
+        gw_node = next(n for n in graph["nodes"] if n["id"] == "gw_192.168.88.1")
+        assert gw_node["excluded"] is True and gw_node["out_of_scope"] is True
+
+        # Zero fabricated mqtt edges between unrelated hosts
+        assert not any(e["protocol"] == "mqtt" for e in graph["edges"])
+        # Shared MAC alias detected between .231 and .232
+        alias_edges = [e for e in graph["edges"] if e["protocol"] == "alias"]
+        assert len(alias_edges) == 1
+        assert {alias_edges[0]["source"], alias_edges[0]["target"]} == {"192.168.88.231", "192.168.88.232"}
+        # All 3 observed hosts attached to the L2 segment
+        l2_edges = [e for e in graph["edges"] if e["origin"] == "observed_l2" and e["protocol"] == "ethernet"]
+        assert len(l2_edges) == 3
+
+    def test_greybox_attaches_shadow_hosts_to_declared_switch_and_enriches_declared(self):
+        from src.agent.audit_topology import build_discovered_topology_graph, validate_audit_topology
+
+        declared = validate_audit_topology(
+            "subnet: 192.168.88.0/24\n"
+            "devices:\n"
+            "  - id: sw1\n"
+            "    type: switch\n"
+            "    name: Netgear Switch\n"
+            "  - id: rpi_hub\n"
+            "    ip: 192.168.88.231\n"
+            "    type: gateway\n"
+            "links:\n"
+            "  - source: sw1\n"
+            "    target: rpi_hub\n"
+            "    protocol: ethernet\n"
+        )
+        graph = build_discovered_topology_graph(
+            target_network="192.168.88.0/24",
+            devices=[
+                {"ip": "192.168.88.231", "mac": "88:a2:9e:6f:08:13", "vendor": "Raspberry Pi", "open_ports": [22, 1883]},
+                {"ip": "192.168.88.253", "mac": "6c:63:f8:e5:e5:f7", "vendor": "Ubiquiti", "open_ports": [22, 80]},
+            ],
+            host_hops={"192.168.88.231": [], "192.168.88.253": []},
+            declared_topology=declared,
+        )
+        hub = next(n for n in graph["nodes"] if n["id"] == "rpi_hub")
+        assert hub["declared"] is True and hub["observed"] is True and hub["mac"] == "88:a2:9e:6f:08:13"
+        shadow = next(n for n in graph["nodes"] if n["id"] == "192.168.88.253")
+        assert shadow["declared"] is False and shadow["type"] == "camera"
+        assert any(
+            e["origin"] == "inferred_l2" and {e["source"], e["target"]} == {"sw1", "192.168.88.253"}
+            for e in graph["edges"]
+        )
+
+    def test_single_host_32_does_not_add_virtual_segment_and_routed_hops_link(self):
+        from src.agent.audit_topology import build_discovered_topology_graph
+
+        single = build_discovered_topology_graph(
+            target_network="192.168.88.231/32",
+            devices=[{"ip": "192.168.88.231", "vendor": "Raspberry Pi", "open_ports": [22, 1883]}],
+            host_hops={"192.168.88.231": []},
+            default_gateway="192.168.88.1",
+        )
+        assert len(single["nodes"]) == 1
+        assert single["edges"] == []
+
+        routed = build_discovered_topology_graph(
+            target_network="10.20.0.0/24",
+            devices=[{"ip": "10.20.0.15", "open_ports": [22]}],
+            host_hops={"10.20.0.15": ["10.20.0.1", "10.10.0.1"]},
+            excluded_ips=["10.20.0.1"],
+        )
+        tr_edges = [e for e in routed["edges"] if e["origin"] == "traceroute"]
+        assert len(tr_edges) == 2

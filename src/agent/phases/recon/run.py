@@ -1054,39 +1054,39 @@ class ReconPhase:
         self._aggregate_exploit_results()
 
     def _infer_topology_links(self, stream_callback) -> None:
-        """Infer network links between discovered hosts using traceroute.
+        """Build an honest discovered topology graph after Phase 2.
 
-        Runs after Phase 2 when target_network is set (discovery mode).
-        For each host in 02_recon.md, runs traceroute and deduces edges:
-          - hop at distance 1 = direct gateway link
-          - shared intermediate hops = common router between two hosts
-        Emits topology_edge SSE events consumed by the Cytoscape frontend.
+        Runs after Phase 2 when target_network is set (discovery/audit mode).
+        Combines:
+          - Structured Phase 2 evidence (`02_recon_evidence.json`: IP, MAC, vendor, open services),
+          - Declared grey-box topology (`audit_topology`), if provided by the operator,
+          - Traceroute intermediate hops (multi-VLAN / routed paths),
+          - Local L2 broadcast segment + passive default gateway (`ip route`, zero extra probes),
+          - Shared-MAC multi-IP alias detection (`same MAC`).
+        Saves `02_topology_graph.json` (and `02_topology_edges.json` for compatibility) and emits
+        a `topology_graph` SSE event consumed by the Cytoscape frontend.
         """
         import re as _re
         import subprocess as _sub
 
-        log.info("Discovery mode: inferring topology links via traceroute")
+        log.info("Discovery mode: building observed topology graph via recon evidence + traceroute")
 
-        # Extract discovered host IPs from 02_recon.md
-        recon_path = self.run_dir / "02_recon.md"
-        if not recon_path.exists():
-            log.warning("02_recon.md not found — skipping topology inference")
-            return
+        from src.agent.audit_topology import build_discovered_topology_graph, detect_default_gateway
+        from src.agent.core.graph_context import current_graph_context
+        from src.agent.network_scope import is_ip_excluded
 
-        recon_text = recon_path.read_text(encoding="utf-8")
-        # Extract discovered host IPs strictly within the authorized target_network CIDR.
         try:
             target_net = ipaddress.ip_network(self.target_network, strict=False) if self.target_network else None
         except ValueError:
             target_net = None
 
-        from src.agent.network_scope import is_ip_excluded
+        if target_net is None:
+            log.warning("Invalid or missing target_network — skipping topology inference")
+            return
 
         excluded_ips = getattr(self, "excluded_ips", None) or []
 
         def _in_target_net(candidate: str) -> bool:
-            if target_net is None:
-                return False
             try:
                 addr = ipaddress.ip_address(candidate)
             except ValueError:
@@ -1099,18 +1099,39 @@ class ReconPhase:
                 return False
             return True
 
-        host_ips = list(dict.fromkeys(  # deduplicate, preserve order
-            m for m in _re.findall(r"\b(\d+\.\d+\.\d+\.\d+)\b", recon_text)
-            if _in_target_net(m)
-        ))
+        # Prefer structured Phase 2 evidence (has MAC, vendor, open ports & versions)
+        evidence_devices: list[dict] = []
+        evidence_path = self.run_dir / "02_recon_evidence.json"
+        if evidence_path.exists():
+            try:
+                evidence_data = json.loads(evidence_path.read_text(encoding="utf-8"))
+                if isinstance(evidence_data, dict) and isinstance(evidence_data.get("devices"), list):
+                    evidence_devices = [
+                        d for d in evidence_data["devices"]
+                        if isinstance(d, dict) and _in_target_net(str(d.get("ip") or ""))
+                    ]
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                log.warning("Failed reading 02_recon_evidence.json: %s", exc)
 
-        if not host_ips:
-            log.warning("No host IPs found in 02_recon.md — skipping topology inference")
+        # Fallback / supplement with IPs mentioned in 02_recon.md
+        seen_ips = {str(d.get("ip")) for d in evidence_devices if d.get("ip")}
+        recon_path = self.run_dir / "02_recon.md"
+        if recon_path.exists():
+            recon_text = recon_path.read_text(encoding="utf-8")
+            for candidate in _re.findall(r"\b(\d+\.\d+\.\d+\.\d+)\b", recon_text):
+                if candidate not in seen_ips and _in_target_net(candidate):
+                    seen_ips.add(candidate)
+                    evidence_devices.append({"ip": candidate})
+
+        host_ips = [str(d["ip"]) for d in evidence_devices if d.get("ip")]
+        declared_topology = getattr(current_graph_context(), "audit_topology", None)
+
+        if not host_ips and not declared_topology:
+            log.warning("No in-scope discovered hosts found — skipping topology inference")
             return
 
         log.info("Running traceroute on %d hosts: %s", len(host_ips), host_ips[:10])
 
-        # {ip: [hop_ip, ...]} — ordered list of hops for each host
         host_hops: dict[str, list[str]] = {}
 
         def _traceroute(target: str, max_hops: int = 8) -> list[str]:
@@ -1130,61 +1151,48 @@ class ReconPhase:
                 log.debug("traceroute to %s failed: %s", target, exc)
                 return []
 
-        emitted_edges: set[tuple[str, str]] = set()
-
-        def _emit_edge(src: str, dst: str, link_type: str = "ethernet"):
-            key = (min(src, dst), max(src, dst))
-            if key in emitted_edges:
-                return
-            emitted_edges.add(key)
-            log.info("Topology edge inferred: %s → %s (%s)", src, dst, link_type)
-            if stream_callback:
-                stream_callback({
-                    "type": "topology_edge",
-                    "source": src,
-                    "target": dst,
-                    "link_type": link_type,
-                })
-
         for ip in host_ips:
-            hops = _traceroute(ip, max_hops=8)
-            host_hops[ip] = hops
-            if hops:
-                # Direct link: host ↔ first hop (gateway/switch)
-                _emit_edge(ip, hops[0], "ethernet")
-                # Intermediate hops form a chain
-                for i in range(len(hops) - 1):
-                    _emit_edge(hops[i], hops[i + 1], "ethernet")
+            host_hops[ip] = _traceroute(ip, max_hops=8)
 
-        # Shared intermediate hops → same router serves multiple hosts
-        # (already handled above via direct edge emission)
+        default_gw = detect_default_gateway()
+        graph = build_discovered_topology_graph(
+            target_network=str(target_net),
+            devices=evidence_devices,
+            host_hops=host_hops,
+            default_gateway=default_gw,
+            excluded_ips=excluded_ips,
+            declared_topology=declared_topology,
+        )
 
-        # Service-based inference: MQTT broker on port 1883 = hub
-        # Parse nmap results from 02_recon.md for service hints
-        mqtt_broker = None
-        for m in _re.finditer(r"([\d.]+).*?1883/tcp.*?open", recon_text, _re.DOTALL):
-            mqtt_broker = m.group(1)
-            break
-        if not mqtt_broker:
-            # Also check line-by-line for "host | ... | 1883"
-            for line in recon_text.splitlines():
-                if "1883" in line:
-                    m = _re.search(r"([\d]+\.[\d]+\.[\d]+\.[\d]+)", line)
-                    if m:
-                        mqtt_broker = m.group(1)
-                        break
+        # Save full Cytoscape-ready topology graph for History & refresh persistence
+        graph_path = self.run_dir / "02_topology_graph.json"
+        graph_path.write_text(json.dumps(graph, indent=2), encoding="utf-8")
 
-        if mqtt_broker:
-            log.info("MQTT broker detected at %s — adding spoke edges", mqtt_broker)
-            for ip in host_ips:
-                if ip != mqtt_broker:
-                    _emit_edge(ip, mqtt_broker, "mqtt")
-
-        # Save inferred edges to run directory for report context
+        # Keep 02_topology_edges.json for backward compatibility
         edges_path = self.run_dir / "02_topology_edges.json"
-        edges_data = [{"source": s, "target": t} for s, t in emitted_edges]
-        edges_path.write_text(json.dumps({"edges": edges_data, "host_hops": host_hops}, indent=2))
-        log.info("Topology inference complete: %d edges, saved to %s", len(edges_data), edges_path)
+        edges_data = [
+            {
+                "source": e["source"],
+                "target": e["target"],
+                "protocol": e.get("protocol", "ethernet"),
+                "origin": e.get("origin", "observed_l2"),
+            }
+            for e in graph.get("edges", [])
+        ]
+        edges_path.write_text(json.dumps({"edges": edges_data, "host_hops": host_hops}, indent=2), encoding="utf-8")
+
+        if stream_callback:
+            stream_callback({
+                "type": "topology_graph",
+                "topology": graph,
+            })
+
+        log.info(
+            "Topology graph built: %d nodes, %d edges, saved to %s",
+            len(graph.get("nodes", [])),
+            len(graph.get("edges", [])),
+            graph_path,
+        )
 
 
 @graph_bound

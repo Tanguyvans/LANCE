@@ -1363,14 +1363,14 @@ function showSealedTopologyPlaceholder() {
   }
 }
 
-async function loadTopology(scenarioId = null, suppliedData = null) {
+async function loadTopology(scenarioId = null, suppliedData = null, preserveRuntimeState = false) {
   if (!suppliedData) ++rulesGraphRequest;
   const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
   const cyDiv = document.getElementById('cy');
   const loading = document.getElementById('cy-loading');
 
   if (loading) {
-    loading.textContent = 'Chargement de la topologie…';
+    loading.textContent = isAuditMode() ? 'Loading topology…' : 'Chargement de la topologie…';
     loading.style.display = 'flex';
   }
 
@@ -1379,17 +1379,19 @@ async function loadTopology(scenarioId = null, suppliedData = null) {
   if (loading) loading.style.display = 'none';
 
   if (!data) {
-    cyDiv.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px">Impossible de charger la topologie</div>';
+    cyDiv.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px">${isAuditMode() ? 'Unable to load topology' : 'Impossible de charger la topologie'}</div>`;
     return;
   }
 
-  nodeVulns = {};
-  nodeHosts = {};
-  nodeAuditResults = {};
-  // Reset to type coloring when loading a new topology
-  colorMode = 'type';
-  document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('color-type')?.classList.add('active');
+  if (!preserveRuntimeState) {
+    nodeVulns = {};
+    nodeHosts = {};
+    nodeAuditResults = {};
+    // Reset to type coloring when loading a new topology
+    colorMode = 'type';
+    document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('color-type')?.classList.add('active');
+  }
 
   const nodes = (data.nodes || []).map(node => ({...node, color: node.color || TYPE_COLOR[node.type] || TYPE_COLOR.compute}));
   const edges = data.edges || [];
@@ -1445,6 +1447,24 @@ async function loadTopology(scenarioId = null, suppliedData = null) {
           style: { 'background-color': 'data(color)' },
         },
         {
+          selector: 'node[?virtual]',
+          style: {
+            'shape': 'diamond',
+            'width': '30px',
+            'height': '30px',
+            'border-style': 'dashed',
+            'border-color': 'rgba(255,255,255,.35)',
+          },
+        },
+        {
+          selector: 'node[?out_of_scope]',
+          style: {
+            'opacity': 0.72,
+            'border-style': 'dashed',
+            'border-color': '#95a5a6',
+          },
+        },
+        {
           selector: 'edge',
           style: {
             'line-color': _cssVar('--border'),
@@ -1460,6 +1480,47 @@ async function loadTopology(scenarioId = null, suppliedData = null) {
           style: {
             'line-color': 'data(color)',
             'target-arrow-color': 'data(color)',
+          },
+        },
+        {
+          selector: 'edge[origin="observed_l2"]',
+          style: {
+            'target-arrow-shape': 'none',
+            'width': 1.5,
+            'opacity': 0.65,
+          },
+        },
+        {
+          selector: 'edge[origin="inferred_l2"]',
+          style: {
+            'target-arrow-shape': 'none',
+            'line-style': 'dashed',
+            'width': 1.5,
+            'opacity': 0.55,
+          },
+        },
+        {
+          selector: 'edge[origin="observed_l3"]',
+          style: {
+            'target-arrow-shape': 'none',
+            'width': 2,
+            'opacity': 0.75,
+          },
+        },
+        {
+          selector: 'edge[protocol="alias"]',
+          style: {
+            'line-color': '#f39c12',
+            'target-arrow-shape': 'none',
+            'line-style': 'dashed',
+            'width': 2,
+            'opacity': 0.9,
+            'label': 'data(label)',
+            'font-size': 9,
+            'color': '#f39c12',
+            'text-background-color': _cssVar('--bg'),
+            'text-background-opacity': 0.85,
+            'text-background-padding': '2px',
           },
         },
         {
@@ -1697,24 +1758,29 @@ function showNodeDetail(data) {
   document.getElementById('detail-node-view').hidden = false;
   document.getElementById('detail-run-view').hidden = true;
 
-  const vulns = nodeVulns[data.id] || [];
+  const auditMode = isAuditMode();
+  const vulns = nodeVulns[data.id] || (data.ip ? nodeVulns[data.ip] : null) || [];
   const hostInfo = nodeHosts[data.ip] || null;
   const audit = nodeAuditResults[data.id];
-  const verificationLabels = {confirmed: 'Confirmée par les preuves', not_confirmed: 'Non confirmée', error: 'Erreur de vérification · contrôle incomplet', not_run: 'Vérification en attente'};
-  const diagnosticLabels = {tool_error: 'La sonde a échoué.', transient_error: 'La sonde reste indisponible après la reprise autorisée.', tool_refused: 'La sonde a été refusée.', unsupported: 'Aucune sonde disponible pour ce contrôle.'};
+  const verificationLabels = auditMode
+    ? {confirmed: 'Confirmed by evidence', not_confirmed: 'Not confirmed', error: 'Verification error · incomplete check', not_run: 'Verification pending'}
+    : {confirmed: 'Confirmée par les preuves', not_confirmed: 'Non confirmée', error: 'Erreur de vérification · contrôle incomplet', not_run: 'Vérification en attente'};
+  const diagnosticLabels = auditMode
+    ? {tool_error: 'Probe failed.', transient_error: 'Probe remained unavailable after retry.', tool_refused: 'Probe refused.', unsupported: 'No probe available for this check.'}
+    : {tool_error: 'La sonde a échoué.', transient_error: 'La sonde reste indisponible après la reprise autorisée.', tool_refused: 'La sonde a été refusée.', unsupported: 'Aucune sonde disponible pour ce contrôle.'};
 
   const sevSummary = vulns.length
     ? Object.entries(
         vulns.reduce((acc, v) => { acc[v.severity] = (acc[v.severity]||0)+1; return acc; }, {})
-      ).map(([s,c]) => `<span class="sev ${s}">${s}:${c}</span>`).join(' ')
-    : '<span style="color:var(--muted)">Aucune vulnérabilité détectée</span>';
+      ).map(([s,c]) => `<span class="sev ${escapeHtml(s)}">${escapeHtml(s)}:${c}</span>`).join(' ')
+    : `<span style="color:var(--muted)">${auditMode ? 'No vulnerabilities detected' : 'Aucune vulnérabilité détectée'}</span>`;
 
   const services = data.services?.length
-    ? data.services.map(s => `<span class="service-tag">${s}</span>`).join('')
+    ? data.services.map(s => `<span class="service-tag">${escapeHtml(typeof s === 'string' ? s : (s?.name || ''))}</span>`).join('')
     : '<span style="color:var(--muted)">—</span>';
 
   const ports = hostInfo?.ports?.length
-    ? hostInfo.ports.map(p => `<span class="service-tag">${p}</span>`).join('')
+    ? hostInfo.ports.map(p => `<span class="service-tag">${escapeHtml(String(p))}</span>`).join('')
     : null;
 
   const vulnHtml = vulns.map(v => `
@@ -1722,19 +1788,27 @@ function showNodeDetail(data) {
       <span class="sev ${escapeHtml(v.severity)}">${escapeHtml(v.severity)}</span>
       <strong>${escapeHtml(v.type)}</strong> — ${escapeHtml(v.service || '')}${v.port ? ':'+escapeHtml(String(v.port)) : ''}
       <div style="color:var(--muted);margin-top:3px;font-size:10px">${escapeHtml(v.details || '')}</div>
-      ${v.verification ? `<div class="audit-verification ${escapeHtml(v.verification)}">${escapeHtml(verificationLabels[v.verification] || 'Indéterminée')}</div>` : ''}
-      ${v.verification === 'error' ? `<div class="audit-verification error">${escapeHtml(v.evidence || 'Aucune preuve exploitable pour ce contrôle.')}
-        ${(v.execution_errors || []).map(error => `<div>${escapeHtml(error.reason || diagnosticLabels[error.kind] || 'Erreur pendant la vérification.')}${error.exception_type ? ` (${escapeHtml(error.exception_type)})` : ''}</div>`).join('')}</div>` : ''}
+      ${v.verification ? `<div class="audit-verification ${escapeHtml(v.verification)}">${escapeHtml(verificationLabels[v.verification] || (auditMode ? 'Unknown' : 'Indéterminée'))}</div>` : ''}
+      ${v.verification === 'error' ? `<div class="audit-verification error">${escapeHtml(v.evidence || (auditMode ? 'No usable evidence for this check.' : 'Aucune preuve exploitable pour ce contrôle.'))}
+        ${(v.execution_errors || []).map(error => `<div>${escapeHtml(error.reason || diagnosticLabels[error.kind] || (auditMode ? 'Verification error.' : 'Erreur pendant la vérification.'))}${error.exception_type ? ` (${escapeHtml(error.exception_type)})` : ''}</div>`).join('')}</div>` : ''}
       ${v.cve_ids?.length ? `<div style="color:#58a6ff;font-size:10px;margin-top:2px">${v.cve_ids.map(escapeHtml).join(', ')}</div>` : ''}
     </div>
   `).join('');
 
+  const scopeBadge = (data.excluded || data.out_of_scope)
+    ? `<div class="detail-row"><span class="detail-key">${auditMode ? 'Scope' : 'Périmètre'}</span><span class="detail-val" style="color:var(--muted)">${data.excluded ? (auditMode ? 'Excluded (not scanned)' : 'Exclu (non scanné)') : (auditMode ? 'Infrastructure / out of scan scope' : 'Infrastructure / hors scan')}</span></div>`
+    : '';
+
   document.getElementById('detail-node-view').innerHTML = `
     <h2>
       <span style="background:${escapeHtml(data.color||'#3498db')};border-radius:4px;padding:2px 6px;font-size:11px">${escapeHtml(data.type||'node')}</span>
-      ${escapeHtml(data.id)}
+      ${escapeHtml(data.label || data.id)}
     </h2>
     <div class="detail-row"><span class="detail-key">IP</span><span class="detail-val">${escapeHtml(data.ip||'—')}</span></div>
+    ${data.role && data.role !== data.type ? `<div class="detail-row"><span class="detail-key">${auditMode ? 'Role' : 'Rôle'}</span><span class="detail-val">${escapeHtml(data.role)}</span></div>` : ''}
+    ${data.vendor ? `<div class="detail-row"><span class="detail-key">${auditMode ? 'Vendor' : 'Constructeur'}</span><span class="detail-val">${escapeHtml(data.vendor)}</span></div>` : ''}
+    ${data.mac ? `<div class="detail-row"><span class="detail-key">MAC</span><span class="detail-val">${escapeHtml(data.mac)}</span></div>` : ''}
+    ${scopeBadge}
     ${audit ? `<div class="detail-section"><h3>Audit par règles</h3>
       <div class="audit-verification ${rulesAuditState(audit) === 'incomplete' ? 'error' : ''}">${escapeHtml({completed: 'Analyse et vérification effectuées', incomplete: 'Contrôles incomplets', pending: 'Contrôles en attente', not_targeted: 'Sans adresse IP · non ciblé'}[rulesAuditState(audit)] || 'État indisponible')}</div>
       <div>${audit.findings.length} détection(s) · ${audit.confirmed_count} confirmation(s) par les preuves</div>
@@ -1744,14 +1818,14 @@ function showNodeDetail(data) {
     ${hostInfo?.os ? `<div class="detail-row"><span class="detail-key">OS</span><span class="detail-val">${escapeHtml(hostInfo.os)}</span></div>` : ''}
 
     <div class="detail-section">
-      <h3>Services (YAML)</h3>
+      <h3>${auditMode ? 'Services' : 'Services (YAML)'}</h3>
       ${services}
     </div>
 
-    ${ports ? `<div class="detail-section"><h3>Ports détectés (nmap)</h3>${ports}</div>` : ''}
+    ${ports ? `<div class="detail-section"><h3>${auditMode ? 'Detected Ports (nmap)' : 'Ports détectés (nmap)'}</h3>${ports}</div>` : ''}
 
     <div class="detail-section">
-      <h3>Vulnérabilités (${vulns.length})</h3>
+      <h3>${auditMode ? `Vulnerabilities (${vulns.length})` : `Vulnérabilités (${vulns.length})`}</h3>
       ${sevSummary}
       <div style="margin-top:8px">${vulnHtml || ''}</div>
     </div>
@@ -2370,9 +2444,27 @@ function handleEvent(ev) {
     addLog({type:'info', message:'Phase d’intrusion finalisée — les accès et objectifs atteints restent à distinguer des déclarations du modèle.'});
   }
 
+  else if (t === 'topology_graph' && ev.topology) {
+    loadTopology(null, ev.topology, true);
+    const nCount = (ev.topology.nodes || []).length;
+    const eCount = (ev.topology.edges || []).length;
+    addLog({
+      type: 'info',
+      message: isAuditMode()
+        ? `Observed network topology built: ${nCount} node(s), ${eCount} link(s)`
+        : `Topologie observée construite : ${nCount} nœud(s), ${eCount} lien(s)`,
+    });
+  }
+
   else if (t === 'topology_edge') {
     _addDiscoveredEdge(ev.source, ev.target, ev.link_type || 'ethernet');
-    addLog({type:'info', message:`Lien découvert : ${ev.source} ↔ ${ev.target} (${ev.link_type||'ethernet'})`});
+    if (cy) _runLayout(CY_LAYOUTS.cose, true);
+    addLog({
+      type: 'info',
+      message: isAuditMode()
+        ? `Link discovered: ${ev.source} ↔ ${ev.target} (${ev.link_type || 'ethernet'})`
+        : `Lien découvert : ${ev.source} ↔ ${ev.target} (${ev.link_type||'ethernet'})`,
+    });
   }
 
   else if (t === 'batch_scenario_start') {
@@ -2428,7 +2520,7 @@ function handleEvent(ev) {
       if (cy) {
         let nodes = cy.nodes().filter(n => n.data('ip') === ip);
         if (nodes.length === 0) {
-          const nodeId = `host_${ip.replace(/\./g, '_')}`;
+          const nodeId = ip;
           cy.add({
             group: 'nodes',
             data: {
@@ -2791,7 +2883,17 @@ async function viewRun(runId) {
     resetNodeColors();
     nodeVulns = {};
     nodeHosts = {};
-    await loadTopology(scenarioId);
+    let loadedDiscovered = false;
+    if (!scenarioId) {
+      const discoveredTopo = await _loadDiscoveredRunTopology(runId, run.files || []);
+      if (discoveredTopo) {
+        await loadTopology(null, discoveredTopo);
+        loadedDiscovered = true;
+      }
+    }
+    if (!loadedDiscovered) {
+      await loadTopology(scenarioId);
+    }
     document.getElementById('sel-scenario').value = scenarioId || '';
   }
 
@@ -4021,10 +4123,119 @@ async function pollStatus() {
       document.getElementById('sel-scenario').value = String(status.scenario_id);
       await loadTopology(status.scenario_id);
     }
+  } else if (isGraphRunner(kind) && status.run_dir) {
+    const rid = status.run_dir.split('/').pop();
+    const discoveredTopo = await _loadDiscoveredRunTopology(rid, null);
+    if (discoveredTopo) {
+      await loadTopology(null, discoveredTopo);
+    }
   }
 
   // SSE replays retained events itself, then follows the live operation.
   startSSE();
+}
+
+function _buildFallbackTopologyFromRecon(reconContent) {
+  const devices = Array.isArray(reconContent?.devices) ? reconContent.devices : [];
+  if (!devices.length) return null;
+  const nodes = [];
+  const edges = [];
+  const macGroups = {};
+  const subnetPrefix = devices[0]?.ip ? devices[0].ip.split('.').slice(0, 3).join('.') + '.0/24' : 'LAN';
+  const segId = `segment_${subnetPrefix}`;
+  if (devices.length >= 2) {
+    nodes.push({
+      id: segId,
+      label: `LAN ${subnetPrefix}`,
+      ip: '',
+      type: 'switch',
+      role: 'Observed L2 broadcast segment',
+      services: [],
+      color: TYPE_COLOR.switch || '#95a5a6',
+      virtual: true,
+      out_of_scope: true,
+    });
+  }
+  for (const d of devices) {
+    if (!d?.ip) continue;
+    const vendor = String(d.vendor || '').trim();
+    const vlow = vendor.toLowerCase();
+    const ports = Array.isArray(d.open_ports) ? d.open_ports.map(Number) : [];
+    const hasMqtt = ports.includes(1883) || ports.includes(8883);
+    const suffix = '.' + d.ip.split('.').pop();
+    let type = 'compute';
+    let label = d.ip;
+    if (vlow.includes('rak') || vlow.includes('wisgate')) { type = 'gateway'; label = `RAK WisGate (${suffix})`; }
+    else if (vlow.includes('tp-link')) { type = 'ap'; label = `TP-Link AP (${suffix})`; }
+    else if (vlow.includes('ubiquiti')) { type = 'camera'; label = `Ubiquiti (${suffix})`; }
+    else if (vlow.includes('nvidia') || vlow.includes('jetson')) { type = 'compute'; label = `NVIDIA Jetson (${suffix})`; }
+    else if (vlow.includes('raspberry')) { type = hasMqtt ? 'gateway' : 'compute'; label = hasMqtt ? `Raspberry Pi MQTT (${suffix})` : `Raspberry Pi (${suffix})`; }
+    else if (hasMqtt) { type = 'gateway'; label = `MQTT Broker (${suffix})`; }
+
+    const services = Array.isArray(d.services)
+      ? d.services.map(s => (s?.service && s?.port ? `${s.service}:${s.port}` : String(s?.service || s?.port || ''))).filter(Boolean)
+      : ports.map(p => `port:${p}`);
+
+    nodes.push({
+      id: d.ip,
+      label,
+      ip: d.ip,
+      type,
+      role: vendor || 'Discovered Host',
+      vendor,
+      mac: d.mac || '',
+      services,
+      color: TYPE_COLOR[type] || TYPE_COLOR.compute,
+    });
+    if (devices.length >= 2) {
+      edges.push({
+        id: `${segId}-${d.ip}-ethernet`,
+        source: segId,
+        target: d.ip,
+        protocol: 'ethernet',
+        origin: 'observed_l2',
+        color: '#bdc3c7',
+      });
+    }
+    const mac = String(d.mac || '').trim().toLowerCase();
+    if (mac && mac !== '00:00:00:00:00:00' && mac !== 'ff:ff:ff:ff:ff:ff') {
+      (macGroups[mac] ||= []).push(d.ip);
+    }
+  }
+  for (const [mac, ips] of Object.entries(macGroups)) {
+    if (ips.length >= 2) {
+      for (let i = 1; i < ips.length; i++) {
+        edges.push({
+          id: `${ips[0]}-${ips[i]}-alias`,
+          source: ips[0],
+          target: ips[i],
+          protocol: 'alias',
+          origin: 'observed_l2',
+          label: 'same MAC',
+          color: '#f39c12',
+        });
+      }
+    }
+  }
+  return { nodes, edges, subnet: subnetPrefix };
+}
+
+async function _loadDiscoveredRunTopology(runId, files = null) {
+  if (!runId) return null;
+  const eRunId = encodeURIComponent(runId);
+  if (!files || files.includes('02_topology_graph.json')) {
+    const topoRes = await fetchJSON(`/api/runs/${eRunId}/02_topology_graph.json`);
+    if (topoRes?.content && Array.isArray(topoRes.content.nodes)) {
+      return topoRes.content;
+    }
+  }
+  if (!files || files.includes('02_recon_evidence.json')) {
+    const reconRes = await fetchJSON(`/api/runs/${eRunId}/02_recon_evidence.json`);
+    if (reconRes?.content) {
+      return _buildFallbackTopologyFromRecon(reconRes.content);
+    }
+  }
+  return null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
