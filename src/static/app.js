@@ -28,6 +28,106 @@ function isAuditMode() {
   return appMode === 'audit';
 }
 
+function applyAuditEnglishUI() {
+  document.documentElement.lang = 'en';
+  document.title = 'LANCE · Network Audit';
+  const setText = (sel, text) => {
+    const el = document.querySelector(sel);
+    if (el) el.textContent = text;
+  };
+  const setAttr = (sel, attr, val) => {
+    const el = document.querySelector(sel);
+    if (el) el.setAttribute(attr, val);
+  };
+
+  // Header
+  setText('#header h1', 'LANCE · Network Audit');
+  setText('#btn-manage-models', '⚙️ Models');
+  setAttr('#btn-manage-models', 'title', 'Manage models and providers');
+  setText('#runner-activity-text', 'Ready');
+
+  // Launch section
+  setText('#launch-section > h3', 'New Audit');
+  setText('.runner-choices legend', 'Approach');
+  const choices = document.querySelectorAll('.runner-choice');
+  if (choices[0]) {
+    const strong = choices[0].querySelector('strong');
+    const small = choices[0].querySelector('small');
+    if (strong) strong.textContent = 'LANCE Agent';
+    if (small) small.textContent = 'Phases, evidence & report';
+  }
+  if (choices[1]) {
+    const strong = choices[1].querySelector('strong');
+    const small = choices[1].querySelector('small');
+    if (strong) strong.textContent = 'Script';
+    if (small) small.textContent = 'Deterministic read-only';
+  }
+
+  // Target network
+  setText('label[for="inp-target-network"]', 'Authorized Network or IP');
+  setAttr('#inp-target-network', 'placeholder', 'e.g. 192.168.50.0/24 or 10.0.0.42');
+  setText('#target-network-config .field-hint', 'Authorized CIDR subnet or single IPv4 host (auto-normalized to /32). No lab VMs are deployed.');
+
+  // Scripts
+  setText('label[for="sel-script"]', 'Procedure');
+  const scriptOpt = (val, label) => {
+    const opt = document.querySelector(`#sel-script option[value="${val}"]`);
+    if (opt) opt.textContent = label;
+  };
+  scriptOpt('', 'Select a procedure…');
+  scriptOpt('smoke-v1', 'Offline demo · no scan');
+  scriptOpt('discovery-v1', 'Host discovery');
+  scriptOpt('service-inventory-v1', 'TCP service inventory');
+  setText('label[for="inp-max-tool-calls"]', 'Max tool calls');
+  setAttr('#inp-max-tool-calls', 'placeholder', 'Server default');
+  setText('label[for="inp-max-duration"]', 'Max duration (s)');
+  setAttr('#inp-max-duration', 'placeholder', 'Server default');
+
+  // Model selector
+  setText('label[for="sel-model"]', 'Model');
+  setAttr('#model-search', 'placeholder', 'Filter models…');
+  setAttr('#btn-refresh-models', 'title', 'Refresh configured models');
+
+  // Audit scope (1-3 vs 1-6)
+  setText('#audit-scope-config > label', 'Audit Scope');
+  const passiveRadio = document.querySelector('input[name="audit-scope"][value="passive"]');
+  if (passiveRadio?.parentElement) {
+    passiveRadio.parentElement.lastChild.textContent = ' Analysis only (1–3)';
+  }
+  const fullRadio = document.querySelector('input[name="audit-scope"][value="full"]');
+  if (fullRadio?.parentElement) {
+    fullRadio.parentElement.lastChild.textContent = ' Full audit (1–6)';
+  }
+  setText('#audit-scope-config .field-hint', 'Analysis only: discovery & vulnerability analysis without exploitation. Full: adds verification, intrusion & report.');
+
+  // Action buttons & History
+  setText('#btn-stop', 'Stop');
+  const histHeading = document.querySelector('#history-section > h3');
+  if (histHeading?.firstChild?.nodeType === Node.TEXT_NODE) {
+    histHeading.firstChild.textContent = 'History ';
+  }
+  setText('#btn-compare', '+ Compare (2)');
+
+  // Graph toolbar & simple stage
+  setAttr('#layout-cose', 'title', 'Organic layout');
+  setAttr('#layout-breadth', 'title', 'Hierarchy layout');
+  setAttr('#layout-concentric', 'title', 'Concentric layout');
+  setAttr('#graph-fit', 'title', 'Fit view');
+  setAttr('#color-type', 'title', 'Color by device type');
+  setAttr('#color-security', 'title', 'Color by vulnerability severity');
+  setText('#simple-stage-title', 'Ready to start');
+  setText('#simple-stage-target', 'Enter an authorized network or IP to start.');
+  setText('.stage-readout span', 'Activity');
+  setText('#simple-stage-activity', 'Idle');
+
+  // Detail & log panels
+  setText('#tab-info', 'Info');
+  setText('#tab-files', 'Files');
+  setText('#tab-report', 'Report');
+  setText('#log-clear', 'Clear');
+  setText('#compare-title', 'Run Comparison');
+}
+
 function applyAppMode(mode) {
   appMode = mode === 'audit' ? 'audit' : 'lab';
   document.body.dataset.appMode = appMode;
@@ -36,11 +136,7 @@ function applyAppMode(mode) {
   if (viewNav) viewNav.hidden = audit;
   const sharedActivity = document.getElementById('shared-activity');
   if (sharedActivity && audit) sharedActivity.hidden = true;
-  if (audit) {
-    const title = document.querySelector('#header h1');
-    if (title) title.textContent = 'LANCE · Network Audit';
-    document.title = 'LANCE · Network Audit';
-  }
+  if (audit) applyAuditEnglishUI();
   setRunnerView(activeExecutionKind);
 }
 
@@ -55,17 +151,28 @@ function updateScriptSelection() {
   document.getElementById('target-network-config').hidden = !showTarget;
   document.getElementById('inp-target-network').required = showTarget;
   document.getElementById('tool-call-limit').hidden = offline;
+  const audit = isAuditMode();
   document.getElementById('simple-stage-hint').textContent = offline
-    ? 'Les étapes de la démo apparaissent dans le journal. Son résumé est disponible dans l’historique après le run.'
-    : "Les appels d'outils apparaissent dans le journal. Le résumé et les fichiers sont disponibles dans l'historique après le run.";
+    ? (audit
+      ? 'Demo steps appear in the log. The summary is available in History after the run.'
+      : 'Les étapes de la démo apparaissent dans le journal. Son résumé est disponible dans l’historique après le run.')
+    : (audit
+      ? 'Tool calls appear in the log. Summary and artifacts are available in History after the run.'
+      : "Les appels d'outils apparaissent dans le journal. Le résumé et les fichiers sont disponibles dans l'historique après le run.");
   document.getElementById('script-description').textContent = script === 'smoke-v1'
-    ? 'Teste le lancement, les événements et l’historique. Aucun réseau, modèle ou laboratoire utilisé.'
-    : script === 'discovery-v1' ? 'Découverte fixe des hôtes du réseau indiqué (scan réel).'
-    : script === 'service-inventory-v1' ? 'Découverte puis inventaire TCP de 16 hôtes observés au maximum, sans modèle.' : '';
+    ? (audit
+      ? 'Tests launch, streaming events, and history. No network, model, or lab used.'
+      : 'Teste le lancement, les événements et l’historique. Aucun réseau, modèle ou laboratoire utilisé.')
+    : script === 'discovery-v1'
+      ? (audit ? 'Deterministic host discovery on the authorized network (live scan).' : 'Découverte fixe des hôtes du réseau indiqué (scan réel).')
+    : script === 'service-inventory-v1'
+      ? (audit ? 'Host discovery followed by TCP service inventory (up to 16 hosts, no LLM).' : 'Découverte puis inventaire TCP de 16 hôtes observés au maximum, sans modèle.')
+    : '';
   if (activeExecutionKind === 'scripted') {
     const target = document.getElementById('inp-target-network').value.trim();
     document.getElementById('simple-stage-target').textContent = offline
-      ? 'Démo hors ligne · aucun scan' : target || 'Indiquez un réseau autorisé pour lancer une exécution.';
+      ? (audit ? 'Offline demo · no scan' : 'Démo hors ligne · aucun scan')
+      : target || (audit ? 'Enter an authorized network or IP to start.' : 'Indiquez un réseau autorisé pour lancer une exécution.');
   }
 }
 
@@ -83,9 +190,10 @@ function setRunnerCanvas(kind) {
   document.getElementById('runner-activity').hidden = !simple;
   document.getElementById('simple-run-stage').hidden = !simple;
   document.getElementById('graph-wrap').classList.toggle('simple-run-view', simple);
+  const audit = isAuditMode();
   document.getElementById('detail-placeholder').innerHTML = simple
-    ? 'Choisissez un run<br>pour voir ses fichiers'
-    : 'Cliquez sur un nœud<br>pour voir ses détails';
+    ? (audit ? 'Select a run<br>to view its artifacts' : 'Choisissez un run<br>pour voir ses fichiers')
+    : (audit ? 'Click a node<br>to view its details' : 'Cliquez sur un nœud<br>pour voir ses détails');
   document.getElementById('cost-badge').hidden = kind === 'scripted' || kind === 'rules';
   document.querySelectorAll('.phase-pill').forEach(pill => {
     pill.hidden = kind === 'rules' && ![3, 4].includes(Number(pill.dataset.phase));
@@ -131,15 +239,20 @@ function setRunnerView(kind) {
   document.getElementById('btn-start').textContent = kind === 'rules'
     ? "Lancer l'audit par règles"
     : kind === 'lance'
-      ? (audit ? "Lancer l'audit" : 'Lancer le pentest')
-      : 'Lancer le script';
+      ? (audit ? 'Start Audit' : 'Lancer le pentest')
+      : (audit ? 'Run Script' : 'Lancer le script');
   const batch = !simple && !audit && document.querySelector('input[name="run-mode"]:checked')?.value === 'batch';
   document.getElementById('btn-start').hidden = batch;
   document.getElementById('btn-batch-start').hidden = !batch;
   if (simple) {
     const target = document.getElementById('inp-target-network').value.trim();
-    setRunnerActivity('Prêt à démarrer', 'En attente', isOfflineScript()
-      ? 'Démo hors ligne · aucun scan' : target || 'Indiquez un réseau autorisé pour lancer une exécution.');
+    setRunnerActivity(
+      audit ? 'Ready to start' : 'Prêt à démarrer',
+      audit ? 'Idle' : 'En attente',
+      isOfflineScript()
+        ? (audit ? 'Offline demo · no scan' : 'Démo hors ligne · aucun scan')
+        : target || (audit ? 'Enter an authorized network or IP to start.' : 'Indiquez un réseau autorisé pour lancer une exécution.'),
+    );
   }
 }
 
@@ -1619,7 +1732,7 @@ async function startRun() {
   if (audit) {
     const rawTarget = document.getElementById('inp-target-network').value.trim();
     if (!rawTarget) {
-      addLog({type: 'error', message: 'Indiquez une adresse IP ou un sous-réseau CIDR autorisé (ex. 192.168.50.0/24 ou 10.107.10.42).'});
+      addLog({type: 'error', message: 'Enter an authorized IP address or CIDR subnet (e.g. 192.168.50.0/24 or 10.0.0.42).'});
       document.getElementById('inp-target-network').focus();
       return;
     }

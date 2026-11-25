@@ -596,7 +596,7 @@ async def start_pipeline(req: StartRequest):
         if req.runner_kind not in {"lance", "scripted"}:
             raise HTTPException(
                 status_code=403,
-                detail="Mode audit uniquement : les modes laboratoire et benchmark sont désactivés.",
+                detail="Audit mode only: laboratory and benchmark runners are disabled.",
             )
         if any((
             req.scenario_id is not None,
@@ -609,13 +609,13 @@ async def start_pipeline(req: StartRequest):
         )):
             raise HTTPException(
                 status_code=403,
-                detail="Mode audit uniquement : le déploiement de scénarios de laboratoire est désactivé.",
+                detail="Audit mode only: lab scenario deployment is disabled.",
             )
         if req.runner_kind == "lance":
             if not req.target_network:
                 raise HTTPException(
                     status_code=422,
-                    detail="Indiquez un réseau ou une IP autorisée (ex. 192.168.50.0/24 ou 10.0.0.5/32).",
+                    detail="An authorized IPv4 address or CIDR subnet is required (e.g. 192.168.50.0/24 or 10.0.0.5/32).",
                 )
             req.auto_teardown = False
     if req.scenario_id is not None:
@@ -914,7 +914,7 @@ async def start_batch(req: BatchRequest):
     if _is_audit_mode():
         raise HTTPException(
             status_code=403,
-            detail="Mode audit uniquement : l'exécution batch de scénarios est désactivée.",
+            detail="Audit mode only: batch scenario execution is disabled.",
         )
     from src.agent.batch import SealedScenarioError, _parse_scenario_ids
     try:
@@ -962,7 +962,7 @@ async def teardown_scenario(req: TeardownRequest):
     if _is_audit_mode():
         raise HTTPException(
             status_code=403,
-            detail="Mode audit uniquement : le teardown de scénarios de laboratoire est désactivé.",
+            detail="Audit mode only: lab scenario teardown is disabled.",
         )
     from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
     try:
