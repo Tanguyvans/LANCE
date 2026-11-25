@@ -1266,13 +1266,15 @@ function _setColorMode(mode) {
 
   if (mode === 'type') {
     resetNodeColors();
+    if (cy) buildLegend(cy.nodes().map(n => n.data()));
   } else {
     // Re-apply severity colors from current nodeVulns
     resetNodeColors();
+    buildSeverityLegend();
     const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
     Object.entries(nodeVulns).forEach(([nodeId, vulns]) => {
-      const worst = order.find(s => vulns.some(v => v.severity === s));
-      if (worst) colorNodeBySeverity(nodeId, worst);
+      const worst = order.find(s => vulns.some(v => String(v.severity || '').toUpperCase() === s));
+      if (worst) colorNodeBySeverity(nodeId, worst, vulns);
     });
   }
 }
@@ -1347,7 +1349,7 @@ function _updateTopologyTable(nodes) {
     const vulns = nodeVulns[n.id] || [];
     const audit = nodeAuditResults[n.id];
     const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
-    const worst = order.find(s => vulns.some(v => v.severity === s)) || 'OK';
+    const worst = order.find(s => vulns.some(v => String(v.severity || '').toUpperCase() === s)) || 'OK';
     const badgeClass = audit && worst === 'OK' ? 'INFO' : worst;
     return `<tr>
       <td>${escapeHtml(n.id)}</td>
@@ -1624,22 +1626,36 @@ function buildLegend(nodes) {
   ).join('');
 }
 
-function colorNodeBySeverity(nodeId, severity) {
+function buildSeverityLegend() {
+  const legend = document.getElementById('graph-legend');
+  if (!legend) return;
+  const levels = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
+  legend.innerHTML = levels.map(lvl =>
+    `<div class="legend-item">
+       <div class="legend-dot" style="background:${SEV_COLOR[lvl] || '#888'}"></div>
+       ${lvl}
+     </div>`
+  ).join('');
+}
+
+function colorNodeBySeverity(nodeId, severity, vulns = null) {
+  if (!cy) return;
   const node = cy.getElementById(nodeId);
   if (!node.length) {
     // Try to find by IP
     const match = cy.nodes().filter(n => n.data('ip') === nodeId);
     if (!match.length) return;
-    match.forEach(n => _setNodeColor(n, severity));
+    match.forEach(n => _setNodeColor(n, severity, vulns));
     return;
   }
-  _setNodeColor(node, severity);
+  _setNodeColor(node, severity, vulns);
 }
 
-function _setNodeColor(node, severity) {
-  const color = SEV_COLOR[severity] || SEV_COLOR['INFO'];
+function _setNodeColor(node, severity, vulns = null) {
+  const sev = String(severity || 'INFO').toUpperCase();
+  const color = SEV_COLOR[sev] || SEV_COLOR['INFO'];
   // Use border-width to simulate glow as shadow-blur is rejected by this version of Cytoscape
-  const borderWidth = (severity === 'CRITICAL') ? '8px' : (severity === 'HIGH') ? '6px' : (severity === 'MEDIUM') ? '4px' : '3px';
+  const borderWidth = (sev === 'CRITICAL') ? '8px' : (sev === 'HIGH') ? '6px' : (sev === 'MEDIUM') ? '4px' : '3px';
 
   node.style({
     'background-color': color,
@@ -1647,6 +1663,13 @@ function _setNodeColor(node, severity) {
     'border-width':     borderWidth,
     'border-opacity':   0.6
   });
+
+  if (Array.isArray(vulns) && vulns.length) {
+    if (!node.data('_baseLabel')) node.data('_baseLabel', node.data('label') || node.id());
+    const confirmed = vulns.filter(v => String(v.exploitation_status || '').toUpperCase() === 'CONFIRMED').length;
+    const badge = confirmed > 0 ? `[${confirmed}✓/${vulns.length}]` : `[${vulns.length}]`;
+    node.data('label', `${node.data('_baseLabel')} ${badge}`);
+  }
 }
 
 function resetNodeColors() {
@@ -1656,6 +1679,9 @@ function resetNodeColors() {
     n.style('background-color', n.data('_origColor') || n.data('color'));
     n.style('border-color', 'rgba(255,255,255,.1)');
     n.style('border-width', '2px');
+    if (n.data('_baseLabel')) {
+      n.data('label', n.data('_baseLabel'));
+    }
   });
   cy.remove('edge[type="intrusion"]');
 }
@@ -1665,6 +1691,7 @@ function activateSecurityMode() {
   colorMode = 'security';
   document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('color-security')?.classList.add('active');
+  buildSeverityLegend();
 }
 
 function markNodeAccessObserved(ip) {
@@ -1781,7 +1808,11 @@ function showNodeDetail(data) {
 
   const sevSummary = vulns.length
     ? Object.entries(
-        vulns.reduce((acc, v) => { acc[v.severity] = (acc[v.severity]||0)+1; return acc; }, {})
+        vulns.reduce((acc, v) => {
+          const s = String(v.severity || 'INFO').toUpperCase();
+          acc[s] = (acc[s]||0)+1;
+          return acc;
+        }, {})
       ).map(([s,c]) => `<span class="sev ${escapeHtml(s)}">${escapeHtml(s)}:${c}</span>`).join(' ')
     : `<span style="color:var(--muted)">${auditMode ? 'No vulnerabilities detected' : 'Aucune vulnérabilité détectée'}</span>`;
 
@@ -1793,17 +1824,25 @@ function showNodeDetail(data) {
     ? hostInfo.ports.map(p => `<span class="service-tag">${escapeHtml(String(p))}</span>`).join('')
     : null;
 
-  const vulnHtml = vulns.map(v => `
+  const vulnHtml = vulns.map(v => {
+    const sev = String(v.severity || 'INFO').toUpperCase();
+    const expState = String(v.exploitation_status || '').toUpperCase();
+    const expBadge = expState === 'CONFIRMED'
+      ? `<span class="run-badge done" style="margin-left:4px;font-size:9px">✓ CONFIRMED</span>`
+      : expState === 'INCONCLUSIVE'
+        ? `<span class="run-badge" style="margin-left:4px;font-size:9px">inconclusive</span>`
+        : '';
+    return `
     <div class="vuln-item">
-      <span class="sev ${escapeHtml(v.severity)}">${escapeHtml(v.severity)}</span>
-      <strong>${escapeHtml(v.type)}</strong> — ${escapeHtml(v.service || '')}${v.port ? ':'+escapeHtml(String(v.port)) : ''}
+      <span class="sev ${escapeHtml(sev)}">${escapeHtml(sev)}</span>
+      <strong>${escapeHtml(v.type)}</strong>${expBadge} — ${escapeHtml(v.service || '')}${v.port ? ':'+escapeHtml(String(v.port)) : ''}
       <div style="color:var(--muted);margin-top:3px;font-size:10px">${escapeHtml(v.details || '')}</div>
       ${v.verification ? `<div class="audit-verification ${escapeHtml(v.verification)}">${escapeHtml(verificationLabels[v.verification] || (auditMode ? 'Unknown' : 'Indéterminée'))}</div>` : ''}
       ${v.verification === 'error' ? `<div class="audit-verification error">${escapeHtml(v.evidence || (auditMode ? 'No usable evidence for this check.' : 'Aucune preuve exploitable pour ce contrôle.'))}
         ${(v.execution_errors || []).map(error => `<div>${escapeHtml(error.reason || diagnosticLabels[error.kind] || (auditMode ? 'Verification error.' : 'Erreur pendant la vérification.'))}${error.exception_type ? ` (${escapeHtml(error.exception_type)})` : ''}</div>`).join('')}</div>` : ''}
       ${v.cve_ids?.length ? `<div style="color:#58a6ff;font-size:10px;margin-top:2px">${v.cve_ids.map(escapeHtml).join(', ')}</div>` : ''}
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   const scopeBadge = (data.excluded || data.out_of_scope)
     ? `<div class="detail-row"><span class="detail-key">${auditMode ? 'Scope' : 'Périmètre'}</span><span class="detail-val" style="color:var(--muted)">${data.excluded ? (auditMode ? 'Excluded (not scanned)' : 'Exclu (non scanné)') : (auditMode ? 'Infrastructure / out of scan scope' : 'Infrastructure / hors scan')}</span></div>`
@@ -2582,7 +2621,7 @@ async function fetchDeviceVulns(runDir, deviceId, deviceIp) {
     vulns.forEach(v => nodeVulns[deviceId].push(v));
 
     const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
-    const worst = order.find(s => vulns.some(v => v.severity === s));
+    const worst = order.find(s => vulns.some(v => String(v.severity || '').toUpperCase() === s));
     if (worst) {
       activateSecurityMode();
       colorNodeBySeverity(deviceIp || deviceId, worst);
@@ -2595,24 +2634,46 @@ async function fetchVulnResults(runIdOrDir) {
   if (!runIdOrDir) return;
   const runId = runIdOrDir.includes('/') ? runIdOrDir.split('/').pop() : runIdOrDir;
   try {
-    const data = await fetchJSON(`/api/runs/${runId}/03_vuln_analysis.json`);
+    const [data, expData] = await Promise.all([
+      fetchJSON(`/api/runs/${encodeURIComponent(runId)}/03_vuln_analysis.json`),
+      fetchJSON(`/api/runs/${encodeURIComponent(runId)}/04_exploitation.json`),
+    ]);
     if (!data || !data.content) return;
+
+    const expByVulnId = {};
+    const expTests = Array.isArray(expData?.content?.tests) ? expData.content.tests : [];
+    expTests.forEach(t => {
+      if (t?.vuln_id && t?.status) {
+        expByVulnId[String(t.vuln_id)] = String(t.status).toUpperCase();
+      }
+    });
 
     const content = data.content;
     const queue = Array.isArray(content) ? content : (content.vulnerabilities || []);
 
+    nodeVulns = {};
     queue.forEach(vuln => {
-      const nodeId = vuln.device_id;
+      const nodeId = vuln.device_id || vuln.device_ip;
+      if (!nodeId) return;
+      const normalized = {
+        ...vuln,
+        severity: String(vuln.severity || 'INFO').toUpperCase(),
+        exploitation_status: expByVulnId[String(vuln.id || '')] || vuln.exploitation_status || '',
+      };
       if (!nodeVulns[nodeId]) nodeVulns[nodeId] = [];
-      nodeVulns[nodeId].push(vuln);
+      nodeVulns[nodeId].push(normalized);
+      if (vuln.device_ip && vuln.device_ip !== nodeId) {
+        if (!nodeVulns[vuln.device_ip]) nodeVulns[vuln.device_ip] = [];
+        nodeVulns[vuln.device_ip].push(normalized);
+      }
     });
 
     // Auto-switch to security mode and color nodes by worst severity
     activateSecurityMode();
     Object.entries(nodeVulns).forEach(([nodeId, vulns]) => {
       const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
-      const worst = order.find(s => vulns.some(v => v.severity === s));
-      if (worst) colorNodeBySeverity(nodeId, worst);
+      const worst = order.find(s => vulns.some(v => String(v.severity || '').toUpperCase() === s));
+      if (worst) colorNodeBySeverity(nodeId, worst, vulns);
     });
 
     // Refresh accessible table with updated severity states
@@ -2929,6 +2990,15 @@ async function viewRun(runId) {
   document.getElementById('tab-files').hidden = sealed;
   document.getElementById('tab-report').hidden = sealed;
 
+  // Color graph with vulnerabilities & intrusion observations immediately,
+  // BEFORE fetching potentially multi-megabyte Phase 6 report files.
+  if (kind === 'lance' && !sealed && run.files.includes('03_vuln_analysis.json')) {
+    await fetchVulnResults(runId);
+  }
+  if (kind === 'lance' && !sealed) {
+    await loadIntrusionOverlay(runId);
+  }
+
   // Fetch score + report in parallel (both can be slow)
   const [score, reportData] = await Promise.all([
     (kind === 'lance' && (sealed || hasScore)) ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
@@ -3032,25 +3102,24 @@ async function viewRun(runId) {
 
   // ── Rapport panel ─────────────────────────────────────────────────────────
   const reportPanel = document.getElementById('detail-panel-report');
+  const MAX_RENDER_REPORT_CHARS = 150000;
   if (sealed) {
-    reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px">Le rapport brut reste privé ; seuls les agrégats signés sont visibles.</div>';
+    reportPanel.innerHTML = `<div style="color:var(--muted);font-size:11px">${auditMode ? 'Raw report stays private; only signed aggregates are visible.' : 'Le rapport brut reste privé ; seuls les agrégats signés sont visibles.'}</div>`;
   } else if (reportFile && reportData && reportData.content) {
-    reportPanel.innerHTML = `<div class="md-render">${renderMarkdown(reportData.content)}</div>`;
+    const rawMd = String(reportData.content);
+    if (rawMd.length > MAX_RENDER_REPORT_CHARS) {
+      const sizeMb = (rawMd.length / (1024 * 1024)).toFixed(2);
+      const notice = auditMode
+        ? `<div style="margin-bottom:10px;padding:7px 9px;border-radius:6px;background:rgba(243,156,18,.14);border:1px solid rgba(243,156,18,.4);font-size:11px">Large report (${sizeMb} MB) — showing executive preview. Use <strong>zip</strong> in History to download the complete report.</div>`
+        : `<div style="margin-bottom:10px;padding:7px 9px;border-radius:6px;background:rgba(243,156,18,.14);border:1px solid rgba(243,156,18,.4);font-size:11px">Rapport volumineux (${sizeMb} Mo) — aperçu affiché. Utilisez le bouton <strong>zip</strong> dans l’historique pour le rapport complet.</div>`;
+      reportPanel.innerHTML = `${notice}<div class="md-render">${renderMarkdown(rawMd.slice(0, MAX_RENDER_REPORT_CHARS))}</div>`;
+    } else {
+      reportPanel.innerHTML = `<div class="md-render">${renderMarkdown(rawMd)}</div>`;
+    }
   } else {
     reportPanel.innerHTML = simple || kind === 'rules'
-      ? '<div style="color:var(--muted);font-size:11px;padding:4px 0">Aucun résumé disponible pour ce run.</div>'
-      : '<div style="color:var(--muted);font-size:11px;padding:4px 0">Rapport (phase 6) non généré pour ce run.</div>';
-  }
-
-  // Load vuln data to color graph nodes
-  if (kind === 'lance' && !sealed && run.files.includes('03_vuln_analysis.json')) {
-    await fetchVulnResults(runId);
-  }
-
-  // Ledger observations do not depend on the model saving its declaration.
-  // The server distinguishes an unavailable journal from zero accesses.
-  if (kind === 'lance' && !sealed) {
-    await loadIntrusionOverlay(runId);
+      ? `<div style="color:var(--muted);font-size:11px;padding:4px 0">${auditMode ? 'No summary available for this run.' : 'Aucun résumé disponible pour ce run.'}</div>`
+      : `<div style="color:var(--muted);font-size:11px;padding:4px 0">${auditMode ? 'Report (phase 6) not generated for this run.' : 'Rapport (phase 6) non généré pour ce run.'}</div>`;
   }
 }
 

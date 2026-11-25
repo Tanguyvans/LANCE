@@ -172,11 +172,29 @@ def build_cards(run_dir: Path, phase_results: dict | None = None) -> tuple[list[
         ambiguous = not identifier or identifiers[identifier] != 1 or len(linked) > 1
         state = "ambiguous" if ambiguous else verification_state(linked[0][1] if linked else {})
         states[state] += 1
+        def _bounded_test_record(record: dict) -> tuple[dict, bool]:
+            """Cap oversized raw evidence fields in card snapshots; full payload stays in 04_exploitation.json."""
+            bounded = dict(record)
+            truncated = False
+            for field in ("evidence", "data_extracted", "raw_output", "output", "stdout"):
+                val = bounded.get(field)
+                if isinstance(val, str) and len(val) > OBSERVATION_EXCERPT_CHARS:
+                    bounded[field] = val[:OBSERVATION_EXCERPT_CHARS]
+                    truncated = True
+                elif isinstance(val, (dict, list)):
+                    raw_val = encoded(val)
+                    if len(raw_val) > OBSERVATION_EXCERPT_CHARS:
+                        bounded[field] = raw_val[:OBSERVATION_EXCERPT_CHARS]
+                        truncated = True
+            return bounded, truncated
+
         linked_tests = []
         for i, t in linked:
             attributed, omitted = observations(t)
+            bounded_t, record_truncated = _bounded_test_record(t)
             linked_tests.append({
-                "source": f"04_exploitation.json#/tests/{i}", "record": t,
+                "source": f"04_exploitation.json#/tests/{i}", "record": bounded_t,
+                "record_excerpt_truncated": record_truncated,
                 "reference_diagnostic": trace.describe(t),
                 "attributed_observations": attributed,
                 "omitted_observations": omitted,

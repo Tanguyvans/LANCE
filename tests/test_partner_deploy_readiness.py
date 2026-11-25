@@ -641,3 +641,29 @@ class TestDiscoveredTopologyGraph:
         finally:
             pipe_route._state["cost"] = orig_cost
             pipe_route._state["phases_done"] = orig_phases
+
+    def test_report_sections_bounds_oversized_phase4_test_evidence(self, tmp_path):
+        from src.agent.phases.report import sections
+
+        (tmp_path / "03_vuln_analysis.json").write_text(
+            json.dumps({"vulnerabilities": [{"id": "V1", "device_ip": "192.168.88.231", "type": "no_auth", "severity": "HIGH"}]}),
+            encoding="utf-8",
+        )
+        (tmp_path / "04_exploitation.json").write_text(
+            json.dumps({
+                "tests": [{
+                    "vuln_id": "V1",
+                    "device_ip": "192.168.88.231",
+                    "status": "CONFIRMED",
+                    "evidence": "mqtt-payload-" * 50_000,
+                    "data_extracted": {"dump": "x" * 100_000},
+                }]
+            }),
+            encoding="utf-8",
+        )
+        cards, _ = sections.build_cards(tmp_path)
+        finding_card = next(c for c in cards if c["kind"] == "finding")
+        linked = finding_card["facts"]["tests"][0]
+        assert linked["record_excerpt_truncated"] is True
+        assert len(linked["record"]["evidence"]) == sections.OBSERVATION_EXCERPT_CHARS
+        assert len(sections.encoded(finding_card).encode("utf-8")) < sections.CONTEXT_MAX_BYTES
