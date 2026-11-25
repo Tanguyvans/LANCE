@@ -667,3 +667,35 @@ class TestDiscoveredTopologyGraph:
         assert linked["record_excerpt_truncated"] is True
         assert len(linked["record"]["evidence"]) == sections.OBSERVATION_EXCERPT_CHARS
         assert len(sections.encoded(finding_card).encode("utf-8")) < sections.CONTEXT_MAX_BYTES
+
+    def test_adjacent_mac_dual_nic_and_audit_mode_english_report_cards(self, tmp_path, monkeypatch):
+        from src.agent.audit_topology import build_discovered_topology_graph
+        from src.agent.phases.report import sections
+
+        graph = build_discovered_topology_graph(
+            target_network="192.168.88.0/24",
+            devices=[
+                {"ip": "192.168.88.231", "mac": "88:a2:9e:6f:08:13", "vendor": "Raspberry Pi", "open_ports": [22, 1883]},
+                {"ip": "192.168.88.232", "mac": "88:a2:9e:6f:08:14", "vendor": "Raspberry Pi", "open_ports": [22, 1883]},
+            ],
+            host_hops={"192.168.88.231": [], "192.168.88.232": []},
+        )
+        alias_edges = [e for e in graph["edges"] if e["protocol"] == "alias"]
+        assert len(alias_edges) == 1
+        assert alias_edges[0]["label"] == "same host (eth/wifi)"
+
+        (tmp_path / "03_vuln_analysis.json").write_text(
+            json.dumps({"vulnerabilities": [{"id": "V1", "device_ip": "192.168.88.231", "type": "no_auth", "severity": "HIGH"}]}),
+            encoding="utf-8",
+        )
+        (tmp_path / "04_exploitation.json").write_text(json.dumps({"tests": []}), encoding="utf-8")
+
+        monkeypatch.setenv("LANCE_MODE", "audit")
+        cards_en, summary_en = sections.build_cards(tmp_path)
+        assert cards_en[0]["title"] == "Finding V1"
+        assert "Analysis:" in sections.render_summary(summary_en)
+
+        monkeypatch.setenv("LANCE_MODE", "lab")
+        cards_fr, summary_fr = sections.build_cards(tmp_path)
+        assert cards_fr[0]["title"] == "Hypothèse V1"
+        assert "Analyse :" in sections.render_summary(summary_fr)

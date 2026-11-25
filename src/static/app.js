@@ -136,6 +136,13 @@ function applyAuditEnglishUI() {
   setText('#tab-report', 'Report');
   setText('#log-clear', 'Clear');
   setText('#compare-title', 'Run Comparison');
+  const costBadge = document.getElementById('cost-badge');
+  if (costBadge) {
+    costBadge.title = 'Estimated token reference cost (local Ollama models incur $0 API fees)';
+    if (costBadge.firstChild?.nodeType === Node.TEXT_NODE) {
+      costBadge.firstChild.textContent = 'Est. Cost: ';
+    }
+  }
 }
 
 function parseExcludedIpsInput() {
@@ -1205,12 +1212,12 @@ const CY_LAYOUTS = {
     name:            'cose',
     animate:         true,
     animationDuration: 400,
-    nodeRepulsion:   12000,
-    idealEdgeLength: 160,
+    nodeRepulsion:   28000,
+    idealEdgeLength: 210,
     edgeElasticity:  80,
-    nodeOverlap:     12,
-    gravity:         0.8,
-    padding:         60,
+    nodeOverlap:     28,
+    gravity:         0.35,
+    padding:         70,
     randomize:       false,
   },
   breadthfirst: {
@@ -1530,6 +1537,22 @@ async function loadTopology(scenarioId = null, suppliedData = null, preserveRunt
             'label': 'data(label)',
             'font-size': 9,
             'color': '#f39c12',
+            'text-background-color': _cssVar('--bg'),
+            'text-background-opacity': 0.85,
+            'text-background-padding': '2px',
+          },
+        },
+        {
+          selector: 'edge[origin="observed_app"]',
+          style: {
+            'line-color': '#a371f7',
+            'target-arrow-shape': 'none',
+            'line-style': 'dashed',
+            'width': 2,
+            'opacity': 0.88,
+            'label': 'data(label)',
+            'font-size': 9,
+            'color': '#d2a8ff',
             'text-background-color': _cssVar('--bg'),
             'text-background-opacity': 0.85,
             'text-background-padding': '2px',
@@ -2676,9 +2699,72 @@ async function fetchVulnResults(runIdOrDir) {
       if (worst) colorNodeBySeverity(nodeId, worst, vulns);
     });
 
+    // Overlay proven application-level relationships from confirmed Phase 4 tests
+    if (cy && expTests.length) {
+      _applyConfirmedPhase4Relations(expTests);
+    }
+
     // Refresh accessible table with updated severity states
     if (cy) _updateTopologyTable(cy.nodes().map(n => n.data()));
   } catch(e) { console.warn('fetchVulnResults failed', e); }
+}
+
+function _applyConfirmedPhase4Relations(expTests) {
+  if (!cy) return;
+  const nodeByIp = {};
+  cy.nodes().forEach(n => {
+    const ip = n.data('ip');
+    if (ip && !n.data('out_of_scope')) nodeByIp[ip] = n.id();
+  });
+  const knownIps = Object.keys(nodeByIp);
+  if (knownIps.length < 2) return;
+
+  const addedPairs = new Set();
+  const addProvenEdge = (ipA, ipB, label, protocol = 'mqtt') => {
+    const src = nodeByIp[ipA];
+    const dst = nodeByIp[ipB];
+    if (!src || !dst || src === dst) return;
+    const key = [src, dst].sort().join('::') + '::' + label;
+    if (addedPairs.has(key)) return;
+    addedPairs.add(key);
+    const edgeId = `proven-${src}-${dst}-${protocol}`.replace(/[^A-Za-z0-9_.-]/g, '_');
+    if (!cy.getElementById(edgeId).length) {
+      cy.add({
+        group: 'edges',
+        data: { id: edgeId, source: src, target: dst, protocol, origin: 'observed_app', label },
+      });
+    }
+  };
+
+  const panGroups = {};
+  for (const t of expTests) {
+    if (String(t?.status || '').toUpperCase() !== 'CONFIRMED') continue;
+    const srcIp = String(t.device_ip || '').trim();
+    if (!srcIp || !nodeByIp[srcIp]) continue;
+    const evText = String(t.evidence || '');
+    // 1. Shared Zigbee2MQTT ext_pan_id across confirmed MQTT brokers
+    const panMatch = evText.match(/"ext_pan_id"\s*:\s*\[([0-9,\s]+)\]/);
+    if (panMatch) {
+      const panKey = panMatch[1].replace(/\s+/g, '');
+      (panGroups[panKey] ||= new Set()).add(srcIp);
+    }
+    // 2. Explicit cross-IP reference inside confirmed evidence
+    for (const peerIp of knownIps) {
+      if (peerIp === srcIp) continue;
+      const re = new RegExp(`(?<!\\d)${peerIp.replace(/\./g, '\\.')}(?!\\d)`);
+      if (re.test(evText)) {
+        addProvenEdge(srcIp, peerIp, 'observed ref', 'mqtt');
+      }
+    }
+  }
+  for (const ipsSet of Object.values(panGroups)) {
+    const ips = [...ipsSet].sort();
+    if (ips.length >= 2) {
+      for (let i = 1; i < ips.length; i++) {
+        addProvenEdge(ips[0], ips[i], 'zigbee2mqtt sync', 'mqtt');
+      }
+    }
+  }
 }
 
 let rulesGraphRequest = 0;
@@ -4329,6 +4415,7 @@ function _buildFallbackTopologyFromRecon(reconContent) {
       (macGroups[mac] ||= []).push(d.ip);
     }
   }
+  const parsedMacs = [];
   for (const [mac, ips] of Object.entries(macGroups)) {
     if (ips.length >= 2) {
       for (let i = 1; i < ips.length; i++) {
@@ -4339,6 +4426,28 @@ function _buildFallbackTopologyFromRecon(reconContent) {
           protocol: 'alias',
           origin: 'observed_l2',
           label: 'same MAC',
+          color: '#f39c12',
+        });
+      }
+    }
+    const parts = mac.split(':');
+    if (parts.length === 6) {
+      const lastByte = parseInt(parts[5], 16);
+      if (!Number.isNaN(lastByte)) {
+        parsedMacs.push({ prefix: parts.slice(0, 5).join(':'), lastByte, ip: ips[0] });
+      }
+    }
+  }
+  for (let i = 0; i < parsedMacs.length; i++) {
+    for (let j = i + 1; j < parsedMacs.length; j++) {
+      if (parsedMacs[i].prefix === parsedMacs[j].prefix && Math.abs(parsedMacs[i].lastByte - parsedMacs[j].lastByte) === 1) {
+        edges.push({
+          id: `${parsedMacs[i].ip}-${parsedMacs[j].ip}-alias-nic`,
+          source: parsedMacs[i].ip,
+          target: parsedMacs[j].ip,
+          protocol: 'alias',
+          origin: 'observed_l2',
+          label: 'same host (eth/wifi)',
           color: '#f39c12',
         });
       }

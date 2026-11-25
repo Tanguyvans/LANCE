@@ -614,7 +614,7 @@ def build_discovered_topology_graph(
             if nid not in mac_to_node_ids[mac]:
                 mac_to_node_ids[mac].append(nid)
 
-    # 3. Shared-MAC multi-IP alias edges (e.g. dual IP on the exact same physical NIC)
+    # 3. Shared-MAC multi-IP alias & adjacent-MAC dual-NIC (eth0/wlan0) detection
     for mac, nids in mac_to_node_ids.items():
         if len(nids) >= 2:
             anchor = nids[0]
@@ -626,6 +626,33 @@ def build_discovered_topology_graph(
                     origin="observed_l2",
                     label="same MAC",
                     description=f"Shared NIC MAC {mac}",
+                )
+
+    parsed_macs: list[tuple[str, int, str, str]] = []
+    for mac, nids in mac_to_node_ids.items():
+        parts = mac.split(":")
+        if len(parts) == 6:
+            try:
+                prefix = ":".join(parts[:5])
+                last_byte = int(parts[5], 16)
+                parsed_macs.append((prefix, last_byte, mac, nids[0]))
+            except ValueError:
+                pass
+    parsed_macs.sort()
+    for idx in range(len(parsed_macs)):
+        p1, b1, m1, n1 = parsed_macs[idx]
+        for jdx in range(idx + 1, len(parsed_macs)):
+            p2, b2, m2, n2 = parsed_macs[jdx]
+            if p1 != p2:
+                break
+            if abs(b2 - b1) == 1 and n1 != n2:
+                _add_edge(
+                    n1,
+                    n2,
+                    protocol="alias",
+                    origin="observed_l2",
+                    label="same host (eth/wifi)",
+                    description=f"Adjacent NIC MACs {m1} / {m2}",
                 )
 
     # 4. Observed L3 traceroute hops (multi-VLAN / routed targets)

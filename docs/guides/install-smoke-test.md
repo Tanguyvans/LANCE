@@ -115,15 +115,22 @@ Edit `.env` (keep `#` comments on their own lines — never append `# ...` at th
 end of a `KEY=value` line):
 
 ```ini
+LANCE_MODE=audit
+LANCE_ALLOWED_CIDR=192.168.50.0/24
+LANCE_EXCLUDED_IPS=192.168.50.1,192.168.50.10
 AGENT_PROVIDER=ollama
 LANCE_LLM_BASE_URL=http://localhost:11434/v1
-LANCE_LLM_MODEL=qwen2.5:3b
+LANCE_LLM_MODEL=qwen2.5:14b
 LANCE_EMBEDDINGS=ollama
 LANCE_EMBED_MODEL=nomic-embed-text
 LANCE_BIND_HOST=127.0.0.1
 LANCE_ADMIN_TOKEN=
 ```
 
+- **`LANCE_ALLOWED_CIDR` / `LANCE_EXCLUDED_IPS`:** set these to your authorized
+  target subnet and any critical infrastructure IPs (router, hypervisor, and the
+  LANCE host itself) that must never be scanned. Leave commented only if you want
+  to pick any CIDR per run.
 - **Two-host Ollama:** replace `localhost` in `LANCE_LLM_BASE_URL` with `<gpu-host-ip>`.
   (Embeddings reuse `LANCE_LLM_BASE_URL` automatically; only set `LANCE_EMBED_BASE_URL`
   if embeddings live on a different host.)
@@ -193,12 +200,17 @@ test device as `<TARGET_IP>/32`):
    In the dashboard, select **Scripts**, set target `<TARGET_IP>/32` (or lab CIDR),
    and run `discovery-v1`, then `service-inventory-v1`. Verify the device and its
    open ports appear.
-3. **Pass 2 — Full LANCE agent:**
-   Select **LANCE**, verify your Ollama model is pre-selected, set the exact
-   authorized CIDR (`<TARGET_IP>/32` or lab VLAN), and launch.
-4. **Scope guardrail check (optional):**
-   Confirm any probe targeting an IP outside the authorized CIDR is rejected
-   fail-closed (`Target is outside the authorized CIDR`).
+3. **Pass 2 — LANCE Agent (`Analysis only (1–3)` then `Full audit (1–6)`):**
+   Select **LANCE Agent**, verify your Ollama model is pre-selected, set the exact
+   authorized CIDR (`<TARGET_IP>/32` or lab VLAN), and optionally expand **Scope
+   exclusions & network structure (optional)** to add per-run excluded IPs or paste
+   a grey-box YAML topology (click **Preview** to render it before launching).
+   Start with **Analysis only (1–3)**, then run **Full audit (1–6)** to verify
+   active proof checks and report generation.
+4. **Scope & exclusion guardrail check:**
+   Confirm that targeting an IP in `LANCE_EXCLUDED_IPS` (or outside
+   `LANCE_ALLOWED_CIDR`) is immediately rejected with HTTP `403`, and that
+   `tool_calls.jsonl` contains zero active probes against excluded hosts.
 
 ---
 

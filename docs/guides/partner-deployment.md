@@ -72,6 +72,13 @@ cp .env.example .env
 ```
 
 ```ini
+# Application mode: pure physical-network audit harness (English UI & reports, no UMONS lab UI)
+LANCE_MODE=audit
+
+# Hard Rules of Engagement perimeter enforced server-side (HTTP 403 outside scope)
+LANCE_ALLOWED_CIDR=10.20.0.0/24
+LANCE_EXCLUDED_IPS=10.20.0.1,10.20.0.10
+
 # Local admin password you invent yourself (e.g. `openssl rand -hex 24`)
 LANCE_ADMIN_TOKEN=<random-32+-chars>
 
@@ -83,7 +90,7 @@ LANCE_BIND_HOST=127.0.0.1
 AGENT_PROVIDER=ollama
 LANCE_LLM_BASE_URL=http://localhost:11434/v1
 LANCE_LLM_MODEL=qwen2.5:14b
-# LANCE_API_TIMEOUT_S=300          # widen for heavy local models
+# LANCE_API_TIMEOUT_S=300
 
 # Embeddings run locally on your Ollama — no cloud
 LANCE_EMBEDDINGS=ollama
@@ -128,19 +135,30 @@ ssh -L 8000:localhost:8000 <user>@<host>
 # then open http://localhost:8000
 ```
 
-## 7. Scope and Rules of Engagement
+## 7. Scope, exclusions, grey-box topology, and Rules of Engagement
 
-- Every audit is launched with an **authorized target CIDR** (e.g. `10.20.0.0/24`).
-  LANCE **enforces this at tool-execution time**: every scan/exploit tool is
-  confined to that CIDR and refuses any target outside it (fail-closed). It cannot
-  touch hosts you did not authorize.
-- Before any run, we agree in writing on the **perimeter** (which subnet/hosts and
-  ports) and the **time window** — a short Rules of Engagement that both sides sign.
+- Every audit is launched with an **authorized target CIDR** (or single IPv4 host,
+  auto-normalized to `/32`). LANCE **enforces this at tool-execution time**: every
+  scan/exploit tool is confined to that CIDR and refuses any target outside it
+  (fail-closed).
+- **Hard admin perimeter (recommended):** set `LANCE_ALLOWED_CIDR` and
+  `LANCE_EXCLUDED_IPS` in `.env` to lock the ceiling server-side. Excluded hosts
+  (e.g. your core router, hypervisor, and the LANCE host itself — which is also
+  auto-excluded via its local interface IPs) are stripped from `arp_scan`, passed to
+  `nmap --exclude`, and rejected by all verification/intrusion tools across all 6 phases.
+- **Black-box or grey-box:** you can run pure black-box discovery on a CIDR, or
+  expand **Scope exclusions & network structure (optional)** in the dashboard to
+  import/paste a base YAML/JSON topology (devices, links, extra exclusions). Declared
+  devices are treated as an open hypothesis — active recon verifies them and still
+  discovers undocumented ("shadow") hosts on the subnet.
+- **Scope selector:** choose **Analysis only (1–3)** for non-intrusive discovery &
+  vulnerability analysis, or **Full audit (1–6)** to add active proof verification,
+  intrusion assessment, and the final report.
+- Before any run, both sides agree in writing on the **perimeter** (subnet/hosts,
+  exclusions) and **time window** (signed Rules of Engagement).
 - Keep the dashboard off the LAN (§6). Scan launch is unauthenticated by default,
   so the localhost bind is the primary control. For extra app-layer hardening set
   `LANCE_REQUIRE_LAUNCH_AUTH=1` — launches then require a Bearer admin token.
-  (Launching from the dashboard button with this on needs a pending client update;
-  until then launch via the API with the token.)
 
 ## 8. What we deliver to you
 

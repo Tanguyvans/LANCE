@@ -5,6 +5,7 @@ from collections import Counter
 import hashlib
 import html
 import json
+import os
 from pathlib import Path
 
 from src.agent.artifacts import resolve_run_artifact
@@ -22,13 +23,49 @@ OBSERVATION_MAX_REFS = 6
 MANIFEST = "06_report_sections.json"
 
 
+def _is_audit_mode() -> bool:
+    return os.environ.get("LANCE_MODE", "lab").strip().lower() == "audit"
+
+
 def render_summary(facts: dict) -> str:
     """Describe recorded facts only; never let prose invent ledger incidents."""
+    audit = _is_audit_mode()
+
     def count(value):
-        return str(value) if type(value) is int and value >= 0 else "inconnu"
+        return str(value) if type(value) is int and value >= 0 else ("unknown" if audit else "inconnu")
 
     analysis = facts.get("analysis_counts", {})
     states = facts.get("recorded_verification_states", {})
+    if audit:
+        lines = [
+            f"Analysis: {count(analysis.get('devices_analyzed'))}/{count(analysis.get('devices_total'))} devices analyzed; "
+            f"{count(analysis.get('devices_failed'))} failed.",
+        ]
+        if facts.get("source_issues"):
+            lines.append("Missing or invalid sources: verification counts are not exhaustive.")
+        else:
+            labels = {"confirmed": "confirmed in verification phase", "inconclusive": "inconclusive",
+                      "not_tested": "not tested", "error": "error", "ambiguous": "ambiguous identity"}
+            lines.append("Hypotheses: " + "; ".join(
+                f"{count(states.get(key, 0))} {label}" for key, label in labels.items()) + ".")
+        lines.append("These counts are recorded observations, not deduplicated unique flaws.")
+        intrusion = facts.get("intrusion", {})
+        if intrusion.get("available"):
+            lines.append(f"Intrusion: {count(intrusion.get('observed_access_count'))} observed access(es). An observed access does not prove a network pivot.")
+        else:
+            lines.append("Intrusion: observations unavailable; coverage unknown.")
+        if not intrusion.get("transition_evidence_available"):
+            lines.append("No network transition evidence available in this projection.")
+        ledger = facts.get("execution_facts", {})
+        if ledger.get("ledger_readable") is False:
+            lines.append("Tool ledger is missing, unreadable, or malformed; completeness cannot be established.")
+        writing = facts.get("writing", {})
+        lines.append(f"Report cards: {count(writing.get('usable'))} usable; {count(writing.get('incomplete'))} incomplete.")
+        for phase, status in sorted(facts.get("phase_statuses", {}).items()):
+            if status != "completed":
+                lines.append(f"Recorded status — {phase}: {status}.")
+        return "\n".join(lines)
+
     lines = [
         f"Analyse : {count(analysis.get('devices_analyzed'))}/{count(analysis.get('devices_total'))} machines analysées ; "
         f"{count(analysis.get('devices_failed'))} en échec.",
@@ -202,9 +239,10 @@ def build_cards(run_dir: Path, phase_results: dict | None = None) -> tuple[list[
                     trace.records.get(str(ref).strip(), []) for ref in
                     (t["evidence_refs"] if isinstance(t.get("evidence_refs"), list) else [])
                 ])})
+        audit = _is_audit_mode()
         cards.append({
             "key": f"finding-{index + 1:04d}", "kind": "finding",
-            "title": f"Hypothèse {identifier or '(identifiant manquant)'}",
+            "title": (f"Finding {identifier or '(missing id)'}" if audit else f"Hypothèse {identifier or '(identifiant manquant)'}"),
             "facts": {
                 "source": f"03_vuln_analysis.json#/vulnerabilities/{index}",
                 "hypothesis": finding, "recorded_verification_state": state,
@@ -214,10 +252,11 @@ def build_cards(run_dir: Path, phase_results: dict | None = None) -> tuple[list[
             },
             "source_issue": "ambiguous_identity" if ambiguous else None,
         })
+    audit = _is_audit_mode()
     for index, test in enumerate(tests):
         if index not in matched:
             cards.append({"key": f"orphan-{index + 1:04d}", "kind": "diagnostic",
-                          "title": "Test sans hypothèse attribuable",
+                          "title": ("Unmatched verification test" if audit else "Test sans hypothèse attribuable"),
                           "facts": {"source": f"04_exploitation.json#/tests/{index}", "test": test},
                           "source_issue": "unmatched_test"})
 
@@ -229,17 +268,17 @@ def build_cards(run_dir: Path, phase_results: dict | None = None) -> tuple[list[
     accesses = intrusion.get("accesses", [])
     for index, access in enumerate(accesses):
         cards.append({"key": f"access-{index + 1:04d}", "kind": "intrusion",
-                      "title": f"Accès observé — {access['device_ip']}",
+                      "title": (f"Observed access — {access['device_ip']}" if audit else f"Accès observé — {access['device_ip']}"),
                       "facts": {"access": access, "source": "tool_calls.jsonl (Phase 5)",
                                 "interpretation": "An observed access is not a network pivot."},
                       "source_issue": None})
     cards.append({"key": "intrusion-limits", "kind": "intrusion",
-                  "title": "Intrusion — couverture et limites",
+                  "title": ("Intrusion — coverage and limits" if audit else "Intrusion — couverture et limites"),
                   "facts": {k: v for k, v in intrusion.items() if k != "accesses"},
                   "source_issue": None})
     if issues:
         cards.append({"key": "source-errors", "kind": "diagnostic",
-                      "title": "Sources manquantes ou invalides", "facts": {"issues": issues},
+                      "title": ("Missing or invalid sources" if audit else "Sources manquantes ou invalides"), "facts": {"issues": issues},
                       "source_issue": "source_invalid"})
     summary = {
         "hypothesis_count": len(findings), "recorded_verification_states": dict(states),
@@ -283,45 +322,53 @@ def _escape(value: str) -> str:
 def _fact_paragraph(label: str, value: object) -> str:
     if isinstance(value, (list, dict)):
         value = json.dumps(value, ensure_ascii=False)
-    return f"<p><strong>{label} :</strong> {_escape(str(value if value is not None else 'non renseigné'))}</p>"
+    missing = "not recorded" if _is_audit_mode() else "non renseigné"
+    sep = ":" if _is_audit_mode() else " :"
+    return f"<p><strong>{label}{sep}</strong> {_escape(str(value if value is not None else missing))}</p>"
 
 
 def _readable_facts(card: dict) -> str:
+    audit = _is_audit_mode()
     facts = card["facts"]
     lines = []
     if card["kind"] == "finding" and isinstance(facts.get("hypothesis"), dict):
         finding = facts["hypothesis"]
-        for label, value in (
-            ("Cible", finding.get("device_ip") or finding.get("device_id")),
+        field_rows = (
+            ("Target" if audit else "Cible", finding.get("device_ip") or finding.get("device_id")),
             ("Service / port", f"{finding.get('service', '?')} / {finding.get('port', '?')}"),
-            ("Propriété annoncée", finding.get("type")),
-            ("Sévérité déclarée", finding.get("severity")),
-            ("Hypothèse", finding.get("details") or finding.get("evidence")),
-            ("État de vérification enregistré", facts["recorded_verification_state"]),
-        ):
+            ("Declared type" if audit else "Propriété annoncée", finding.get("type")),
+            ("Declared severity" if audit else "Sévérité déclarée", finding.get("severity")),
+            ("Hypothesis" if audit else "Hypothèse", finding.get("details") or finding.get("evidence")),
+            ("Recorded verification state" if audit else "État de vérification enregistré", facts["recorded_verification_state"]),
+        )
+        for label, value in field_rows:
             lines.append(_fact_paragraph(label, value))
         for linked in facts["tests"]:
             test = linked["record"]
             lines.extend((_fact_paragraph("Observation", test.get("evidence")),
-                          _fact_paragraph("Outils", test.get("tools_used") or test.get("tool_used")),
-                          _fact_paragraph("Références", test.get("evidence_refs", [])),
-                          _fact_paragraph("Attribution (pas validation de preuve)", linked["reference_diagnostic"])))
+                          _fact_paragraph("Tools" if audit else "Outils", test.get("tools_used") or test.get("tool_used")),
+                          _fact_paragraph("References" if audit else "Références", test.get("evidence_refs", [])),
+                          _fact_paragraph("Attribution (not proof validation)" if audit else "Attribution (pas validation de preuve)", linked["reference_diagnostic"])))
         if not facts["tests"]:
-            lines.append(_fact_paragraph("Vérification", "Aucun test attribué ; hypothèse non confirmée."))
+            lines.append(_fact_paragraph(
+                "Verification" if audit else "Vérification",
+                "No attributed test; hypothesis not confirmed." if audit else "Aucun test attribué ; hypothèse non confirmée.",
+            ))
     elif card["kind"] == "intrusion":
         if "access" in facts:
-            lines.extend((_fact_paragraph("Accès observé", facts["access"].get("device_ip")),
-                          _fact_paragraph("Références", facts["access"].get("evidence_refs", []))))
+            lines.extend((_fact_paragraph("Observed access" if audit else "Accès observé", facts["access"].get("device_ip")),
+                          _fact_paragraph("References" if audit else "Références", facts["access"].get("evidence_refs", []))))
         else:
-            lines.extend((_fact_paragraph("Observations disponibles", facts.get("available")),
-                          _fact_paragraph("Statut d’exécution de l’intrusion", facts.get("execution_status")),
-                          _fact_paragraph("Preuves de transition disponibles", facts.get("transition_evidence_available")),
-                          _fact_paragraph("Limite", facts.get("reason") or "Un accès ne prouve pas un pivot.")))
+            lines.extend((_fact_paragraph("Observations available" if audit else "Observations disponibles", facts.get("available")),
+                          _fact_paragraph("Intrusion execution status" if audit else "Statut d’exécution de l’intrusion", facts.get("execution_status")),
+                          _fact_paragraph("Transition evidence available" if audit else "Preuves de transition disponibles", facts.get("transition_evidence_available")),
+                          _fact_paragraph("Limit" if audit else "Limite", facts.get("reason") or ("An observed access does not prove a pivot." if audit else "Un accès ne prouve pas un pivot."))))
     return "\n".join(lines)
 
 
 def render_cards(run_dir: Path, manifest: dict, *, intrusion: bool = False) -> str:
     """Render all active cards only; reject missing/corrupted/mismatched snapshots."""
+    audit = _is_audit_mode()
     blocks = []
     seen = set()
     for entry in manifest["sections"]:
@@ -337,16 +384,28 @@ def render_cards(run_dir: Path, manifest: dict, *, intrusion: bool = False) -> s
             raise ValueError("Report card/text mismatch")
         if card["kind"] == "summary" or (card["kind"] == "intrusion") != intrusion:
             continue
+        facts_header = (
+            "Facts and references recorded by the pipeline (not a new validation):\n\n"
+            if audit else
+            "Faits et références conservés par le pipeline (pas une nouvelle validation) :\n\n"
+        )
+        details_summary = "Full structured facts and sources" if audit else "Faits structurés complets et sources"
         blocks.append(f"#### {_escape(card['title'])} — {card['key']}\n\n"
-                      "Faits et références conservés par le pipeline (pas une nouvelle validation) :\n\n"
+                      + facts_header
                       + _readable_facts(card)
-                      + "\n\n<details><summary>Faits structurés complets et sources</summary>\n"
+                      + f"\n\n<details><summary>{details_summary}</summary>\n"
                       f"<pre>{_escape(json.dumps(card['facts'], ensure_ascii=False, indent=2))}</pre></details>\n")
         if record["status"] == "usable" and record.get("text_digest") == digest(record["text"]):
-            blocks.append("Analyse du modèle (non validée) :\n\n"
+            analysis_header = "Model commentary (unvalidated):\n\n" if audit else "Analyse du modèle (non validée) :\n\n"
+            blocks.append(analysis_header
                           + "<p>" + _escape(record["text"]).replace("\n", "<br>") + "</p>")
         else:
-            blocks.append(f"Rédaction indisponible — `{record['cause']}`. Faits conservés ; section partielle.")
+            unavail = (
+                f"Commentary unavailable — `{record['cause']}`. Facts preserved; partial section."
+                if audit else
+                f"Rédaction indisponible — `{record['cause']}`. Faits conservés ; section partielle."
+            )
+            blocks.append(unavail)
     if len(seen) != manifest["expected_sections"]:
         raise ValueError("Incomplete report card coverage")
     return "\n\n".join(blocks)
