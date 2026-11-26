@@ -47,8 +47,8 @@ def test_execution_profile_defaults_and_validation():
         resolve_execution_profile("wide")
 
 
-def test_auto_profile_uses_active_parameters_before_total_parameters():
-    resolution = resolve_execution_profile_for_model(
+def test_auto_profile_defaults_to_full_for_moe_and_dense_models():
+    moe = resolve_execution_profile_for_model(
         "auto",
         "moe/model",
         model_metadata={
@@ -57,32 +57,41 @@ def test_auto_profile_uses_active_parameters_before_total_parameters():
             "profile_policy": "auto",
         },
     )
-
-    assert resolution.profile.name == "compact"
-    assert resolution.resolution_basis == "active_parameters"
-    assert resolution.metadata()["profile_parameter_basis"] == "active"
-
-
-def test_auto_profile_uses_total_parameters_and_32b_threshold():
-    compact = resolve_execution_profile_for_model(
+    small_moe = resolve_execution_profile_for_model(
+        "auto",
+        "flint:latest",
+        model_metadata={
+            "parameter_count_b": 39.8,
+            "active_parameter_count_b": 2.5,
+            "profile_policy": "auto",
+        },
+    )
+    dense_32b = resolve_execution_profile_for_model(
         "auto", "dense/32b", model_metadata={"parameter_count_b": 32}
     )
-    full = resolve_execution_profile_for_model(
+    dense_70b = resolve_execution_profile_for_model(
         "auto", "dense/70b", model_metadata={"parameter_count_b": 70}
     )
 
-    assert compact.profile.name == "compact"
-    assert full.profile.name == "full"
-    assert full.resolution_basis == "total_parameters"
+    for resolution in (moe, small_moe, dense_32b, dense_70b):
+        assert resolution.profile.name == "full"
+        assert resolution.resolution_basis == "default_full"
+    assert moe.parameter_count_b == 671
+    assert moe.active_parameter_count_b == 21
 
 
-def test_profile_resolution_priority_and_missing_metadata_fallback():
+def test_profile_resolution_priority_and_archived_compact_opt_in():
     model_override = resolve_execution_profile_for_model(
         "auto",
-        "dense/70b",
-        model_metadata={"parameter_count_b": 70, "profile_policy": "compact"},
+        "lance-moe",
+        model_metadata={"parameter_count_b": 30, "profile_policy": "compact"},
     )
-    run_override = resolve_execution_profile_for_model(
+    run_compact_override = resolve_execution_profile_for_model(
+        "compact",
+        "dense/70b",
+        model_metadata={"parameter_count_b": 70, "profile_policy": "auto"},
+    )
+    run_full_override = resolve_execution_profile_for_model(
         "full",
         "dense/3b",
         model_metadata={"parameter_count_b": 3, "profile_policy": "compact"},
@@ -93,10 +102,12 @@ def test_profile_resolution_priority_and_missing_metadata_fallback():
 
     assert model_override.profile.name == "compact"
     assert model_override.resolution_basis == "model_override"
-    assert run_override.profile.name == "full"
-    assert run_override.resolution_basis == "run_override"
+    assert run_compact_override.profile.name == "compact"
+    assert run_compact_override.resolution_basis == "run_override"
+    assert run_full_override.profile.name == "full"
+    assert run_full_override.resolution_basis == "run_override"
     assert missing.profile.name == "full"
-    assert missing.resolution_basis == "missing_parameters"
+    assert missing.resolution_basis == "default_full"
 
 
 def test_compact_generic_phases_keep_required_tools_and_remove_noise():

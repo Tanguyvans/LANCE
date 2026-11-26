@@ -46,11 +46,16 @@ enregistrés sous `05_report.md` reste prise en charge par l'application.
 
 ## Profils et responsabilités
 
-- **Full** utilise le déroulement commun avec ses budgets et tous les outils
-  autorisés par la phase. Il n'a plus de dossier de fichiers relais.
-- **Compact** adapte la présentation des preuves, les outils et les budgets.
-  Les guidages/récupérations spécifiques vivent dans le `compact.py` de la phase
-  concernée. Une phase sans implémentation compacte distincte n'a pas ce fichier.
+- **Full** est le profil par défaut (`auto` résout désormais vers `full` pour
+  tous les modèles standards, y compris les modèles MoE et *reasoning*). Il
+  utilise le déroulement commun avec gestion bornée du contexte, récupérations
+  de phase, budgets complets et tous les outils autorisés par la phase.
+- **Compact (archivé / legacy)** est conservé uniquement sur sélection explicite
+  (`execution_profile="compact"` ou `profile_policy="compact"`, notamment pour
+  les anciens modèles `local-moe` / `lance-moe`) et pour la compatibilité des
+  artefacts historiques. Ses guidages/récupérations spécifiques vivent dans le
+  `compact.py` de la phase concernée. Une phase sans implémentation compacte
+  distincte n'a pas ce fichier.
 - **Paramètres** : modifier `execution_profiles.py` pour les budgets et le routage
   des outils ; ne pas recopier ces valeurs dans les phases.
 - **Contrats et preuves** : modifier les fichiers de la phase concernée. Le contrat

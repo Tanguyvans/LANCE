@@ -12,7 +12,7 @@ run](../../src/agent/phases/README.md#graphe-et-frontières-propres-au-run).
 
 | Mode | Exécution | Modèle | Scénario / benchmark |
 | --- | --- | --- | --- |
-| `lance` | Pipeline de six phases et profils `auto`, `compact`, `full` | Requis pour un audit, sauf « déployer seulement » | Scénarios, déploiement, évaluation et rapports existants |
+| `lance` | Pipeline de six phases : profil `full` par défaut (`auto` → `full`), profil `compact` archivé (opt-in explicite / `local-moe`) | Requis pour un audit, sauf « déployer seulement » | Scénarios, déploiement, évaluation et rapports existants |
 | `rules` | Déploiement du scénario, analyse et vérification déterministes (phases 3 et 4) | Aucun | Scénarios publics ou architecture personnalisée, résultats par équipement |
 | `vanilla` | Une boucle modèle–outils bornée sur un CIDR explicite | Requis | Aucun déploiement ni score benchmark |
 | `scripted` | Procédures déterministes versionnées : diagnostic hors ligne, découverte des hôtes et inventaire TCP | Aucun | Aucun déploiement ni score benchmark |

@@ -4739,9 +4739,9 @@ function _renderManager(version = _mgr.openVersion) {
       <label>Paramètres totaux (B)<input id="mgr-m-params" type="number" min="0.1" step="0.1" ${inp} value="${em && em.parameter_count_b != null ? em.parameter_count_b : ''}"></label>
       <label>Paramètres actifs MoE (B)<input id="mgr-m-active-params" type="number" min="0.1" step="0.1" ${inp} value="${em && em.active_parameter_count_b != null ? em.active_parameter_count_b : ''}"></label>
       <label>Politique de profil<select id="mgr-m-profile" ${inp}>
-        <option value="auto"${!em || (em.profile_policy || 'auto') === 'auto' ? ' selected' : ''}>auto</option>
-        <option value="compact"${em && em.profile_policy === 'compact' ? ' selected' : ''}>compact</option>
+        <option value="auto"${!em || (em.profile_policy || 'auto') === 'auto' ? ' selected' : ''}>auto (complet par défaut)</option>
         <option value="full"${em && em.profile_policy === 'full' ? ' selected' : ''}>full</option>
+        <option value="compact"${em && em.profile_policy === 'compact' ? ' selected' : ''}>compact (archivé · local-moe)</option>
       </select></label>
       <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="mgr-m-rec" ${em && em.recommended ? 'checked' : ''}> Recommandé</label>
       <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="mgr-m-en" ${!em || em.enabled ? 'checked' : ''}> Activé</label>

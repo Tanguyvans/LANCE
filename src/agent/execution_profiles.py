@@ -1,8 +1,15 @@
 """Explicit execution profiles for model/tool orchestration.
 
 Profiles change how capabilities are presented to a model, not the benchmark
-ground truth or evaluator.  Compact mode routes a smaller phase-specific tool
-surface; full mode exposes every tool allowed by the phase safety boundary.
+ground truth or evaluator.  Full mode is the default for all standard models
+(including MoE and reasoning models) and handles bounded context, phase
+recoveries, and safe tool surfaces directly.
+
+Compact mode is archived (legacy): it is kept only for explicit opt-in
+(`execution_profile="compact"` or model-level `profile_policy="compact"`,
+notably for legacy `local-moe` / `lance-moe` models) and historical run
+compatibility.  `auto` no longer routes models into `compact` based on
+parameter count.
 """
 from __future__ import annotations
 
@@ -12,8 +19,11 @@ from dataclasses import asdict, dataclass
 
 
 EXECUTION_PROFILE_SCHEMA_VERSION = "2"
+# Legacy threshold retained only for metadata/API schema compatibility;
+# `auto` resolves to `full` unless a run or model explicitly opts into `compact`.
 EXECUTION_PROFILE_AUTO_THRESHOLD_B = 32.0
 EXECUTION_PROFILE_POLICIES = frozenset({"auto", "compact", "full"})
+ARCHIVED_EXECUTION_PROFILES = frozenset({"compact"})
 
 
 @dataclass(frozen=True)
@@ -247,7 +257,7 @@ def resolve_execution_profile_for_model(
     model_metadata: dict | None = None,
     threshold_b: float = EXECUTION_PROFILE_AUTO_THRESHOLD_B,
 ) -> ExecutionProfileResolution:
-    """Resolve run override, model override, then the active/total parameter rule."""
+    """Resolve run override, model override, then default to the full profile."""
     requested = str(policy or "auto").strip().casefold()
     if requested not in EXECUTION_PROFILE_POLICIES:
         choices = ", ".join(sorted(EXECUTION_PROFILE_POLICIES))
@@ -287,15 +297,9 @@ def resolve_execution_profile_for_model(
     if model_policy in EXECUTION_PROFILES:
         effective = model_policy
         basis = "model_override"
-    elif active is not None:
-        effective = "compact" if active <= threshold_b else "full"
-        basis = "active_parameters"
-    elif total is not None:
-        effective = "compact" if total <= threshold_b else "full"
-        basis = "total_parameters"
     else:
         effective = "full"
-        basis = "missing_parameters"
+        basis = "default_full"
 
     return ExecutionProfileResolution(
         profile=EXECUTION_PROFILES[effective],

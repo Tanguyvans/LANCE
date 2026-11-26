@@ -110,9 +110,16 @@ def test_model_api_and_auto_profile_resolution(db):
     resolution = resolve_execution_profile_for_model("auto", "moe/api-model")
 
     assert created["active_parameter_count_b"] == 3
-    assert created["effective_profile"] == "compact"
-    assert resolution.profile.name == "compact"
-    assert resolution.resolution_basis == "active_parameters"
+    assert created["effective_profile"] == "full"
+    assert resolution.profile.name == "full"
+    assert resolution.resolution_basis == "default_full"
+
+    updated_compact = update_model("moe/api-model", ModelPatch(profile_policy="compact"))
+    assert updated_compact["profile_policy"] == "compact"
+    assert updated_compact["effective_profile"] == "compact"
+    assert resolve_execution_profile_for_model(
+        "auto", "moe/api-model"
+    ).profile.name == "compact"
 
     updated = update_model("moe/api-model", ModelPatch(profile_policy="full"))
     assert updated["profile_policy"] == "full"
