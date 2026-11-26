@@ -600,27 +600,11 @@ class IntrusionPhase:
                 all_exploits = []
             confirmed = [e for e in all_exploits if e.get("status") == "CONFIRMED"]
 
-            # Extract credentials from evidence / description / data_extracted.
-            # Tolerant of quotes and JSON punctuation so it matches all of:
-            #   user=root pass=x  |  username='test', password='test'
-            #   "db_user":"root","db_pass":"<observed-password>"
-            _cred_pattern = _re.compile(
-                r'(?:user(?:name)?|login|db_user)\s*["\']?\s*[=:]\s*["\']?'
-                r'([a-zA-Z0-9_@.\-]+)["\']?[\s,;:"\'(){}]+'
-                r'(?:pass(?:word)?|pwd|db_pass)\s*["\']?\s*[=:]\s*["\']?'
-                r'([^\s,;"\'(){}\]]+)',
-                _re.IGNORECASE,
+            from src.agent.phases.intrusion.credentials import (
+                harvest_credentials_from_text,
+                is_plausible_credential,
             )
-            # Inline "user:pass" pairs (e.g. admin:admin, test:test). Slash-style
-            # pairs are deliberately excluded — they match file paths
-            # (etc/issue, cgi-bin/luci); slash passwords are caught by the
-            # quoted/JSON form above instead.
-            _simple_pattern = _re.compile(
-                r'\b([a-zA-Z][a-zA-Z0-9_\-]{1,31}):'
-                r'([a-zA-Z0-9@!#$%^&*_\-+=.]{3,32})\b'
-            )
-            _cred_noise = {"http", "https", "ssh", "tcp", "udp", "version", "port",
-                           "uid", "gid", "groups", "host", "tor", "mosquitto", "server"}
+
             seen_creds: set = set()
 
             tool_records_by_ref: dict[str, list[dict]] = {}
@@ -638,8 +622,11 @@ class IntrusionPhase:
 
             def _add_cred(user: str, pwd: str, exp: dict) -> None:
                 user = user.split("@")[0].strip()  # user@host → user
+                pwd = pwd.strip()
+                if not is_plausible_credential(user, pwd):
+                    return
                 key = (user, pwd, exp.get("device_ip", ""))
-                if not user or not pwd or key in seen_creds:
+                if key in seen_creds:
                     return
                 seen_creds.add(key)
                 credentials.append({
@@ -651,12 +638,8 @@ class IntrusionPhase:
             def _harvest(text: str, exp: dict) -> None:
                 if not text:
                     return
-                for m in _cred_pattern.finditer(text):
-                    _add_cred(m.group(1), m.group(2), exp)
-                for m in _simple_pattern.finditer(text):
-                    user, pwd = m.group(1), m.group(2)
-                    if user.lower() in _cred_noise or pwd.isdigit():
-                        continue
+                vt = str(exp.get("type") or exp.get("vuln_type") or "")
+                for user, pwd in harvest_credentials_from_text(text, vuln_type=vt):
                     _add_cred(user, pwd, exp)
 
             def _harvest_confirmed_tool_credentials(exp: dict) -> None:

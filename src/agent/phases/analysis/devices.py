@@ -388,9 +388,9 @@ def analyze_full_device(
         promoted = False
     if not promoted:
         if (context.profile.name == "full"
-                and block_recovery.is_truncation(full_completion)):
+                and block_recovery.had_truncation(full_completion)):
             log.warning(
-                "Phase 3 analysis for %s truncated on the output budget; "
+                "Phase 3 analysis for %s hit output-budget truncation; "
                 "attempting bounded block recovery",
                 device_id,
             )

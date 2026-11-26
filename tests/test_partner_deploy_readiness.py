@@ -699,3 +699,106 @@ class TestDiscoveredTopologyGraph:
         cards_fr, summary_fr = sections.build_cards(tmp_path)
         assert cards_fr[0]["title"] == "Hypothèse V1"
         assert "Analyse :" in sections.render_summary(summary_fr)
+
+
+class TestLivePipelineHardening:
+    """Regression tests for bugs observed on the real physical lab run."""
+
+    def test_phase5_credential_harvester_ignores_mqtt_log_noise_but_keeps_real_creds(self):
+        from src.agent.phases.intrusion.credentials import harvest_credentials_from_text
+
+        mqtt_noise = (
+            'mqtt_listen captured: {"timestamp_format":"HH:mm:ss.SSS",'
+            '"namespaces":["zhc:legacy","zh:ember","zh:controller","z2m:mqtt","uart:ash"]}'
+        )
+        assert harvest_credentials_from_text(mqtt_noise, vuln_type="no_auth") == []
+        assert harvest_credentials_from_text(mqtt_noise, vuln_type="default_credentials") == []
+
+        json_creds = 'config dump: "username": "iot_ops", "password": "OpsSecret99"'
+        assert harvest_credentials_from_text(json_creds, vuln_type="data_exposure") == [
+            ("iot_ops", "OpsSecret99")
+        ]
+
+        bare_creds = "Login succeeded using admin:admin123 on web panel."
+        assert harvest_credentials_from_text(bare_creds, vuln_type="default_credentials") == [
+            ("admin", "admin123")
+        ]
+
+    def test_blackbox_phase1_uses_deterministic_fast_path_while_greybox_runs_llm(self, tmp_path):
+        import types
+        from src.agent.core.run_context import RunContext
+        from src.agent.phases.context import PhaseContext, PhaseServices
+        from src.agent.phases.graph import run as graph_run
+        from src.agent.validators import validate_markdown_with_sections
+
+        cfg = types.SimpleNamespace(
+            phase=1, name="graph_analysis", description="Graph", deliverable_file="01_graph_analysis.md"
+        )
+        llm_calls = []
+
+        def fake_execute(c, emit):
+            llm_calls.append(c.name)
+            return "completed"
+
+        # Black-box discovery (no audit_topology, no scenario_topology) -> 0 LLM calls
+        bb_graph = GraphContext(discovery_mode={
+            "target_network": "192.168.88.0/24",
+            "excluded_ips": ["192.168.88.1", "192.168.88.131"],
+        })
+        events = []
+        bb_ctx = PhaseContext(
+            run_context=RunContext(tmp_path / "bb", bb_graph),
+            config=cfg,
+            execution_profile=types.SimpleNamespace(name="full"),
+            provider=None,
+            tracker=None,
+            variables={"target_subnet": "192.168.88.0/24"},
+            stop_event=None,
+            decision_policy="llm",
+            services=PhaseServices(execute=fake_execute, record_analysis_status=lambda _s: None),
+            emit=events.append,
+        )
+        assert graph_run.run(bb_ctx) == "completed"
+        assert llm_calls == []
+        ok, msg = validate_markdown_with_sections("01_graph_analysis.md", output_dir=tmp_path / "bb")
+        assert ok, msg
+        assert any(e["type"] == "phase_done" and e["turns"] == 0 for e in events)
+
+        # Grey-box (audit_topology provided) -> delegates to LLM execute
+        gb_graph = GraphContext(
+            discovery_mode={"target_network": "192.168.88.0/24"},
+            audit_topology={"nodes": [{"id": "n1", "ip": "192.168.88.231"}], "edges": []},
+        )
+        gb_ctx = PhaseContext(
+            run_context=RunContext(tmp_path / "gb", gb_graph),
+            config=cfg,
+            execution_profile=types.SimpleNamespace(name="full"),
+            provider=None,
+            tracker=None,
+            variables={"target_subnet": "192.168.88.0/24"},
+            stop_event=None,
+            decision_policy="llm",
+            services=PhaseServices(execute=fake_execute, record_analysis_status=lambda _s: None),
+            emit=None,
+        )
+        assert graph_run.run(gb_ctx) == "completed"
+        assert llm_calls == ["graph_analysis"]
+
+    def test_phase3_truncation_counter_triggers_recovery_after_prior_length_turns(self):
+        import types
+        from src.agent.phases.analysis import block_recovery
+        from src.agent.provider import _record_completion_metadata
+
+        meta: dict = {}
+        choice_len = types.SimpleNamespace(finish_reason="length", message=types.SimpleNamespace(content="partial"))
+        choice_stop = types.SimpleNamespace(finish_reason="stop", message=types.SimpleNamespace(content="done"))
+        _record_completion_metadata(meta, choice_len, None)
+        _record_completion_metadata(meta, choice_len, None)
+        _record_completion_metadata(meta, choice_stop, None)
+
+        assert meta["finish_reason"] == "stop"
+        assert meta["length_truncations"] == 2
+        # Final turn was not length -> valid promoted saves stay valid
+        assert block_recovery.is_truncation(meta) is False
+        # Unpromoted failure after earlier length truncations -> triggers block recovery
+        assert block_recovery.had_truncation(meta) is True

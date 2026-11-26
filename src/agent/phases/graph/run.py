@@ -130,11 +130,18 @@ class GraphPhase:
             risk_scores = []
             risk_note = ""
 
+        from src.agent.core.graph_context import current_graph_context
+
+        graph_state = current_graph_context()
+        discovery_subnet = ""
+        if isinstance(graph_state.discovery_mode, dict):
+            discovery_subnet = str(graph_state.discovery_mode.get("target_network") or "")
+
         projection = {
             "schema_version": "1",
-            "source": "tool_calls.jsonl",
+            "source": "discovery_scope" if (not latest and discovery_subnet) else "tool_calls.jsonl",
             "scenario": topology.get("scenario", ""),
-            "subnet": topology.get("subnet", ""),
+            "subnet": topology.get("subnet") or discovery_subnet,
             "node_count": len(nodes),
             "edge_count": len(edges),
             "nodes": nodes,
@@ -163,8 +170,76 @@ class GraphPhase:
         return projection
 
 
+def _run_blackbox_discovery_graph(explicit) -> str:
+    """Fast deterministic Phase 1 when no topology or scenario is declared.
+
+    Avoids spending ~15 LLM turns querying empty discovery-mode graph tools
+    before Phase 2 has discovered any live hosts. Grey-box runs (with an
+    operator-supplied `audit_topology`) and lab scenarios keep the full LLM
+    Phase 1 analysis.
+    """
+    graph = explicit.run_context.graph
+    dm = graph.discovery_mode or {}
+    target_network = str(dm.get("target_network") or explicit.variables.get("target_subnet") or "").strip()
+    excluded = [str(ip) for ip in (dm.get("excluded_ips") or []) if str(ip).strip()]
+    config = explicit.config
+    emit = explicit.emit
+
+    if emit:
+        emit({
+            "type": "phase_start",
+            "phase": config.phase,
+            "name": config.name,
+            "description": config.description,
+            "deliverable": config.deliverable_file,
+        })
+
+    if explicit.tracker:
+        explicit.tracker.start_phase(config.name)
+
+    excl_line = ", ".join(f"`{ip}`" for ip in excluded) if excluded else "none"
+    content = (
+        "# Phase 1: Graph Analysis — Black-Box Discovery Scope\n\n"
+        "## 1. Discovery Scope\n\n"
+        f"- **Mode:** Black-box live discovery (no pre-declared network topology provided).\n"
+        f"- **Authorized Target Network:** `{target_network or 'unspecified'}`\n"
+        f"- **Excluded Infrastructure IPs (never probed):** {excl_line}\n"
+        "- **Declared Devices / Links:** 0 (deterministic fast-path — no LLM calls spent on empty topology).\n\n"
+        "## 2. Reconnaissance Plan\n\n"
+        "- Phase 2 active reconnaissance (`arp_scan`, `nmap_discovery`, `nmap_scan`) will enumerate live hosts,\n"
+        "  open TCP/UDP services, MAC vendors, and observed L2/L3 topology links within the authorized scope.\n"
+        "- Attack surface, risk prioritization, and vulnerability analysis begin once live hosts are observed.\n"
+    )
+    out_path = explicit.run_dir / config.deliverable_file
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(content, encoding="utf-8")
+
+    if explicit.tracker:
+        explicit.tracker.record_validation_result(success=True)
+        explicit.tracker.end_phase()
+
+    if emit:
+        emit({
+            "type": "phase_done",
+            "phase": config.phase,
+            "name": config.name,
+            "status": "completed",
+            "deliverable": config.deliverable_file,
+            "turns": 0,
+            "cost_usd": 0.0,
+        })
+    return "completed"
+
+
 @graph_bound
 def run(context, config=None, stream_callback=None):
     from src.agent.phases.context import phase_context
     explicit = phase_context(context, config, stream_callback)
+    graph = explicit.run_context.graph
+    if (
+        graph.discovery_mode is not None
+        and graph.audit_topology is None
+        and graph.scenario_topology is None
+    ):
+        return _run_blackbox_discovery_graph(explicit)
     return explicit.services.execute(explicit.config, explicit.emit)

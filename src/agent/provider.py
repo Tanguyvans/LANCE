@@ -45,8 +45,11 @@ def _record_completion_metadata(metadata, choice, usage) -> None:
     if not isinstance(reasoning, str):
         reasoning = getattr(message, "reasoning_content", None)
     details = getattr(usage, "completion_tokens_details", None)
+    finish_reason = choice.finish_reason if isinstance(choice.finish_reason, str) else None
+    prev_truncations = int(metadata.get("length_truncations") or 0)
     metadata.update(
-        finish_reason=choice.finish_reason if isinstance(choice.finish_reason, str) else None,
+        finish_reason=finish_reason,
+        length_truncations=prev_truncations + (1 if finish_reason == "length" else 0),
         input_tokens=count(getattr(usage, "prompt_tokens", None)),
         output_tokens=count(getattr(usage, "completion_tokens", None)),
         reasoning_tokens=count(getattr(details, "reasoning_tokens", None)),

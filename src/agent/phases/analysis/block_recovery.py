@@ -92,13 +92,30 @@ def is_truncation(completion_metadata: dict | None) -> bool:
     """Distinguish terminal output truncation from a generic missing save.
 
     The provider records the last response's ``finish_reason`` in the
-    caller-owned metadata dict. Only ``length`` means the model ran out of
-    output budget; anything else (including absent metadata from a mocked
-    provider) keeps the generic missing-receipt diagnosis.
+    caller-owned metadata dict. Only ``length`` means the final response ran
+    out of output budget; anything else keeps a validated save intact.
     """
     if not isinstance(completion_metadata, dict):
         return False
     return str(completion_metadata.get("finish_reason") or "").strip() == "length"
+
+
+def had_truncation(completion_metadata: dict | None) -> bool:
+    """Return True if the invocation hit output-budget truncation on any turn.
+
+    Used only when the full-device attempt failed to produce a validated
+    deliverable: a model that hit ``finish_reason=length`` on earlier turns
+    and then exhausted retries on a short ``stop`` turn still qualifies for
+    bounded block recovery.
+    """
+    if is_truncation(completion_metadata):
+        return True
+    if not isinstance(completion_metadata, dict):
+        return False
+    try:
+        return int(completion_metadata.get("length_truncations") or 0) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def derive_blocks(
