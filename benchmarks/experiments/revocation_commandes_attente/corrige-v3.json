@@ -1,0 +1,149 @@
+{
+  "01-ardentrelay-user-manual.md": {
+    "behaviour": 1,
+    "sentences": [
+      2,
+      7,
+      8
+    ]
+  },
+  "02-meridia-gate-faq.md": {
+    "behaviour": 2,
+    "sentences": [
+      4,
+      5,
+      7,
+      8
+    ]
+  },
+  "03-thistlebridge-release-notes.md": {
+    "behaviour": 3,
+    "period_s": 7200,
+    "sentences": [
+      3,
+      6,
+      8
+    ]
+  },
+  "04-pelicancircuit-api-reference.md": {
+    "behaviour": 1,
+    "sentences": [
+      2,
+      6,
+      7
+    ]
+  },
+  "05-copperfern-security-guide.md": {
+    "behaviour": 1,
+    "sentences": [
+      2,
+      4,
+      5,
+      6
+    ],
+    "excluded": "Ambiguous between outcomes A and B: the broker re-evaluates the policy identifier at wake-up, but nothing links disabling an operator to that policy. Excluded before any score, per the v3 preregistration (step 4)."
+  },
+  "06-halcyonport-support-article.md": {
+    "behaviour": 1,
+    "sentences": [
+      2,
+      4,
+      5,
+      6
+    ]
+  },
+  "07-wrenfieldhub-datasheet.md": {
+    "behaviour": 2,
+    "sentences": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "08-larkspur-relay-administrator-reference.md": {
+    "behaviour": 2,
+    "sentences": [
+      1,
+      3,
+      5,
+      6,
+      7
+    ]
+  },
+  "09-mossbank-edge-api-guide.md": {
+    "behaviour": 3,
+    "period_s": 86400,
+    "sentences": [
+      2,
+      3,
+      5,
+      6
+    ]
+  },
+  "10-foxglove-station-operations.md": {
+    "behaviour": 3,
+    "period_s": 129600,
+    "sentences": [
+      2,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "11-birchstone-link-quickstart.md": {
+    "behaviour": 2,
+    "sentences": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "12-silvermap-gateway-faq.md": {
+    "behaviour": 3,
+    "period_s": 259200,
+    "sentences": [
+      2,
+      4,
+      6,
+      7
+    ]
+  },
+  "13-redcliff-node-protocol-spec.md": {
+    "behaviour": 3,
+    "period_s": 604800,
+    "sentences": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "14-windrow-connect-installation-manual.md": {
+    "behaviour": 2,
+    "sentences": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "15-cloudberry-link-troubleshooting.md": {
+    "behaviour": 2,
+    "sentences": [
+      2,
+      4,
+      5,
+      6,
+      7
+    ]
+  }
+}

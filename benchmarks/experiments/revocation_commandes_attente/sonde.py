@@ -494,6 +494,8 @@ def run(docs_dir: Path = DOCS_DIR, answer_key: Path = ANSWER_KEY, journals=None)
     rows = []
     for path in sorted(docs_dir.glob("*.md")):
         entry = key[path.name]
+        if entry.get("excluded"):
+            continue
         text = path.read_text(encoding="utf-8")
         for name, journal in journals.items():
             expected = expected_verdict(entry["behaviour"], entry.get("period_s"),

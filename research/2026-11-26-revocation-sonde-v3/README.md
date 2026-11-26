@@ -1,10 +1,10 @@
 # Révocation et commandes en attente : sonde version 3 (préenregistrement)
 
 **Cycle de vie : Actif** — dossier ouvert le **2026-11-26**.
-Dernière révision : **2026-11-26 18:05 (Europe/Brussels, UTC+01:00)**.
-Statut : **préenregistrement commité (`6d547ee`) ; script renforcé écrit et
-figé ; lot v3 à faire rédiger, puis à mesurer.** Aucun document v3 n'existe au
-moment du gel.
+Dernière révision : **2026-11-26 18:40 (Europe/Brussels, UTC+01:00)**.
+Statut : **préenregistrement commité (`6d547ee`) ; script renforcé figé
+(`11fd948`) avant le lot v3 ; lot v3 rédigé, corrigé contrôlé (un document
+exclu) ; aucun score encore calculé.**
 
 Travaux antérieurs : [première sonde](../2026-11-15-revocation-commandes-attente/README.md)
 et [sonde version 2](../2026-11-26-revocation-sonde-v2/README.md), conclue sur
@@ -115,6 +115,30 @@ Empreintes (vérifiées par les tests) :
 Le lot `v3` est déclaré dans la sonde, le lanceur et le workflow
 (`documentations-v3/` et `corrige-v3.json`, à créer après le push du gel).
 
+## Lot v3 et contrôle du corrigé (étapes 3 et 4)
+
+Le lot a été rédigé par ChatGPT dans une conversation neuve, avec la consigne
+ci-dessous, après le push du gel. Il est stocké tel quel dans
+`documentations-v3/` (15 documents de 10 phrases) et `corrige-v3.json`, avec
+les numéros des phrases que le corrigé désigne. Les cinq âges du comportement 3
+sont présents (2 h, 1 jour, 36 h, 3 jours, 1 semaine).
+
+Contrôle fait **avant tout score**, scripts et LLM compris :
+
+- **Exclu : `05-copperfern-security-guide.md`** (corrigé : A). Au réveil, le
+  broker réévalue l'identifiant de politique de la commande dans le registre
+  courant, mais rien ne relie la désactivation d'un opérateur à cette
+  politique : A et B se défendent. Le motif est inscrit dans le corrigé.
+- **Gardés, avec réserve** : `08` Larkspur, `14` Windrow et `15` Cloudberry
+  (B), ainsi que les documents C pour le rôle du compte, se déduisent de
+  l'**absence** de tout contrôle de compte dans un circuit de livraison décrit
+  en entier. C'est l'esprit de la consigne ; la réserve entre dans les limites.
+- Les 10 autres documents ont une réponse directe dans les phrases désignées.
+
+Il reste **14 documents × 4 journaux = 56 cas**. Seuils, en pourcentage comme
+préenregistré : le LLM passe avec au moins **48/56** (85 %) **et** au moins
+**12 cas** de plus que le meilleur script (20 points).
+
 ## Consigne de rédaction du lot v3
 
 À donner telle quelle à un LLM extérieur, **après** le push du gel du script :
@@ -182,6 +206,5 @@ prévu), C = 3 (selon l'attente).
 
 ## Points ouverts
 
-- Étapes 3 à 5 du protocole : faire rédiger le lot v3, contrôler le corrigé,
-  mesurer.
+- Étape 5 : scores hors ligne des scripts, puis run du LLM sur le mini-PC.
 - Rapport LaTeX et PDF couvrant les versions 2 et 3, une fois la décision prise.

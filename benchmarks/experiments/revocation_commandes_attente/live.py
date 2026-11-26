@@ -42,6 +42,8 @@ def load_corpus(lot: str = "connu") -> list[dict]:
     """Every documentation on every journal, with its expected verdict.
 
     An incomplete answer key or an empty lot is refused before any run starts.
+    A documentation the key marks as excluded (ambiguous answer, decided before
+    any score) is skipped.
     """
     docs_dir, answer_key = LOTS[lot]
     if not answer_key.is_file():
@@ -52,6 +54,8 @@ def load_corpus(lot: str = "connu") -> list[dict]:
         if path.name not in key:
             raise ValueError(f"No answer for {path.name}")
         entry = key[path.name]
+        if entry.get("excluded"):
+            continue
         text = path.read_text(encoding="utf-8")
         for journal in JOURNALS:
             facts = journal_facts(JOURNALS[journal])

@@ -307,6 +307,14 @@ def test_the_committed_corpus_loads_with_its_answer_key():
     assert len(live.corpus_sha256("connu")) == 64
 
 
+def test_the_v3_lot_skips_the_document_excluded_before_any_score():
+    corpus = live.load_corpus("v3")
+    docs = {case["doc"] for case in corpus}
+    assert len(docs) == 14 and len(corpus) == 56
+    assert "05-copperfern-security-guide.md" not in docs
+    assert {case["behaviour"] for case in corpus if case["doc"].startswith("0")} == {1, 2, 3}
+
+
 def test_an_unwritten_lot_is_refused(monkeypatch, tmp_path):
     monkeypatch.setitem(live.LOTS, "inedit", (tmp_path / "docs", tmp_path / "key.json"))
     with pytest.raises(ValueError, match="no answer key"):
@@ -354,7 +362,7 @@ def test_the_time_limit_follows_the_number_of_cases():
     assert 'load_corpus(os.environ["REV_LOT"])' in run
     assert 'limit="$((600 + 120 * cases * REV_REPETITIONS))"' in run
     assert 'timeout --signal=TERM --kill-after=45s "$limit"' in run
-    largest = max(len(load_corpus(lot)) for lot in ("connu", "inedit"))
+    largest = max(len(load_corpus(lot)) for lot in ("connu", "inedit", "v3"))
     assert job["timeout-minutes"] * 60 >= 600 + 120 * largest * 3
 
 
