@@ -21,10 +21,16 @@ log = logging.getLogger(__name__)
 RETRYABLE_CODES = {429, 500, 502, 503, 529}
 MAX_RETRIES = 5
 RETRY_BASE_DELAY = 5.0
+TIMEOUT_EXC_NAMES = {"APITimeoutError", "ReadTimeout", "Timeout"}
 RETRYABLE_EXC_NAMES = {
-    "APIConnectionError", "APITimeoutError", "ConnectError", "ConnectionError", "ReadTimeout", "Timeout",
+    "APIConnectionError", "ConnectError", "ConnectionError", *TIMEOUT_EXC_NAMES,
 }
 _MISSING_USER_QUERY_TEXT = "no user query found in messages"
+
+
+def is_timeout_error(exc: Exception) -> bool:
+    """True when the provider call aborted on a read/API timeout."""
+    return isinstance(exc, TimeoutError) or type(exc).__name__ in TIMEOUT_EXC_NAMES
 
 
 def is_network_error(exc: Exception) -> bool:

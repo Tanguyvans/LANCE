@@ -354,31 +354,42 @@ def analyze_full_device(
     if context.max_duration_s is not None and context.run_started is not None:
         audit_deadline = context.run_started + context.max_duration_s
         device_deadline = min(device_deadline, audit_deadline) if device_deadline is not None else audit_deadline
+    from src.agent.core.provider_transport import is_timeout_error
     full_completion: dict = {}
     context.tracker.start_phase(f"analyze_{device_id}")
-    result_text = context.provider.chat_with_tools(
-        system_prompt=system_prompt,
-        user_message=(
-            f"Review scan results for {device_id} ({device_ip}). "
-            f"Add confirmed CVE, data exposure, authorization, identity, update, and protocol findings. "
-            f"Then call save_deliverable('{deliverable_file}', json_content)."
-        ),
-        tools=device_tools,
-        max_turns=context.profile.phase3_max_turns,
-        max_tokens=context.profile.phase3_max_tokens,
-        cost_tracker=context.tracker,
-        stream_callback=context.services.model_callback(
-            context.emit, phase=3, agent=f"analyze_{device_id}"
-        ),
-        required_tool="save_deliverable",
-        terminate_after_tool="save_deliverable",
-        # Reserve the final turns for a required save and its validation repair.
-        # This uses the existing turn, deadline and cost bounds.
-        finalize_required_tool_on_stall=context.profile.name == "full",
-        stop_event=context.stop_event,
-        deadline=device_deadline,
-        completion_metadata=full_completion,
-    )
+    try:
+        result_text = context.provider.chat_with_tools(
+            system_prompt=system_prompt,
+            user_message=(
+                f"Review scan results for {device_id} ({device_ip}). "
+                f"Add confirmed CVE, data exposure, authorization, identity, update, and protocol findings. "
+                f"Then call save_deliverable('{deliverable_file}', json_content)."
+            ),
+            tools=device_tools,
+            max_turns=context.profile.phase3_max_turns,
+            max_tokens=context.profile.phase3_max_tokens,
+            cost_tracker=context.tracker,
+            stream_callback=context.services.model_callback(
+                context.emit, phase=3, agent=f"analyze_{device_id}"
+            ),
+            required_tool="save_deliverable",
+            terminate_after_tool="save_deliverable",
+            # Reserve the final turns for a required save and its validation repair.
+            # This uses the existing turn, deadline and cost bounds.
+            finalize_required_tool_on_stall=context.profile.name == "full",
+            stop_event=context.stop_event,
+            deadline=device_deadline,
+            completion_metadata=full_completion,
+        )
+    except Exception as exc:
+        if context.compact_local or not is_timeout_error(exc):
+            raise
+        log.warning(
+            "Phase 3 analysis for %s timed out (%s); attempting bounded block recovery",
+            device_id, type(exc).__name__,
+        )
+        full_completion["timed_out"] = True
+        result_text = f"(phase 3 timed out: {type(exc).__name__})"
     usage = context.tracker.end_phase()
     promoted, validation_error = context.services.promoted_deliverable(
         device_id, deliverable_file, save_receipts[-1] if save_receipts else None
@@ -388,11 +399,12 @@ def analyze_full_device(
         promoted = False
     if not promoted:
         if (not context.compact_local
-                and block_recovery.had_truncation(full_completion)):
+                and (block_recovery.had_truncation(full_completion)
+                     or bool(full_completion.get("timed_out")))):
             log.warning(
-                "Phase 3 analysis for %s hit output-budget truncation; "
-                "attempting bounded block recovery",
+                "Phase 3 analysis for %s hit %s; attempting bounded block recovery",
                 device_id,
+                "request timeout" if full_completion.get("timed_out") else "output-budget truncation",
             )
             context.services.recover_device(
                 device=device,

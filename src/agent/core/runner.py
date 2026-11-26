@@ -502,13 +502,22 @@ class AgentRunner:
                 **({"completion_metadata": graph_completion} if full_graph else {}),
             )
         except Exception as exc:
-            if not local_intrusion_memo:
+            from src.agent.core.provider_transport import is_timeout_error
+            if full_graph and is_timeout_error(exc):
+                log.warning(
+                    "Phase 1 graph_analysis timed out (%s); attempting bounded save-only recovery",
+                    type(exc).__name__,
+                )
+                graph_completion["timed_out"] = True
+                result_text = f"(phase 1 timed out: {type(exc).__name__})"
+            elif not local_intrusion_memo:
                 raise
-            # A local proxy outage must not strand Phase 5 inside the provider
-            # loop. The authoritative tool ledger is reconciled immediately by
-            # _ensure_intrusion_deliverable after this method returns.
-            log.warning("Compact Phase 5 model call failed; switching to ledger recovery: %s", exc)
-            result_text = f"(compact local-MoE call failed: {type(exc).__name__})"
+            else:
+                # A local proxy outage must not strand Phase 5 inside the provider
+                # loop. The authoritative tool ledger is reconciled immediately by
+                # _ensure_intrusion_deliverable after this method returns.
+                log.warning("Compact Phase 5 model call failed; switching to ledger recovery: %s", exc)
+                result_text = f"(compact local-MoE call failed: {type(exc).__name__})"
         # Compact local models sometimes stop immediately after the last
         # successful action and omit the required terminal tool call. The
         # guarded controller helper commits it only when the ledger is complete.
@@ -562,15 +571,22 @@ class AgentRunner:
                     graph_recovery_stopped = True
                     msg = full_graph_recovery_error
                 elif full_graph_recovery_error.startswith("failed:"):
-                    # Recovery was attempted after an observed truncation and
-                    # failed: report the explicit truncation cause instead of
+                    # Recovery was attempted after an observed truncation or
+                    # timeout and failed: report the explicit cause instead of
                     # only the missing-file diagnosis.
-                    msg = (
-                        "truncated_output: full Phase 1 graph response truncated "
-                        "(finish_reason=length) with no validated save; bounded "
-                        "save-only recovery failed: "
-                        f"{full_graph_recovery_error[len('failed:'):].strip()}"
-                    )
+                    detail = full_graph_recovery_error[len("failed:"):].strip()
+                    if graph_completion.get("timed_out"):
+                        msg = (
+                            "timeout: full Phase 1 graph request timed out "
+                            "with no validated save; bounded save-only "
+                            f"recovery failed: {detail}"
+                        )
+                    else:
+                        msg = (
+                            "truncated_output: full Phase 1 graph response truncated "
+                            "(finish_reason=length) with no validated save; bounded "
+                            f"save-only recovery failed: {detail}"
+                        )
 
         if recovered_full_graph:
             status = "completed:recovered"

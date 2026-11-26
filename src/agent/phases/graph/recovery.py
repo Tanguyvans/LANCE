@@ -491,11 +491,12 @@ class GraphRecoveryPhase:
             isinstance(completion, dict) and (
                 completion.get("truncated_save_rejected")
                 or int(completion.get("length_truncations") or 0) > 0
+                or completion.get("timed_out")
             )
         )
         if not truncated_seen:
             return False, (
-                "not_applicable: phase 1 did not end with finish_reason=length"
+                "not_applicable: phase 1 did not end with finish_reason=length or timeout"
             )
         try:
             self._phase1_recovery_guard()
