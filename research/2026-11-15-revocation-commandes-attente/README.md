@@ -1,9 +1,10 @@
 # Révocation et commandes en attente : épreuve candidate
 
-**Cycle de vie : Proposition** — dossier ouvert le **2026-11-15**.
-Dernière révision : **2026-11-15 20:05 (Europe/Brussels, UTC+01:00)**.
-Statut : **situation candidate ; premier passage de la sonde hors ligne, sans
-LLM.**
+**Cycle de vie : Actif** — dossier ouvert le **2026-11-15**, revu le
+**2026-11-26**.
+Dernière révision : **2026-11-26 14:49 (Europe/Brussels, UTC+01:00)**.
+Statut : **épreuve candidate ; premier run sur le mini-PC (Qwen contre trois
+scripts), test de fermeture encore à passer.**
 
 ## Question
 
@@ -106,13 +107,55 @@ le lance depuis `dev/2` sur le runner `nato-master`, sous le verrou du
 laboratoire, avec `qwen3.8:27b` par défaut. Tests hors ligne :
 `tests/test_revocation_sonde.py`.
 
+## Premier run sur le mini-PC (2026-11-26)
+
+Conditions : workflow manuel lancé depuis `dev/2` au commit `febad2d`, runner
+`nato-master`, instance dev-2, provider `ollama-umons`, modèle `qwen3.8:27b`,
+3 répétitions par documentation, ordre des approches tourné à chaque cas.
+Scripts inchangés (empreinte `faaf189e…`), corpus d'empreinte `bf3d5148…`.
+Durée totale : 2 min 50 s, aucun échec. Les preuves complètes (prompts,
+réponses, routage) restent sur le mini-PC dans
+`/opt/lance-dev-2/output/revocation-commandes/<run>-<tentative>/` ; seuls les
+comptes et verdicts ont été publiés.
+
+| Approche | Comportement 1 | Comportement 2 | Comportement 3 | Total |
+| --- | --- | --- | --- | --- |
+| Règle par défaut | 9/9 | 0/9 | 0/9 | 9/27 |
+| Extraction de durée | 9/9 | 0/9 | 6/9 | 15/27 |
+| Mots-clés avec négations | 9/9 | 0/9 | 9/9 | 18/27 |
+| **LLM (`qwen3.8:27b`)** | **9/9** | **9/9** | **9/9** | **27/27** |
+
+Résultats observés :
+
+- **Le LLM a raison dans les 27 cas** et donne la même réponse aux trois
+  répétitions de chaque documentation, avec un seul appel d'outil et une
+  citation vérifiée dans la documentation. Un appel prend 3 à 12 s ; le premier
+  (46 s) inclut le chargement du modèle.
+- **L'écart vient entièrement du comportement 2** : les trois scripts échouent
+  dans les 27 cas, le LLM réussit dans les 27. Exemple : « Authorization is
+  evaluated at the moment the gateway accepts a request » n'est reconnue par
+  aucun motif des scripts, qui concluent à une faille.
+- Les scripts reproduisent exactement leurs scores de la sonde hors ligne.
+
+Limites de lecture :
+
+- **Le comportement 3 n'est pas réellement testé** : l'attente du journal
+  (338 s) est inférieure à tous les délais documentés, donc la réponse attendue
+  y est toujours « comportement prévu ».
+- **Le test de fermeture n'est pas passé** : les scripts n'ont pas encore été
+  améliorés après avoir vu ces documentations, et aucune documentation inédite
+  n'a été mesurée. Le résultat montre une avance du LLM sur des scripts écrits à
+  l'aveugle, pas encore sur le meilleur script possible.
+- Un seul modèle, un seul journal, 9 documentations rédigées par un même LLM.
+
 ## Suite
 
-1. Essayer l'agent LLM sur les mêmes documentations.
-2. Version 2 de la sonde : scripts améliorés sur ces 9 documentations, puis
-   mesurés sur une nouvelle série inédite ; plusieurs journaux, dont une attente
-   plus longue que les délais.
-3. Si la sonde confirme, rédiger l'épreuve, puis la construire et la mesurer.
+1. Version 2 de la sonde : scripts améliorés au mieux sur ces 9
+   documentations, puis mesurés avec le LLM sur une nouvelle série inédite.
+2. Plusieurs journaux, dont des attentes plus longues que les délais du
+   comportement 3.
+3. Si l'avance tient, rédiger l'épreuve, puis la construire et la mesurer
+   (second modèle du panel compris).
 
 Points ouverts : qui rédige les documentations des variantes ; quelles vraies
 documentations décrivent ce mécanisme ; journaux figés ou passerelle simulée sur
