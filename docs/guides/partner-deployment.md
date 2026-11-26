@@ -113,6 +113,10 @@ SYN scans and reach Ollama at `localhost:11434`.
 
 ## 6. Network topology, ports, and reaching the dashboard
 
+![LANCE Partner Deployment Architecture](assets/lance-deployment-architecture.png)
+
+*(Editable vector source: [`assets/lance-deployment-architecture.svg`](assets/lance-deployment-architecture.svg).)*
+
 ### Ports to open (or keep closed)
 
 | Topology | LANCE host | Ollama (GPU) host | Inbound ports to open on LAN |
