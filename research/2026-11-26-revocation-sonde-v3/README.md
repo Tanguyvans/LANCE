@@ -1,9 +1,10 @@
 # Révocation et commandes en attente : sonde version 3 (préenregistrement)
 
-**Cycle de vie : Proposition** — dossier ouvert le **2026-11-26**.
-Dernière révision : **2026-11-26 17:50 (Europe/Brussels, UTC+01:00)**.
-Statut : **préenregistrement ; ni script renforcé, ni documentation v3, ni
-run.** Ce document est commité avant que le moindre document v3 existe.
+**Cycle de vie : Actif** — dossier ouvert le **2026-11-26**.
+Dernière révision : **2026-11-26 18:05 (Europe/Brussels, UTC+01:00)**.
+Statut : **préenregistrement commité (`6d547ee`) ; script renforcé écrit et
+figé ; lot v3 à faire rédiger, puis à mesurer.** Aucun document v3 n'existe au
+moment du gel.
 
 Travaux antérieurs : [première sonde](../2026-11-15-revocation-commandes-attente/README.md)
 et [sonde version 2](../2026-11-26-revocation-sonde-v2/README.md), conclue sur
@@ -64,12 +65,55 @@ sont déterministes.
 - **L'épreuve passe** si le LLM a au moins **85 %** des cas corrects (51/60
   sans exclusion) **et** au moins **20 points** de plus que le script le plus
   fort (12 cas sur 60).
+Le « script le plus fort » est, pour chaque cas, le meilleur score parmi les
+scripts figés (`best` et `mechanism`) : on compare le LLM au meilleur des deux
+sur l'ensemble du lot.
+
 - **Sinon, elle casse** : la piste « révocation et commandes en attente » passe
   en `rejetée`, avec son motif, et on passe à un autre sujet. **Il n'y aura pas
   de version 4.**
 
 Si des documentations sont exclues à l'étape 4, les seuils restent exprimés en
 pourcentage du nombre de cas restants.
+
+## Gel du script renforcé (étape 2)
+
+Nouveau script `mechanism` dans `sonde.py`, à côté de `best` (inchangé). Il
+cherche des **mécanismes** plutôt que des formules :
+
+- contrôle de l'identité de l'émetteur **au moment de l'envoi** ou par
+  l'appareil (signature, compte, jeton vérifiés « à ce moment ») → faille ;
+- contrôle **à l'entrée seulement**, instantané du rôle, signature par la
+  passerelle avec sa propre clé, « ne consulte plus », désactivation qui ne
+  bloque que les nouvelles actions → comportement prévu ;
+- fermeture d'un compte qui annule « tout ce qu'il possède », appareil qui
+  refuse un jeton devenu invalide → faille ;
+- durée de vie des commandes en attente (échéance, « jusqu'à … puis
+  abandon ») comparée à l'attente du journal, en écartant les durées de
+  sessions, jetons, certificats et battements.
+
+Sans mécanisme net, il reprend la décision de `best`.
+
+Mise au point :
+
+| Jeu | `best` (v2) | `mechanism` (v3) |
+| --- | --- | --- |
+| Premier passage, 9 docs × 4 journaux | 36/36 | 36/36 |
+| Lot inédit v2, 15 docs × 4 journaux | 60/60 | 60/60 |
+| 10 mini-docs écrites à la main dans le style de la consigne v3, × 4 journaux | 26/40 | 40/40 |
+
+Les 10 mini-docs sont dans `tests/test_revocation_sonde.py`. Elles ont servi à
+écrire le script : ce 40/40 est **dans l'échantillon** et ne prédit rien sur le
+lot v3.
+
+Empreintes (vérifiées par les tests) :
+
+- version 2, inchangée : `7cb52c29d00b865569f55afa90e0ca448017008d77f39df378fd2d4130550005` ;
+- version 3 (version 2 + `mechanism`) :
+  `ecdeab039ba06c79bdc12dd6ffc1ed9b705b3cd70f302eef8b3d4b73d12269a8`.
+
+Le lot `v3` est déclaré dans la sonde, le lanceur et le workflow
+(`documentations-v3/` et `corrige-v3.json`, à créer après le push du gel).
 
 ## Consigne de rédaction du lot v3
 
@@ -138,5 +182,6 @@ prévu), C = 3 (selon l'attente).
 
 ## Points ouverts
 
-- Étapes 2 à 5 du protocole.
+- Étapes 3 à 5 du protocole : faire rédiger le lot v3, contrôler le corrigé,
+  mesurer.
 - Rapport LaTeX et PDF couvrant les versions 2 et 3, une fois la décision prise.

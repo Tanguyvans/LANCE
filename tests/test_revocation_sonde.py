@@ -81,6 +81,78 @@ def test_the_strongest_script_on_new_wordings(sonde, text, wait, verdict):
     assert sonde.script_best(text, sonde._journal(wait)) == verdict
 
 
+def test_versions_two_and_three_are_frozen(sonde):
+    """Commit ee03270 froze version 2; the v3 freeze adds the mechanism script."""
+    assert sonde.frozen_sha256() == (
+        "7cb52c29d00b865569f55afa90e0ca448017008d77f39df378fd2d4130550005")
+    assert sonde.frozen_v3_sha256() == (
+        "ecdeab039ba06c79bdc12dd6ffc1ed9b705b3cd70f302eef8b3d4b73d12269a8")
+
+
+@pytest.mark.parametrize("lot, count", [("connu", 36), ("inedit", 60)])
+def test_the_mechanism_script_keeps_every_known_case(sonde, lot, count):
+    result = sonde.run(*sonde.LOTS[lot])
+    assert result["totals"]["mechanism"] == len(result["rows"]) == count
+
+
+# Hand-written before the v3 lot, after its brief: each rule follows from two
+# facts, without the v2 words. In-sample for the mechanism script.
+MECHANISM_DOCS = {
+    "signature checked on wake": (1, None, (
+        "1. Each command is signed with the submitting operator's personal key. "
+        "2. Operator sessions time out after 15 minutes. "
+        "3. When the device wakes, it checks the signature against the operator directory "
+        "as it stands at that moment. "
+        "4. Directory entries for disabled accounts are marked inactive within seconds.")),
+    "account checked before each send": (1, None, (
+        "1. The hub keeps commands for sleeping sensors. "
+        "2. Before each transmission, the dispatcher confirms that the submitting account "
+        "is still enabled. 3. Tokens are valid for 8 hours.")),
+    "closing cascades to owned objects": (1, None, (
+        "1. Every queued command is an object owned by the operator who created it. "
+        "2. Certificates are renewed every 30 days. "
+        "3. Closing an account cancels every object owned by that account.")),
+    "endpoint refuses invalid tokens": (1, None, (
+        "1. Commands carry the issuer's access token to the endpoint. "
+        "2. Access tokens of deactivated users are flagged invalid immediately. "
+        "3. The endpoint refuses any command whose token is invalid.")),
+    "gateway re-signs": (2, None, (
+        "1. On submission, the gateway confirms the operator's role. "
+        "2. Admin sessions last 20 minutes. "
+        "3. The gateway then re-signs the command with its own service key. "
+        "4. Devices trust only the gateway's key and never see operator identities.")),
+    "role snapshot": (2, None, (
+        "1. When a command is accepted, the gateway records a snapshot of the sender's role "
+        "in the queue entry. 2. Delivery relies on that recorded snapshot. "
+        "3. The dispatcher does not consult the account directory again.")),
+    "disabling only blocks new work": (2, None, (
+        "1. Commands wait at the relay until the endpoint polls. "
+        "2. Disabling an operator only prevents new sign-ins and new submissions. "
+        "3. API keys expire after 12 hours.")),
+    "deadline stamp": (3, 129600, (
+        "1. Each queued item is stamped with a deadline at creation. "
+        "2. The deadline is set 36 hours after creation. "
+        "3. The dispatcher looks only at the destination and the deadline, not at who "
+        "submitted the item. 4. Operator sessions expire after 30 minutes.")),
+    "one week then give up": (3, 604800, (
+        "1. Pending commands stay in the queue for up to one week, after which the gateway "
+        "gives up on them. 2. Tokens last 24 hours. "
+        "3. Account changes are handled by the directory service.")),
+    "retries for three days": (3, 259200, (
+        "1. The relay retries delivery every 10 minutes for up to 3 days and then abandons "
+        "the command. 2. Certificates are valid for one year. "
+        "3. Delivery uses the relay's own service identity.")),
+}
+
+
+@pytest.mark.parametrize("name", sorted(MECHANISM_DOCS))
+def test_the_mechanism_script_reads_two_fact_rules(sonde, name):
+    behaviour, period, text = MECHANISM_DOCS[name]
+    for journal in sonde.JOURNALS.values():
+        expected = sonde.expected_verdict(behaviour, period, sonde.journal_facts(journal))
+        assert sonde.script_mechanism(text, journal) == expected
+
+
 @pytest.mark.parametrize("text, verdict", [
     ("When an operator's permissions are revoked, all of their pending commands are discarded.", "flaw"),
     ("Permissions are checked at submission; queued commands are not cancelled afterwards.", "expected"),
@@ -267,7 +339,7 @@ def test_the_workflow_is_manual_on_dev2_under_the_laboratory_lock():
     assert "flock -x 9" in run
     assert "-m benchmarks.experiments.revocation_commandes_attente.live run" in run
     assert '--lot "$REV_LOT"' in run
-    assert workflow[True]["workflow_dispatch"]["inputs"]["lot"]["options"] == ["connu", "inedit"]
+    assert workflow[True]["workflow_dispatch"]["inputs"]["lot"]["options"] == ["connu", "inedit", "v3"]
     assert job["steps"][1]["if"] == "always()"
 
 

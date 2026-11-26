@@ -23,13 +23,14 @@ on:
           - qwen3.8:27b
           - gemma4:26b-a4b-it-q4_K_M
       lot:
-        description: Documentation set (connu = written against; inedit = written after the freeze)
+        description: Documentation set (connu = written against; inedit and v3 = written after a freeze)
         required: true
         default: connu
         type: choice
         options:
           - connu
           - inedit
+          - v3
       repetitions:
         description: Independent repetitions per documentation
         required: true
@@ -86,8 +87,8 @@ jobs:
             qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M) ;;
             *) echo "Model outside the declared V2 panel" >&2; exit 1 ;;
           esac
-          case "$REV_LOT" in connu|inedit) ;; *)
-            echo "Lot must be connu or inedit" >&2; exit 1 ;;
+          case "$REV_LOT" in connu|inedit|v3) ;; *)
+            echo "Lot must be connu, inedit or v3" >&2; exit 1 ;;
           esac
           case "$REV_REPETITIONS" in 1|2|3) ;; *)
             echo "Repetitions must be 1, 2 or 3" >&2; exit 1 ;;

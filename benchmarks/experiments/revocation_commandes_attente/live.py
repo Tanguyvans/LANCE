@@ -27,7 +27,8 @@ from benchmarks.experiments.revocation_commandes_attente.llm import (
     MAX_TOOL_CALLS, MAX_TURNS, check_budget, run_llm,
 )
 from benchmarks.experiments.revocation_commandes_attente.sonde import (
-    JOURNALS, LOTS, SCRIPTS, expected_verdict, frozen_sha256, journal_facts, scripts_sha256,
+    JOURNALS, LOTS, SCRIPTS, expected_verdict, frozen_sha256, frozen_v3_sha256, journal_facts,
+    scripts_sha256,
 )
 from benchmarks.experiments.ssh_reference_llm import RecordingClient
 from src.agent.provider import LLMProvider
@@ -153,7 +154,8 @@ def main_run(args) -> int:
     metadata = {"schema_version": 1, "git_commit": commit, "provider": args.provider,
                 "model": args.model, "runner": os.environ.get("RUNNER_NAME"),
                 "lot": args.lot, "corpus_sha256": corpus_sha256(args.lot),
-                "scripts_sha256": scripts_sha256(), "frozen_sha256": frozen_sha256()}
+                "scripts_sha256": scripts_sha256(), "frozen_sha256": frozen_sha256(),
+                "frozen_v3_sha256": frozen_v3_sha256()}
     write_json(root / "plan.json", {**metadata, "repetitions": args.repetitions,
                                     "documentations": sorted({case["doc"] for case in corpus}),
                                     "journals": list(JOURNALS),
@@ -198,6 +200,7 @@ def public_summary(root: Path) -> dict:
         "model": results.get("model"), "repetitions": results.get("repetitions"),
         "lot": results.get("lot"), "scripts_sha256": results.get("scripts_sha256"),
         "frozen_sha256": results.get("frozen_sha256"),
+        "frozen_v3_sha256": results.get("frozen_v3_sha256"),
         "corpus_sha256": results.get("corpus_sha256"),
         "provider_preflight": json.loads(preflight.read_text()) if preflight.is_file() else None,
         "provider_preflight_error": (json.loads(preflight_error.read_text())
@@ -221,7 +224,8 @@ def main() -> int:
     parser.add_argument("--model", choices=list(MODEL_PANEL), default=MODEL)
     parser.add_argument("--lot", choices=list(LOTS), default="connu",
                         help="connu: the nine documentations the strongest script was written "
-                             "against; inedit: documentations written after it was frozen")
+                             "against; inedit: documentations written after it was frozen; "
+                             "v3: documentations written after the mechanism script was frozen")
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--max-tool-calls", type=int, default=MAX_TOOL_CALLS)
     parser.add_argument("--max-turns", type=int, default=MAX_TURNS)

@@ -29,9 +29,12 @@ DOCS_DIR = HERE / "documentations"
 ANSWER_KEY = HERE / "corrige.json"
 # "connu": the nine documentations the strongest script was written against.
 # "inedit": documentations written after that script was frozen.
+# "v3": documentations whose rule follows from several facts, written after the
+# mechanism script was frozen.
 LOTS = {
     "connu": (DOCS_DIR, ANSWER_KEY),
     "inedit": (HERE / "documentations-inedites", HERE / "corrige-inedites.json"),
+    "v3": (HERE / "documentations-v3", HERE / "corrige-v3.json"),
 }
 
 # One journal for every documentation: nothing in it reveals the product.
@@ -297,8 +300,152 @@ def script_best(documentation: str, journal) -> str:
     return "flaw"
 
 
+# --------------------------------------------------------------------------
+# Version 3: the strongest script, written knowing the v3 drafting brief (the
+# rule follows from two facts, the script's v2 words are banned) but not the
+# documents. It looks for mechanisms: what is checked when work leaves, what
+# the gateway signs with, what an account change does to what it owns, and how
+# long waiting work lives. Without a clear mechanism it falls back on `best`.
+# --------------------------------------------------------------------------
+
+MECH_CHECK = (r"(verif\w*|check\w*|confirm\w*|validat\w*|look\w* up|consult\w*|compar\w*|"
+              r"inspect\w*|evaluat\w*|quer(?:y|ies|ied)|match\w*|authenticat\w*|screen\w*)")
+MECH_DELIVERY = (r"(deliver\w*|dispatch\w*|transmi\w*|forward\w*|\bsend(?:s|ing)?\b|\bsent\b|releas\w*|"
+                 r"hand\w* (?:\w+ )?(?:over|off)|push\w*|wakes?\b|wake-up|reconnect\w*|"
+                 r"leaves?|leaving|goes out|radio window|on (?:arrival|receipt)|"
+                 r"(?:device|endpoint|sensor|actuator|node|controller)s? (?:\w+ ){0,2}"
+                 r"(?:verif|check|validat|confirm|accept|execut|appl|act|refus|reject|ignor))")
+MECH_INTAKE = (r"(accept\w*|submi\w*|enqueu\w*|admi(?:t|ssion)\w*|intake|ingest\w*|arriv\w*|"
+               r"creat\w*|enter\w* the queue|placed in the queue|is queued|first (?:reach|arriv)\w*)")
+MECH_IDENTITY = (r"(accounts?|operators?|users?|submitters?|senders?|originators?|authors?|"
+                 r"issuers?|requesters?|owners?|signatures?|signing keys?|keys?|credentials?|"
+                 r"tokens?|certificates?|roles?|membership|directory|roster|allow-?list|"
+                 r"access list|entitlements?|privileges?|grants?|scopes?)")
+MECH_LIVE = (r"(current\w*|\blive\b|still|active|enabled|valid|good standing|at that (?:moment|time|point)|"
+             r"latest|up-to-date|fresh|in force|not been (?:disabled|deactivated|suspended|closed))")
+MECH_AGAIN_NOT = (r"((?:not|never|no longer|without) (?:\w+ ){0,3}(?:again|re-?\w*(?:check|evaluat|"
+                  r"validat|examin|consider|visit)\w*|consult\w*|look\w* at|query\w*|"
+                  r"verif\w*|check\w*)|only once|once only|single (?:check|decision|evaluation)|"
+                  r"not repeated|final once|is final|immutable|irrevocabl\w*)")
+MECH_CONTRAST = (r"(rather than|instead of|not (?:\w+ ){0,2}(?:at|during|on|before|upon)|"
+                 r"never (?:at|during|on|before|upon)).{0,40}" + MECH_DELIVERY)
+MECH_GATEWAY_IDENTITY = (r"(gateway'?s? own|its own (?:key|credential|certificate|identity)|"
+                         r"(?:gateway|platform|system)'?s? (?:own )?(?:service )?(?:identity|account|key|credential|certificate)|"
+                         r"service identity|"
+                         r"(?:re-?)?sign\w* (?:\w+ ){0,4}with (?:the |its )?(?:gateway|service|platform)|"
+                         r"on behalf of the (?:gateway|platform|system))")
+MECH_SNAPSHOT = (r"(snapshot|copy of|captur\w*|record\w*|stamp\w*|embed\w*|frozen|freez\w*|"
+                 r"bak\w* into|attach\w*|carr(?:y|ies))")
+MECH_ENTITLEMENT = (r"(roles?|grants?|entitlements?|privileges?|scopes?|access level|clearance|"
+                    r"capabilit\w*|approval|decision)")
+MECH_ONLY_FUTURE = (r"(only|solely|just) (?:\w+ ){0,2}(?:affects?|applies?|prevents?|blocks?|stops?|"
+                    r"ends?|concerns?) (?:\w+ ){0,2}(?:new|future|further|subsequent|later|"
+                    r"sign-?ins?|log-?ins?|sessions?)")
+MECH_ACCOUNT_CHANGE = (r"(disabl\w*|deactivat\w*|suspend\w*|clos(?:e|ed|es|ing)\b|retir\w*|"
+                       r"offboard\w*|de-?provision\w*|lock\w*|terminat\w*|expel\w*|"
+                       r"leaves? the (?:organi[sz]ation|team|tenant))")
+MECH_CASCADE = (r"(everything|all (?:\w+ )?(?:items?|objects?|records?|resources?|entries|requests?|"
+                r"jobs?|tasks?|messages?|commands?|work)|every (?:\w+ )?(?:item|object|record|"
+                r"resource|entry|request|job|task|message|command)|anything|"
+                r"(?:owned|created|issued|submitted|signed|authored) by|associated|linked|tied|"
+                r"bound|attached|belong\w*)")
+MECH_EFFECT = (r"(cancel\w*|void\w*|clear\w*|expung\w*|invalidat\w*|clos(?:e|ed|es)\b|retir\w*|"
+               r"archiv\w*|revert\w*|rolled back|stop\w*|halt\w*|freez\w*|frozen|null\w*|"
+               r"inert|unusable|invalid|ceas\w*|terminat\w*|abandon\w*|end(?:s|ed)?\b|lapse\w*|"
+               r"no longer (?:usable|valid|trusted|accepted|honou?red|recogni[sz]ed))")
+MECH_REJECT = (r"(reject\w*|refus\w*|ignor\w*|declin\w*|skip\w*|set aside|quarantin\w*|"
+               r"not (?:be )?(?:execut|appl|act|accept|honou?r|forward|deliver|transmi)\w*)")
+MECH_BAD = (r"(invalid|expired|unknown|inactive|disabled|deactivated|suspended|closed|untrusted|"
+            r"not (?:active|valid|enabled|trusted|recogni[sz]ed)|no longer (?:active|valid|enabled))")
+MECH_NOISE = (r"\b(sessions?|log-?ins?|sign-?ins?|heartbeats?|poll\w*|probes?|sampl\w*|"
+              r"refresh\w*|passwords?|certificates?|tokens?|backups?|logs?|reports?|firmware|"
+              r"batter\w*|telemetry|metrics|dashboards?|lockouts?|idle|inactivity|every \d)\b")
+MECH_WORK = (r"(instructions?|commands?|requests?|operations?|records?|messages?|jobs?|tasks?|"
+             r"items?|entr(?:y|ies)|queue\w*|pending|waiting|held|parked|staged|buffer\w*|"
+             r"backlog|deferred|stor\w*)")
+MECH_LIFETIME = (r"(expir\w*|valid for|validity|kept for|held for|stored for|parked for|"
+                 r"stays?|remain\w*|for up to|up to|no (?:more|longer) than|at most|maximum|"
+                 r"lifespan|life ?time|shelf life|time-to-live|\bttl\b|older than|stale|"
+                 r"gives? up|stops? (?:trying|retrying|attempting)|abandon\w*|retir\w*|"
+                 r"archiv\w*|cancel\w*|void\w*|clear\w*|expung\w*|deadline|ages? out|lapse\w*|"
+                 r"after which|once (?:\w+ ){0,3}(?:old|past|reach\w*|exceed\w*)|exceed\w*)")
+MECH_LIFETIME_NOUN = (r"(deadline|expiry|expiration|lifespan|time-to-live|\bttl\b|validity window|"
+                      r"shelf life|age limit|maximum age)")
+
+
+def _mech_period(sentence: str) -> int | None:
+    """A lifetime of waiting work stated in this sentence, if any."""
+    if _has(MECH_NOISE, sentence) and not _has(r"(gives? up|abandon\w*|after which|then)", sentence):
+        return None
+    if not _has(MECH_LIFETIME, sentence):
+        return None
+    if not (_has(MECH_WORK, sentence) or _has(MECH_LIFETIME_NOUN, sentence)):
+        return None
+    durations = _best_durations(sentence)
+    if not durations:
+        return None
+    match = re.search(MECH_LIFETIME, sentence, re.IGNORECASE)
+    after = _best_durations(sentence[match.start():])
+    return max(after) if after else max(durations)
+
+
+def _mech_scores(sentence: str) -> tuple[int, int]:
+    """Evidence that waiting work dies (flaw) or survives (kept) an account change."""
+    flaw = kept = 0
+    check = _has(MECH_CHECK, sentence)
+    identity = _has(MECH_IDENTITY, sentence)
+    not_again = _has(MECH_AGAIN_NOT, sentence)
+    gateway_identity = _has(MECH_GATEWAY_IDENTITY, sentence)
+    contrast = _has(MECH_CONTRAST, sentence)
+    if (check and identity and _has(MECH_DELIVERY, sentence) and not contrast
+            and not not_again and not gateway_identity):
+        flaw += 3 if _has(MECH_LIVE, sentence) else 2
+    if check and identity and _has(MECH_INTAKE, sentence) and (contrast or not _has(MECH_DELIVERY, sentence)):
+        kept += 2 if contrast else 1
+    if not_again and (identity or check):
+        kept += 2
+    if gateway_identity:
+        kept += 2
+    if _has(MECH_SNAPSHOT, sentence) and _has(MECH_ENTITLEMENT, sentence) and _has(MECH_INTAKE, sentence):
+        kept += 2
+    if _has(MECH_ONLY_FUTURE, sentence):
+        kept += 2
+    if _has(MECH_ACCOUNT_CHANGE, sentence) and _has(MECH_CASCADE, sentence) and _has(MECH_EFFECT, sentence):
+        effect = re.search(MECH_EFFECT, sentence, re.IGNORECASE)
+        if NEGATION.search(sentence[max(0, effect.start() - 25):effect.start()]):
+            kept += 3
+        else:
+            flaw += 3
+    if (_has(MECH_REJECT, sentence) and _has(MECH_BAD, sentence) and identity
+            and not gateway_identity):
+        flaw += 3
+    return flaw, kept
+
+
+def script_mechanism(documentation: str, journal) -> str:
+    """Decide from the product's mechanisms; fall back on `best` without one."""
+    facts = journal_facts(journal)
+    if not facts["dispatched_after_revocation"]:
+        return "expected"
+    flaw = kept = 0
+    period = None
+    for sentence in _sentences(documentation):
+        sentence_flaw, sentence_kept = _mech_scores(sentence)
+        flaw += sentence_flaw
+        kept += sentence_kept
+        if period is None:
+            period = _mech_period(sentence)
+    if flaw > kept:
+        return "flaw"
+    if period is not None:
+        return "flaw" if facts["waited_s"] > period else "expected"
+    if kept > flaw:
+        return "expected"
+    return script_best(documentation, journal)
+
+
 SCRIPTS = {"default": script_default, "keywords": script_keywords, "duration": script_duration,
-           "best": script_best}
+           "best": script_best, "mechanism": script_mechanism}
 
 
 def frozen_sha256() -> str:
@@ -312,6 +459,19 @@ def frozen_sha256() -> str:
                  BEST_DURATION.pattern, BEST_UNITS, BEST_LIFETIME, BEST_WORK, BEST_CHANGE,
                  BEST_RIGHTS, BEST_DELIVERED, BEST_SURVIVE, BEST_KILL, BEST_CHECK,
                  BEST_AT_INTAKE, BEST_RECHECK)
+    parts.append(repr(constants))
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def frozen_v3_sha256() -> str:
+    """Fingerprint of version 3: version 2 plus the mechanism script and its patterns."""
+    functions = (_mech_period, _mech_scores, script_mechanism)
+    parts = [frozen_sha256()] + [inspect.getsource(function) for function in functions]
+    constants = (MECH_CHECK, MECH_DELIVERY, MECH_INTAKE, MECH_IDENTITY, MECH_LIVE,
+                 MECH_AGAIN_NOT, MECH_CONTRAST, MECH_GATEWAY_IDENTITY, MECH_SNAPSHOT,
+                 MECH_ENTITLEMENT, MECH_ONLY_FUTURE, MECH_ACCOUNT_CHANGE, MECH_CASCADE,
+                 MECH_EFFECT, MECH_REJECT, MECH_BAD, MECH_NOISE, MECH_WORK, MECH_LIFETIME,
+                 MECH_LIFETIME_NOUN)
     parts.append(repr(constants))
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
@@ -344,7 +504,7 @@ def run(docs_dir: Path = DOCS_DIR, answer_key: Path = ANSWER_KEY, journals=None)
     totals = {name: sum(row["verdicts"][name] == row["expected"] for row in rows)
               for name in SCRIPTS}
     return {"scripts_sha256": scripts_sha256(), "frozen_sha256": frozen_sha256(),
-            "rows": rows, "totals": totals}
+            "frozen_v3_sha256": frozen_v3_sha256(), "rows": rows, "totals": totals}
 
 
 def main(argv=None) -> int:
@@ -354,6 +514,7 @@ def main(argv=None) -> int:
     result = run(*LOTS[args.lot])
     print(f"version 1 sha256: {result['scripts_sha256']}")
     print(f"version 2 sha256: {result['frozen_sha256']}")
+    print(f"version 3 sha256: {result['frozen_v3_sha256']}")
     header = f"{'documentation':30} {'journal':13} beh  expected  " + "  ".join(f"{name:9}" for name in SCRIPTS)
     print(header)
     for row in result["rows"]:
