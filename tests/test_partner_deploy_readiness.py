@@ -750,7 +750,7 @@ class TestLivePipelineHardening:
             run_context=RunContext(tmp_path / "bb", bb_graph),
             config=cfg,
             execution_profile=types.SimpleNamespace(name="full"),
-            provider=None,
+            provider=object(),
             tracker=None,
             variables={"target_subnet": "192.168.88.0/24"},
             stop_event=None,

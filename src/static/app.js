@@ -681,16 +681,17 @@ function buildModelOption(model) {
   opt.value = model.id;
   opt.dataset.provider = model.provider || '';
   const unavailable = model.available === false || !model.provider;
+  const audit = typeof isAuditMode === 'function' && isAuditMode();
   let label = model.label || model.id;
-  if (isAuditMode()) {
+  if (audit) {
     label = label.replace('(recommandé)', '(recommended)');
   }
   if (model.subscription) {
-    label += isAuditMode() ? ' — included in plan' : ' — inclus dans le plan';
+    label += audit ? ' — included in plan' : ' — inclus dans le plan';
   } else if (model.input_per_mtok != null && model.output_per_mtok != null) {
-    label += ` ($${Number(model.input_per_mtok).toFixed(2)}/$${Number(model.output_per_mtok).toFixed(2)} ${isAuditMode() ? 'per M' : 'par M'})`;
+    label += ` ($${Number(model.input_per_mtok).toFixed(2)}/$${Number(model.output_per_mtok).toFixed(2)} ${audit ? 'per M' : 'par M'})`;
   }
-  if (unavailable) label += isAuditMode() ? ' — unavailable' : ' — indisponible';
+  if (unavailable) label += audit ? ' — unavailable' : ' — indisponible';
   if (model.context_length) label += ` · ${Math.round(model.context_length / 1000)}k ctx`;
   opt.textContent = label;
   opt.disabled = unavailable;
@@ -746,8 +747,9 @@ function renderModelSelect(select, models, desiredValue = '', includeGlobal = fa
 function renderModelProviderStatus() {
   const target = document.getElementById('model-provider-status');
   if (!target) return;
+  const audit = typeof isAuditMode === 'function' && isAuditMode();
   const available = _modelCatalog.filter(model => model.available !== false).length;
-  target.textContent = isAuditMode()
+  target.textContent = audit
     ? `${available} of ${_modelCatalog.length} model${_modelCatalog.length > 1 ? 's' : ''} available`
     : `${available} modèle${available > 1 ? 's' : ''} disponible${available > 1 ? 's' : ''} sur ${_modelCatalog.length}`;
 }
@@ -3950,7 +3952,8 @@ function setCost(val) {
     _liveCostUsd = val;
     document.getElementById('cost-val').textContent = '$' + val.toFixed(4);
   } else {
-    document.getElementById('cost-val').textContent = isAuditMode() ? 'Unavailable' : 'Indisponible';
+    const audit = typeof isAuditMode === 'function' && isAuditMode();
+    document.getElementById('cost-val').textContent = audit ? 'Unavailable' : 'Indisponible';
   }
 }
 

@@ -237,7 +237,8 @@ def run(context, config=None, stream_callback=None):
     explicit = phase_context(context, config, stream_callback)
     graph = explicit.run_context.graph
     if (
-        graph.discovery_mode is not None
+        explicit.provider is not None
+        and graph.discovery_mode is not None
         and graph.audit_topology is None
         and graph.scenario_topology is None
     ):

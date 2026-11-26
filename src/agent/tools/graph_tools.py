@@ -51,10 +51,9 @@ def load_discovery_context(
     """
     state = current_graph_context()
     _reset_graph_context()
-    state.discovery_mode = {
-        "target_network": target_network,
-        "excluded_ips": list(excluded_ips or []),
-    }
+    state.discovery_mode = {"target_network": target_network}
+    if excluded_ips:
+        state.discovery_mode["excluded_ips"] = list(excluded_ips)
     state.audit_topology = audit_topology
     nodes = (audit_topology or {}).get("nodes") or []
     edges = (audit_topology or {}).get("edges") or []
