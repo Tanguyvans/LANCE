@@ -50,7 +50,7 @@ concurrency:
 jobs:
   revocation:
     runs-on: [self-hosted, nato-master]
-    timeout-minutes: 120
+    timeout-minutes: 480
     env:
       LANCE_LAB_LOCK: /var/lib/lance/lab.lock
       LANCE_MQTT_LOCK_HELD: "1"
@@ -107,8 +107,13 @@ jobs:
           assert state['commit'] == os.environ['EXPECTED_SHA']
           PY
           mkdir -p output/revocation-commandes
+          # The limit follows the real number of cases: 120 s per model call on
+          # average (the unseen run of 2026-11-26 averaged 70 s), plus ten minutes.
+          cases="$(venv/bin/python -c 'import os; from benchmarks.experiments.revocation_commandes_attente.live import load_corpus; print(len(load_corpus(os.environ["REV_LOT"])))')"
+          limit="$((600 + 120 * cases * REV_REPETITIONS))"
+          echo "$cases cases x $REV_REPETITIONS repetitions: time limit ${limit}s"
           status=0
-          timeout --signal=TERM --kill-after=45s "$((600 + 1200 * REV_REPETITIONS))" \
+          timeout --signal=TERM --kill-after=45s "$limit" \
             venv/bin/python -m benchmarks.experiments.revocation_commandes_attente.live run \
             --output "output/revocation-commandes/$TRIAL_NAME" \
             --provider "$REV_PROVIDER" --model "$REV_MODEL" \

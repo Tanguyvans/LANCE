@@ -271,6 +271,21 @@ def test_the_workflow_is_manual_on_dev2_under_the_laboratory_lock():
     assert job["steps"][1]["if"] == "always()"
 
 
+def test_the_time_limit_follows_the_number_of_cases():
+    """Run #4 was cut at 70 min: the limit ignored the four journals."""
+    from benchmarks.experiments.revocation_commandes_attente.live import load_corpus
+
+    workflow = yaml.safe_load((Path(__file__).resolve().parents[1]
+                               / ".github/workflows/revocation-commandes.yml").read_text())
+    job = workflow["jobs"]["revocation"]
+    run = job["steps"][0]["run"]
+    assert 'load_corpus(os.environ["REV_LOT"])' in run
+    assert 'limit="$((600 + 120 * cases * REV_REPETITIONS))"' in run
+    assert 'timeout --signal=TERM --kill-after=45s "$limit"' in run
+    largest = max(len(load_corpus(lot)) for lot in ("connu", "inedit"))
+    assert job["timeout-minutes"] * 60 >= 600 + 120 * largest * 3
+
+
 def sonde_module():
     from benchmarks.experiments.revocation_commandes_attente import sonde
     return sonde
