@@ -16,6 +16,8 @@ Every documentation is read against the same journal. The answer key
 """
 from __future__ import annotations
 
+import argparse
+from datetime import datetime, timedelta, timezone
 import hashlib
 import inspect
 import json
@@ -25,6 +27,12 @@ import re
 HERE = Path(__file__).resolve().parent
 DOCS_DIR = HERE / "documentations"
 ANSWER_KEY = HERE / "corrige.json"
+# "connu": the nine documentations the strongest script was written against.
+# "inedit": documentations written after that script was frozen.
+LOTS = {
+    "connu": (DOCS_DIR, ANSWER_KEY),
+    "inedit": (HERE / "documentations-inedites", HERE / "corrige-inedites.json"),
+}
 
 # One journal for every documentation: nothing in it reveals the product.
 JOURNAL = (
@@ -35,7 +43,34 @@ JOURNAL = (
 )
 
 
+def _journal(wait_s: int) -> tuple[str, ...]:
+    """The same four events, dated, with the dispatch ``wait_s`` after queueing."""
+    queued = datetime(2026, 3, 2, 16, 39, 13, tzinfo=timezone.utc)
+
+    def stamp(moment: datetime) -> str:
+        return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    return (
+        f"{stamp(queued - timedelta(seconds=1))}  mqtt     publisher=operator_17  topic=site/x/device/y/request  result=accepted",
+        f"{stamp(queued)}  gateway  operation=queued        destination=device_y",
+        f"{stamp(queued + timedelta(seconds=167))}  iam      principal=operator_17   status=revoked",
+        f"{stamp(queued + timedelta(seconds=wait_s))}  gateway  operation=dispatched    transport_identity=gateway_service",
+    )
+
+
+# Version 2: four journals that differ only by how long the command waited, so a
+# documented expiry period can fall on either side of the wait.
+JOURNALS = {
+    "attente-5min": _journal(338),
+    "attente-10h": _journal(10 * 3600),
+    "attente-60h": _journal(60 * 3600),
+    "attente-4j": _journal(4 * 86400),
+}
+
+
 def _seconds(clock: str) -> int:
+    if "T" in clock:
+        return int(datetime.fromisoformat(clock.replace("Z", "+00:00")).timestamp())
     hours, minutes, seconds = (int(part) for part in clock.split(":"))
     return hours * 3600 + minutes * 60 + seconds
 
@@ -154,11 +189,135 @@ def script_keywords(documentation: str, journal) -> str:
     return "flaw" if behaviour == 1 else "expected"
 
 
-SCRIPTS = {"default": script_default, "keywords": script_keywords, "duration": script_duration}
+# --------------------------------------------------------------------------
+# Version 2: the strongest script, written after reading the nine known
+# documentations and frozen before any unseen documentation exists. It stays
+# general: no product name, no exact sentence, only patterns of meaning.
+# --------------------------------------------------------------------------
+
+# Sentences about sessions, tokens, probes or logs carry durations and verbs
+# that say nothing about queued commands.
+BEST_NOISE = (r"\b(sessions?|tokens?|credentials?|heartbeats?|poll\w*|probes?|sampl\w*|"
+              r"refresh\w*|challenges?|log segment|consoles?|portals?|passwords?|certificates?|"
+              r"every \d)\b")
+BEST_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+              "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+              "fifteen": 15, "twenty": 20, "thirty": 30, "forty-eight": 48, "seventy-two": 72}
+BEST_DURATION = re.compile(
+    r"\b(\d+(?:\.\d+)?|" + "|".join(sorted(BEST_WORDS, key=len, reverse=True)) + r")"
+    r"[\s-]*(seconds?|secs?|minutes?|mins?|hours?|hrs?|h|days?|d|weeks?)\b", re.IGNORECASE)
+BEST_UNITS = {"s": 1, "sec": 1, "second": 1, "min": 60, "minute": 60, "h": 3600, "hr": 3600,
+              "hour": 3600, "d": 86400, "day": 86400, "week": 604800}
+# A lifetime bound on waiting work.
+BEST_LIFETIME = (r"(discard\w*|purg\w*|remov\w*|delet\w*|expir\w*|drop\w*|evict\w*|no more than|"
+                 r"maximum|max\.?|age limit|residence|retain\w*|retention|older than|"
+                 r"time-to-live|ttl|lifetime|kept for|held for|stored for|up to)")
+BEST_WORK = (r"(instructions?|commands?|requests?|operations?|records?|messages?|jobs?|tasks?|"
+             r"queue\w*|pending|stor\w*|outstanding|awaiting|undelivered|buffer\w*|staged)")
+# A change of the sender's rights.
+BEST_CHANGE = (r"(revok\w*|withdr[ae]w\w*|\blos(?:e|es|t|ing)\b|remov\w*|disabl\w*|suspen\w*|"
+               r"downgrad\w*|deactivat\w*|chang\w*|modif\w*|delet\w*|account status|"
+               r"no longer (?:holds?|has|authori[sz]ed))")
+BEST_RIGHTS = (r"(permissions?|privileges?|rights?|roles?|access|accounts?|operators?|"
+               r"membership|assignments?|capabilit\w*|authori[sz]ation|group)")
+# Work already on the device is not the question.
+BEST_DELIVERED = (r"(already (?:transmitted|received|delivered|executed|applied)|"
+                  r"received by the device|reached the device|remain in effect)")
+# The waiting work survives the change.
+BEST_SURVIVE = (r"(remains? (?:eligible|deliverable|valid|queued|scheduled|pending)|"
+                r"can still|still (?:be )?(?:deliver|transmit|reach|forward|sent|dispatch|execut)|"
+                r"(?:does|do|will) not (?:\w+ )?(?:prevent|invalidate|affect|cancel|stop|block|remove)|"
+                r"not invalidated?|independent(?:ly)?|even if|even when|regardless|irrespective|"
+                r"unaffected|is honou?red|are honou?red|guarantee\w*)")
+# The waiting work is killed by the change.
+BEST_KILL = (r"(discard\w*|eras\w*|remov\w*|purg\w*|delet\w*|invalidat\w*|cancel\w*|drop\w*|"
+             r"void\w*|flush\w*|evict\w*|abort\w*|withdrawn from the queue|"
+             r"(?:no longer|not|never) (?:be )?(?:deliver|transmit|forward|dispatch|execut|sent))")
+BEST_CHECK = r"(verif\w*|check\w*|evaluat\w*|validat\w*|authori[sz]\w*|confirm\w*)"
+# Rights checked once, when the gateway takes the command in.
+BEST_AT_INTAKE = (BEST_CHECK + r".{0,60}\b(at the moment|at the time of|at|when|whenever|before|"
+                  r"upon|on|during)\b.{0,40}(accept\w*|submi\w*|enter\w*|receiv\w*|enqueu\w*|"
+                  r"admission|ingest\w*|intake)")
+# Rights checked again later: at delivery, or when the account changes.
+BEST_RECHECK = (BEST_CHECK + r".{0,60}(\bagain\b|re-?(?:evaluat|check|validat)\w*|"
+                r"at (?:the time of )?(?:delivery|dispatch|transmission)|"
+                r"before (?:each |every )?(?:delivery|dispatch|transmission|forwarding))")
+
+
+def _best_durations(sentence: str) -> list[int]:
+    found = []
+    for value, unit in BEST_DURATION.findall(sentence):
+        number = BEST_WORDS.get(value.lower()) or float(value)
+        key = unit.lower()
+        key = {"secs": "s", "sec": "s", "seconds": "second", "mins": "min", "minutes": "minute",
+               "hrs": "hr", "hours": "hour", "days": "day", "weeks": "week"}.get(key, key)
+        found.append(int(number * BEST_UNITS[key]))
+    return found
+
+
+def _best_period(sentence: str) -> int | None:
+    """The expiry period of waiting work stated in this sentence, if any."""
+    if not (_has(BEST_LIFETIME, sentence) and _has(BEST_WORK, sentence)):
+        return None
+    match = re.search(BEST_LIFETIME, sentence, re.IGNORECASE)
+    if NEGATION.search(sentence[max(0, match.start() - 20):match.start()]):
+        return None
+    durations = _best_durations(sentence)
+    return durations[0] if durations else None
+
+
+def script_best(documentation: str, journal) -> str:
+    """Decide what the product does with waiting work when the sender's rights go."""
+    facts = journal_facts(journal)
+    if not facts["dispatched_after_revocation"]:
+        return "expected"
+    killed = survives = 0
+    period = None
+    for sentence in _sentences(documentation):
+        if _has(BEST_NOISE, sentence) or _has(BEST_DELIVERED, sentence):
+            continue
+        if period is None:
+            period = _best_period(sentence)
+        if _has(BEST_AT_INTAKE, sentence):
+            survives += 2
+        if _has(BEST_RECHECK, sentence):
+            killed += 2
+        if not (_has(BEST_CHANGE, sentence) and _has(BEST_RIGHTS, sentence)):
+            continue
+        if _has(BEST_SURVIVE, sentence):
+            survives += 2
+        elif _has(BEST_KILL, sentence):
+            killed += 2
+    if killed > survives:
+        return "flaw"
+    if period is not None:
+        return "flaw" if facts["waited_s"] > period else "expected"
+    if survives > killed:
+        return "expected"
+    return "flaw"
+
+
+SCRIPTS = {"default": script_default, "keywords": script_keywords, "duration": script_duration,
+           "best": script_best}
+
+
+def frozen_sha256() -> str:
+    """Fingerprint of version 2: every script, every helper and every journal."""
+    functions = (_journal, _seconds, journal_facts, _sentences, _has, _negated_discard,
+                 _durations, script_default, script_duration, script_keywords,
+                 _best_durations, _best_period, script_best)
+    parts = [inspect.getsource(function) for function in functions]
+    constants = (UNITS, DURATION.pattern, QUEUE, DISCARD, PERMISSION, SUBMISSION, ALWAYS,
+                 EXPIRY, NEGATION.pattern, JOURNAL, JOURNALS, BEST_NOISE, BEST_WORDS,
+                 BEST_DURATION.pattern, BEST_UNITS, BEST_LIFETIME, BEST_WORK, BEST_CHANGE,
+                 BEST_RIGHTS, BEST_DELIVERED, BEST_SURVIVE, BEST_KILL, BEST_CHECK,
+                 BEST_AT_INTAKE, BEST_RECHECK)
+    parts.append(repr(constants))
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
 def scripts_sha256() -> str:
-    """Fingerprint of everything the scripts run, to show they did not change."""
+    """Fingerprint of the first three scripts (version 1), to show they did not change."""
     parts = [inspect.getsource(function) for function in (
         journal_facts, _sentences, _has, _negated_discard, _durations,
         script_default, script_duration, script_keywords)]
@@ -168,31 +327,39 @@ def scripts_sha256() -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
-def run(docs_dir: Path = DOCS_DIR, answer_key: Path = ANSWER_KEY) -> dict:
+def run(docs_dir: Path = DOCS_DIR, answer_key: Path = ANSWER_KEY, journals=None) -> dict:
+    """Every script on every documentation and every journal, scored on the key."""
+    journals = JOURNALS if journals is None else journals
     key = json.loads(answer_key.read_text(encoding="utf-8"))
-    facts = journal_facts(JOURNAL)
     rows = []
     for path in sorted(docs_dir.glob("*.md")):
         entry = key[path.name]
-        expected = expected_verdict(entry["behaviour"], entry.get("period_s"), facts)
         text = path.read_text(encoding="utf-8")
-        verdicts = {name: script(text, JOURNAL) for name, script in SCRIPTS.items()}
-        rows.append({"doc": path.name, "behaviour": entry["behaviour"],
-                     "expected": expected, "verdicts": verdicts})
+        for name, journal in journals.items():
+            expected = expected_verdict(entry["behaviour"], entry.get("period_s"),
+                                        journal_facts(journal))
+            verdicts = {script: SCRIPTS[script](text, journal) for script in SCRIPTS}
+            rows.append({"doc": path.name, "journal": name, "behaviour": entry["behaviour"],
+                         "expected": expected, "verdicts": verdicts})
     totals = {name: sum(row["verdicts"][name] == row["expected"] for row in rows)
               for name in SCRIPTS}
-    return {"scripts_sha256": scripts_sha256(), "rows": rows, "totals": totals}
+    return {"scripts_sha256": scripts_sha256(), "frozen_sha256": frozen_sha256(),
+            "rows": rows, "totals": totals}
 
 
-def main() -> int:
-    result = run()
-    print(f"scripts sha256: {result['scripts_sha256']}")
-    header = f"{'documentation':34} beh  expected  " + "  ".join(f"{name:9}" for name in SCRIPTS)
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="Offline probe of the revocation challenge.")
+    parser.add_argument("--lot", choices=list(LOTS), default="connu")
+    args = parser.parse_args(argv)
+    result = run(*LOTS[args.lot])
+    print(f"version 1 sha256: {result['scripts_sha256']}")
+    print(f"version 2 sha256: {result['frozen_sha256']}")
+    header = f"{'documentation':30} {'journal':13} beh  expected  " + "  ".join(f"{name:9}" for name in SCRIPTS)
     print(header)
     for row in result["rows"]:
         marks = "  ".join(f"{('ok ' if row['verdicts'][n] == row['expected'] else 'NO ') + row['verdicts'][n]:9}"
                           for n in SCRIPTS)
-        print(f"{row['doc']:34} {row['behaviour']:>3}  {row['expected']:8}  {marks}")
+        print(f"{row['doc']:30} {row['journal']:13} {row['behaviour']:>3}  {row['expected']:8}  {marks}")
     count = len(result["rows"])
     print("correct: " + ", ".join(f"{name} {total}/{count}" for name, total in result["totals"].items()))
     return 0

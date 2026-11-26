@@ -37,7 +37,7 @@ def test_scripts_never_read_the_answer_key(sonde):
         assert "ANSWER_KEY" not in source and "corrige" not in source
 
 
-def test_every_documentation_gets_the_same_journal(sonde, tmp_path, monkeypatch):
+def test_every_documentation_gets_every_journal(sonde, tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(sonde, "SCRIPTS", {"spy": lambda doc, journal: seen.append(journal) or "flaw"})
     for name in ("a.md", "b.md"):
@@ -45,8 +45,40 @@ def test_every_documentation_gets_the_same_journal(sonde, tmp_path, monkeypatch)
     key = tmp_path / "key.json"
     key.write_text(json.dumps({"a.md": {"behaviour": 1}, "b.md": {"behaviour": 2}}), encoding="utf-8")
     result = sonde.run(tmp_path, key)
-    assert seen == [sonde.JOURNAL, sonde.JOURNAL]
-    assert [row["expected"] for row in result["rows"]] == ["flaw", "expected"]
+    assert seen == [*sonde.JOURNALS.values()] * 2
+    assert [row["expected"] for row in result["rows"]] == ["flaw"] * 4 + ["expected"] * 4
+
+
+def test_the_journals_differ_only_by_the_wait(sonde):
+    waits = {name: sonde.journal_facts(journal)["waited_s"]
+             for name, journal in sonde.JOURNALS.items()}
+    assert waits == {"attente-5min": 338, "attente-10h": 36000,
+                     "attente-60h": 216000, "attente-4j": 345600}
+    for journal in sonde.JOURNALS.values():
+        assert sonde.journal_facts(journal)["dispatched_after_revocation"]
+        assert journal[:3] == sonde.JOURNALS["attente-5min"][:3]
+
+
+def test_version_one_is_untouched(sonde):
+    assert sonde.scripts_sha256() == (
+        "faaf189ee6057635ec072987e8c059c8660bc04c7ae8f83f9549595db95b257d")
+
+
+def test_the_strongest_script_wins_on_the_known_lot(sonde):
+    result = sonde.run(*sonde.LOTS["connu"])
+    assert result["totals"]["best"] == len(result["rows"]) == 36
+
+
+@pytest.mark.parametrize("text, wait, verdict", [
+    # Paraphrases absent from the known lot: the script must not rely on exact sentences.
+    ("Once an operator is suspended, the gateway cancels every instruction they left pending.", 338, "flaw"),
+    ("Rights are validated upon intake; later account suspension does not block queued work.", 338, "expected"),
+    ("Undelivered commands are kept for up to twelve hours, then deleted.", 338, "expected"),
+    ("Undelivered commands are kept for up to twelve hours, then deleted.", 36000 * 2, "flaw"),
+    ("Operator sessions expire after 10 minutes. Revoking a role removes its pending requests.", 338, "flaw"),
+])
+def test_the_strongest_script_on_new_wordings(sonde, text, wait, verdict):
+    assert sonde.script_best(text, sonde._journal(wait)) == verdict
 
 
 @pytest.mark.parametrize("text, verdict", [
@@ -126,7 +158,7 @@ class ScriptedVerdict:
 def _args(**overrides):
     values = dict(max_tool_calls=revocation_llm.MAX_TOOL_CALLS, max_turns=revocation_llm.MAX_TURNS,
                   max_duration_s=60, max_cost_usd=1, model="development-model",
-                  provider="ollama-umons")
+                  provider="ollama-umons", lot="connu")
     values.update(overrides)
     return SimpleNamespace(**values)
 
@@ -177,22 +209,36 @@ def test_the_runner_scores_scripts_and_model_on_the_same_case(tmp_path, monkeypa
                         lambda provider, model: SimpleNamespace(
                             client=client, provider=provider, model=model,
                             chat_with_tools=_provider(client, tmp_path).chat_with_tools))
-    case = {"doc": "x.md", "text": DOC, "behaviour": 2, "expected": "expected"}
+    case = {"doc": "x.md", "journal": "attente-10h", "text": DOC, "behaviour": 2,
+            "expected": "expected"}
     script = live.run_approach(case, "default", tmp_path / "default", _args(), {})
     model = live.run_approach(case, "llm", tmp_path / "llm", _args(), {})
-    assert script == {"doc": "x.md", "behaviour": 2, "policy": "default", "status": "completed",
+    assert script == {"doc": "x.md", "journal": "attente-10h", "behaviour": 2,
+                      "policy": "default", "status": "completed",
                       "expected": "expected", "verdict": "flaw", "correct": False}
     assert model["verdict"] == "expected" and model["correct"] is True
+    prompt = json.loads((tmp_path / "llm" / "prompt.json").read_text())
+    assert prompt["user"]["journal"] == list(sonde_module().JOURNALS["attente-10h"])
     assert live.summarise([script, model]) == {
-        "default": {"correct": 0, "total": 1, "by_behaviour": {"2": [0, 1]}},
-        "llm": {"correct": 1, "total": 1, "by_behaviour": {"2": [1, 1]}}}
+        "default": {"correct": 0, "total": 1, "by_behaviour": {"2": [0, 1]},
+                    "by_journal": {"attente-10h": [0, 1]}},
+        "llm": {"correct": 1, "total": 1, "by_behaviour": {"2": [1, 1]},
+                "by_journal": {"attente-10h": [1, 1]}}}
 
 
 def test_the_committed_corpus_loads_with_its_answer_key():
-    corpus = live.load_corpus()
-    assert len(corpus) == 9
-    assert [case["behaviour"] for case in corpus] == [1, 1, 1, 2, 2, 2, 3, 3, 3]
-    assert len(live.corpus_sha256()) == 64
+    corpus = live.load_corpus("connu")
+    assert len(corpus) == 36
+    assert [case["behaviour"] for case in corpus[::4]] == [1, 1, 1, 2, 2, 2, 3, 3, 3]
+    # Behaviour 3 now has both answers, depending on the wait.
+    assert {case["expected"] for case in corpus if case["behaviour"] == 3} == {"flaw", "expected"}
+    assert len(live.corpus_sha256("connu")) == 64
+
+
+def test_an_unwritten_lot_is_refused(monkeypatch, tmp_path):
+    monkeypatch.setitem(live.LOTS, "inedit", (tmp_path / "docs", tmp_path / "key.json"))
+    with pytest.raises(ValueError, match="no answer key"):
+        live.load_corpus("inedit")
 
 
 def test_the_runner_refuses_to_run_outside_nato(tmp_path, monkeypatch):
@@ -220,6 +266,8 @@ def test_the_workflow_is_manual_on_dev2_under_the_laboratory_lock():
     assert 'require "${GITHUB_REF:-}" refs/heads/dev/2' in run
     assert "flock -x 9" in run
     assert "-m benchmarks.experiments.revocation_commandes_attente.live run" in run
+    assert '--lot "$REV_LOT"' in run
+    assert workflow[True]["workflow_dispatch"]["inputs"]["lot"]["options"] == ["connu", "inedit"]
     assert job["steps"][1]["if"] == "always()"
 
 

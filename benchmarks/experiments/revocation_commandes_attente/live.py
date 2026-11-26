@@ -27,7 +27,7 @@ from benchmarks.experiments.revocation_commandes_attente.llm import (
     MAX_TOOL_CALLS, MAX_TURNS, check_budget, run_llm,
 )
 from benchmarks.experiments.revocation_commandes_attente.sonde import (
-    ANSWER_KEY, DOCS_DIR, JOURNAL, SCRIPTS, expected_verdict, journal_facts, scripts_sha256,
+    JOURNALS, LOTS, SCRIPTS, expected_verdict, frozen_sha256, journal_facts, scripts_sha256,
 )
 from benchmarks.experiments.ssh_reference_llm import RecordingClient
 from src.agent.provider import LLMProvider
@@ -37,24 +37,34 @@ SCOPE = "revocation-queued-commands"
 APPROACHES = (*SCRIPTS, "llm")
 
 
-def load_corpus(docs_dir: Path = DOCS_DIR, answer_key: Path = ANSWER_KEY) -> list[dict]:
-    """Every documentation with its expected verdict; refuse an incomplete key."""
+def load_corpus(lot: str = "connu") -> list[dict]:
+    """Every documentation on every journal, with its expected verdict.
+
+    An incomplete answer key or an empty lot is refused before any run starts.
+    """
+    docs_dir, answer_key = LOTS[lot]
+    if not answer_key.is_file():
+        raise ValueError(f"The lot {lot} has no answer key yet")
     key = json.loads(answer_key.read_text(encoding="utf-8"))
-    facts = journal_facts(JOURNAL)
     corpus = []
     for path in sorted(docs_dir.glob("*.md")):
         if path.name not in key:
             raise ValueError(f"No answer for {path.name}")
         entry = key[path.name]
-        corpus.append({"doc": path.name, "text": path.read_text(encoding="utf-8"),
-                       "behaviour": entry["behaviour"],
-                       "expected": expected_verdict(entry["behaviour"], entry.get("period_s"), facts)})
+        text = path.read_text(encoding="utf-8")
+        for journal in JOURNALS:
+            facts = journal_facts(JOURNALS[journal])
+            corpus.append({"doc": path.name, "journal": journal, "text": text,
+                           "behaviour": entry["behaviour"],
+                           "expected": expected_verdict(entry["behaviour"],
+                                                        entry.get("period_s"), facts)})
     if not corpus:
-        raise ValueError("The corpus holds no documentation")
+        raise ValueError(f"The lot {lot} holds no documentation")
     return corpus
 
 
-def corpus_sha256(docs_dir: Path = DOCS_DIR, answer_key: Path = ANSWER_KEY) -> str:
+def corpus_sha256(lot: str = "connu") -> str:
+    docs_dir, answer_key = LOTS[lot]
     digest = hashlib.sha256()
     for path in [*sorted(docs_dir.glob("*.md")), answer_key]:
         digest.update(path.name.encode() + b"\0" + path.read_bytes())
@@ -74,12 +84,13 @@ def run_approach(case: dict, policy: str, directory: Path, args, metadata: dict)
                 "verdict": None}
     failure = None
     try:
+        journal = JOURNALS[case["journal"]]
         if policy in SCRIPTS:
-            decision.update(status="completed", verdict=SCRIPTS[policy](case["text"], JOURNAL))
+            decision.update(status="completed", verdict=SCRIPTS[policy](case["text"], journal))
         else:
             provider = LLMProvider(args.provider, args.model)
             provider.client = RecordingClient(provider.client, directory)
-            decision = run_llm(case["text"], JOURNAL, run, provider)
+            decision = run_llm(case["text"], journal, run, provider)
     except BaseException as exc:
         failure = exc
         if (directory / "decision.json").is_file():
@@ -93,6 +104,7 @@ def run_approach(case: dict, policy: str, directory: Path, args, metadata: dict)
         write_json(directory / "cost_summary.json", run.tracker.summary())
         write_json(directory / "run_meta.json", {
             **metadata, "decision_policy": policy, "doc": case["doc"],
+            "journal": case["journal"],
             "provider": args.provider if policy == "llm" else None,
             "model": args.model if policy == "llm" else None,
             "status": decision["status"],
@@ -102,7 +114,8 @@ def run_approach(case: dict, policy: str, directory: Path, args, metadata: dict)
         })
     if isinstance(failure, (KeyboardInterrupt, SystemExit)):
         raise failure
-    evaluation = {"doc": case["doc"], "behaviour": case["behaviour"], "policy": policy,
+    evaluation = {"doc": case["doc"], "journal": case["journal"],
+                  "behaviour": case["behaviour"], "policy": policy,
                   "status": decision["status"], "expected": case["expected"],
                   "verdict": decision.get("verdict"),
                   "correct": decision["status"] == "completed"
@@ -112,15 +125,19 @@ def run_approach(case: dict, policy: str, directory: Path, args, metadata: dict)
 
 
 def summarise(cases: list[dict]) -> dict:
-    """Correct verdicts per approach and per behaviour, never pooled across approaches."""
+    """Correct verdicts per approach, per behaviour and per journal, never pooled
+    across approaches."""
     table = {}
     for case in cases:
-        row = table.setdefault(case["policy"], {"correct": 0, "total": 0, "by_behaviour": {}})
-        cell = row["by_behaviour"].setdefault(str(case["behaviour"]), [0, 0])
+        row = table.setdefault(case["policy"], {"correct": 0, "total": 0,
+                                                "by_behaviour": {}, "by_journal": {}})
         row["correct"] += case["correct"]
         row["total"] += 1
-        cell[0] += case["correct"]
-        cell[1] += 1
+        for axis, value in (("by_behaviour", str(case["behaviour"])),
+                            ("by_journal", case["journal"])):
+            cell = row[axis].setdefault(value, [0, 0])
+            cell[0] += case["correct"]
+            cell[1] += 1
     return table
 
 
@@ -128,16 +145,18 @@ def main_run(args) -> int:
     check_budget(args.max_tool_calls, args.max_turns)
     if not 1 <= args.repetitions <= 5:
         raise ValueError("repetitions must stay between 1 and 5")
-    corpus = load_corpus()
+    corpus = load_corpus(args.lot)
     require_nato()
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     metadata = {"schema_version": 1, "git_commit": commit, "provider": args.provider,
                 "model": args.model, "runner": os.environ.get("RUNNER_NAME"),
-                "corpus_sha256": corpus_sha256(), "scripts_sha256": scripts_sha256()}
+                "lot": args.lot, "corpus_sha256": corpus_sha256(args.lot),
+                "scripts_sha256": scripts_sha256(), "frozen_sha256": frozen_sha256()}
     write_json(root / "plan.json", {**metadata, "repetitions": args.repetitions,
-                                    "documentations": [case["doc"] for case in corpus],
+                                    "documentations": sorted({case["doc"] for case in corpus}),
+                                    "journals": list(JOURNALS),
                                     "approaches": list(APPROACHES)})
     reachable = provider_preflight(args, root)
     if reachable is not True:
@@ -152,7 +171,8 @@ def main_run(args) -> int:
                 # Rotate the order so no approach always runs first on a documentation.
                 shift = (repetition + index) % len(APPROACHES)
                 for policy in APPROACHES[shift:] + APPROACHES[:shift]:
-                    directory = root / f"trial-{repetition:02d}" / case["doc"].removesuffix(".md") / policy
+                    directory = (root / f"trial-{repetition:02d}" / case["doc"].removesuffix(".md")
+                                 / case["journal"] / policy)
                     evaluation = run_approach(case, policy, directory, args,
                                               {**metadata, "repetition": repetition})
                     results["cases"].append({**evaluation, "repetition": repetition,
@@ -176,13 +196,15 @@ def public_summary(root: Path) -> dict:
     return {
         "scope": results.get("scope"), "git_commit": results.get("git_commit"),
         "model": results.get("model"), "repetitions": results.get("repetitions"),
-        "scripts_sha256": results.get("scripts_sha256"),
+        "lot": results.get("lot"), "scripts_sha256": results.get("scripts_sha256"),
+        "frozen_sha256": results.get("frozen_sha256"),
         "corpus_sha256": results.get("corpus_sha256"),
         "provider_preflight": json.loads(preflight.read_text()) if preflight.is_file() else None,
         "provider_preflight_error": (json.loads(preflight_error.read_text())
                                      if preflight_error.is_file() else None),
         "summary": results.get("summary"),
-        "cases": [{key: case.get(key) for key in ("repetition", "doc", "behaviour", "policy",
+        "cases": [{key: case.get(key) for key in ("repetition", "doc", "journal", "behaviour",
+                                                  "policy",
                                                   "status", "expected", "verdict", "correct",
                                                   "spend")}
                   for case in results.get("cases", [])],
@@ -197,6 +219,9 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--provider", choices=[PROVIDER], default=PROVIDER)
     parser.add_argument("--model", choices=list(MODEL_PANEL), default=MODEL)
+    parser.add_argument("--lot", choices=list(LOTS), default="connu",
+                        help="connu: the nine documentations the strongest script was written "
+                             "against; inedit: documentations written after it was frozen")
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--max-tool-calls", type=int, default=MAX_TOOL_CALLS)
     parser.add_argument("--max-turns", type=int, default=MAX_TURNS)

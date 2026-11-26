@@ -1,7 +1,7 @@
 name: Revocation and queued commands (manual dev2)
 
-# Manual challenge probe. The documentations and the journal are frozen; the
-# three scripts and the model read the same inputs and feed no admission;
+# Manual challenge probe. The documentations and the journals are frozen; the
+# scripts and the model read the same inputs and feed no admission;
 # evidence stays on nato. No fixture is created: the only remote call is the
 # provider. Run it from dev/2, like every other laboratory controller.
 on:
@@ -22,6 +22,14 @@ on:
         options:
           - qwen3.8:27b
           - gemma4:26b-a4b-it-q4_K_M
+      lot:
+        description: Documentation set (connu = written against; inedit = written after the freeze)
+        required: true
+        default: connu
+        type: choice
+        options:
+          - connu
+          - inedit
       repetitions:
         description: Independent repetitions per documentation
         required: true
@@ -52,6 +60,7 @@ jobs:
       REV_PROVIDER: ${{ inputs.provider }}
       REV_MODEL: ${{ inputs.model }}
       REV_REPETITIONS: ${{ inputs.repetitions }}
+      REV_LOT: ${{ inputs.lot }}
     steps:
       - name: Execute every approach under the shared laboratory lock
         shell: bash
@@ -59,7 +68,7 @@ jobs:
           # The rebuilt runner is unprivileged; /var/lib/lance and the instance
           # belong to root. Re-exec through passwordless sudo, as the deployment does.
           if [ "$(id -u)" != 0 ]; then
-            exec sudo -n --preserve-env=RUNNER_NAME,GITHUB_EVENT_NAME,GITHUB_REF,TRIAL_NAME,EXPECTED_SHA,PYTHONUNBUFFERED,LANCE_LAB_LOCK,LANCE_MQTT_LOCK_HELD,REV_PROVIDER,REV_MODEL,REV_REPETITIONS bash "$0"
+            exec sudo -n --preserve-env=RUNNER_NAME,GITHUB_EVENT_NAME,GITHUB_REF,TRIAL_NAME,EXPECTED_SHA,PYTHONUNBUFFERED,LANCE_LAB_LOCK,LANCE_MQTT_LOCK_HELD,REV_PROVIDER,REV_MODEL,REV_REPETITIONS,REV_LOT bash "$0"
           fi
           set -euo pipefail
           umask 077
@@ -76,6 +85,9 @@ jobs:
           case "$REV_MODEL" in
             qwen3.8:27b|gemma4:26b-a4b-it-q4_K_M) ;;
             *) echo "Model outside the declared V2 panel" >&2; exit 1 ;;
+          esac
+          case "$REV_LOT" in connu|inedit) ;; *)
+            echo "Lot must be connu or inedit" >&2; exit 1 ;;
           esac
           case "$REV_REPETITIONS" in 1|2|3) ;; *)
             echo "Repetitions must be 1, 2 or 3" >&2; exit 1 ;;
@@ -100,7 +112,7 @@ jobs:
             venv/bin/python -m benchmarks.experiments.revocation_commandes_attente.live run \
             --output "output/revocation-commandes/$TRIAL_NAME" \
             --provider "$REV_PROVIDER" --model "$REV_MODEL" \
-            --repetitions "$REV_REPETITIONS" \
+            --lot "$REV_LOT" --repetitions "$REV_REPETITIONS" \
             > "output/revocation-commandes/$TRIAL_NAME.console.log" 2>&1 || status=$?
           if [ "$status" -ne 0 ]; then
             echo "Controller exited with status $status" >&2
