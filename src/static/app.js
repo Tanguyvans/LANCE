@@ -3,6 +3,8 @@
 
 // ── State ──────────────────────────────────────────────────────────────────
 let cy = null;           // Cytoscape instance
+let lastTopologyData = null; // last /api/topology payload, redrawn by the 3D view
+let topologyView3d = false;  // 3D isometric view replaces Cytoscape while true
 let eventSource = null;  // SSE connection
 let activeRunId = null;  // run being viewed in detail panel
 let activeRunFiles = []; // deliverables available for the selected historical run
@@ -1011,6 +1013,48 @@ function initGraphToolbar() {
   // Color mode buttons
   document.getElementById('color-type')?.addEventListener('click', () => _setColorMode('type'));
   document.getElementById('color-security')?.addEventListener('click', () => _setColorMode('security'));
+
+  document.getElementById('view-3d')?.addEventListener('click', () => setTopologyView3d(!topologyView3d));
+}
+
+// three.js is only fetched the first time the 3D view is opened
+let _threeLoading = null;
+function _loadThree() {
+  const files = ['three.min.js', 'three-OrbitControls.js', 'three-CSS2DRenderer.js', 'topology3d.js'];
+  _threeLoading ||= files.reduce((ready, file) => ready.then(() => new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = `/static/${file}`; s.onload = resolve; s.onerror = () => reject(new Error(`${file} introuvable`));
+    document.head.appendChild(s);
+  })), Promise.resolve());
+  return _threeLoading;
+}
+
+async function renderTopology3d() {
+  if (!lastTopologyData) return;
+  try {
+    await _loadThree();
+  } catch (err) {
+    _threeLoading = null;
+    console.error('Vue 3D indisponible', err);
+    setTopologyView3d(false);
+    return;
+  }
+  if (!topologyView3d) return;
+  Topology3D.show(document.getElementById('topo3d'), lastTopologyData, {
+    onSelect: data => showNodeDetail(data),
+    onClear: () => hideDetail(),
+  });
+}
+
+function setTopologyView3d(on) {
+  topologyView3d = on;
+  document.getElementById('view-3d')?.classList.toggle('active', on);
+  document.getElementById('graph-wrap')?.classList.toggle('view-3d', on);
+  if (on) renderTopology3d();
+  else {
+    window.Topology3D?.hide();
+    if (cy) requestAnimationFrame(() => { cy.resize(); cy.fit(undefined, 50); });
+  }
 }
 
 function initGraphInteractions() {
@@ -1076,6 +1120,8 @@ function showSealedTopologyPlaceholder() {
   nodeVulns = {};
   nodeHosts = {};
   if (cy) cy.elements().remove();
+  lastTopologyData = null;
+  if (window.Topology3D) Topology3D.hide();
   _updateTopologyTable([]);
   const loading = document.getElementById('cy-loading');
   if (loading) {
@@ -1103,6 +1149,9 @@ async function loadTopology(scenarioId = null, suppliedData = null) {
     cyDiv.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px">Impossible de charger la topologie</div>';
     return;
   }
+
+  lastTopologyData = data;
+  if (topologyView3d) renderTopology3d();
 
   nodeVulns = {};
   nodeHosts = {};

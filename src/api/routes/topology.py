@@ -134,14 +134,20 @@ def _load_scenario(scenario_id: str) -> dict:
         role = svc.get("role", "")
         dev_type = ROLE_TO_TYPE.get(role, "compute")
         name = svc.get("name_template", "s{sid}-device").format(sid=scenario_id)
-        nodes.append({
+        node = {
             "id": name,
             "label": name,
             "ip": svc.get("ip", ""),
             "type": dev_type,
             "services": [role],
             "color": DEVICE_TYPE_COLORS.get(dev_type, "#3498db"),
-        })
+        }
+        # Addressing used by the 3D view to draw subnets and dual-homed bridges;
+        # security_profile stays private because it encodes the expected answer.
+        for key in ("vlan_id", "secondary_ip", "secondary_vlan_id"):
+            if svc.get(key) is not None:
+                node[key] = svc[key]
+        nodes.append(node)
 
     # Build edges: router ↔ each service (default star topology)
     edges = []
@@ -164,13 +170,19 @@ def _load_scenario(scenario_id: str) -> dict:
         edge_id = f"{source}-{target}"
         # Avoid duplicating router→service edges
         if not any(e["id"] == edge_id for e in edges):
-            edges.append({
+            edge = {
                 "id": edge_id,
                 "source": source,
                 "target": target,
                 "protocol": link.get("protocol", "mqtt"),
                 "color": PROTOCOL_COLORS.get(link.get("protocol", "mqtt"), "#8e44ad"),
-            })
+                "declared": True,
+            }
+            # A reachability or enforcement constraint marks a pivot step, not a plain flow
+            enforcement = link.get("reachability") or link.get("enforcement")
+            if enforcement:
+                edge["enforcement"] = enforcement
+            edges.append(edge)
 
     subnets = topo.get("subnets") or []
     if not subnets:

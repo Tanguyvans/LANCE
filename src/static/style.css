@@ -441,6 +441,7 @@ input[type=number] { -moz-appearance: textfield; }
 .simple-run-stage > * { max-width: 560px; width: 100%; }
 .simple-run-view #graph-toolbar,
 .simple-run-view #cy,
+.simple-run-view #topo3d,
 .simple-run-view #cy-loading,
 .simple-run-view #graph-legend { display: none !important; }
 .stage-kicker { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
@@ -709,6 +710,37 @@ button:disabled { opacity: .35; cursor: default; }
   height: 100%;
   background: var(--bg);
 }
+
+/* ── 3D isometric topology (topology3d.js) ───────────────────────────────── */
+#topo3d { flex: 1; position: relative; min-height: 0; background: var(--bg); overflow: hidden; }
+#graph-wrap.view-3d #cy,
+#graph-wrap.view-3d #graph-legend,
+#graph-wrap.view-3d .layout-btn,
+#graph-wrap.view-3d #graph-fit,
+#graph-wrap.view-3d .color-mode-btn { display: none; }
+.graph-btn-text { font-size: 13px; font-weight: 600; letter-spacing: .02em; }
+.t3d-stage { position: absolute; inset: 0; }
+.t3d-stage canvas { display: block; }
+.t3d-labels { position: absolute; inset: 0; pointer-events: none; }
+.t3d-tools { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; z-index: 5; }
+.t3d-btn { font-size: 12px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+.t3d-btn:hover { border-color: var(--muted); }
+.t3d-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.t3d-legend { position: absolute; left: 12px; right: 12px; bottom: 30px; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12.5px; color: var(--text); pointer-events: none; }
+.t3d-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.t3d-cube { width: 11px; height: 11px; border-radius: 2px; }
+.t3d-arrow { width: 24px; height: 2px; background: currentColor; position: relative; }
+.t3d-arrow::after { content: ""; position: absolute; right: -2px; top: -4px; border: 5px solid transparent; border-left: 7px solid currentColor; border-right: 0; }
+.t3d-plank { width: 24px; height: 9px; border: 1px solid #ba7517; background: rgba(239,159,39,.35); }
+.t3d-hint { position: absolute; left: 12px; bottom: 8px; font-size: 11px; color: var(--muted); pointer-events: none; }
+.t3d-lbl { color: #f2f2f2; text-align: center; white-space: nowrap; font-size: 14px; line-height: 1.15; text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg); }
+.t3d-lbl small { display: block; font-size: 11.5px; color: #c9c9c4; }
+.t3d-no-ip .t3d-ip { display: none; }
+.t3d-lbl.t3d-dim { opacity: .2; }
+.t3d-zone { font-size: 14px; }
+.t3d-step { font-size: 12.5px; color: #d8d8d3; }
+.t3d-flow { font-size: 11px; color: #85b7eb; display: none; }
+.t3d-flow.t3d-on { display: block; }
 
 /* ── Graph toolbar separator ─────────────────────────────────────────────── */
 .toolbar-sep {

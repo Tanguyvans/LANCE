@@ -296,6 +296,8 @@
           <path d="M2 6V2h4"/><path d="M10 2h4v4"/><path d="M14 10v4h-4"/><path d="M6 14H2v-4"/>
         </svg>
       </button>
+      <!-- Isometric 3D view -->
+      <button class="graph-btn graph-btn-text" id="view-3d" title="Vue 3D isométrique" aria-label="Basculer en vue 3D isométrique">3D</button>
       <hr class="toolbar-sep" aria-hidden="true">
       <!-- Color mode: Type -->
       <button class="graph-btn color-mode-btn active" id="color-type" title="Couleurs par type de device" aria-label="Colorer par type de device">
@@ -326,6 +328,7 @@
       <p id="simple-stage-hint" class="stage-hint">Les appels d'outils apparaissent dans le journal. Le résumé et les fichiers sont disponibles dans l'historique après le run.</p>
     </div>
     <div id="cy"></div>
+    <div id="topo3d" hidden></div>
     <div id="cy-loading" aria-live="polite" style="display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;pointer-events:none">Chargement de la topologie…</div>
     <table id="topology-table" class="sr-only" aria-label="Topologie réseau">
       <caption>Liste des équipements du réseau</caption>

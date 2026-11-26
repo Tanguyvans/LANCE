@@ -36,6 +36,20 @@ def test_public_test_topology_is_visible():
     assert "s20-vault" in node_ids
 
 
+def test_topology_exposes_bridges_and_pivot_steps_without_profiles():
+    topology = _load_scenario("20")
+    nodes = {node["id"]: node for node in topology["nodes"]}
+
+    assert nodes["s20-entry"]["secondary_ip"] == "192.168.110.11"
+    assert nodes["s20-relay"]["vlan_id"] == 110
+    assert nodes["s20-relay"]["secondary_vlan_id"] == 120
+    assert all("security_profile" not in node for node in topology["nodes"])
+
+    declared = [edge for edge in topology["edges"] if edge.get("declared")]
+    assert [edge.get("enforcement") for edge in declared] == ["direct", "vlan110-only", "vlan120-only"]
+    assert not any(edge.get("declared") for edge in topology["edges"] if edge["source"] == "s20-router")
+
+
 def test_unknown_topology_returns_not_found():
     with pytest.raises(HTTPException) as exc:
         _load_scenario("does-not-exist")
