@@ -1,0 +1,17 @@
+{
+  "01-asteron-gateway-user-manual.md": {"behaviour": 1},
+  "02-brindle-faq.md": {"behaviour": 1},
+  "03-cindervale-release-notes-3-8.md": {"behaviour": 1},
+  "04-dovetail-api-reference.md": {"behaviour": 1},
+  "05-embergrid-security-guide.md": {"behaviour": 1},
+  "06-fallow-connect-support-article.md": {"behaviour": 1},
+  "07-garnetbridge-operations-manual.md": {"behaviour": 2},
+  "08-hearthstone-faq.md": {"behaviour": 2},
+  "09-ivorypeak-release-notes-5-2.md": {"behaviour": 2},
+  "10-junipernode-api-guide.md": {"behaviour": 2},
+  "11-kairoedge-security-overview.md": {"behaviour": 2},
+  "12-lumenfield-datasheet.md": {"behaviour": 2},
+  "13-morrowlink-user-guide.md": {"behaviour": 3, "period_s": 7200},
+  "14-northstar-relay-faq.md": {"behaviour": 3, "period_s": 86400},
+  "15-oakline-administrator-reference.md": {"behaviour": 3, "period_s": 129600}
+}
