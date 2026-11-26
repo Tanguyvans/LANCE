@@ -1,0 +1,724 @@
+{
+  "git_status_porcelain": [
+    "?? G6259_Milestone3_UMONS_FINAL.docx",
+    "?? recommandations-mini-pc.pdf",
+    "?? tools/"
+  ],
+  "tracked": {
+    "total_tracked": 967,
+    "by_top": {
+      "src": 266,
+      "benchmarks": 210,
+      "tests": 209,
+      "research": 89,
+      "docs": 56,
+      "metric": 29,
+      "model_training": 23,
+      "presentations": 17,
+      ".github": 16,
+      "scripts": 15,
+      "(root)": 10,
+      "report": 7,
+      "objectifs": 6,
+      "paper": 6,
+      "deploy": 3,
+      "docker": 2,
+      "infrastructure": 2,
+      "output": 1
+    },
+    "size_mb_by_top": {
+      "research": 8.31,
+      "presentations": 3.6,
+      "src": 3.34,
+      "tests": 2.03,
+      "docs": 1.7,
+      "benchmarks": 1.65,
+      "paper": 0.56,
+      "report": 0.36,
+      "metric": 0.29,
+      "scripts": 0.13,
+      "model_training": 0.08,
+      ".github": 0.06,
+      "objectifs": 0.06,
+      "(root)": 0.03,
+      "infrastructure": 0.01,
+      "docker": 0.0,
+      "deploy": 0.0,
+      "output": 0.0
+    },
+    "large_tracked_files_gt_500kb": [
+      [
+        2.22,
+        "presentations/2026-10-23-progress-report/slides.pdf"
+      ],
+      [
+        0.7,
+        "presentations/2026-10-23-progress-report/assets/architecture-thesis-en.png"
+      ],
+      [
+        0.68,
+        "research/2026-10-12-recentrage-corpus/coverage-plan.json"
+      ],
+      [
+        0.56,
+        "docs/images/dashboard-main.png"
+      ],
+      [
+        0.56,
+        "docs/images/dashboard-benchmark.png"
+      ],
+      [
+        0.52,
+        "research/2026-10-12-recentrage-corpus/structuration-corpus.pdf"
+      ]
+    ],
+    "suspicious_tracked_artifacts": [],
+    "extensions": {
+      ".py": 456,
+      ".yaml": 167,
+      ".md": 121,
+      ".tex": 50,
+      ".yml": 35,
+      ".pdf": 28,
+      ".json": 26,
+      ".txt": 22,
+      ".sh": 14,
+      ".html": 9,
+      "(no ext)": 8,
+      ".png": 8,
+      ".js": 4,
+      ".example": 2,
+      ".service": 2
+    }
+  },
+  "python": {
+    "prod_py_files": 244,
+    "all_py_files": 456,
+    "top_20_largest_py_files": [
+      [
+        3158,
+        "src/benchmark/evaluator.py",
+        56,
+        3
+      ],
+      [
+        2542,
+        "src/agent/scanner.py",
+        52,
+        0
+      ],
+      [
+        2067,
+        "src/agent/exploit_evidence.py",
+        54,
+        0
+      ],
+      [
+        1519,
+        "src/agent/phases/intrusion/compact.py",
+        32,
+        1
+      ],
+      [
+        1331,
+        "src/learning/error_mining.py",
+        39,
+        1
+      ],
+      [
+        1256,
+        "src/agent/moe_server.py",
+        40,
+        2
+      ],
+      [
+        1246,
+        "src/agent/provider.py",
+        31,
+        2
+      ],
+      [
+        1245,
+        "src/api/routes/runs.py",
+        45,
+        1
+      ],
+      [
+        1226,
+        "src/benchmark/scenario_generator.py",
+        48,
+        2
+      ],
+      [
+        1175,
+        "src/agent/phases/recon/run.py",
+        31,
+        1
+      ],
+      [
+        1102,
+        "src/agent/tools/recon_tools.py",
+        28,
+        1
+      ],
+      [
+        1051,
+        "src/api/routes/pipeline.py",
+        31,
+        4
+      ],
+      [
+        974,
+        "src/agent/phases/intrusion/run.py",
+        20,
+        1
+      ],
+      [
+        946,
+        "src/agent/pipeline.py",
+        10,
+        1
+      ],
+      [
+        923,
+        "scripts/analysis/summarize_archived_campaign.py",
+        19,
+        1
+      ],
+      [
+        882,
+        "src/benchmark/scenario_alterations.py",
+        29,
+        1
+      ],
+      [
+        839,
+        "src/agent/phases/analysis/run.py",
+        22,
+        1
+      ],
+      [
+        791,
+        "src/agent/core/runner.py",
+        14,
+        1
+      ],
+      [
+        773,
+        "src/benchmark/aggregate.py",
+        27,
+        0
+      ],
+      [
+        749,
+        "src/agent/phases/verification/run.py",
+        11,
+        1
+      ]
+    ],
+    "top_20_largest_functions": [
+      [
+        866,
+        198,
+        "src/benchmark/evaluator.py",
+        2038,
+        "evaluate"
+      ],
+      [
+        799,
+        228,
+        "src/agent/provider.py",
+        428,
+        "_openai_loop"
+      ],
+      [
+        770,
+        264,
+        "src/agent/exploit_evidence.py",
+        1298,
+        "synthesize_exploit_result"
+      ],
+      [
+        690,
+        174,
+        "src/agent/phases/intrusion/compact.py",
+        130,
+        "_apply_compact_intrusion_tool_contract"
+      ],
+      [
+        502,
+        75,
+        "src/agent/phases/verification/run.py",
+        38,
+        "_run_exploit_agents"
+      ],
+      [
+        392,
+        86,
+        "src/agent/pipeline.py",
+        486,
+        "_execute_run"
+      ],
+      [
+        391,
+        82,
+        "src/agent/core/runner.py",
+        253,
+        "_run_agent"
+      ],
+      [
+        374,
+        111,
+        "src/agent/phases/intrusion/run.py",
+        558,
+        "_generate_intrusion_context"
+      ],
+      [
+        342,
+        72,
+        "src/agent/phases/recon/run.py",
+        468,
+        "_apply_recon_tool_contract"
+      ],
+      [
+        341,
+        43,
+        "src/agent/phases/verification/run.py",
+        135,
+        "_run_single_exploit"
+      ],
+      [
+        330,
+        91,
+        "scripts/analysis/summarize_archived_campaign.py",
+        298,
+        "summarize_run"
+      ],
+      [
+        307,
+        46,
+        "src/agent/phases/report/rendering.py",
+        393,
+        "_render_report_from_facts"
+      ],
+      [
+        285,
+        44,
+        "src/benchmark/aggregate.py",
+        486,
+        "aggregate_evaluations"
+      ],
+      [
+        266,
+        69,
+        "benchmarks/ansible/files/benchmark_simulator.py",
+        118,
+        "do_GET"
+      ],
+      [
+        253,
+        66,
+        "src/agent/validators/__init__.py",
+        303,
+        "validate_json_intrusion"
+      ],
+      [
+        247,
+        101,
+        "src/agent/phases/verification/contract.py",
+        161,
+        "_phase4_verification_plan"
+      ],
+      [
+        239,
+        37,
+        "src/agent/phases/graph/recovery.py",
+        472,
+        "_recover_truncated_full_graph"
+      ],
+      [
+        237,
+        51,
+        "src/agent/tools/mqtt_ws.py",
+        187,
+        "mqtt_ws_listen"
+      ],
+      [
+        236,
+        84,
+        "src/agent/phases/intrusion/run.py",
+        320,
+        "_synthesize_intrusion_from_tools"
+      ],
+      [
+        233,
+        103,
+        "src/agent/phases/intrusion/compact.py",
+        1250,
+        "_compact_intrusion_coverage"
+      ]
+    ],
+    "top_15_largest_classes": [
+      [
+        1437,
+        0,
+        "src/agent/phases/intrusion/compact.py",
+        83,
+        "CompactIntrusionPhase"
+      ],
+      [
+        1134,
+        0,
+        "src/benchmark/scenario_generator.py",
+        93,
+        "ScenarioGenerator"
+      ],
+      [
+        1126,
+        0,
+        "src/agent/phases/recon/run.py",
+        43,
+        "ReconPhase"
+      ],
+      [
+        969,
+        0,
+        "src/agent/provider.py",
+        278,
+        "LLMProvider"
+      ],
+      [
+        907,
+        14,
+        "src/agent/pipeline.py",
+        40,
+        "Pipeline"
+      ],
+      [
+        895,
+        0,
+        "src/agent/phases/intrusion/run.py",
+        74,
+        "IntrusionPhase"
+      ],
+      [
+        764,
+        0,
+        "src/agent/core/runner.py",
+        28,
+        "AgentRunner"
+      ],
+      [
+        709,
+        0,
+        "src/agent/phases/verification/run.py",
+        34,
+        "VerificationPhase"
+      ],
+      [
+        654,
+        0,
+        "src/agent/phases/analysis/run.py",
+        30,
+        "AnalysisPhase"
+      ],
+      [
+        539,
+        0,
+        "src/benchmark/scenario_builder.py",
+        45,
+        "ScenarioBuilder"
+      ],
+      [
+        529,
+        0,
+        "src/benchmark/scenario_composer.py",
+        72,
+        "ScenarioComposer"
+      ],
+      [
+        517,
+        0,
+        "src/agent/core/lifecycle.py",
+        18,
+        "ScenarioLifecycle"
+      ],
+      [
+        501,
+        1,
+        "benchmarks/ansible/files/benchmark_simulator.py",
+        76,
+        "Handler"
+      ],
+      [
+        358,
+        0,
+        "src/agent/phases/graph/recovery.py",
+        353,
+        "GraphRecoveryPhase"
+      ]
+    ],
+    "bare_excepts_count": 2,
+    "bare_excepts_sample": [
+      [
+        "model_training/prepare_dataset.py",
+        75
+      ],
+      [
+        "src/agent/provider.py",
+        1029
+      ]
+    ],
+    "broad_silent_excepts_count": 24,
+    "broad_silent_excepts_sample": [
+      [
+        "src/agent/batch.py",
+        506,
+        "Exception"
+      ],
+      [
+        "src/agent/core/lifecycle.py",
+        259,
+        "Exception"
+      ],
+      [
+        "src/agent/core/provider_transport.py",
+        70,
+        "Exception"
+      ],
+      [
+        "src/agent/core/provider_transport.py",
+        89,
+        "Exception"
+      ],
+      [
+        "src/agent/core/runtime.py",
+        204,
+        "Exception"
+      ],
+      [
+        "src/agent/moe_server.py",
+        257,
+        "Exception"
+      ],
+      [
+        "src/agent/phases/intrusion/run.py",
+        886,
+        "Exception"
+      ],
+      [
+        "src/agent/phases/intrusion/run.py",
+        447,
+        "Exception"
+      ],
+      [
+        "src/agent/phases/intrusion/run.py",
+        456,
+        "Exception"
+      ],
+      [
+        "src/agent/pipeline.py",
+        565,
+        "Exception"
+      ],
+      [
+        "src/agent/pipeline.py",
+        304,
+        "BaseException"
+      ],
+      [
+        "src/agent/provider.py",
+        259,
+        "Exception"
+      ],
+      [
+        "src/agent/provider.py",
+        502,
+        "Exception"
+      ],
+      [
+        "src/agent/tools/graph_tools.py",
+        252,
+        "Exception"
+      ],
+      [
+        "src/agent/tools/mqtt_ws.py",
+        342,
+        "Exception"
+      ],
+      [
+        "src/agent/tools/mqtt_ws.py",
+        346,
+        "Exception"
+      ],
+      [
+        "src/agent/tools/recon_tools.py",
+        229,
+        "Exception"
+      ],
+      [
+        "src/api/routes/pipeline.py",
+        330,
+        "Exception"
+      ],
+      [
+        "src/api/routes/pipeline.py",
+        815,
+        "Exception"
+      ],
+      [
+        "src/api/routes/runs.py",
+        555,
+        "Exception"
+      ],
+      [
+        "src/api/routes/runs.py",
+        332,
+        "Exception"
+      ],
+      [
+        "src/api/routes/runs.py",
+        340,
+        "Exception"
+      ],
+      [
+        "src/api/routes/runs.py",
+        365,
+        "Exception"
+      ],
+      [
+        "src/api/routes/runs.py",
+        355,
+        "Exception"
+      ]
+    ],
+    "todos_count": 0,
+    "todos_sample": [],
+    "hardcoded_tailscale_ips": [
+      [
+        "benchmarks/ansible/files/api_reference_proxmox.py",
+        221,
+        "100.76.206.65",
+        "if not any(item.get('local') == '100.76.206.65' for interface in addresses"
+      ],
+      [
+        "benchmarks/ansible/files/api_reference_proxmox.py",
+        249,
+        "100.76.206.65",
+        "'host': command('hostname', '-s').stdout.strip(), 'verified_tailnet_ip': '100.76.206.65'}"
+      ],
+      [
+        "benchmarks/ansible/files/mqtt_reference_proxmox.py",
+        178,
+        "100.76.206.65",
+        "if not any(item.get('local') == '100.76.206.65' for interface in addresses"
+      ],
+      [
+        "benchmarks/ansible/files/mqtt_reference_proxmox.py",
+        206,
+        "100.76.206.65",
+        "'host': command('hostname', '-s').stdout.strip(), 'verified_tailnet_ip': '100.76.206.65'}"
+      ],
+      [
+        "benchmarks/ansible/files/ssh_reference_proxmox.py",
+        158,
+        "100.76.206.65",
+        "if not any(item.get('local') == '100.76.206.65' for interface in addresses"
+      ],
+      [
+        "benchmarks/ansible/files/ssh_reference_proxmox.py",
+        186,
+        "100.76.206.65",
+        "'host': command('hostname', '-s').stdout.strip(), 'verified_tailnet_ip': '100.76.206.65'}"
+      ]
+    ],
+    "third_party_imports": {
+      "yaml": 35,
+      "fastapi": 23,
+      "dotenv": 9,
+      "torch": 7,
+      "pydantic": 7,
+      "transformers": 6,
+      "requests": 6,
+      "peft": 5,
+      "networkx": 5,
+      "trl": 3,
+      "datasets": 2,
+      "openai": 2,
+      "chromadb": 2,
+      "pymodbus": 2,
+      "pytest": 1,
+      "voyageai": 1,
+      "uvicorn": 1,
+      "paho": 1,
+      "starlette": 1,
+      "sse_starlette": 1,
+      "pyvis": 1
+    },
+    "zero_static_import_src_modules": [
+      [
+        "src/cve_cli.py",
+        "src.cve_cli"
+      ],
+      [
+        "src/graph_backend.py",
+        "src.graph_backend"
+      ],
+      [
+        "src/learning/git_compatibility.py",
+        "src.learning.git_compatibility"
+      ],
+      [
+        "src/models.py",
+        "src.models"
+      ],
+      [
+        "src/risk_cli.py",
+        "src.risk_cli"
+      ],
+      [
+        "src/visualize.py",
+        "src.visualize"
+      ]
+    ]
+  },
+  "static_assets": [
+    [
+      4330,
+      202634,
+      "src/static/app.js"
+    ],
+    [
+      2148,
+      79578,
+      "src/static/style.css"
+    ],
+    [
+      729,
+      28945,
+      "src/static/scenario_generator.js"
+    ],
+    [
+      588,
+      31221,
+      "src/static/index.html"
+    ],
+    [
+      88,
+      5021,
+      "src/static/activity.js"
+    ],
+    [
+      32,
+      372530,
+      "src/static/cytoscape.min.js"
+    ]
+  ],
+  "docs_research": {
+    "research_folders_count": 13,
+    "unindexed_research_folders": [
+      "2026-11-09-methodo-eval-papier"
+    ],
+    "broken_links_in_core_docs": []
+  }
+}

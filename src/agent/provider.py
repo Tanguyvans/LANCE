@@ -1028,8 +1028,15 @@ class LLMProvider:
                         reason="stop",
                     )
                     return finish("(stopped by user)", "stop", current_turn=turn + 1)
-                try: args = json.loads(tc.function.arguments) if tc.function.arguments else {}
-                except: args = {}
+                try:
+                    args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                except (json.JSONDecodeError, TypeError) as exc:
+                    log.warning(
+                        "Invalid JSON arguments for tool %s: %s",
+                        tc.function.name,
+                        exc,
+                    )
+                    args = {}
                 if stream_callback: stream_callback({"type": "tool_call", "name": tc.function.name, "args": args})
                 canonical_args = json.dumps(
                     args, sort_keys=True, separators=(",", ":"), ensure_ascii=False

@@ -72,7 +72,7 @@ def format_txt_trace(trace_file: str) -> list:
                 
                 try:
                     args = json.loads(args_str)
-                except:
+                except (json.JSONDecodeError, TypeError):
                     args = {}
                 
                 action = {"tool": tool, "args": args}

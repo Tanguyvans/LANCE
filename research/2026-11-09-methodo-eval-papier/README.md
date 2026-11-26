@@ -1,6 +1,6 @@
 # Méthodologie d'évaluation pour le papier : registre de décisions
 
-**Cycle de vie : Ouvert** — note ouverte le **2026-11-09 (Europe/Brussels,
+**Cycle de vie : Actif** — note ouverte le **2026-11-09 (Europe/Brussels,
 UTC+01:00)**. Statut : **registre de décisions, aucune implémentation ; squelette
 de la section « évaluation » du papier.**
 

@@ -1,0 +1,107 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage[margin=2cm]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{tikz}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!50!black,
+  pdftitle={Audit technique du dépôt LANCE},
+  pdfauthor={Équipe LANCE}
+}
+
+\title{\textbf{Audit technique du dépôt LANCE}\\
+\large Ce qu'il convient de corriger, d'optimiser et de supprimer dans \texttt{NATO-SmartCity-IoT}}
+\author{Équipe LANCE (UMONS)}
+\date{Dernière révision : 2026-11-25 09:05 (Europe/Brussels, UTC+01:00)\\
+Branche \texttt{feat/audit-mode}, commit \texttt{bbaffdf} — Statut : Conclu (diagnostic statique)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Cet audit statique évalue l'état du dépôt \textbf{LANCE} (\texttt{NATO-SmartCity-IoT}) au 25 novembre 2026 afin d'identifier les corrections prioritaires, les pistes d'optimisation et les éléments obsolètes à supprimer. Par rapport au diagnostic du 3 octobre 2026 (\texttt{research/2026-10-03-organisation-code/}), la base Python de production a crû de \textbf{12,8\,\%} (de 53\,633 à 60\,493 lignes sur 200 fichiers) et l'interface \texttt{src/static/app.js} atteint \textbf{4\,330 lignes} (+15,1\,\%), tandis que le nombre de composantes circulaires passe de 3 à 4. L'audit identifie \textbf{9 points à corriger}, \textbf{7 axes d'optimisation} et \textbf{8 suppressions ou nettoyages sûrs}. Aucun test réseau, déploiement ou run de laboratoire n'a été exécuté.
+\end{abstract}
+
+\tableofcontents
+
+\section{Périmètre, méthode et évolution depuis octobre 2026}
+L'audit porte sur la copie de travail locale au commit \texttt{bbaffdf} (branche \texttt{feat/audit-mode}). Il combine l'analyseur AST du dépôt (\texttt{scripts/analysis/code\_organisation.py}) et une inspection complémentaire de l'arbre Git (967 fichiers suivis, dont 244 fichiers \texttt{.py} hors tests et 212 fichiers de tests), des dépendances, de la configuration Docker, des 15 workflows GitHub Actions et des index documentaires. Les mesures brutes sont conservées dans \texttt{audit-metrics.json}.
+
+\begin{table}[h!]
+\centering
+\caption{Évolution structurelle entre le 3 octobre 2026 et le 25 novembre 2026.}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Métrique (\texttt{code\_organisation.py}) & 2026-10-03 & 2026-11-25 & Évolution \\
+\midrule
+Fichiers Python de production & 175 & 200 & +14,3\,\% \\
+Lignes physiques Python (prod) & 53\,633 & 60\,493 & +12,8\,\% \\
+Lignes \texttt{src/static/app.js} & 3\,761 & 4\,330 & +15,1\,\% \\
+Fichiers de tests & 161 & 212 & +31,7\,\% \\
+Composantes circulaires (portée fonction) & 3 & 4 & +1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Points à corriger (prioritaires)}
+\begin{enumerate}
+  \item \textbf{[P0] Conteneur principal exécuté en \texttt{root} :} \texttt{Dockerfile} n'a aucune directive \texttt{USER} alors que \texttt{docker-compose.yml} active \texttt{network\_mode: host}. Appliquer le modèle déjà utilisé par \texttt{docker/worker.Dockerfile} (\texttt{setcap cap\_net\_raw+eip /usr/bin/nmap} + utilisateur non-root \texttt{uid 10001}).
+  \item \textbf{[P0] Lancement de scans non authentifié par défaut :} \texttt{src/api/auth.py:121--140} exempte \texttt{POST /api/pipeline/start} et \texttt{/batch} tant que \texttt{LANCE\_REQUIRE\_LAUNCH\_AUTH} est absent. Activer par défaut en mode \texttt{LANCE\_MODE=audit}.
+  \item \textbf{[P0] Téléchargements Docker non vérifiés :} \texttt{Dockerfile:49--71} clone \texttt{nikto} et \texttt{exploitdb} sans commit figé, télécharge \texttt{nuclei} et \texttt{ysoserial.jar} sans SHA-256, et masque les erreurs d'installation via \texttt{|| true} (ligne 46).
+  \item \textbf{[P1] IP Tailscale \texttt{100.76.206.65} codée en dur :} présente dans 3 contrôleurs Proxmox, 3 playbooks Ansible, 1 guide et 1 test, en contradiction avec \texttt{AGENTS.md}. Externaliser en variable d'inventaire unique.
+  \item \textbf{[P1] Exceptions nues et silencieuses :} 2 \texttt{except:} nus (\texttt{src/agent/provider.py:1029}, \texttt{model\_training/prepare\_dataset.py:75}) et 24 blocs \texttt{except Exception: pass} silencieux.
+  \item \textbf{[P1] Erreurs API en français en mode \texttt{audit} :} \texttt{src/api/auth.py:40,65,92} renvoie encore des messages français malgré le commit \texttt{bbaffdf}.
+  \item \textbf{[P1] Quatre cycles d'imports (portée fonction) :} ajout de \texttt{scenario\_deployment} $\leftrightarrow$ \texttt{scenario\_exports} aux trois cycles existants.
+  \item \textbf{[P2] Désynchronisation de \texttt{research/README.md} :} \texttt{2026-11-09-methodo-eval-papier/} est non indexé et porte un statut invalide (\texttt{Ouvert}) ; 3 dossiers ont un statut divergent entre index et README ; 4 dossiers \texttt{Actif} dépassent 30 jours sans revue.
+  \item \textbf{[P2] Sessions admin en mémoire :} \texttt{\_sessions = \{\}} dans \texttt{src/api/auth.py:20} empêche le multi-worker et perd les sessions au redémarrage.
+\end{enumerate}
+
+\section{Points à optimiser}
+\begin{itemize}
+  \item \textbf{Fonctions monolithiques :} découper \texttt{evaluator.py::evaluate} (866 lignes, 198 branches), \texttt{provider.py::\_openai\_loop} (799 lignes, 228 branches), \texttt{exploit\_evidence.py::synthesize\_exploit\_result} (770 lignes, 264 branches) et \texttt{compact.py::\_apply\_compact\_intrusion\_tool\_contract} (690 lignes).
+  \item \textbf{Héritage multiple de \texttt{Pipeline} :} remplacer progressivement les 14 mixins (\texttt{src/agent/pipeline.py:40--55}) par une composition explicite autour de \texttt{RunContext}.
+  \item \textbf{Frontend :} scinder \texttt{src/static/app.js} (4\,330 lignes) en modules ES natifs par vue.
+  \item \textbf{Dépendances :} séparer runtime, tests (\texttt{pytest}, \texttt{pytest-xdist}) et extras (\texttt{voyageai}) ; figer les versions dans un lockfile.
+  \item \textbf{Image Docker :} isoler \texttt{default-jre-headless} (~200\,Mo), \texttt{exploitdb} et templates \texttt{nuclei} dans un profil optionnel.
+  \item \textbf{CI/CD :} factoriser les workflows \texttt{*-reference.yml} et retirer \texttt{feat/audit-mode} de \texttt{.github/workflows/docker.yml} après fusion.
+  \item \textbf{Documentation :} mettre à jour \texttt{objectifs/ETAT-COURANT.md} (gelé au 2026-11-06) et resynchroniser \texttt{dev/2}.
+\end{itemize}
+
+\section{Éléments à supprimer ou nettoyer}
+\begin{itemize}
+  \item \texttt{aiofiles>=23.0.0} dans \texttt{requirements.txt} (0 occurrence dans le dépôt).
+  \item \texttt{src/visualize.py} (0 référence) et son unique dépendance \texttt{pyvis>=0.3.2}.
+  \item \texttt{src/cve\_cli.py} et \texttt{src/risk\_cli.py} (0 référence interne ; à archiver ou supprimer après confirmation).
+  \item \texttt{metric/squelette-latex/} (29 fichiers suivis d'un gabarit de mémoire Lorraine INP incluant un workflow GitHub imbriqué).
+  \item \texttt{paper/} à la racine (non documenté dans \texttt{AGENTS.md}, 10,4\,Mo locaux).
+  \item Dossier vide \texttt{training/} à la racine (doublon trompeur avec \texttt{model\_training/}).
+  \item Entrées obsolètes de \texttt{.gitignore} (\texttt{!/src/agent/phases/report/}, \texttt{test\_regex.py}, \texttt{scripts/be.tanguy.*}, \texttt{scripts/vulhub\_monitor.py}).
+  \item Artefacts locaux : \texttt{G6259\_Milestone3\_UMONS\_FINAL.docx}, \texttt{recommandations-mini-pc.pdf}, \texttt{tools/}, \texttt{texput.log}, \texttt{.DS\_Store}, \texttt{tmp/} et rotation d'\texttt{output/} (557\,Mo).
+\end{itemize}
+
+\section{Feuille de route priorisée}
+\begin{description}
+  \item[Vague 1 (0,5--1 jour) :] suppressions sûres (\texttt{aiofiles}, \texttt{pyvis}, \texttt{src/visualize.py}, \texttt{training/}), correction des \texttt{except:} nus et des messages FR de \texttt{auth.py}, synchronisation de \texttt{research/README.md}, nettoyage de \texttt{.gitignore} et de la racine.
+  \item[Vague 2 (1--2 jours) :] durcissement non-root et empreintes SHA-256 dans \texttt{Dockerfile}, \texttt{LANCE\_REQUIRE\_LAUNCH\_AUTH} par défaut en mode \texttt{audit}, externalisation de l'IP \texttt{100.76.206.65}, séparation des dépendances dev/prod, sortie de \texttt{metric/}.
+  \item[Vague 3 (3--6 jours) :] découpage des 4 fonctions critiques, suppression des 4 cycles d'imports, modularisation ES de \texttt{app.js}, factorisation des workflows CI, migration des mixins de \texttt{Pipeline}.
+\end{description}
+
+\section{Limites et références}
+Audit strictement statique sur la copie locale (commit \texttt{bbaffdf}), sans exécution réseau, laboratoire ou tests complets sur ce poste. \texttt{pdflatex} n'étant pas installé localement, \texttt{report.pdf} a été rendu via Chromium headless depuis une source HTML/CSS synchronisée ; ce fichier \texttt{report.tex} constitue la source LaTeX éditable de référence.
+
+\begin{thebibliography}{9}
+\bibitem{repo} Dépôt \texttt{NATO-SmartCity-IoT}, branche \texttt{feat/audit-mode}, commit \texttt{bbaffdf}, inspecté le 2026-11-25.
+\bibitem{prev} \texttt{research/2026-10-03-organisation-code/}, diagnostic statique antérieur (2026-10-03).
+\bibitem{etat} \texttt{objectifs/ETAT-COURANT.md}, état courant du projet (2026-11-06).
+\bibitem{metrics} \texttt{research/2026-11-25-audit-projet/audit-metrics.json}, mesures brutes reproductibles.
+\end{thebibliography}
+
+\end{document}
