@@ -488,7 +488,10 @@ class GraphRecoveryPhase:
         it propagates so the run records budget exhaustion.
         """
         truncated_seen = is_truncation(completion) or bool(
-            isinstance(completion, dict) and completion.get("truncated_save_rejected")
+            isinstance(completion, dict) and (
+                completion.get("truncated_save_rejected")
+                or int(completion.get("length_truncations") or 0) > 0
+            )
         )
         if not truncated_seen:
             return False, (

@@ -383,11 +383,11 @@ def analyze_full_device(
     promoted, validation_error = context.services.promoted_deliverable(
         device_id, deliverable_file, save_receipts[-1] if save_receipts else None
     )
-    if context.profile.name == "full" and block_recovery.is_truncation(full_completion):
+    if not context.compact_local and block_recovery.is_truncation(full_completion):
         # A parseable save in a cut-short response is not a completed analysis.
         promoted = False
     if not promoted:
-        if (context.profile.name == "full"
+        if (not context.compact_local
                 and block_recovery.had_truncation(full_completion)):
             log.warning(
                 "Phase 3 analysis for %s hit output-budget truncation; "

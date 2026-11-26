@@ -303,13 +303,12 @@ class AgentRunner:
         # refused finish is never archived as an attempt.
         if config.name == "intrusion" and not self._uses_compact_local_moe():
             tools = self._apply_intrusion_noop_gate(tools, config.deliverable_file)
-        # Full-profile Phase 1 keeps its autonomous report composition, but a
-        # provider output truncation (finish_reason=length) with no validated
-        # save is recoverable from the recorded graph observations. Compact
-        # mode keeps its deterministic rendering and never enters this path.
+        # Any non-local-moe Phase 1 (both full and compact-profile reasoning
+        # models like flint/gemma4/qwen3) keeps autonomous report composition,
+        # and an output truncation (finish_reason=length) with no validated save
+        # is recoverable via save-only synthesis with reasoning_effort="none".
         full_graph = (
             config.name == "graph_analysis"
-            and self.execution_profile.name == "full"
             and not self._uses_compact_local_moe()
         )
         graph_completion: dict = {}
