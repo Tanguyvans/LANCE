@@ -1,10 +1,13 @@
 # Révocation et commandes en attente : sonde version 3 (préenregistrement)
 
-**Cycle de vie : Actif** — dossier ouvert le **2026-11-26**.
-Dernière révision : **2026-11-26 18:40 (Europe/Brussels, UTC+01:00)**.
-Statut : **préenregistrement commité (`6d547ee`) ; script renforcé figé
-(`11fd948`) avant le lot v3 ; lot v3 rédigé, corrigé contrôlé (un document
-exclu) ; aucun score encore calculé.**
+**Cycle de vie : Conclu** — dossier ouvert le **2026-11-26**, conclu le
+**2026-11-27**.
+Dernière révision : **2026-11-27 01:05 (Europe/Brussels, UTC+01:00)**.
+Statut : **le critère préenregistré est atteint. Le LLM (`qwen3.8:27b`) a
+raison dans 55 des 56 cas en vote majoritaire, contre 30/56 pour le meilleur
+script figé ; seuil : 48/56 et 12 cas d'avance.** Un seul modèle et un seul
+lot : l'épreuve est retenue comme candidate, pas encore comme résultat
+généralisable.
 
 Travaux antérieurs : [première sonde](../2026-11-15-revocation-commandes-attente/README.md)
 et [sonde version 2](../2026-11-26-revocation-sonde-v2/README.md), conclue sur
@@ -139,6 +142,98 @@ Il reste **14 documents × 4 journaux = 56 cas**. Seuils, en pourcentage comme
 préenregistré : le LLM passe avec au moins **48/56** (85 %) **et** au moins
 **12 cas** de plus que le meilleur script (20 points).
 
+## Résultat hors ligne des scripts (après le push `6461f64`)
+
+`python benchmarks/experiments/revocation_commandes_attente/sonde.py --lot v3`,
+14 documentations × 4 journaux :
+
+| Script | Correct |
+| --- | --- |
+| Règle par défaut | 20/56 |
+| Mots-clés avec négations | 20/56 |
+| Extraction de durée | 20/56 |
+| `best` (v2) | 28/56 |
+| **`mechanism` (v3)** | **30/56** |
+
+Les scripts manquent surtout les documents B, où rien ne signale le mécanisme
+(Larkspur, Windrow, Cloudberry, Birchstone), et un A dont les deux faits sont
+dans deux phrases (ArdentRelay).
+
+## Run sur le mini-PC (2026-11-26, terminé le 2026-11-27)
+
+Conditions : workflow manuel depuis `dev/2` au commit `6461f64`, runner
+`nato-master`, instance dev-2, provider `ollama-umons`, modèle `qwen3.8:27b`,
+`lot = v3`, 3 répétitions, limite de temps 20 760 s. Empreintes relevées dans
+le résumé publié : `frozen_sha256 = 7cb52c29…`, `frozen_v3_sha256 = ecdeab03…`,
+corpus `3cf46118…`. Durée : 4 h 56, aucun échec du contrôleur. Les preuves
+complètes restent sur le mini-PC dans
+`/opt/lance-dev-2/output/revocation-commandes/`.
+
+**Décision (vote majoritaire, règle préenregistrée) :**
+
+| Approche | Comportement A | Comportement B | Comportement C | Total |
+| --- | --- | --- | --- | --- |
+| Règles par défaut, mots-clés, durée | 12/12 | 0/24 | 8/20 | 20/56 |
+| `best` (v2) | 8/12 | 4/24 | 16/20 | 28/56 |
+| `mechanism` (v3) | 8/12 | 4/24 | 18/20 | 30/56 |
+| **LLM (`qwen3.8:27b`)** | **12/12** | **24/24** | **19/20** | **55/56** |
+
+Le critère demandait au moins 48/56 et 12 cas de plus que le meilleur script
+(30/56) : **55/56, soit 25 cas d'avance. L'épreuve passe.**
+
+Détail par répétition (168 appels) :
+
+- 154 appels terminés, **153 corrects** ; une seule erreur : Mossbank, attente
+  de 60 h, échéance d'un jour, répondu « comportement prévu » à la
+  répétition 1, puis juste aux deux autres.
+- **14 appels interrompus** par le budget de durée d'un appel (environ 245 s),
+  comptés comme faux. Compté ainsi, le LLM fait 153/168 (91 %), contre 90/168
+  (54 %) pour `mechanism` : le critère tient aussi répétition par répétition.
+- Le seul cas manqué au vote majoritaire, Foxglove avec 60 h d'attente, l'est
+  par deux interruptions ; le seul verdict obtenu est juste.
+- Durée d'un appel : médiane 80 s, moyenne 93 s, maximum 358 s.
+
+**Contrôle a posteriori, hors décision.** Une règle constante « toujours
+comportement prévu » obtient 36/56 sur ce lot (mais 18/36 et 29/60 sur les
+lots précédents) ; le script `mechanism` avec ce défaut au lieu de « faille »
+obtient 35/56. L'avance du LLM reste d'au moins 19 cas.
+
+## Constats
+
+- **Quand la règle se déduit de plusieurs faits, le meilleur script qu'on ait
+  su écrire, en connaissant la consigne, tombe à 54 %, et le LLM reste à 98 %.**
+  En version 2, où la règle tenait en une phrase, les deux étaient à égalité.
+  Les deux résultats ensemble correspondent à la prédiction de H3 : égalité sur
+  un énoncé explicite, avantage du LLM sur la prose qui décrit un mécanisme.
+- L'écart vient surtout du comportement B : conclure qu'aucun contrôle de
+  compte n'a lieu demande de lire tout le circuit de livraison, et non de
+  repérer un mot.
+- Le LLM est stable : un seul cas sur 56 change de verdict entre répétitions.
+
+## Limites
+
+- **Un seul modèle**, un seul lot de 14 documentations, rédigé par un seul LLM
+  extérieur (ChatGPT) : la généralisation à de vraies documentations de
+  constructeurs n'est pas mesurée.
+- **Le script et la consigne viennent du même auteur.** Le script a été
+  renforcé en connaissant la consigne pour lui donner l'avantage, mais un autre
+  auteur pourrait écrire un meilleur script : le test de fermeture porte sur
+  « le meilleur script que nous ayons su écrire ».
+- **Corrigé déduit d'une absence** pour trois documents B et pour le rôle du
+  compte dans les C ; un document ambigu (CopperFern) exclu avant tout score.
+- **Latence** : 8 % des appels interrompus à environ 245 s ; ils pèsent sur un
+  seul cas en vote majoritaire, mais la durée du run (près de 5 h) limite le
+  nombre de répétitions et de modèles.
+- Le journal présenté contient `status=revoked`, identique pour les scripts et
+  le LLM.
+
+## Conclusion
+
+L'épreuve « révocation et commandes en attente », dans sa version 3, passe le
+test de fermeture préenregistré. Elle devient une **épreuve candidate retenue**
+pour H3, à confirmer avec le second modèle du panel et, si possible, de vraies
+documentations de constructeurs, avant d'entrer dans le benchmark.
+
 ## Consigne de rédaction du lot v3
 
 À donner telle quelle à un LLM extérieur, **après** le push du gel du script :
@@ -206,5 +301,8 @@ prévu), C = 3 (selon l'attente).
 
 ## Points ouverts
 
-- Étape 5 : scores hors ligne des scripts, puis run du LLM sur le mini-PC.
-- Rapport LaTeX et PDF couvrant les versions 2 et 3, une fois la décision prise.
+- Rapport LaTeX et PDF couvrant les versions 2 et 3.
+- Second modèle du panel (`gemma4:26b-a4b-it-q4_K_M`) sur le même lot.
+- Budget de durée d'un appel : à relever ou à expliquer avant tout nouveau run.
+- Mise à jour du tableau « État vérifié » de `objectifs/ETAT-COURANT.md`
+  (ligne H3), à décider avec le responsable de la ligne directrice.
